@@ -1,0 +1,27 @@
+# Byte-compiled / cache
+__pycache__/
+*.py[cod]
+*.sqlite3
+*.db
+.pytest_cache/
+.venv/
+venv/
+
+# Environments & Secrets (NEVER COMMIT)
+.env
+.env.local
+.env.production
+*.pem
+*.key
+
+# Node / Frontend / Tauri
+node_modules/
+dist/
+build/
+desktop-cms/src-tauri/target/
+
+# Backups & uploads runtime
+storage/uploads/*
+storage/backups/*
+!storage/uploads/.gitkeep
+!storage/backups/.gitkeep

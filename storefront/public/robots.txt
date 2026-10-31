@@ -1,0 +1,4 @@
+User-agent: *
+Allow: /
+Disallow: /api/v1/admin/
+Sitemap: https://musluxury.dz/sitemap.xml

@@ -1,0 +1,27 @@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "productName": "Mus Luxury CMS",
+  "version": "1.0.0",
+  "identifier": "dz.musluxury.cms",
+  "build": {
+    "beforeDevCommand": "npm run dev",
+    "devUrl": "http://localhost:1420",
+    "beforeBuildCommand": "npm run build",
+    "frontendDist": "../dist"
+  },
+  "app": {
+    "windows": [
+      {
+        "title": "Mus Luxury (LUXE) — Administration & Inventaire",
+        "width": 1440,
+        "height": 900,
+        "minWidth": 1100,
+        "minHeight": 720,
+        "resizable": true
+      }
+    ],
+    "security": {
+      "csp": "default-src 'self'; connect-src 'self' https://api.musluxury.dz http://localhost:8000; img-src 'self' data: https: http://localhost:8000; style-src 'self' 'unsafe-inline'"
+    }
+  }
+}

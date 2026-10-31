@@ -1,0 +1,40 @@
+name: LUXE E-Commerce CI Pipeline
+
+on:
+  push:
+    branches: [main, "feat/**"]
+  pull_request:
+    branches: [main]
+
+jobs:
+  backend-tests-and-security:
+    name: FastAPI Backend & Security Tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Set up Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Install dependencies
+        working-directory: ./backend
+        run: |
+          pip install --upgrade pip
+          pip install -r requirements.txt
+      - name: Run automated API, Dynamic Category, Variant & Security Test Suite
+        working-directory: ./backend
+        run: |
+          python3 -m unittest discover -s tests -v
+
+  storefront-check:
+    name: React + TypeScript Storefront Check
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      - name: Verify Storefront Structure
+        run: |
+          test -f storefront/package.json
+          test -f desktop-cms/src-tauri/tauri.conf.json
