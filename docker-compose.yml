@@ -1,0 +1,62 @@
+version: '3.8'
+
+networks:
+  internal_net:
+    driver: bridge
+  public_net:
+    driver: bridge
+
+services:
+  db:
+    image: postgres:16-alpine
+    container_name: luxe_db
+    restart: always
+    environment:
+      POSTGRES_USER: luxe_app_user
+      POSTGRES_PASSWORD: replace_password
+      POSTGRES_DB: luxe_ecommerce
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    networks:
+      - internal_net
+
+  api:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: luxe_api
+    restart: always
+    environment:
+      - DATABASE_URL=postgresql+psycopg://luxe_app_user:replace_password@db:5432/luxe_ecommerce
+      - SECRET_KEY=replace_in_production
+      - APP_NAME=Mus Luxury (LUXE)
+    depends_on:
+      - db
+    networks:
+      - internal_net
+
+  storefront:
+    build:
+      context: ./storefront
+      dockerfile: Dockerfile
+    container_name: luxe_storefront
+    restart: always
+    networks:
+      - internal_net
+
+  nginx:
+    image: nginx:alpine
+    container_name: luxe_nginx
+    restart: always
+    ports:
+      - "80:80"
+      - "443:443"
+    depends_on:
+      - api
+      - storefront
+    networks:
+      - internal_net
+      - public_net
+
+volumes:
+  postgres_data:
