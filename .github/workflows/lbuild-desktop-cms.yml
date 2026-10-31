@@ -1,0 +1,38 @@
+name: Build Desktop CMS
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+    branches:
+      - main
+  workflow_dispatch:
+
+jobs:
+  build-tauri:
+    runs-on: windows-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Build Tauri 2 Desktop CMS
+        uses: tauri-apps/tauri-action@v0
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          projectPath: ./desktop-cms
+          tagName: desktop-cms-v__VERSION__
+          releaseName: 'Desktop CMS v__VERSION__'
+          releaseBody: 'Automated Windows build for Mus Luxury Desktop CMS'
+          releaseDraft: true
+          prerelease: false
