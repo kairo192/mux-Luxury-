@@ -36,5 +36,5 @@ jobs:
           node-version: "20"
       - name: Verify Storefront Structure
         run: |
-          test -f storefront/package.json
-          test -f desktop-cms/src-tauri/tauri.conf.json
+          test -f apps/storefront/package.json
+          test -f apps/desktop-cms/src-tauri/tauri.conf.json

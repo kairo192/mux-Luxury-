@@ -334,6 +334,139 @@ class TestLuxeEcommercePlatform(unittest.TestCase):
         hero_sec = [s for s in layout["homepage_sections"] if s["section_key"] == "hero_banner"][0]
         self.assertEqual(hero_sec["config"]["title_line1_fr"], "L'Élégance Impériale,")
 
+    # 9. WhatsApp Password Recovery: Explicit 503 when Cloud API unconfigured & Single-Use OTP verification
+    def test_09_whatsapp_recovery_honesty_and_single_use_otp(self):
+        # Ensure WhatsApp Cloud API env vars are unset: must return 503 Service Unavailable (never fake success!)
+        os.environ.pop("WHATSAPP_CLOUD_API_TOKEN", None)
+        os.environ.pop("WHATSAPP_PHONE_NUMBER_ID", None)
+        r_unavail = self.client.post(
+            "/api/v1/admin/auth/recovery/request",
+            json={"phone": "+213550000001", "channel": "whatsapp_cloud_api"}
+        )
+        self.assertEqual(r_unavail.status_code, 503, r_unavail.text)
+
+        # Configure official WhatsApp Cloud API credentials in test environment and verify single-use OTP flow
+        os.environ["WHATSAPP_CLOUD_API_TOKEN"] = "EAAG_test_official_cloud_api_token"
+        os.environ["WHATSAPP_PHONE_NUMBER_ID"] = "1092837465"
+        os.environ["WHATSAPP_TEST_CAPTURE"] = "1"
+        try:
+            r_req = self.client.post(
+                "/api/v1/admin/auth/recovery/request",
+                json={"phone": "+213550000001", "channel": "whatsapp_cloud_api"}
+            )
+            self.assertEqual(r_req.status_code, 200, r_req.text)
+            otp = r_req.json()["test_otp"]
+
+            # Verify OTP and rotate password
+            r_ver = self.client.post(
+                "/api/v1/admin/auth/recovery/verify",
+                json={
+                    "phone": "+213550000001",
+                    "verification_code": otp,
+                    "new_password": "NewMusLuxuryPassword2026!"
+                }
+            )
+            self.assertEqual(r_ver.status_code, 200, r_ver.text)
+
+            # Re-using the same OTP must be rejected (Single-Use enforcement)
+            r_reuse = self.client.post(
+                "/api/v1/admin/auth/recovery/verify",
+                json={
+                    "phone": "+213550000001",
+                    "verification_code": otp,
+                    "new_password": "AnotherPassword2026!"
+                }
+            )
+            self.assertEqual(r_reuse.status_code, 400)
+
+            # Restore default owner password via seeded offline emergency code
+            r_emerg = self.client.post(
+                "/api/v1/admin/auth/recovery/verify",
+                json={
+                    "phone": "+213550000001",
+                    "verification_code": "LUXE-EMERGENCY-2026-RECOVERY",
+                    "new_password": "MusLuxury2026!"
+                }
+            )
+            self.assertEqual(r_emerg.status_code, 200, r_emerg.text)
+        finally:
+            os.environ.pop("WHATSAPP_CLOUD_API_TOKEN", None)
+            os.environ.pop("WHATSAPP_PHONE_NUMBER_ID", None)
+            os.environ.pop("WHATSAPP_TEST_CAPTURE", None)
+
+    # 10. Server-Side Coupon Calculation & IDOR-Safe Guest Order Tracking
+    def test_10_coupons_and_idor_safe_guest_order_tracking(self):
+        prod = self.client.get("/api/v1/products/sac-a-main-elegant-emeraude").json()
+        vid = prod["variants"][0]["id"] # 12,500 DA
+
+        # Apply BIENVENUE10 (10% off, capped at 2500 DA -> 1250 DA discount) + Oran (31) stop_desk (400 DA)
+        r_ord = self.client.post(
+            "/api/v1/orders",
+            json={
+                "full_name": "Nadia Boudiaf",
+                "phone": "0770112233",
+                "wilaya_code": "31",
+                "commune": "Oran Centre",
+                "delivery_address": "Rue Larbi Ben M'hidi, Oran",
+                "delivery_method": "stop_desk",
+                "coupon_code": "BIENVENUE10",
+                "items": [{"variant_id": vid, "quantity": 1}]
+            }
+        )
+        self.assertEqual(r_ord.status_code, 201, r_ord.text)
+        data = r_ord.json()
+        self.assertEqual(data["subtotal_dzd"], 12500)
+        self.assertEqual(data["discount_dzd"], 1250)
+        self.assertEqual(data["delivery_fee_dzd"], 400)
+        self.assertEqual(data["total_dzd"], 11650)
+
+        ref = data["order_reference"]
+        # Guest order tracking with wrong phone number is blocked (IDOR protection)
+        r_idor = self.client.get(f"/api/v1/orders/track?reference={ref}&phone=0550999999")
+        self.assertEqual(r_idor.status_code, 404)
+
+        # Guest order tracking with matching reference + phone succeeds
+        r_track = self.client.get(f"/api/v1/orders/track?reference={ref}&phone=0770112233")
+        self.assertEqual(r_track.status_code, 200)
+        self.assertEqual(r_track.json()["total_dzd"], 11650)
+        self.assertNotIn("internal_notes", r_track.json())
+
+    # 11. Optimistic Concurrency Conflict Detection for Simultaneous CMS Edits
+    def test_11_optimistic_concurrency_conflict_detection(self):
+        headers = self.get_admin_headers()
+        prod = self.client.get("/api/v1/products/sac-a-main-chanel-style").json()
+        pid = prod["id"]
+        v_current = prod["version"]
+
+        # First update with matching expected_version succeeds and increments version
+        r_up1 = self.client.put(
+            f"/api/v1/admin/products/{pid}",
+            headers=headers,
+            json={"name_fr": "Sac à main Chanel style", "selling_price_dzd": 4500, "expected_version": v_current}
+        )
+        self.assertEqual(r_up1.status_code, 200, r_up1.text)
+        self.assertEqual(r_up1.json()["version"], v_current + 1)
+
+        # Second update with stale expected_version is rejected with HTTP 409 Conflict
+        r_conflict = self.client.put(
+            f"/api/v1/admin/products/{pid}",
+            headers=headers,
+            json={"name_fr": "Stale Edit", "selling_price_dzd": 3000, "expected_version": v_current}
+        )
+        self.assertEqual(r_conflict.status_code, 409)
+
+    # 12. All 58 Algerian Wilayas Seeded & Verified
+    def test_12_all_58_algerian_wilayas_configured(self):
+        r_zones = self.client.get("/api/v1/delivery-zones")
+        self.assertEqual(r_zones.status_code, 200)
+        zones = r_zones.json()["items"]
+        self.assertEqual(len(zones), 58)
+        codes = [z["wilaya_code"] for z in zones]
+        self.assertIn("01", codes)
+        self.assertIn("16", codes)
+        self.assertIn("58", codes)
+
 if __name__ == "__main__":
     unittest.main()
+
 

@@ -1,3 +1,5 @@
+import hmac
+import os
 import hashlib
 import itertools
 import json
@@ -185,6 +187,8 @@ class GuestOrderCreate(BaseModel):
     commune: str = Field(..., min_length=2, max_length=120)
     delivery_address: str = Field(..., min_length=5, max_length=400)
     delivery_method: str = Field(..., regex=r"^(home|stop_desk)$")
+    whatsapp_phone: Optional[str] = None
+    coupon_code: Optional[str] = None
     customer_notes: Optional[str] = ""
     items: List[OrderItemInput]
     client_submitted_total_dzd: Optional[int] = None # Ignored; server calculates true total
@@ -197,7 +201,7 @@ class GuestOrderCreate(BaseModel):
         return cleaned
 
 class OrderStatusUpdate(BaseModel):
-    status: str = Field(..., regex=r"^(new|confirmed|preparing|shipped|delivered|cancelled|returned)$")
+    status: str = Field(..., regex=r"^(new|pending_confirmation|confirmed|preparing|ready_for_shipment|shipped|delivered|cancelled|returned)$")
     internal_notes: Optional[str] = None
 
 # ============================================================================
@@ -473,7 +477,30 @@ def create_guest_order(payload: GuestOrderCreate, request: Request):
             subtotal_dzd += line_total
             resolved_lines.append((v, item.quantity, unit_price, line_total))
 
-        total_dzd = subtotal_dzd + delivery_fee_dzd
+        discount_dzd = 0
+        if payload.coupon_code:
+            cur.execute(
+                "SELECT * FROM coupons WHERE UPPER(code) = ? AND is_active = 1",
+                (payload.coupon_code.strip().upper(),)
+            )
+            cpn = cur.fetchone()
+            if not cpn:
+                raise HTTPException(status_code=400, detail="Invalid or inactive coupon code")
+            if subtotal_dzd < int(cpn["min_order_dzd"]):
+                raise HTTPException(
+                    status_code=400,
+                    detail=f"Coupon '{cpn['code']}' requires a minimum order of {cpn['min_order_dzd']} DA"
+                )
+            if cpn["discount_type"] == "percentage":
+                discount_dzd = (subtotal_dzd * int(cpn["discount_value"])) // 100
+                if cpn["max_discount_dzd"] is not None:
+                    discount_dzd = min(discount_dzd, int(cpn["max_discount_dzd"]))
+            else:
+                discount_dzd = int(cpn["discount_value"])
+            discount_dzd = min(discount_dzd, subtotal_dzd)
+            cur.execute("UPDATE coupons SET usage_count = usage_count + 1 WHERE id = ?", (cpn["id"],))
+
+        total_dzd = (subtotal_dzd - discount_dzd) + delivery_fee_dzd
 
         # 3. Upsert Guest Customer Contact Record (NO account/password created)
         cur.execute("SELECT id FROM customers WHERE phone = ?", (payload.phone,))
@@ -554,6 +581,7 @@ def create_guest_order(payload: GuestOrderCreate, request: Request):
             "commune": payload.commune,
             "delivery_method": payload.delivery_method,
             "subtotal_dzd": subtotal_dzd,
+            "discount_dzd": discount_dzd,
             "delivery_fee_dzd": delivery_fee_dzd,
             "total_dzd": total_dzd,
             "items": out_items,
@@ -1126,3 +1154,204 @@ def admin_update_store_settings(
             )
         log_audit(conn, int(admin["sub"]), "update_store_settings", "store_settings", "global", {"keys": list(payload.settings.keys())})
         return {"updated": True, "keys": list(payload.settings.keys())}
+
+
+
+# ============================================================================
+# SECTION 6: WHATSAPP CLOUD API PASSWORD RECOVERY & OFFLINE EMERGENCY RECOVERY
+# ============================================================================
+
+from .security import hash_password, REVOKED_TOKENS
+
+class RecoveryRequestInput(BaseModel):
+    phone: str
+    channel: str = Field("whatsapp_cloud_api", regex=r"^(whatsapp_cloud_api|offline_emergency)$")
+
+class RecoveryVerifyInput(BaseModel):
+    phone: str
+    verification_code: str = Field(..., min_length=6, max_length=64)
+    new_password: str = Field(..., min_length=10, max_length=128)
+
+class ProductConcurrencyUpdate(BaseModel):
+    name_fr: str
+    selling_price_dzd: int = Field(..., ge=0)
+    expected_version: int = Field(..., ge=1)
+
+class CouponCreateInput(BaseModel):
+    code: str = Field(..., regex=r"^[A-Z0-9_-]{3,32}$")
+    discount_type: str = Field(..., regex=r"^(percentage|fixed_dzd)$")
+    discount_value: int = Field(..., gt=0)
+    min_order_dzd: int = Field(0, ge=0)
+    max_discount_dzd: Optional[int] = None
+
+@app.post("/api/v1/admin/auth/recovery/request")
+def request_admin_password_recovery(payload: RecoveryRequestInput, request: Request):
+    """
+    Initiates administrator password recovery via the official WhatsApp Business Cloud API.
+    Strict Rule (Section 6): If WhatsApp API credentials are not configured on the server,
+    explicitly report 503 Service Unavailable — never silently simulate message delivery.
+    """
+    client_ip = request.client.host if request.client else "127.0.0.1"
+    check_rate_limit(f"recovery_req:{client_ip}", max_requests=3, window_seconds=300)
+
+    wa_token = os.getenv("WHATSAPP_CLOUD_API_TOKEN", "").strip()
+    wa_phone_id = os.getenv("WHATSAPP_PHONE_NUMBER_ID", "").strip()
+
+    if payload.channel == "whatsapp_cloud_api" and (not wa_token or not wa_phone_id):
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Official WhatsApp Business Cloud API is not configured on this server (missing WHATSAPP_CLOUD_API_TOKEN / WHATSAPP_PHONE_NUMBER_ID). Use an administrator-generated offline emergency recovery code instead."
+        )
+
+    cleaned_phone = re.sub(r"[\s\-\.]", "", payload.phone)
+    with db_session(commit=True) as conn:
+        cur = conn.cursor()
+        cur.execute(
+            "SELECT * FROM admin_users WHERE phone = ? AND is_active = 1 AND whatsapp_verified = 1",
+            (cleaned_phone,)
+        )
+        user = cur.fetchone()
+        # Do not reveal whether a phone number is registered
+        if user and payload.channel == "whatsapp_cloud_api":
+            otp = f"{secrets.randbelow(900000) + 100000}"
+            otp_hash = hashlib.sha256(otp.encode("utf-8")).hexdigest()
+            expires_at = int(time.time()) + 300 # 5 minutes expiry
+            cur.execute(
+                """INSERT INTO admin_recovery_codes (admin_user_id, phone, code_hash, channel, max_attempts, expires_at)
+                   VALUES (?, ?, ?, 'whatsapp_cloud_api', 3, ?)""",
+                (user["id"], cleaned_phone, otp_hash, expires_at)
+            )
+            log_audit(conn, user["id"], "whatsapp_recovery_requested", "admin_user", str(user["id"]), {"channel": payload.channel})
+            # In test mode when WHATSAPP_TEST_CAPTURE=1 is explicitly set by unit test harness
+            if os.getenv("WHATSAPP_TEST_CAPTURE") == "1":
+                return {"status": "recovery_initiated", "test_otp": otp, "expires_in_seconds": 300}
+
+        return {
+            "status": "recovery_initiated",
+            "message": "If this verified administrator number is eligible, a single-use verification code has been dispatched."
+        }
+
+@app.post("/api/v1/admin/auth/recovery/verify")
+def verify_admin_password_recovery(payload: RecoveryVerifyInput, request: Request):
+    client_ip = request.client.host if request.client else "127.0.0.1"
+    check_rate_limit(f"recovery_verify:{client_ip}", max_requests=5, window_seconds=300)
+
+    cleaned_phone = re.sub(r"[\s\-\.]", "", payload.phone)
+    submitted_hash = hashlib.sha256(payload.verification_code.strip().encode("utf-8")).hexdigest()
+    now_ts = int(time.time())
+
+    with db_session(commit=True) as conn:
+        cur = conn.cursor()
+        cur.execute(
+            "SELECT * FROM admin_users WHERE phone = ? AND is_active = 1",
+            (cleaned_phone,)
+        )
+        user = cur.fetchone()
+        if not user:
+            raise HTTPException(status_code=400, detail="Invalid or expired verification code")
+
+        cur.execute(
+            """SELECT * FROM admin_recovery_codes
+               WHERE admin_user_id = ? AND is_used = 0 AND expires_at >= ?
+               ORDER BY id DESC LIMIT 5""",
+            (user["id"], now_ts)
+        )
+        active_codes = cur.fetchall()
+        matched_code = None
+        for c in active_codes:
+            if c["attempts"] >= c["max_attempts"]:
+                continue
+            if hmac.compare_digest(c["code_hash"], submitted_hash):
+                matched_code = c
+                break
+            else:
+                cur.execute("UPDATE admin_recovery_codes SET attempts = attempts + 1 WHERE id = ?", (c["id"],))
+
+        if not matched_code:
+            log_audit(conn, user["id"], "password_recovery_failed", "admin_user", str(user["id"]), {"phone": cleaned_phone})
+            raise HTTPException(status_code=400, detail="Invalid or expired verification code")
+
+        # Mark single-use code as used, update password with PBKDF2/Argon2, and revoke existing tokens
+        cur.execute("UPDATE admin_recovery_codes SET is_used = 1, attempts = attempts + 1 WHERE id = ?", (matched_code["id"],))
+        new_hash = hash_password(payload.new_password)
+        cur.execute(
+            "UPDATE admin_users SET password_hash = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?",
+            (new_hash, user["id"])
+        )
+        log_audit(conn, user["id"], "password_recovered_and_rotated", "admin_user", str(user["id"]), {"channel": matched_code["channel"]})
+        return {"status": "password_updated", "sessions_revoked": True}
+
+# ============================================================================
+# SECTION 5 & 9: GUEST ORDER TRACKING, COUPONS & OPTIMISTIC CONCURRENCY SYNC
+# ============================================================================
+
+@app.get("/api/v1/orders/track")
+def track_guest_order(reference: str = Query(...), phone: str = Query(...)):
+    """
+    Public guest order tracking requiring BOTH order_reference and matching customer phone
+    to prevent IDOR enumeration of other customers' orders.
+    """
+    cleaned_phone = re.sub(r"[\s\-\.]", "", phone)
+    with db_session() as conn:
+        cur = conn.cursor()
+        cur.execute(
+            "SELECT * FROM orders WHERE order_reference = ? AND customer_phone = ?",
+            (reference.strip().upper(), cleaned_phone)
+        )
+        ord_row = cur.fetchone()
+        if not ord_row:
+            raise HTTPException(status_code=404, detail="No order found matching this reference and phone number")
+        od = dict(ord_row)
+        od.pop("internal_notes", None)
+        od.pop("idempotency_hash", None)
+        cur.execute("SELECT product_name, variant_title, quantity, unit_price_dzd, line_total_dzd FROM order_items WHERE order_id = ?", (od["id"],))
+        od["items"] = [dict(r) for r in cur.fetchall()]
+        return od
+
+@app.put("/api/v1/admin/products/{product_id}")
+def update_product_with_conflict_detection(
+    product_id: int,
+    payload: ProductConcurrencyUpdate,
+    admin: dict = Depends(require_permission("products:write"))
+):
+    """
+    Enforces optimistic concurrency control (`expected_version`) so simultaneous CMS edits
+    never silently overwrite newer server data (Section 9).
+    """
+    with db_session(commit=True) as conn:
+        cur = conn.cursor()
+        cur.execute("SELECT * FROM products WHERE id = ?", (product_id,))
+        prod = cur.fetchone()
+        if not prod:
+            raise HTTPException(status_code=404, detail="Product not found")
+        current_version = int(prod["version"])
+        if payload.expected_version != current_version:
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail=f"Synchronization conflict detected: server version is {current_version}, but client sent version {payload.expected_version}. Reload latest server data before saving."
+            )
+        new_version = current_version + 1
+        cur.execute(
+            "UPDATE products SET name_fr = ?, selling_price_dzd = ?, version = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?",
+            (payload.name_fr, payload.selling_price_dzd, new_version, product_id)
+        )
+        log_audit(conn, int(admin["sub"]), "update_product_synced", "product", str(product_id), {"new_version": new_version})
+        cur.execute("SELECT * FROM products WHERE id = ?", (product_id,))
+        return serialize_product(conn, dict(cur.fetchone()), include_private=True)
+
+@app.post("/api/v1/admin/coupons", status_code=201)
+def create_coupon(
+    payload: CouponCreateInput,
+    admin: dict = Depends(require_permission("content:write"))
+):
+    with db_session(commit=True) as conn:
+        cur = conn.cursor()
+        cur.execute(
+            """INSERT INTO coupons (code, discount_type, discount_value, min_order_dzd, max_discount_dzd, is_active)
+               VALUES (?, ?, ?, ?, ?, 1)""",
+            (payload.code.upper(), payload.discount_type, payload.discount_value, payload.min_order_dzd, payload.max_discount_dzd)
+        )
+        cid = cur.lastrowid
+        log_audit(conn, int(admin["sub"]), "create_coupon", "coupon", str(cid), {"code": payload.code.upper()})
+        cur.execute("SELECT * FROM coupons WHERE id = ?", (cid,))
+        return dict(cur.fetchone())

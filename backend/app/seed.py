@@ -1,5 +1,6 @@
 import hashlib
 import json
+import time
 from .database import db_session, init_db
 from .security import hash_password
 
@@ -7,6 +8,67 @@ SUPPORTED_ATTRIBUTE_TYPES = [
     "short_text", "long_text", "number", "price", "boolean",
     "single_select", "multi_select", "color", "size", "image",
     "date", "measurement", "brand", "barcode_sku"
+]
+
+ALGERIA_58_WILAYAS = [
+    ("01", "Adrar", "أدرار", ["Adrar", "Reggane", "Timimoun"], 900, 600, "48h - 72h"),
+    ("02", "Chlef", "الشلف", ["Chlef", "Ténès", "Oued Fodda"], 600, 400, "24h - 48h"),
+    ("03", "Laghouat", "الأغواط", ["Laghouat", "Aflou"], 750, 500, "48h"),
+    ("04", "Oum El Bouaghi", "أم البواقي", ["Oum El Bouaghi", "Aïn Beïda", "Aïn M'lila"], 650, 450, "24h - 48h"),
+    ("05", "Batna", "باتنة", ["Batna", "Barika", "Aïn Touta"], 650, 450, "24h - 48h"),
+    ("06", "Béjaïa", "بجاية", ["Béjaïa", "Akbou", "El Kseur", "Tichy"], 650, 450, "24h - 48h"),
+    ("07", "Biskra", "بسكرة", ["Biskra", "Tolga", "Ouled Djellal"], 700, 450, "48h"),
+    ("08", "Béchar", "بشار", ["Béchar", "Kenadsa"], 850, 550, "48h - 72h"),
+    ("09", "Blida", "البليدة", ["Blida", "Boufarik", "Ouled Yaïch", "Beni Mered"], 500, 350, "24h"),
+    ("10", "Bouira", "البويرة", ["Bouira", "Lakhdaria", "Sour El Ghozlane"], 600, 400, "24h - 48h"),
+    ("11", "Tamanrasset", "تمنراست", ["Tamanrasset", "In Salah"], 1100, 750, "72h"),
+    ("12", "Tébessa", "تبسة", ["Tébessa", "Bir El Ater", "Cheria"], 700, 450, "48h"),
+    ("13", "Tlemcen", "تلمسان", ["Tlemcen", "Maghnia", "Mansourah", "Remchi"], 700, 450, "48h"),
+    ("14", "Tiaret", "تيارت", ["Tiaret", "Frenda", "Sougueur"], 650, 450, "24h - 48h"),
+    ("15", "Tizi Ouzou", "تيزي وزو", ["Tizi Ouzou", "Azazga", "Draâ Ben Khedda"], 600, 400, "24h - 48h"),
+    ("16", "Alger", "الجزائر", ["Alger Centre", "Hydra", "Bab Ezzouar", "Chéraga", "Dély Ibrahim", "Kouba"], 400, 300, "24h"),
+    ("17", "Djelfa", "الجلفة", ["Djelfa", "Aïn Oussera", "Messaad"], 700, 450, "48h"),
+    ("18", "Jijel", "جيجل", ["Jijel", "Taher", "El Milia"], 650, 450, "24h - 48h"),
+    ("19", "Sétif", "سطيف", ["Sétif", "El Eulma", "Aïn Oulmene"], 600, 400, "24h - 48h"),
+    ("20", "Saïda", "سعيدة", ["Saïda", "Aïn El Hadjar"], 700, 450, "48h"),
+    ("21", "Skikda", "سكيكدة", ["Skikda", "Azzaba", "Collo"], 650, 450, "24h - 48h"),
+    ("22", "Sidi Bel Abbès", "سيدي بلعباس", ["Sidi Bel Abbès", "Telagh"], 650, 450, "24h - 48h"),
+    ("23", "Annaba", "عنابة", ["Annaba", "El Bouni", "Sidi Amar"], 650, 450, "24h - 48h"),
+    ("24", "Guelma", "قالمة", ["Guelma", "Oued Zenati"], 650, 450, "48h"),
+    ("25", "Constantine", "قسنطينة", ["Constantine", "El Khroub", "Ali Mendjeli", "Hamma Bouziane"], 600, 400, "24h - 48h"),
+    ("26", "Médéa", "المدية", ["Médéa", "Berrouaghia", "Ksar El Boukhari"], 550, 350, "24h"),
+    ("27", "Mostaganem", "مستغانم", ["Mostaganem", "Sidi Ali"], 650, 450, "24h - 48h"),
+    ("28", "M'Sila", "المسيلة", ["M'Sila", "Bou Saâda"], 650, 450, "24h - 48h"),
+    ("29", "Mascara", "معسكر", ["Mascara", "Sig", "Mohammadia"], 650, 450, "24h - 48h"),
+    ("30", "Ouargla", "ورقلة", ["Ouargla", "Hassi Messaoud", "Touggourt"], 900, 600, "48h - 72h"),
+    ("31", "Oran", "وهران", ["Oran Centre", "Bir El Djir", "Es Senia", "Arzew"], 600, 400, "24h - 48h"),
+    ("32", "El Bayadh", "البيض", ["El Bayadh", "Bougtob"], 800, 550, "48h"),
+    ("33", "Illizi", "إليزي", ["Illizi", "In Amenas"], 1100, 750, "72h"),
+    ("34", "Bordj Bou Arréridj", "برج بوعريريج", ["Bordj Bou Arréridj", "Ras El Oued"], 600, 400, "24h - 48h"),
+    ("35", "Boumerdès", "بومرداس", ["Boumerdès", "Boudouaou", "Bordj Menaïel"], 500, 350, "24h"),
+    ("36", "El Tarf", "الطارف", ["El Tarf", "El Kala"], 700, 450, "48h"),
+    ("37", "Tindouf", "تندوف", ["Tindouf"], 1100, 750, "72h"),
+    ("38", "Tissemsilt", "تيسمسيلت", ["Tissemsilt", "Theniet El Had"], 650, 450, "48h"),
+    ("39", "El Oued", "الوادي", ["El Oued", "Guemar"], 800, 550, "48h"),
+    ("40", "Khenchela", "خنشلة", ["Khenchela", "Kais"], 700, 450, "48h"),
+    ("41", "Souk Ahras", "سوق أهراس", ["Souk Ahras", "Sedrata"], 700, 450, "48h"),
+    ("42", "Tipaza", "تيبازة", ["Tipaza", "Koléa", "Cherchell"], 500, 350, "24h"),
+    ("43", "Mila", "ميلة", ["Mila", "Chelghoum Laïd", "Ferdjioua"], 650, 450, "24h - 48h"),
+    ("44", "Aïn Defla", "عين الدفلى", ["Aïn Defla", "Khemis Miliana"], 600, 400, "24h - 48h"),
+    ("45", "Naâma", "النعامة", ["Naâma", "Mécheria", "Aïn Sefra"], 800, 550, "48h"),
+    ("46", "Aïn Témouchent", "عين تموشنت", ["Aïn Témouchent", "Beni Saf", "Hammam Bou Hadjar"], 650, 450, "24h - 48h"),
+    ("47", "Ghardaïa", "غرداية", ["Ghardaïa", "Metlili", "El Guerrara"], 800, 550, "48h"),
+    ("48", "Relizane", "غليزان", ["Relizane", "Oued Rhiou"], 650, 450, "24h - 48h"),
+    ("49", "Timimoun", "تيميمون", ["Timimoun", "Aougrout"], 950, 650, "48h - 72h"),
+    ("50", "Bordj Badji Mokhtar", "برج باجي مختار", ["Bordj Badji Mokhtar"], 1150, 800, "72h"),
+    ("51", "Ouled Djellal", "أولاد جلال", ["Ouled Djellal", "Sidi Khaled"], 750, 500, "48h"),
+    ("52", "Béni Abbès", "بني عباس", ["Béni Abbès", "Kerzaz"], 950, 650, "48h - 72h"),
+    ("53", "In Salah", "عين صالح", ["In Salah", "Foggaret Ezzaouia"], 1050, 700, "72h"),
+    ("54", "In Guezzam", "عين قزام", ["In Guezzam"], 1150, 800, "72h"),
+    ("55", "Touggourt", "تقرت", ["Touggourt", "Témacine", "Megarine"], 850, 550, "48h"),
+    ("56", "Djanet", "جانت", ["Djanet"], 1150, 800, "72h"),
+    ("57", "El M'Ghair", "المغير", ["El M'Ghair", "Djamaa"], 800, 550, "48h"),
+    ("58", "El Meniaa", "المنيعة", ["El Meniaa", "Hassi Gara"], 850, 550, "48h")
 ]
 
 def seed_initial_data() -> None:
@@ -17,39 +79,73 @@ def seed_initial_data() -> None:
         if cur.fetchone()["cnt"] > 0:
             return
 
-        # 1. Roles & Permissions
-        cur.execute("INSERT INTO roles (name, description) VALUES (?, ?)", ("super_admin", "Full platform administrator"))
-        super_role_id = cur.lastrowid
-        cur.execute("INSERT INTO roles (name, description) VALUES (?, ?)", ("catalog_editor", "Catalog & inventory manager without backup/settings access"))
-        editor_role_id = cur.lastrowid
+        # 1. All 6 Required RBAC Roles (Section 7 of Master Prompt)
+        role_defs = [
+            ("super_admin", "Owner / Super Administrator — Full platform & security control"),
+            ("admin", "Administrator — Catalog, orders, content, and reports management"),
+            ("product_manager", "Product Manager — Categories, dynamic attributes, products & images"),
+            ("order_manager", "Order Manager — Orders, customer contacts & shipping statuses"),
+            ("inventory_manager", "Inventory Manager — Variant stock levels & stock movement logs"),
+            ("readonly", "Read-Only Employee — View dashboard, catalog & order summaries only"),
+        ]
+        role_ids = {}
+        for rname, rdesc in role_defs:
+            cur.execute("INSERT INTO roles (name, description) VALUES (?, ?)", (rname, rdesc))
+            role_ids[rname] = cur.lastrowid
 
         perms = [
             ("dashboard:read", "View dashboard analytics"),
             ("products:write", "Create, edit and delete products & variants"),
             ("categories:write", "Create custom categories and dynamic attributes"),
-            ("orders:write", "Manage orders and update statuses"),
-            ("content:write", "Manage banners, pages anddelivery zones"),
+            ("inventory:write", "Adjust stock and record stock movements"),
+            ("orders:write", "Manage orders and update 9-stage workflow statuses"),
+            ("content:write", "Manage banners, product card customization, coupons & pages"),
             ("backups:write", "Trigger and restore backups"),
-            ("settings:write", "Manage store settings and users"),
+            ("settings:write", "Manage store settings, WhatsApp API config, and admin users"),
         ]
+        perm_ids = {}
         for code, desc in perms:
             cur.execute("INSERT INTO permissions (code, description) VALUES (?, ?)", (code, desc))
-            pid = cur.lastrowid
-            cur.execute("INSERT INTO role_permissions (role_id, permission_id) VALUES (?, ?)", (super_role_id, pid))
-            if code in ("dashboard:read", "products:write", "orders:write"):
-                cur.execute("INSERT INTO role_permissions (role_id, permission_id) VALUES (?, ?)", (editor_role_id, pid))
+            perm_ids[code] = cur.lastrowid
 
-        # 2. Default Admin Users
+        role_perm_map = {
+            "super_admin": list(perm_ids.keys()),
+            "admin": ["dashboard:read", "products:write", "categories:write", "inventory:write", "orders:write", "content:write"],
+            "product_manager": ["dashboard:read", "products:write"],
+            "order_manager": ["dashboard:read", "orders:write"],
+            "inventory_manager": ["dashboard:read", "inventory:write", "products:write"],
+            "readonly": ["dashboard:read"],
+        }
+        for rname, p_list in role_perm_map.items():
+            for pcode in p_list:
+                cur.execute(
+                    "INSERT INTO role_permissions (role_id, permission_id) VALUES (?, ?)",
+                    (role_ids[rname], perm_ids[pcode])
+                )
+
+        # 2. Seed Admin Users with Verified Algerian Phone Numbers for WhatsApp Recovery
         cur.execute(
-            "INSERT INTO admin_users (email, full_name, password_hash, role_id, is_active) VALUES (?, ?, ?, ?, 1)",
-            ("admin@musluxury.dz", "Mustapha Harbit (Owner)", hash_password("MusLuxury2026!"), super_role_id)
+            """INSERT INTO admin_users (email, full_name, phone, whatsapp_verified, totp_enabled, password_hash, role_id, is_active)
+               VALUES (?, ?, ?, 1, 1, ?, ?, 1)""",
+            ("admin@musluxury.dz", "Mustapha Harbit (Owner)", "+213550000001", hash_password("MusLuxury2026!"), role_ids["super_admin"])
         )
+        owner_id = cur.lastrowid
+
         cur.execute(
-            "INSERT INTO admin_users (email, full_name, password_hash, role_id, is_active) VALUES (?, ?, ?, ?, 1)",
-            ("editor@musluxury.dz", "Sarah (Catalog Editor)", hash_password("EditorLuxury2026!"), editor_role_id)
+            """INSERT INTO admin_users (email, full_name, phone, whatsapp_verified, totp_enabled, password_hash, role_id, is_active)
+               VALUES (?, ?, ?, 1, 0, ?, ?, 1)""",
+            ("editor@musluxury.dz", "Sarah (Product Manager)", "+213550000002", hash_password("EditorLuxury2026!"), role_ids["product_manager"])
         )
 
-        # 3. Store Settings (Brand Identity & Localization)
+        # Seed an Offline Emergency Recovery Code for the Owner (Section 6 fallback)
+        emergency_hash = hashlib.sha256(b"LUXE-EMERGENCY-2026-RECOVERY").hexdigest()
+        cur.execute(
+            """INSERT INTO admin_recovery_codes (admin_user_id, phone, code_hash, channel, max_attempts, expires_at)
+               VALUES (?, '+213550000001', ?, 'offline_emergency', 3, ?)""",
+            (owner_id, emergency_hash, int(time.time()) + 86400 * 365)
+        )
+
+        # 3. Store Settings & Website Product Card Customization (Section 4.4)
         settings = {
             "store_name": "Mus Luxury (LUXE)",
             "tagline_fr": "Plus qu'un style, une attitude.",
@@ -68,6 +164,15 @@ def seed_initial_data() -> None:
                 "main_text": "#202923",
                 "white": "#FFFFFF"
             }),
+            "product_card_config": json.dumps({
+                "show_brand": True,
+                "show_promo_badge": True,
+                "show_old_price": True,
+                "show_current_price": True,
+                "show_stock_status": True
+            }),
+            "whatsapp_contact_number": "+213550000000",
+            "free_delivery_threshold_dzd": "25000",
             "logo_url": "/assets/mus_luxury_logo.png",
             "payment_methods": json.dumps(["cod"]),
             "inventory_policy": "decrement_on_order",
@@ -75,7 +180,17 @@ def seed_initial_data() -> None:
         for k, v in settings.items():
             cur.execute("INSERT INTO store_settings (setting_key, setting_value) VALUES (?, ?)", (k, v))
 
-        # 4. Brands
+        # 4. Seed Promotional Coupons (Section 4.9)
+        cur.execute(
+            """INSERT INTO coupons (code, discount_type, discount_value, min_order_dzd, max_discount_dzd, is_active)
+               VALUES ('BIENVENUE10', 'percentage', 10, 4000, 2500, 1)"""
+        )
+        cur.execute(
+            """INSERT INTO coupons (code, discount_type, discount_value, min_order_dzd, max_discount_dzd, is_active)
+               VALUES ('ALGERIE500', 'fixed_dzd', 500, 5000, 500, 1)"""
+        )
+
+        # 5. Brands
         brands = [
             ("Mus Luxury Collection", "mus-luxury", "/assets/mus_luxury_logo.png"),
             ("Chanel Style Privé", "chanel-style", "/assets/mus_luxury_logo.png"),
@@ -87,16 +202,16 @@ def seed_initial_data() -> None:
             cur.execute("INSERT INTO brands (name, slug, logo_url) VALUES (?, ?, ?)", (bname, bslug, blogo))
             brand_ids[bslug] = cur.lastrowid
 
-        # 5. The 9 Initial Dynamic Categories (Not hardcoded—stored in DB with full dynamic attribute definitions)
+        # 6. The 9 Initial Dynamic Categories
         initial_categories = [
             ("sacs", "Sacs", "حقائب", "Bags", "Élégance et praticité au quotidien", "/assets/cat_sacs.jpg", 1),
             ("chaussures", "Chaussures", "أحذية", "Shoes", "Baskets et escarpins de haute confection", "/assets/cat_chaussures.jpg", 2),
-            ("chale", "Châle", "شال", "Shawls", "Châles et écharpes en soie et laine fine", "/assets/cat_chale.jpg", 3),
+            ("chale", "Châles", "شالات", "Shawls", "Châles et écharpes en soie et laine fine", "/assets/cat_chale.jpg", 3),
             ("maquillage", "Maquillage", "مكياج", "Makeup", "Cosmétiques et coffrets beauté sélectionnés", "/assets/cat_maquillage.jpg", 4),
-            ("chapeau", "Chapeau", "قبعات كلاسيكية", "Hats", "Chapeaux d'été et feutres raffinés", "/assets/cat_chapeau.jpg", 5),
-            ("casquette", "Casquette", "قبعات رياضية", "Caps", "Casquettes urbaines et sport chic", "/assets/prod_casquette_ny.jpg", 6),
-            ("les-lunettes", "Les lunettes", "نظارات", "Eyewear", "Lunettes solaires UV400 au style affirmé", "/assets/prod_lunettes_soleil.jpg", 7),
-            ("les-montres", "Les montres", "ساعات", "Watches", "Garde-temps d'exception et finitions dorées", "/assets/prod_montre_or.jpg", 8),
+            ("chapeau", "Chapeaux", "قبعات كلاسيكية", "Hats", "Chapeaux d'été et feutres raffinés", "/assets/cat_chapeau.jpg", 5),
+            ("casquette", "Casquettes", "قبعات رياضية", "Caps", "Casquettes urbaines et sport chic", "/assets/prod_casquette_ny.jpg", 6),
+            ("les-lunettes", "Lunettes", "نظارات", "Eyewear", "Lunettes solaires UV400 au style affirmé", "/assets/prod_lunettes_soleil.jpg", 7),
+            ("les-montres", "Montres", "ساعات", "Watches", "Garde-temps d'exception et finitions dorées", "/assets/prod_montre_or.jpg", 8),
             ("accessoires", "Accessoires", "إكسسوارات", "Accessories", "Parures, bijoux et petite maroquinerie", "/assets/prod_accessoires_or.jpg", 9),
         ]
         cat_ids = {}
@@ -109,7 +224,6 @@ def seed_initial_data() -> None:
             )
             cat_ids[slug] = cur.lastrowid
 
-        # Helper to insert category attributes & options
         def add_attr(cat_slug, key, l_fr, l_ar, l_en, itype, req=0, filt=0, var=0, order=1, unit="", options=None):
             cur.execute(
                 """INSERT INTO category_attributes
@@ -129,7 +243,6 @@ def seed_initial_data() -> None:
                     )
             return aid
 
-        # SACS attributes (Bag type, Color, Size, Material, Dimensions, Strap type)
         sacs_color_attr = add_attr("sacs", "color", "Couleur", "اللون", "Color", "color", req=1, filt=1, var=1, order=1, options=[
             ("Bordeaux", "Bordeaux", "عنابي", "Burgundy", "#5B2333"),
             ("Vert Émeraude", "Vert Émeraude", "أخضر زمردي", "Emerald Green", "#063D2E"),
@@ -152,7 +265,6 @@ def seed_initial_data() -> None:
         sacs_dim_attr = add_attr("sacs", "dimensions", "Dimensions", "الأبعاد", "Dimensions", "measurement", req=0, filt=0, var=0, order=5, unit="cm")
         sacs_strap_attr = add_attr("sacs", "strap_type", "Type de bandoulière", "نوع الحزام", "Strap Type", "short_text", req=0, filt=0, var=0, order=6)
 
-        # CHAUSSURES attributes (Gender, Color, Size, Material, Shoe Type, Season)
         ch_color_attr = add_attr("chaussures", "color", "Couleur", "اللون", "Color", "color", req=1, filt=1, var=1, order=1, options=[
             ("Blanc & Noir", "Blanc & Noir", "أبيض وأسود", "White & Black", "#F5F5F5"),
             ("Noir", "Noir", "أسود", "Black", "#1B1B1B"),
@@ -177,7 +289,6 @@ def seed_initial_data() -> None:
             ("Mocassins", "Mocassins", "موكاسين", "Loafers", None),
         ])
 
-        # MAQUILLAGE attributes (Shade, Skin Type, Finish, Volume/Weight, Ingredients, Expiration Date)
         mq_shade_attr = add_attr("maquillage", "shade", "Teinte / Coffret", "الدرجة", "Shade", "color", req=1, filt=1, var=1, order=1, options=[
             ("Coffret Rose & Nude 01", "Coffret Rose & Nude 01", "مجموعة روز ونود 01", "Rose & Nude Set 01", "#B6465F"),
             ("Coffret Rubis & Or 02", "Coffret Rubis & Or 02", "مجموعة روبي وذهبي 02", "Ruby & Gold Set 02", "#8E1B2B"),
@@ -192,7 +303,6 @@ def seed_initial_data() -> None:
         ])
         mq_vol_attr = add_attr("maquillage", "volume", "Volume / Poids", "الحجم / الوزن", "Volume / Weight", "measurement", req=1, filt=0, var=0, order=4, unit="g")
 
-        # MONTRES attributes (Movement, Case Material, Strap Material, Dial Color, Water Resistance)
         mt_dial_attr = add_attr("les-montres", "dial_color", "Couleur du cadran", "لون الميناء", "Dial Color", "color", req=1, filt=1, var=1, order=1, options=[
             ("Noir & Or", "Noir & Or", "أسود وذهبي", "Black & Gold", "#1A2421"),
             ("Vert Émeraude & Or", "Vert Émeraude & Or", "أخضر زمردي وذهبي", "Emerald & Gold", "#063D2E"),
@@ -203,27 +313,14 @@ def seed_initial_data() -> None:
         ])
         mt_water_attr = add_attr("les-montres", "water_resistance", "Étanchéité", "مقاومة الماء", "Water Resistance", "short_text", req=1, filt=0, var=0, order=3)
 
-        # LUNETTES attributes
         ln_frame_attr = add_attr("les-lunettes", "frame_color", "Couleur de monture", "لون الإطار", "Frame Color", "color", req=1, filt=1, var=1, order=1, options=[
             ("Écaille & Or", "Écaille & Or", "بني مذهب", "Tortoise & Gold", "#4A2E1B"),
             ("Noir Intense", "Noir Intense", "أسود داكن", "Deep Black", "#141414"),
         ])
         ln_uv_attr = add_attr("les-lunettes", "uv_protection", "Protection UV", "حماية الأشعة", "UV Protection", "short_text", req=1, filt=1, var=0, order=2)
 
-        # 6. Seed Algerian Wilayas & Delivery Rates
-        wilayas = [
-            ("16", "Alger", "الجزائر", ["Alger Centre", "Hydra", "Bab Ezzouar", "Chéraga", "Dély Ibrahim", "Kouba"], 400, 300, "24h"),
-            ("31", "Oran", "وهران", ["Oran Centre", "Bir El Djir", "Es Senia", "Arzew"], 600, 400, "24h - 48h"),
-            ("25", "Constantine", "قسنطينة", ["Constantine", "El Khroub", "Ali Mendjeli", "Hamma Bouziane"], 600, 400, "24h - 48h"),
-            ("19", "Sétif", "سطيف", ["Sétif", "El Eulma", "Aïn Oulmene"], 600, 400, "24h - 48h"),
-            ("09", "Blida", "البليدة", ["Blida", "Boufarik", "Ouled Yaïch"], 500, 350, "24h"),
-            ("06", "Béjaïa", "بجاية", ["Béjaïa", "Akbou", "El Kseur"], 650, 450, "48h"),
-            ("15", "Tizi Ouzou", "تيزي وزو", ["Tizi Ouzou", "Azazga", "Draâ Ben Khedda"], 600, 400, "24h - 48h"),
-            ("23", "Annaba", "عنابة", ["Annaba", "El Bouni", "Sidi Amar"], 650, 450, "48h"),
-            ("13", "Tlemcen", "تلمسان", ["Tlemcen", "Maghnia", "Mansourah"], 700, 450, "48h"),
-            ("30", "Ouargla", "ورقلة", ["Ouargla", "Hassi Messaoud", "Touggourt"], 900, 600, "48h - 72h"),
-        ]
-        for code, w_fr, w_ar, communes, home_fee, desk_fee, est in wilayas:
+        # 7. Seed All 58 Algerian Wilayas & Delivery Rates
+        for code, w_fr, w_ar, communes, home_fee, desk_fee, est in ALGERIA_58_WILAYAS:
             cur.execute(
                 "INSERT INTO delivery_zones (wilaya_code, wilaya_name_fr, wilaya_name_ar, communes_json, is_active) VALUES (?, ?, ?, ?, 1)",
                 (code, w_fr, w_ar, json.dumps(communes, ensure_ascii=False))
@@ -238,8 +335,7 @@ def seed_initial_data() -> None:
                 (zid, desk_fee, est)
             )
 
-        # 7. Seed Authentic Initial Catalog Products & Variants matching the Owner's Mockups
-        # Product 1: Sac à main Chanel style (4 500 DA, prev 5 500 DA)
+        # 8. Seed Initial Products & Variants
         cur.execute(
             """INSERT INTO products
                (category_id, brand_id, slug, sku, barcode, name_fr, name_ar, name_en,
@@ -278,7 +374,6 @@ def seed_initial_data() -> None:
             for _, attr_id, val in vattrs:
                 cur.execute("INSERT INTO variant_attribute_values (variant_id, attribute_id, option_value) VALUES (?, ?, ?)", (vid, attr_id, val))
 
-        # Product 2: Sac à main élégant Émeraude (12 500 DA, prev 16 900 DA)
         cur.execute(
             """INSERT INTO products
                (category_id, brand_id, slug, sku, barcode, name_fr, name_ar, name_en,
@@ -308,7 +403,6 @@ def seed_initial_data() -> None:
         cur.execute("INSERT INTO variant_attribute_values (variant_id, attribute_id, option_value) VALUES (?, ?, ?)", (v2_id, sacs_color_attr, "Vert Émeraude"))
         cur.execute("INSERT INTO variant_attribute_values (variant_id, attribute_id, option_value) VALUES (?, ?, ?)", (v2_id, sacs_size_attr, "Standard"))
 
-        # Product 3: Baskets élégantes (6 800 DA, prev 8 500 DA)
         cur.execute(
             """INSERT INTO products
                (category_id, brand_id, slug, sku, barcode, name_fr, name_ar, name_en,
@@ -340,7 +434,6 @@ def seed_initial_data() -> None:
             cur.execute("INSERT INTO variant_attribute_values (variant_id, attribute_id, option_value) VALUES (?, ?, ?)", (vid, ch_color_attr, "Blanc & Noir"))
             cur.execute("INSERT INTO variant_attribute_values (variant_id, attribute_id, option_value) VALUES (?, ?, ?)", (vid, ch_size_attr, sz))
 
-        # Product 4: Set maquillage complet (3 900 DA, prev 5 200 DA)
         cur.execute(
             """INSERT INTO products
                (category_id, brand_id, slug, sku, barcode, name_fr, name_ar, name_en,
@@ -369,14 +462,7 @@ def seed_initial_data() -> None:
         v4_id = cur.lastrowid
         cur.execute("INSERT INTO variant_attribute_values (variant_id, attribute_id, option_value) VALUES (?, ?, ?)", (v4_id, mq_shade_attr, "Coffret Rose & Nude 01"))
 
-        # 8. Seed Initial Backup Record
-        cur.execute(
-            "INSERT INTO backup_records (filename, backup_type, size_bytes, sha256_checksum, status, triggered_by) VALUES (?, 'full', 248920, ?, 'verified', 1)",
-            ("luxe_backup_initial_20261031.sql.gz", hashlib.sha256(b"initial_luxe_seed").hexdigest())
-        )
-
-
-        # 9. Seed Homepage Sections & Promotional Banners (Controlled by Tauri 2 Desktop CMS)
+        # 9. Homepage Sections & Banners
         sections = [
             ("hero_banner", "Bannière Principale Hero", "البانر الرئيسي", "Main Hero Banner", 1, 1, json.dumps({
                 "badge_fr": "STYLE • QUALITÉ • ÉLÉGANCE",
@@ -402,10 +488,6 @@ def seed_initial_data() -> None:
              "Voir la boutique", "/categories/sacs", "/assets/hero_banner_mus.jpg", 1, 1),
             ("promo_grid", "CHAUSSURES — Jusqu'à -20%", "أحذية — تخفيض حتى 20%", "SHOES — Up to 20% Off",
              "Baskets & créations urbaines", "Voir la collection", "/categories/chaussures", "/assets/prod_baskets_elegantes.jpg", 1, 2),
-            ("promo_grid", "LUNETTES — Élégance & UV400", "نظارات — أناقة وحماية", "EYEWEAR — UV400 Elegance",
-             "Montures écaille et dorées", "Voir la collection", "/categories/les-lunettes", "/assets/prod_lunettes_soleil.jpg", 1, 3),
-            ("promo_grid", "MONTRES — Le temps du style", "ساعات — وقت الأناقة", "WATCHES — Time for Style",
-             "Chronographes acier & or", "Voir la collection", "/categories/les-montres", "/assets/prod_montre_or.jpg", 1, 4),
         ]
         for pos, tf, ta, te, subf, cta, link, img, act, ord_i in banners:
             cur.execute(
@@ -414,3 +496,8 @@ def seed_initial_data() -> None:
                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
                 (pos, tf, ta, te, subf, cta, link, img, act, ord_i)
             )
+
+        cur.execute(
+            "INSERT INTO backup_records (filename, backup_type, size_bytes, sha256_checksum, status, triggered_by) VALUES (?, 'full', 248920, ?, 'verified', 1)",
+            ("luxe_backup_initial_20261031.sql.gz", hashlib.sha256(b"initial_luxe_seed").hexdigest())
+        )

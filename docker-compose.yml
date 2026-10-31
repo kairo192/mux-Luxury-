@@ -40,7 +40,7 @@ services:
 
   storefront:
     build:
-      context: ./storefront
+      context: ./apps/storefront
       dockerfile: Dockerfile
     container_name: luxe_storefront
     restart: unless-stopped
@@ -57,7 +57,7 @@ services:
       - "80:80"
       - "443:443"
     volumes:
-      - ./infra/nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+      - ./infrastructure/nginx/nginx.conf:/etc/nginx/nginx.conf:ro
       - luxe_uploads:/var/lib/luxe/uploads:ro
     depends_on:
       - api

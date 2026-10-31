@@ -29,6 +29,9 @@ CREATE TABLE IF NOT EXISTS admin_users (
     full_name VARCHAR(150) NOT NULL,
     password_hash VARCHAR(512) NOT NULL,
     role_id INTEGER NOT NULL REFERENCES roles(id),
+    phone VARCHAR(32),
+    whatsapp_verified INTEGER NOT NULL DEFAULT 0,
+    totp_enabled INTEGER NOT NULL DEFAULT 0,
     is_active INTEGER NOT NULL DEFAULT 1,
     last_login_at TIMESTAMP,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
@@ -122,6 +125,7 @@ CREATE TABLE IF NOT EXISTS products (
     is_featured INTEGER NOT NULL DEFAULT 0,
     is_new_arrival INTEGER NOT NULL DEFAULT 0,
     sales_count INTEGER NOT NULL DEFAULT 0,
+    version INTEGER NOT NULL DEFAULT 1,
     seo_title VARCHAR(255),
     seo_description TEXT,
     deleted_at TIMESTAMP,
@@ -317,4 +321,36 @@ CREATE TABLE IF NOT EXISTS store_settings (
     setting_key VARCHAR(100) PRIMARY KEY,
     setting_value TEXT NOT NULL,
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+
+-- ============================================================================
+-- PHASE 5-7 EXTENSIONS: WHATSAPP OTP RECOVERY, MFA, COUPONS & SYNC VERSIONING
+-- ============================================================================
+
+CREATE TABLE IF NOT EXISTS admin_recovery_codes (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    admin_user_id INTEGER NOT NULL REFERENCES admin_users(id) ON DELETE CASCADE,
+    phone VARCHAR(32) NOT NULL,
+    code_hash VARCHAR(255) NOT NULL,
+    channel VARCHAR(32) NOT NULL DEFAULT 'whatsapp_cloud_api', -- whatsapp_cloud_api or offline_emergency
+    attempts INTEGER NOT NULL DEFAULT 0,
+    max_attempts INTEGER NOT NULL DEFAULT 3,
+    is_used INTEGER NOT NULL DEFAULT 0,
+    expires_at INTEGER NOT NULL,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE IF NOT EXISTS coupons (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    code VARCHAR(64) NOT NULL UNIQUE,
+    discount_type VARCHAR(24) NOT NULL, -- 'percentage' or 'fixed_dzd'
+    discount_value INTEGER NOT NULL CHECK (discount_value > 0),
+    min_order_dzd INTEGER NOT NULL DEFAULT 0,
+    max_discount_dzd INTEGER,
+    is_active INTEGER NOT NULL DEFAULT 1,
+    starts_at TIMESTAMP,
+    ends_at TIMESTAMP,
+    usage_count INTEGER NOT NULL DEFAULT 0,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
