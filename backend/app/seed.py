@@ -374,3 +374,43 @@ def seed_initial_data() -> None:
             "INSERT INTO backup_records (filename, backup_type, size_bytes, sha256_checksum, status, triggered_by) VALUES (?, 'full', 248920, ?, 'verified', 1)",
             ("luxe_backup_initial_20261031.sql.gz", hashlib.sha256(b"initial_luxe_seed").hexdigest())
         )
+
+
+        # 9. Seed Homepage Sections & Promotional Banners (Controlled by Tauri 2 Desktop CMS)
+        sections = [
+            ("hero_banner", "Bannière Principale Hero", "البانر الرئيسي", "Main Hero Banner", 1, 1, json.dumps({
+                "badge_fr": "STYLE • QUALITÉ • ÉLÉGANCE",
+                "title_line1_fr": "Votre style,",
+                "title_line2_fr": "notre passion",
+                "description_fr": "Découvrez notre sélection exclusive de sacs, chaussures, châles, maquillage, montres et accessoires aux finitions irréprochables.",
+                "cta_primary_fr": "Découvrir la collection"
+            }, ensure_ascii=False)),
+            ("trust_bar", "Barre de Confiance (4 Garanties)", "شريط الثقة", "Trust Indicators Bar", 1, 2, "{}"),
+            ("categories_grid", "Grille Nos Catégories", "شبكة الفئات", "Shop by Category Grid", 1, 3, "{}"),
+            ("featured_products", "Produits en Vedette & Catalogue", "المنتجات المميزة", "Featured Products", 1, 4, "{}"),
+            ("promo_banners", "Bannières Promotionnelles Saisonnières", "العروض الموسمية", "Seasonal Promo Banners", 1, 5, "{}"),
+        ]
+        for skey, t_fr, t_ar, t_en, is_act, d_ord, cfg in sections:
+            cur.execute(
+                "INSERT INTO homepage_sections (section_key, title_fr, title_ar, title_en, is_active, display_order, config_json) VALUES (?, ?, ?, ?, ?, ?, ?)",
+                (skey, t_fr, t_ar, t_en, is_act, d_ord, cfg)
+            )
+
+        banners = [
+            ("hero", "Votre style, notre passion", "أسلوبك، شغفنا الدائم", "Your style, our passion",
+             "Découvrez les meilleures marques et les plus beaux accessoires en Algérie.",
+             "Voir la boutique", "/categories/sacs", "/assets/hero_banner_mus.jpg", 1, 1),
+            ("promo_grid", "CHAUSSURES — Jusqu'à -20%", "أحذية — تخفيض حتى 20%", "SHOES — Up to 20% Off",
+             "Baskets & créations urbaines", "Voir la collection", "/categories/chaussures", "/assets/prod_baskets_elegantes.jpg", 1, 2),
+            ("promo_grid", "LUNETTES — Élégance & UV400", "نظارات — أناقة وحماية", "EYEWEAR — UV400 Elegance",
+             "Montures écaille et dorées", "Voir la collection", "/categories/les-lunettes", "/assets/prod_lunettes_soleil.jpg", 1, 3),
+            ("promo_grid", "MONTRES — Le temps du style", "ساعات — وقت الأناقة", "WATCHES — Time for Style",
+             "Chronographes acier & or", "Voir la collection", "/categories/les-montres", "/assets/prod_montre_or.jpg", 1, 4),
+        ]
+        for pos, tf, ta, te, subf, cta, link, img, act, ord_i in banners:
+            cur.execute(
+                """INSERT INTO banners
+                   (position, title_fr, title_ar, title_en, subtitle_fr, cta_text_fr, cta_link, image_url, is_active, display_order)
+                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                (pos, tf, ta, te, subf, cta, link, img, act, ord_i)
+            )

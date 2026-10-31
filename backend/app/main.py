@@ -982,3 +982,147 @@ def trigger_manual_backup(admin: dict = Depends(require_permission("backups:writ
         log_audit(conn, int(admin["sub"]), "trigger_backup", "backup", str(bid), {"filename": fname, "sha256": checksum})
         cur.execute("SELECT * FROM backup_records WHERE id = ?", (bid,))
         return dict(cur.fetchone())
+
+
+
+# ============================================================================
+# PUBLIC STOREFRONT LAYOUT ENDPOINT & DESKTOP CMS WEBSITE CONTROL ENDPOINTS
+# The Tauri 2 Desktop CMS controls 100% of the public website via these APIs.
+# ============================================================================
+
+class BannerCreateUpdate(BaseModel):
+    position: str = Field("hero", regex=r"^(hero|promo_grid|seasonal)$")
+    title_fr: str
+    title_ar: Optional[str] = ""
+    title_en: Optional[str] = ""
+    subtitle_fr: Optional[str] = ""
+    cta_text_fr: Optional[str] = "Découvrir"
+    cta_link: Optional[str] = "/categories/sacs"
+    image_url: str = "/assets/hero_banner_mus.jpg"
+    is_active: bool = True
+    display_order: int = 1
+
+class HomepageSectionUpdate(BaseModel):
+    title_fr: Optional[str] = None
+    is_active: bool
+    display_order: int = 1
+    config: Dict[str, Any] = {}
+
+class StoreSettingsUpdate(BaseModel):
+    settings: Dict[str, Any]
+
+@app.get("/api/v1/store/layout")
+def get_public_storefront_layout():
+    """
+    Returns the complete storefront configuration controlled by the Desktop CMS:
+    settings, active homepage sections, active banners, and active categories.
+    """
+    with db_session() as conn:
+        cur = conn.cursor()
+        cur.execute("SELECT setting_key, setting_value FROM store_settings")
+        settings = {}
+        for r in cur.fetchall():
+            try:
+                settings[r["setting_key"]] = json.loads(r["setting_value"])
+            except Exception:
+                settings[r["setting_key"]] = r["setting_value"]
+
+        cur.execute("SELECT * FROM homepage_sections WHERE is_active = 1 ORDER BY display_order ASC")
+        sections = []
+        for s in cur.fetchall():
+            sd = dict(s)
+            sd["config"] = json.loads(sd.pop("config_json") or "{}")
+            sections.append(sd)
+
+        cur.execute("SELECT * FROM banners WHERE is_active = 1 ORDER BY display_order ASC, id ASC")
+        banners = [dict(b) for b in cur.fetchall()]
+
+        cur.execute("SELECT * FROM categories WHERE is_active = 1 AND deleted_at IS NULL ORDER BY display_order ASC")
+        categories = [serialize_category(conn, dict(c)) for c in cur.fetchall()]
+
+        return {
+            "settings": settings,
+            "homepage_sections": sections,
+            "banners": banners,
+            "categories": categories,
+        }
+
+@app.get("/api/v1/admin/banners")
+def admin_list_banners(admin: dict = Depends(require_permission("content:write"))):
+    with db_session() as conn:
+        cur = conn.cursor()
+        cur.execute("SELECT * FROM banners ORDER BY display_order ASC, id ASC")
+        return {"items": [dict(r) for r in cur.fetchall()]}
+
+@app.post("/api/v1/admin/banners", status_code=201)
+def admin_create_banner(
+    payload: BannerCreateUpdate,
+    admin: dict = Depends(require_permission("content:write"))
+):
+    with db_session(commit=True) as conn:
+        cur = conn.cursor()
+        cur.execute(
+            """INSERT INTO banners
+               (position, title_fr, title_ar, title_en, subtitle_fr, cta_text_fr, cta_link, image_url, is_active, display_order)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+            (
+                payload.position, payload.title_fr, payload.title_ar, payload.title_en,
+                payload.subtitle_fr, payload.cta_text_fr, payload.cta_link,
+                payload.image_url, 1 if payload.is_active else 0, payload.display_order
+            )
+        )
+        bid = cur.lastrowid
+        log_audit(conn, int(admin["sub"]), "create_banner", "banner", str(bid), {"title_fr": payload.title_fr})
+        cur.execute("SELECT * FROM banners WHERE id = ?", (bid,))
+        return dict(cur.fetchone())
+
+@app.put("/api/v1/admin/homepage-sections/{section_key}")
+def admin_update_homepage_section(
+    section_key: str,
+    payload: HomepageSectionUpdate,
+    admin: dict = Depends(require_permission("content:write"))
+):
+    with db_session(commit=True) as conn:
+        cur = conn.cursor()
+        cur.execute("SELECT * FROM homepage_sections WHERE section_key = ?", (section_key,))
+        sec = cur.fetchone()
+        if not sec:
+            raise HTTPException(status_code=404, detail="Homepage section not found")
+        cur.execute(
+            """UPDATE homepage_sections
+               SET title_fr = COALESCE(?, title_fr),
+                   is_active = ?,
+                   display_order = ?,
+                   config_json = ?
+               WHERE section_key = ?""",
+            (
+                payload.title_fr,
+                1 if payload.is_active else 0,
+                payload.display_order,
+                json.dumps(payload.config, ensure_ascii=False),
+                section_key
+            )
+        )
+        log_audit(conn, int(admin["sub"]), "update_homepage_section", "homepage_section", section_key, {"is_active": payload.is_active})
+        cur.execute("SELECT * FROM homepage_sections WHERE section_key = ?", (section_key,))
+        row = dict(cur.fetchone())
+        row["config"] = json.loads(row.pop("config_json") or "{}")
+        return row
+
+@app.put("/api/v1/admin/settings")
+def admin_update_store_settings(
+    payload: StoreSettingsUpdate,
+    admin: dict = Depends(require_permission("settings:write"))
+):
+    with db_session(commit=True) as conn:
+        cur = conn.cursor()
+        for k, v in payload.settings.items():
+            sval = json.dumps(v, ensure_ascii=False) if isinstance(v, (dict, list)) else str(v)
+            cur.execute(
+                """INSERT INTO store_settings (setting_key, setting_value, updated_at)
+                   VALUES (?, ?, CURRENT_TIMESTAMP)
+                   ON CONFLICT(setting_key) DO UPDATE SET setting_value = excluded.setting_value, updated_at = CURRENT_TIMESTAMP""",
+                (k, sval)
+            )
+        log_audit(conn, int(admin["sub"]), "update_store_settings", "store_settings", "global", {"keys": list(payload.settings.keys())})
+        return {"updated": True, "keys": list(payload.settings.keys())}

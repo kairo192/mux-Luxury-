@@ -303,5 +303,37 @@ class TestLuxeEcommercePlatform(unittest.TestCase):
         r_limited = self.client.post("/api/v1/admin/auth/login", json={"email": "wrong@musluxury.dz", "password": "bad"})
         self.assertEqual(r_limited.status_code, 429)
 
+    # 8. Desktop CMS Full Website Control (Banners, Homepage Sections & Store Settings)
+    def test_08_desktop_cms_controls_entire_website_layout(self):
+        headers = self.get_admin_headers()
+        # Update Hero Section & Store Tagline from the Desktop CMS API
+        r_sec = self.client.put(
+            "/api/v1/admin/homepage-sections/hero_banner",
+            headers=headers,
+            json={
+                "title_fr": "Collection Automne-Hiver Algérie",
+                "is_active": True,
+                "display_order": 1,
+                "config": {"title_line1_fr": "L'Élégance Impériale,", "title_line2_fr": "signée Mus Luxury"}
+            }
+        )
+        self.assertEqual(r_sec.status_code, 200, r_sec.text)
+
+        r_set = self.client.put(
+            "/api/v1/admin/settings",
+            headers=headers,
+            json={"settings": {"tagline_fr": "Nouvelle Collection Exclusive 58 Wilayas"}}
+        )
+        self.assertEqual(r_set.status_code, 200)
+
+        # Public website fetches /api/v1/store/layout and immediately reflects the Desktop CMS changes
+        r_layout = self.client.get("/api/v1/store/layout")
+        self.assertEqual(r_layout.status_code, 200)
+        layout = r_layout.json()
+        self.assertEqual(layout["settings"]["tagline_fr"], "Nouvelle Collection Exclusive 58 Wilayas")
+        hero_sec = [s for s in layout["homepage_sections"] if s["section_key"] == "hero_banner"][0]
+        self.assertEqual(hero_sec["config"]["title_line1_fr"], "L'Élégance Impériale,")
+
 if __name__ == "__main__":
     unittest.main()
+

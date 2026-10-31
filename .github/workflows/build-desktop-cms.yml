@@ -1,0 +1,30 @@
+name: Build Tauri 2 Windows Desktop CMS (.exe / .msi)
+
+on:
+  workflow_dispatch:
+  push:
+    tags:
+      - "v*"
+
+jobs:
+  build-tauri-windows:
+    name: Compile Windows Desktop CMS Installer
+    runs-on: windows-latest
+    defaults:
+      run:
+        working-directory: ./desktop-cms
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      - name: Install Rust Stable for Tauri 2
+        uses: dtolnay/rust-toolchain@stable
+      - name: Install Frontend Dependencies
+        run: npm install
+      - name: Build Tauri 2 Windows Application (.exe and .msi)
+        uses: tauri-apps/tauri-action@v0
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          projectPath: ./desktop-cms
