@@ -503,8 +503,31 @@ class TestLuxeEcommercePlatform(unittest.TestCase):
         self.assertEqual(delta["new_orders"][0]["customer_name"], "Yacine Brahimi")
         self.assertGreaterEqual(len(delta["new_movements"]), 1)
 
+    # 14. Setup Status Check & Multi-PC Workflow
+    def test_14_setup_status_check_and_multi_pc_detection(self):
+        # When DB is seeded with an owner, setup-status returns is_initialized=True
+        r = self.client.get("/api/v1/admin/auth/setup-status")
+        self.assertEqual(r.status_code, 200)
+        self.assertTrue(r.json()["is_initialized"])
+        self.assertFalse(r.json()["requires_owner_setup"])
+
+    # 15. One-Time Owner Provisioning & Permanent Lockout (HTTP 403 on subsequent calls)
+    def test_15_one_time_owner_initialization_lockout(self):
+        # Attempting to call initialize-owner when already initialized must return HTTP 403 Forbidden
+        payload = {
+            "full_name": "Mustapha Harbit",
+            "email": "owner_second_attempt@musluxury.dz",
+            "password": "SecurePassword2026!",
+            "whatsapp_phone": "0550112233",
+            "emergency_phone": "0661223344"
+        }
+        r_locked = self.client.post("/api/v1/admin/auth/initialize-owner", json=payload)
+        self.assertEqual(r_locked.status_code, 403)
+        self.assertIn("already been initialized", r_locked.json()["detail"])
+
 if __name__ == "__main__":
     unittest.main()
+
 
 
 

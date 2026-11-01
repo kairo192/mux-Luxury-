@@ -1399,3 +1399,135 @@ def admin_delta_sync(
             "new_movements": new_movements,
             "current_variant_stocks": variant_stocks,
         }
+
+
+
+# ============================================================================
+# FIRST-TIME ONE-TIME OWNER INITIALIZATION & PERMANENT LOCKOUT
+# ============================================================================
+
+class OwnerInitializeInput(BaseModel):
+    full_name: str = Field(..., min_length=3, max_length=150)
+    email: str = Field(..., min_length=5, max_length=150)
+    password: str = Field(..., min_length=10, max_length=128)
+    whatsapp_phone: str = Field(...)
+    emergency_phone: str = Field(...)
+
+    @validator("whatsapp_phone", "emergency_phone")
+    def validate_phones(cls, v):
+        cleaned = re.sub(r"[\s\-\.]", "", v)
+        if not re.match(r"^(\+213|0)(5|6|7)[0-9]{8}$", cleaned):
+            raise ValueError("Invalid Algerian mobile phone number (must start with 05, 06, 07 or +213)")
+        return cleaned
+
+@app.get("/api/v1/admin/auth/setup-status")
+def get_admin_setup_status():
+    """
+    Checks whether the primary Super Administrator (Owner) has already been provisioned.
+    When true, all PCs opening the CMS directly display the Login and Forgot Password screen.
+    """
+    with db_session() as conn:
+        cur = conn.cursor()
+        cur.execute("SELECT setting_value FROM store_settings WHERE setting_key = 'system_initialized'")
+        init_row = cur.fetchone()
+        is_init = init_row and init_row["setting_value"] == "true"
+        if not is_init:
+            cur.execute("SELECT COUNT(*) AS cnt FROM admin_users WHERE role_id = (SELECT id FROM roles WHERE name = 'super_admin')")
+            is_init = cur.fetchone()["cnt"] > 0
+        return {
+            "is_initialized": is_init,
+            "requires_owner_setup": not is_init,
+            "store_name": "Mus Luxury (LUXE)"
+        }
+
+@app.post("/api/v1/admin/auth/initialize-owner", status_code=201)
+def initialize_primary_owner(payload: OwnerInitializeInput, request: Request):
+    """
+    First-Time Provisioning Endpoint:
+    Allows the store owner to configure their username, email, password, primary recovery WhatsApp number,
+    and a second emergency phone number.
+    SECURITY LOCKOUT: Once called and saved to PostgreSQL, this endpoint is PERMANENTLY LOCKED (HTTP 403).
+    Even if the CMS application starts on another PC, it detects system_initialized = true
+    and goes straight to the normal Login & Forgot Password screen.
+    """
+    client_ip = request.client.host if request.client else "127.0.0.1"
+    check_rate_limit(f"init_owner:{client_ip}", max_requests=3, window_seconds=300)
+
+    with db_session(commit=True) as conn:
+        cur = conn.cursor()
+        # Check if already initialized
+        cur.execute("SELECT setting_value FROM store_settings WHERE setting_key = 'system_initialized'")
+        init_row = cur.fetchone()
+        is_init = init_row and init_row["setting_value"] == "true"
+        if not is_init:
+            cur.execute("SELECT COUNT(*) AS cnt FROM admin_users WHERE role_id = (SELECT id FROM roles WHERE name = 'super_admin')")
+            is_init = cur.fetchone()["cnt"] > 0
+        if is_init:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Security Lockout: Mus Luxury platform has already been initialized with a primary owner account. First-time setup is disabled."
+            )
+
+        cur.execute("SELECT id FROM roles WHERE name = 'super_admin'")
+        role_row = cur.fetchone()
+        super_role_id = role_row["id"] if role_row else 1
+
+        email_clean = payload.email.strip().lower()
+        cur.execute("SELECT id FROM admin_users WHERE email = ?", (email_clean,))
+        if cur.fetchone():
+            raise HTTPException(status_code=409, detail="An administrator with this email already exists")
+
+        pw_hash = hash_password(payload.password)
+        cur.execute(
+            """INSERT INTO admin_users
+               (email, full_name, phone, emergency_phone, whatsapp_verified, totp_enabled, password_hash, role_id, is_active)
+               VALUES (?, ?, ?, ?, 1, 1, ?, ?, 1)""",
+            (email_clean, payload.full_name.strip(), payload.whatsapp_phone, payload.emergency_phone, pw_hash, super_role_id)
+        )
+        owner_id = cur.lastrowid
+
+        # Seed emergency recovery token tied to secondary emergency phone
+        emergency_code = f"EMERGENCY-{secrets.token_hex(6).upper()}"
+        code_hash = hashlib.sha256(emergency_code.encode("utf-8")).hexdigest()
+        cur.execute(
+            """INSERT INTO admin_recovery_codes (admin_user_id, phone, code_hash, channel, max_attempts, expires_at)
+               VALUES (?, ?, ?, 'offline_emergency', 3, ?)""",
+            (owner_id, payload.emergency_phone, code_hash, int(time.time()) + 86400 * 365)
+        )
+
+        # Mark system as permanently initialized in database
+        cur.execute(
+            """INSERT INTO store_settings (setting_key, setting_value, updated_at)
+               VALUES ('system_initialized', 'true', CURRENT_TIMESTAMP)
+               ON CONFLICT(setting_key) DO UPDATE SET setting_value = 'true', updated_at = CURRENT_TIMESTAMP"""
+        )
+
+        cur.execute(
+            """SELECT p.code FROM permissions p
+               JOIN role_permissions rp ON rp.permission_id = p.id
+               WHERE rp.role_id = ?""",
+            (super_role_id,)
+        )
+        perms = [r["code"] for r in cur.fetchall()]
+        token = create_access_token(owner_id, email_clean, "super_admin", perms)
+
+        log_audit(conn, owner_id, "first_time_owner_initialized", "admin_user", str(owner_id), {
+            "email": email_clean,
+            "whatsapp_phone": payload.whatsapp_phone,
+            "emergency_phone": payload.emergency_phone
+        })
+
+        return {
+            "initialized": True,
+            "message": "Super Administrator successfully provisioned. Setup is permanently locked.",
+            "emergency_code_backup": emergency_code,
+            "access_token": token,
+            "user": {
+                "id": owner_id,
+                "email": email_clean,
+                "full_name": payload.full_name.strip(),
+                "role": "super_admin",
+                "whatsapp_phone": payload.whatsapp_phone,
+                "emergency_phone": payload.emergency_phone
+            }
+        }

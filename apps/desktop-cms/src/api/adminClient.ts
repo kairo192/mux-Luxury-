@@ -56,6 +56,17 @@ export const DesktopCmsApi = {
       setAccessToken(null);
     }
   },
+  getSetupStatus: () => adminFetch("/admin/auth/setup-status"),
+  initializeOwner: (payload: {
+    full_name: string;
+    email: string;
+    password: string;
+    whatsapp_phone: string;
+    emergency_phone: string;
+  }) => adminFetch("/admin/auth/initialize-owner", {
+    method: "POST",
+    body: JSON.stringify(payload),
+  }),
   getDashboard: () => adminFetch("/admin/dashboard"),
   getStoreLayout: () => adminFetch("/store/layout"),
   createCategory: (payload: unknown) =>
