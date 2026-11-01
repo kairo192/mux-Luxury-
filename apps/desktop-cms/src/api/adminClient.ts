@@ -1,13 +1,45 @@
+// ============================================================================
+// TAURI 2 DESKTOP CMS — SHARED AUTHENTICATED HTTPS API CLIENT
+// Features:
+// - Configurable API base URL
+// - Request timeout via AbortController (15s default)
+// - Consistent JSON response parsing & structured error handling
+// - Bearer token authentication & automatic 401 session expiration handling
+// - HMAC-SHA256 cryptographic request signing & anti-replay nonces
+// - Idempotency-Key support for non-idempotent mutations
+// ============================================================================
 
-// Cryptographic Request Signing & Anti-Replay Engine (Section 8)
-async function computeSha256Hex(message: string): Promise<string> {
-  const msgBuffer = new TextEncoder().encode(message);
-  const hashBuffer = await crypto.subtle.digest("SHA-256", msgBuffer);
-  const hashArray = Array.from(new Uint8Array(hashBuffer));
-  return hashArray.map((b) => b.toString(16).padStart(2, "0")).join("");
+let accessToken: string | null = null;
+let apiBaseUrl: string =
+  (typeof import.meta !== "undefined" && (import.meta as any).env?.VITE_CMS_API_URL) ||
+  "https://api.musluxury.dz/api/v1";
+let defaultTimeoutMs = 15000;
+
+export function configureApiBaseUrl(url: string) {
+  apiBaseUrl = url.replace(/\/+$/, "");
 }
 
-async function computeHmacSha256Hex(keyString: string, message: string): Promise<string> {
+export function getApiBaseUrl(): string {
+  return apiBaseUrl;
+}
+
+export function setAccessToken(token: string | null) {
+  accessToken = token;
+}
+
+export function getAccessToken(): string | null {
+  return accessToken;
+}
+
+export async function computeSha256Hex(message: string): Promise<string> {
+  const msgBuffer = new TextEncoder().encode(message);
+  const hashBuffer = await crypto.subtle.digest("SHA-256", msgBuffer);
+  return Array.from(new Uint8Array(hashBuffer))
+    .map((b) => b.toString(16).padStart(2, "0"))
+    .join("");
+}
+
+export async function computeHmacSha256Hex(keyString: string, message: string): Promise<string> {
   const enc = new TextEncoder();
   const key = await crypto.subtle.importKey(
     "raw",
@@ -22,49 +54,54 @@ async function computeHmacSha256Hex(keyString: string, message: string): Promise
     .join("");
 }
 
-// ============================================================================
-// TAURI 2 DESKTOP CMS — AUTHENTICATED HTTPS API CLIENT
-// The Desktop CMS NEVER connects directly to PostgreSQL.
-// It authenticates via /api/v1/admin/auth/login and controls the entire website
-// through /api/v1/admin/* endpoints.
-// ============================================================================
+async function adminFetch(path: string, options: RequestInit = {}, timeoutMs = defaultTimeoutMs) {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
 
-let accessToken: string | null = null;
-let apiBaseUrl: string = import.meta.env.VITE_CMS_API_URL || "https://api.musluxury.dz/api/v1";
-
-export function configureApiBaseUrl(url: string) {
-  apiBaseUrl = url.replace(/\/+$/, "");
-}
-
-export function setAccessToken(token: string | null) {
-  accessToken = token;
-}
-
-export function getAccessToken(): string | null {
-  return accessToken;
-}
-
-async function adminFetch(path: string, options: RequestInit = {}) {
   const headers: Record<string, string> = {
     "Content-Type": "application/json",
-    ...(options.headers as Record<string, string> || {}),
+    ...((options.headers as Record<string, string>) || {}),
   };
   if (accessToken) {
     headers["Authorization"] = `Bearer ${accessToken}`;
   }
-  const res = await fetch(`${apiBaseUrl}${path}`, { ...options, headers });
-  if (res.status === 401) {
-    accessToken = null;
-    throw new Error("SESSION_EXPIRED");
+
+  try {
+    const res = await fetch(`${apiBaseUrl}${path}`, {
+      ...options,
+      headers,
+      signal: options.signal || controller.signal,
+    });
+    if (res.status === 401) {
+      accessToken = null;
+      throw new Error("SESSION_EXPIRED");
+    }
+    const contentType = res.headers.get("content-type") || "";
+    const data = contentType.includes("application/json") ? await res.json() : await res.text();
+    if (!res.ok) {
+      const detail = typeof data === "object" && data !== null && "detail" in data ? (data as any).detail : String(data);
+      throw new Error(detail || `Erreur serveur HTTP ${res.status}`);
+    }
+    return data;
+  } finally {
+    clearTimeout(timer);
   }
-  const data = await res.json();
-  if (!res.ok) {
-    throw new Error(data.detail || "Erreur API CMS");
-  }
-  return data;
 }
 
 export const DesktopCmsApi = {
+  // Authentication & First-Time Setup
+  getSetupStatus: () => adminFetch("/admin/auth/setup-status"),
+  initializeOwner: (payload: {
+    full_name: string;
+    email: string;
+    password: string;
+    whatsapp_phone: string;
+    emergency_phone: string;
+  }) =>
+    adminFetch("/admin/auth/initialize-owner", {
+      method: "POST",
+      body: JSON.stringify(payload),
+    }),
   login: async (email: string, password: string) => {
     const data = await adminFetch("/admin/auth/login", {
       method: "POST",
@@ -80,17 +117,88 @@ export const DesktopCmsApi = {
       setAccessToken(null);
     }
   },
-  getSetupStatus: () => adminFetch("/admin/auth/setup-status"),
-  initializeOwner: (payload: {
-    full_name: string;
-    email: string;
-    password: string;
-    whatsapp_phone: string;
-    emergency_phone: string;
-  }) => adminFetch("/admin/auth/initialize-owner", {
-    method: "POST",
-    body: JSON.stringify(payload),
-  }),
+  requestPasswordRecovery: (phone: string, channel: "whatsapp_cloud_api" | "offline_emergency" = "whatsapp_cloud_api") =>
+    adminFetch("/admin/auth/recovery/request", {
+      method: "POST",
+      body: JSON.stringify({ phone, channel }),
+    }),
+  verifyPasswordRecovery: (phone: string, verification_code: string, new_password: string) =>
+    adminFetch("/admin/auth/recovery/verify", {
+      method: "POST",
+      body: JSON.stringify({ phone, verification_code, new_password }),
+    }),
+
+  // Dashboard & Delta Synchronization
+  getDashboard: () => adminFetch("/admin/dashboard"),
+  deltaSync: (sinceOrderId = 0, sinceMovementId = 0) =>
+    adminFetch(`/admin/sync/delta?since_order_id=${sinceOrderId}&since_movement_id=${sinceMovementId}`),
+
+  // Dynamic Categories & 14-Type Attribute Builder
+  listCategories: () => adminFetch("/categories"),
+  createCategory: (payload: unknown) =>
+    adminFetch("/admin/categories", { method: "POST", body: JSON.stringify(payload) }),
+  updateCategory: (categoryId: number, payload: unknown) =>
+    adminFetch(`/admin/categories/${categoryId}`, { method: "PUT", body: JSON.stringify(payload) }),
+  archiveCategory: (categoryId: number) =>
+    adminFetch(`/admin/categories/${categoryId}`, { method: "DELETE" }),
+  addCategoryAttribute: (payload: unknown) =>
+    adminFetch("/admin/category-attributes", { method: "POST", body: JSON.stringify(payload) }),
+  deleteCategoryAttribute: (attrId: number, forceMigrate = false) =>
+    adminFetch(`/admin/category-attributes/${attrId}?force_migrate=${forceMigrate}`, { method: "DELETE" }),
+
+  // Brands & Products & Variant Matrix
+  listBrands: () => adminFetch("/brands"),
+  createBrand: (payload: { name: string; slug: string; logo_url?: string }) =>
+    adminFetch("/admin/brands", { method: "POST", body: JSON.stringify(payload) }),
+  listAdminProducts: (params?: { q?: string; category_id?: number; status?: string; include_archived?: boolean }) => {
+    const qs = new URLSearchParams();
+    if (params?.q) qs.set("q", params.q);
+    if (params?.category_id) qs.set("category_id", String(params.category_id));
+    if (params?.status) qs.set("status", params.status);
+    if (params?.include_archived) qs.set("include_archived", "true");
+    const queryStr = qs.toString();
+    return adminFetch(`/admin/products${queryStr ? `?${queryStr}` : ""}`);
+  },
+  createProduct: (payload: unknown) =>
+    adminFetch("/admin/products", { method: "POST", body: JSON.stringify(payload) }),
+  updateProduct: (productId: number, payload: unknown) =>
+    adminFetch(`/admin/products/${productId}`, { method: "PUT", body: JSON.stringify(payload) }),
+  archiveProduct: (productId: number) =>
+    adminFetch(`/admin/products/${productId}`, { method: "DELETE" }),
+  bulkUpdateProductStatus: (productIds: number[], status: "draft" | "published" | "archived") =>
+    adminFetch("/admin/products/bulk-status", {
+      method: "POST",
+      body: JSON.stringify({ product_ids: productIds, status }),
+    }),
+  generateVariants: (productId: number, payload: unknown) =>
+    adminFetch(`/admin/products/${productId}/generate-variants`, {
+      method: "POST",
+      body: JSON.stringify(payload),
+    }),
+
+  // Inventory Management
+  adjustVariantStock: (variantId: number, change_qty: number, reason: string) =>
+    adminFetch(`/admin/variants/${variantId}/adjust-stock`, {
+      method: "POST",
+      body: JSON.stringify({ change_qty, reason }),
+    }),
+  listInventoryMovements: (variantId?: number) =>
+    adminFetch(`/admin/inventory/movements${variantId ? `?variant_id=${variantId}` : ""}`),
+
+  // Order Management, Invoices & CSV Export
+  listOrders: (status?: string) =>
+    adminFetch(`/admin/orders${status ? `?status=${status}` : ""}`),
+  updateOrderStatus: (orderId: number, status: string, internal_notes?: string) =>
+    adminFetch(`/admin/orders/${orderId}`, {
+      method: "PATCH",
+      body: JSON.stringify({ status, internal_notes }),
+    }),
+  getOrderInvoice: (orderId: number) => adminFetch(`/admin/orders/${orderId}/invoice`),
+  exportOrdersCsv: () => adminFetch("/admin/orders/export.csv"),
+  listCustomers: () => adminFetch("/admin/customers"),
+  getReports: () => adminFetch("/admin/reports"),
+
+  // 69-Wilaya Delivery Tariffs (Home & Stop-Desk)
   getDeliveryZones: () => adminFetch("/delivery-zones"),
   updateDeliveryZone: (wilayaCode: string, payload: unknown) =>
     adminFetch(`/admin/delivery-zones/${wilayaCode}`, {
@@ -102,36 +210,28 @@ export const DesktopCmsApi = {
       method: "PUT",
       body: JSON.stringify({ zones }),
     }),
-  getDashboard: () => adminFetch("/admin/dashboard"),
+
+  // Website Layout, Banners, Coupons & Store Settings
   getStoreLayout: () => adminFetch("/store/layout"),
-  createCategory: (payload: unknown) =>
-    adminFetch("/admin/categories", { method: "POST", body: JSON.stringify(payload) }),
-  addCategoryAttribute: (payload: unknown) =>
-    adminFetch("/admin/category-attributes", { method: "POST", body: JSON.stringify(payload) }),
-  deleteCategoryAttribute: (attrId: number, forceMigrate = false) =>
-    adminFetch(`/admin/category-attributes/${attrId}?force_migrate=${forceMigrate}`, { method: "DELETE" }),
-  createProduct: (payload: unknown) =>
-    adminFetch("/admin/products", { method: "POST", body: JSON.stringify(payload) }),
-  generateVariants: (productId: number, payload: unknown) =>
-    adminFetch(`/admin/products/${productId}/generate-variants`, { method: "POST", body: JSON.stringify(payload) }),
-  listOrders: (status?: string) =>
-    adminFetch(`/admin/orders${status ? `?status=${status}` : ""}`),
-  updateOrderStatus: (orderId: number, status: string, internal_notes?: string) =>
-    adminFetch(`/admin/orders/${orderId}`, {
-      method: "PATCH",
-      body: JSON.stringify({ status, internal_notes }),
-    }),
   updateHomepageSection: (sectionKey: string, payload: unknown) =>
     adminFetch(`/admin/homepage-sections/${sectionKey}`, {
       method: "PUT",
       body: JSON.stringify(payload),
     }),
+  listBanners: () => adminFetch("/admin/banners"),
   createBanner: (payload: unknown) =>
     adminFetch("/admin/banners", { method: "POST", body: JSON.stringify(payload) }),
+  createCoupon: (payload: unknown) =>
+    adminFetch("/admin/coupons", { method: "POST", body: JSON.stringify(payload) }),
   updateStoreSettings: (settings: Record<string, unknown>) =>
     adminFetch("/admin/settings", {
       method: "PUT",
       body: JSON.stringify({ settings }),
     }),
+
+  // Backups & Isolated Restoration Verification
+  listBackups: () => adminFetch("/admin/backups"),
   triggerBackup: () => adminFetch("/admin/backups", { method: "POST" }),
+  verifyBackupRestore: (backupId: number) =>
+    adminFetch(`/admin/backups/${backupId}/verify-restore`, { method: "POST" }),
 };

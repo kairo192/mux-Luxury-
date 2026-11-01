@@ -1,6 +1,11 @@
+import csv
+import gzip
 import hmac
+import io
 import os
 import hashlib
+import sqlite3
+import tempfile
 import itertools
 import json
 import re
@@ -35,7 +40,7 @@ app.add_middleware(
     allow_origins=["http://localhost:5173", "http://localhost:1420", "https://musluxury.dz"],
     allow_credentials=True,
     allow_methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
-    allow_headers=["Authorization", "Content-Type", "X-CSRF-Token"],
+    allow_headers=["Authorization", "Content-Type", "X-CSRF-Token", "Idempotency-Key", "X-Luxe-Signature", "X-Luxe-Timestamp", "X-Luxe-Nonce"],
 )
 
 @app.middleware("http")
@@ -435,17 +440,24 @@ def get_public_product(slug: str):
         return serialize_product(conn, dict(row), include_private=False)
 
 @app.post("/api/v1/orders", status_code=201)
-def create_guest_order(payload: GuestOrderCreate, request: Request):
+def create_guest_order(
+    payload: GuestOrderCreate,
+    request: Request,
+    idempotency_key: Optional[str] = Header(None, alias="Idempotency-Key")
+):
     client_ip = request.client.host if request.client else "127.0.0.1"
     check_rate_limit(f"order:{client_ip}", max_requests=15, window_seconds=60)
 
     if not payload.items:
         raise HTTPException(status_code=400, detail="Order must contain at least one item")
 
-    # Compute idempotency signature within a 10-second window to prevent accidental double-taps
-    idem_raw = f"{payload.phone}|{payload.wilaya_code}|{payload.commune}|" + ",".join(
-        f"{i.variant_id}:{i.quantity}" for i in sorted(payload.items, key=lambda x: x.variant_id)
-    )
+    # Compute idempotency signature from explicit Idempotency-Key header or deterministic order payload
+    if idempotency_key and idempotency_key.strip():
+        idem_raw = f"explicit_key:{idempotency_key.strip()}"
+    else:
+        idem_raw = f"{payload.phone}|{payload.wilaya_code}|{payload.commune}|" + ",".join(
+            f"{i.variant_id}:{i.quantity}" for i in sorted(payload.items, key=lambda x: x.variant_id)
+        )
     idem_hash = hashlib.sha256(idem_raw.encode("utf-8")).hexdigest()
 
     with db_session(commit=True) as conn:
@@ -667,21 +679,64 @@ def admin_dashboard(admin: dict = Depends(require_permission("dashboard:read")))
         cur = conn.cursor()
         cur.execute("SELECT COUNT(*) AS cnt, COALESCE(SUM(total_dzd), 0) AS rev FROM orders WHERE status != 'cancelled'")
         ord_row = cur.fetchone()
-        cur.execute("SELECT COUNT(*) AS cnt FROM orders WHERE status = 'new'")
+        cur.execute("SELECT COUNT(*) AS cnt FROM orders WHERE status IN ('new', 'pending_confirmation')")
         pending_cnt = cur.fetchone()["cnt"]
         cur.execute("SELECT COUNT(*) AS cnt FROM products WHERE status = 'published' AND deleted_at IS NULL")
         pub_cnt = cur.fetchone()["cnt"]
+        cur.execute("SELECT COUNT(*) AS cnt FROM categories WHERE is_active = 1 AND deleted_at IS NULL")
+        cat_cnt = cur.fetchone()["cnt"]
+        cur.execute("SELECT COUNT(*) AS cnt FROM product_variants WHERE stock_qty > 0 AND stock_qty <= 3 AND is_active = 1")
+        low_stock_only_cnt = cur.fetchone()["cnt"]
         cur.execute("SELECT COUNT(*) AS cnt FROM product_variants WHERE stock_qty <= 3 AND is_active = 1")
         low_stock_cnt = cur.fetchone()["cnt"]
+        cur.execute("SELECT COUNT(*) AS cnt FROM product_variants WHERE stock_qty = 0 AND is_active = 1")
+        out_of_stock_cnt = cur.fetchone()["cnt"]
+
+        status_keys = [
+            "new", "pending_confirmation", "confirmed", "preparing",
+            "ready_for_shipment", "shipped", "delivered", "cancelled", "returned"
+        ]
+        orders_by_status = {k: 0 for k in status_keys}
+        cur.execute("SELECT status, COUNT(*) AS cnt FROM orders GROUP BY status")
+        for r in cur.fetchall():
+            orders_by_status[r["status"]] = r["cnt"]
+
+        cur.execute("SELECT * FROM orders ORDER BY id DESC LIMIT 10")
+        recent_orders = []
+        for r in cur.fetchall():
+            od = dict(r)
+            cur.execute("SELECT * FROM order_items WHERE order_id = ?", (od["id"],))
+            od["items"] = [dict(it) for it in cur.fetchall()]
+            recent_orders.append(od)
+
         cur.execute("SELECT * FROM audit_logs ORDER BY id DESC LIMIT 10")
         recent_activity = [dict(r) for r in cur.fetchall()]
+
+        cur.execute("SELECT * FROM backup_records ORDER BY id DESC LIMIT 1")
+        last_bkp_row = cur.fetchone()
+        cur.execute("SELECT COUNT(*) AS cnt FROM backup_records WHERE status = 'failed'")
+        failed_bkp_cnt = cur.fetchone()["cnt"]
+
         return {
             "total_orders": ord_row["cnt"],
             "total_revenue_dzd": ord_row["rev"],
             "pending_orders": pending_cnt,
             "published_products": pub_cnt,
+            "total_active_products": pub_cnt,
+            "total_categories": cat_cnt,
             "low_stock_variants": low_stock_cnt,
+            "low_stock_only_variants": low_stock_only_cnt,
+            "out_of_stock_variants": out_of_stock_cnt,
+            "orders_by_status": orders_by_status,
+            "recent_orders": recent_orders,
             "recent_activity": recent_activity,
+            "backend_sync_status": {
+                "connected": True,
+                "server_timestamp": int(time.time()),
+                "status": "healthy"
+            },
+            "last_backup": dict(last_bkp_row) if last_bkp_row else None,
+            "failed_backups_count": failed_bkp_cnt,
         }
 
 # --- DYNAMIC CATEGORY & ATTRIBUTE BUILDER ---
@@ -963,6 +1018,16 @@ def update_order_status(
         prev_status = ord_row["status"]
         stock_deducted = int(ord_row["stock_deducted"])
 
+        # Enforce valid order-status transition rules (Section 3.5)
+        terminal_statuses = {"delivered", "cancelled", "returned"}
+        if prev_status in terminal_statuses and payload.status != prev_status:
+            # Allow delivered -> returned for customer return within 7 days, block all other reversals from terminal states
+            if not (prev_status == "delivered" and payload.status == "returned"):
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail=f"Invalid order status transition from terminal status '{prev_status}' to '{payload.status}'"
+                )
+
         # If order is cancelled or returned and stock was deducted, restore stock safely
         if payload.status in ("cancelled", "returned") and stock_deducted == 1:
             cur.execute("SELECT * FROM order_items WHERE order_id = ?", (order_id,))
@@ -1012,28 +1077,99 @@ def list_backups(admin: dict = Depends(require_permission("backups:write"))):
         cur.execute("SELECT * FROM backup_records ORDER BY id DESC")
         return {"items": [dict(r) for r in cur.fetchall()]}
 
+BACKUP_STORAGE_DIR = os.path.join(os.path.dirname(os.path.dirname(__file__)), "backups")
+os.makedirs(BACKUP_STORAGE_DIR, exist_ok=True)
+
 @app.post("/api/v1/admin/backups", status_code=201)
 def trigger_manual_backup(admin: dict = Depends(require_permission("backups:write"))):
     with db_session(commit=True) as conn:
         cur = conn.cursor()
-        # Dump critical table counts & compute cryptographic SHA-256 integrity hash
-        cur.execute("SELECT COUNT(*) AS p_cnt FROM products")
-        p_cnt = cur.fetchone()["p_cnt"]
-        cur.execute("SELECT COUNT(*) AS o_cnt FROM orders")
-        o_cnt = cur.fetchone()["o_cnt"]
-        snapshot_meta = f"backup|{time.time()}|products:{p_cnt}|orders:{o_cnt}".encode("utf-8")
-        checksum = hashlib.sha256(snapshot_meta).hexdigest()
-        fname = f"luxe_backup_{int(time.time())}.sql.gz"
+        sql_dump = "\n".join(conn.iterdump())
+        compressed_bytes = gzip.compress(sql_dump.encode("utf-8"))
+        checksum = hashlib.sha256(compressed_bytes).hexdigest()
+        fname = f"luxe_backup_{int(time.time())}_{secrets.token_hex(3)}.sql.gz"
+        fpath = os.path.join(BACKUP_STORAGE_DIR, fname)
+        with open(fpath, "wb") as bf:
+            bf.write(compressed_bytes)
+        real_size = len(compressed_bytes)
+
         cur.execute(
             """INSERT INTO backup_records
                (filename, backup_type, size_bytes, sha256_checksum, status, triggered_by)
                VALUES (?, 'full', ?, ?, 'verified', ?)""",
-            (fname, 256400 + p_cnt * 512, checksum, int(admin["sub"]))
+            (fname, real_size, checksum, int(admin["sub"]))
         )
         bid = cur.lastrowid
-        log_audit(conn, int(admin["sub"]), "trigger_backup", "backup", str(bid), {"filename": fname, "sha256": checksum})
+        log_audit(conn, int(admin["sub"]), "trigger_backup", "backup", str(bid), {"filename": fname, "sha256": checksum, "size_bytes": real_size})
         cur.execute("SELECT * FROM backup_records WHERE id = ?", (bid,))
         return dict(cur.fetchone())
+
+@app.post("/api/v1/admin/backups/{backup_id}/verify-restore")
+def verify_backup_restoration_isolated(
+    backup_id: int,
+    admin: dict = Depends(require_permission("backups:write"))
+):
+    """
+    Performs a non-destructive isolated restoration test (Section 7):
+    1. Verifies the backup archive exists on disk and matches its recorded SHA-256 checksum.
+    2. Decompresses the SQL dump and restores it into an isolated temporary SQLite database.
+    3. Queries the restored tables (products, categories, orders, delivery_zones) to verify readability.
+    """
+    with db_session(commit=True) as conn:
+        cur = conn.cursor()
+        cur.execute("SELECT * FROM backup_records WHERE id = ?", (backup_id,))
+        bkp = cur.fetchone()
+        if not bkp:
+            raise HTTPException(status_code=404, detail="Backup record not found")
+
+        fpath = os.path.join(BACKUP_STORAGE_DIR, bkp["filename"])
+        if not os.path.isfile(fpath):
+            raise HTTPException(status_code=404, detail="Backup file missing from storage directory")
+
+        with open(fpath, "rb") as bf:
+            compressed_bytes = bf.read()
+
+        actual_sha256 = hashlib.sha256(compressed_bytes).hexdigest()
+        if not hmac.compare_digest(actual_sha256, bkp["sha256_checksum"]):
+            cur.execute("UPDATE backup_records SET status = 'failed' WHERE id = ?", (backup_id,))
+            raise HTTPException(status_code=400, detail="Backup integrity check failed: SHA-256 mismatch")
+
+        sql_script = gzip.decompress(compressed_bytes).decode("utf-8")
+        with tempfile.TemporaryDirectory() as tmpdir:
+            temp_db_path = os.path.join(tmpdir, "isolated_restore_test.db")
+            temp_conn = sqlite3.connect(temp_db_path)
+            try:
+                temp_conn.executescript(sql_script)
+                tcur = temp_conn.cursor()
+                tcur.execute("SELECT COUNT(*) FROM products")
+                restored_products = tcur.fetchone()[0]
+                tcur.execute("SELECT COUNT(*) FROM categories")
+                restored_categories = tcur.fetchone()[0]
+                tcur.execute("SELECT COUNT(*) FROM orders")
+                restored_orders = tcur.fetchone()[0]
+                tcur.execute("SELECT COUNT(*) FROM delivery_zones")
+                restored_wilayas = tcur.fetchone()[0]
+            finally:
+                temp_conn.close()
+
+        log_audit(conn, int(admin["sub"]), "verify_backup_restore", "backup", str(backup_id), {
+            "restored_products": restored_products,
+            "restored_categories": restored_categories,
+            "restored_orders": restored_orders,
+            "restored_wilayas": restored_wilayas,
+        })
+        return {
+            "backup_id": backup_id,
+            "filename": bkp["filename"],
+            "sha256_verified": True,
+            "isolated_restore_success": True,
+            "restored_counts": {
+                "products": restored_products,
+                "categories": restored_categories,
+                "orders": restored_orders,
+                "delivery_zones": restored_wilayas,
+            }
+        }
 
 
 
@@ -1200,6 +1336,22 @@ class ProductConcurrencyUpdate(BaseModel):
     name_fr: str
     selling_price_dzd: int = Field(..., ge=0)
     expected_version: int = Field(..., ge=1)
+    name_ar: Optional[str] = None
+    name_en: Optional[str] = None
+    description_fr: Optional[str] = None
+    purchase_cost_dzd: Optional[int] = Field(None, ge=0)
+    previous_price_dzd: Optional[int] = Field(None, ge=0)
+    discount_percent: Optional[int] = Field(None, ge=0, le=95)
+    sku: Optional[str] = None
+    brand_id: Optional[int] = None
+    category_id: Optional[int] = None
+    main_image_url: Optional[str] = None
+    status: Optional[str] = Field(None, regex=r"^(draft|published|archived)$")
+    is_featured: Optional[bool] = None
+    is_new_arrival: Optional[bool] = None
+    seo_title: Optional[str] = None
+    seo_description: Optional[str] = None
+    dynamic_attributes: Optional[Dict[str, Any]] = None
 
 class CouponCreateInput(BaseModel):
     code: str = Field(..., regex=r"^[A-Z0-9_-]{3,32}$")
@@ -1356,9 +1508,61 @@ def update_product_with_conflict_detection(
             )
         new_version = current_version + 1
         cur.execute(
-            "UPDATE products SET name_fr = ?, selling_price_dzd = ?, version = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?",
-            (payload.name_fr, payload.selling_price_dzd, new_version, product_id)
+            """UPDATE products
+               SET name_fr = ?,
+                   selling_price_dzd = ?,
+                   name_ar = COALESCE(?, name_ar),
+                   name_en = COALESCE(?, name_en),
+                   description_fr = COALESCE(?, description_fr),
+                   purchase_cost_dzd = COALESCE(?, purchase_cost_dzd),
+                   previous_price_dzd = COALESCE(?, previous_price_dzd),
+                   discount_percent = COALESCE(?, discount_percent),
+                   sku = COALESCE(?, sku),
+                   brand_id = COALESCE(?, brand_id),
+                   category_id = COALESCE(?, category_id),
+                   main_image_url = COALESCE(?, main_image_url),
+                   status = COALESCE(?, status),
+                   is_featured = COALESCE(?, is_featured),
+                   is_new_arrival = COALESCE(?, is_new_arrival),
+                   seo_title = COALESCE(?, seo_title),
+                   seo_description = COALESCE(?, seo_description),
+                   version = ?,
+                   updated_at = CURRENT_TIMESTAMP
+               WHERE id = ?""",
+            (
+                payload.name_fr,
+                payload.selling_price_dzd,
+                payload.name_ar,
+                payload.name_en,
+                payload.description_fr,
+                payload.purchase_cost_dzd,
+                payload.previous_price_dzd,
+                payload.discount_percent,
+                payload.sku,
+                payload.brand_id,
+                payload.category_id,
+                payload.main_image_url,
+                payload.status,
+                (1 if payload.is_featured else 0) if payload.is_featured is not None else None,
+                (1 if payload.is_new_arrival else 0) if payload.is_new_arrival is not None else None,
+                payload.seo_title,
+                payload.seo_description,
+                new_version,
+                product_id,
+            )
         )
+        if payload.dynamic_attributes is not None:
+            target_cat_id = payload.category_id or prod["category_id"]
+            cur.execute("SELECT * FROM category_attributes WHERE category_id = ?", (target_cat_id,))
+            cat_attrs = {r["attr_key"]: dict(r) for r in cur.fetchall()}
+            for akey, aval in payload.dynamic_attributes.items():
+                if akey in cat_attrs:
+                    cur.execute(
+                        """INSERT INTO product_attribute_values (product_id, attribute_id, value_text)
+                           VALUES (?, ?, ?)
+                           ON CONFLICT(product_id, attribute_id) DO UPDATE SET value_text = excluded.value_text""",
+                        (product_id, cat_attrs[akey]["id"], str(aval))
+                    )
         log_audit(conn, int(admin["sub"]), "update_product_synced", "product", str(product_id), {"new_version": new_version})
         cur.execute("SELECT * FROM products WHERE id = ?", (product_id,))
         return serialize_product(conn, dict(cur.fetchone()), include_private=True)
@@ -1816,3 +2020,279 @@ def admin_bulk_update_delivery_zones(
             updated_count += 1
         log_audit(conn, int(admin["sub"]), "bulk_update_delivery_zones", "delivery_zone", "bulk", {"updated_count": updated_count})
         return {"updated_count": updated_count}
+
+
+# ============================================================================
+# ADDITIONAL PRODUCTION ADMIN ENDPOINTS (PRODUCTS, CATEGORIES, INVENTORY,
+# BRANDS, INVOICES & CSV EXPORTS — SECTIONS 3.2, 3.3, 3.4, 3.5)
+# ============================================================================
+
+class CategoryUpdateInput(BaseModel):
+    name_fr: Optional[str] = None
+    name_ar: Optional[str] = None
+    name_en: Optional[str] = None
+    description_fr: Optional[str] = None
+    image_url: Optional[str] = None
+    banner_url: Optional[str] = None
+    display_order: Optional[int] = None
+    is_active: Optional[bool] = None
+    show_on_homepage: Optional[bool] = None
+
+class BrandCreateInput(BaseModel):
+    name: str = Field(..., min_length=2, max_length=120)
+    slug: str = Field(..., regex=r"^[a-z0-9-]{2,120}$")
+    logo_url: Optional[str] = "/assets/mus_luxury_logo.png"
+
+class BulkProductStatusInput(BaseModel):
+    product_ids: List[int]
+    status: str = Field(..., regex=r"^(draft|published|archived)$")
+
+@app.get("/api/v1/admin/products")
+def admin_list_products(
+    q: Optional[str] = None,
+    category_id: Optional[int] = None,
+    status_filter: Optional[str] = Query(None, alias="status"),
+    include_archived: bool = False,
+    page: int = Query(1, ge=1),
+    page_size: int = Query(25, ge=1, le=100),
+    admin: dict = Depends(require_permission("products:write"))
+):
+    with db_session() as conn:
+        cur = conn.cursor()
+        where = ["1=1"]
+        params: List[Any] = []
+        if not include_archived:
+            where.append("p.deleted_at IS NULL")
+        if category_id is not None:
+            where.append("p.category_id = ?")
+            params.append(category_id)
+        if status_filter:
+            where.append("p.status = ?")
+            params.append(status_filter)
+        if q:
+            where.append("(p.name_fr LIKE ? OR p.sku LIKE ?)")
+            params.extend([f"%{q}%", f"%{q}%"])
+
+        cur.execute(f"SELECT * FROM products p WHERE {' AND '.join(where)} ORDER BY p.id DESC", params)
+        all_rows = [serialize_product(conn, dict(r), include_private=True) for r in cur.fetchall()]
+        total = len(all_rows)
+        start = (page - 1) * page_size
+        return {
+            "items": all_rows[start : start + page_size],
+            "total": total,
+            "page": page,
+            "page_size": page_size,
+        }
+
+@app.delete("/api/v1/admin/products/{product_id}")
+def admin_safe_delete_or_archive_product(
+    product_id: int,
+    admin: dict = Depends(require_permission("products:write"))
+):
+    """
+    Safely archives/deletes a product without destroying historical order records (Section 3.2).
+    """
+    with db_session(commit=True) as conn:
+        cur = conn.cursor()
+        cur.execute("SELECT * FROM products WHERE id = ?", (product_id,))
+        prod = cur.fetchone()
+        if not prod:
+            raise HTTPException(status_code=404, detail="Product not found")
+
+        cur.execute("SELECT COUNT(*) AS cnt FROM order_items WHERE product_id = ?", (product_id,))
+        order_refs = cur.fetchone()["cnt"]
+
+        cur.execute(
+            "UPDATE products SET status = 'archived', deleted_at = CURRENT_TIMESTAMP, updated_at = CURRENT_TIMESTAMP WHERE id = ?",
+            (product_id,)
+        )
+        cur.execute("UPDATE product_variants SET is_active = 0 WHERE product_id = ?", (product_id,))
+        log_audit(conn, int(admin["sub"]), "archive_product", "product", str(product_id), {
+            "sku": prod["sku"],
+            "historical_order_items_preserved": order_refs
+        })
+        return {
+            "archived": True,
+            "product_id": product_id,
+            "status": "archived",
+            "historical_order_items_preserved": order_refs
+        }
+
+@app.post("/api/v1/admin/products/bulk-status")
+def admin_bulk_update_product_status(
+    payload: BulkProductStatusInput,
+    admin: dict = Depends(require_permission("products:write"))
+):
+    if not payload.product_ids:
+        raise HTTPException(status_code=400, detail="product_ids cannot be empty")
+    with db_session(commit=True) as conn:
+        cur = conn.cursor()
+        updated = 0
+        for pid in payload.product_ids:
+            cur.execute(
+                "UPDATE products SET status = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?",
+                (payload.status, pid)
+            )
+            updated += cur.rowcount
+        log_audit(conn, int(admin["sub"]), "bulk_product_status", "product", "bulk", {"count": updated, "status": payload.status})
+        return {"updated_count": updated, "status": payload.status}
+
+@app.post("/api/v1/admin/brands", status_code=201)
+def admin_create_brand(
+    payload: BrandCreateInput,
+    admin: dict = Depends(require_permission("products:write"))
+):
+    with db_session(commit=True) as conn:
+        cur = conn.cursor()
+        cur.execute("SELECT id FROM brands WHERE slug = ?", (payload.slug,))
+        if cur.fetchone():
+            raise HTTPException(status_code=409, detail=f"Brand slug '{payload.slug}' already exists")
+        cur.execute(
+            "INSERT INTO brands (name, slug, logo_url, is_active) VALUES (?, ?, ?, 1)",
+            (payload.name, payload.slug, payload.logo_url)
+        )
+        bid = cur.lastrowid
+        log_audit(conn, int(admin["sub"]), "create_brand", "brand", str(bid), {"slug": payload.slug})
+        cur.execute("SELECT * FROM brands WHERE id = ?", (bid,))
+        return dict(cur.fetchone())
+
+@app.put("/api/v1/admin/categories/{category_id}")
+def admin_update_category(
+    category_id: int,
+    payload: CategoryUpdateInput,
+    admin: dict = Depends(require_permission("categories:write"))
+):
+    with db_session(commit=True) as conn:
+        cur = conn.cursor()
+        cur.execute("SELECT * FROM categories WHERE id = ?", (category_id,))
+        cat = cur.fetchone()
+        if not cat:
+            raise HTTPException(status_code=404, detail="Category not found")
+        cur.execute(
+            """UPDATE categories
+               SET name_fr = COALESCE(?, name_fr),
+                   name_ar = COALESCE(?, name_ar),
+                   name_en = COALESCE(?, name_en),
+                   description_fr = COALESCE(?, description_fr),
+                   image_url = COALESCE(?, image_url),
+                   banner_url = COALESCE(?, banner_url),
+                   display_order = COALESCE(?, display_order),
+                   is_active = COALESCE(?, is_active),
+                   show_on_homepage = COALESCE(?, show_on_homepage)
+               WHERE id = ?""",
+            (
+                payload.name_fr,
+                payload.name_ar,
+                payload.name_en,
+                payload.description_fr,
+                payload.image_url,
+                payload.banner_url,
+                payload.display_order,
+                (1 if payload.is_active else 0) if payload.is_active is not None else None,
+                (1 if payload.show_on_homepage else 0) if payload.show_on_homepage is not None else None,
+                category_id,
+            )
+        )
+        log_audit(conn, int(admin["sub"]), "update_category", "category", str(category_id), {"name_fr": payload.name_fr})
+        cur.execute("SELECT * FROM categories WHERE id = ?", (category_id,))
+        return serialize_category(conn, dict(cur.fetchone()))
+
+@app.delete("/api/v1/admin/categories/{category_id}")
+def admin_archive_category(
+    category_id: int,
+    admin: dict = Depends(require_permission("categories:write"))
+):
+    with db_session(commit=True) as conn:
+        cur = conn.cursor()
+        cur.execute("SELECT * FROM categories WHERE id = ?", (category_id,))
+        cat = cur.fetchone()
+        if not cat:
+            raise HTTPException(status_code=404, detail="Category not found")
+        cur.execute(
+            "UPDATE categories SET is_active = 0, deleted_at = CURRENT_TIMESTAMP WHERE id = ?",
+            (category_id,)
+        )
+        log_audit(conn, int(admin["sub"]), "archive_category", "category", str(category_id), {"slug": cat["slug"]})
+        return {"archived": True, "category_id": category_id}
+
+@app.get("/api/v1/admin/inventory/movements")
+def admin_list_inventory_movements(
+    variant_id: Optional[int] = None,
+    limit: int = Query(50, ge=1, le=200),
+    admin: dict = Depends(require_permission("products:write"))
+):
+    with db_session() as conn:
+        cur = conn.cursor()
+        if variant_id is not None:
+            cur.execute(
+                """SELECT im.*, pv.sku, pv.title AS variant_title, p.name_fr AS product_name
+                   FROM inventory_movements im
+                   JOIN product_variants pv ON pv.id = im.variant_id
+                   JOIN products p ON p.id = pv.product_id
+                   WHERE im.variant_id = ?
+                   ORDER BY im.id DESC LIMIT ?""",
+                (variant_id, limit)
+            )
+        else:
+            cur.execute(
+                """SELECT im.*, pv.sku, pv.title AS variant_title, p.name_fr AS product_name
+                   FROM inventory_movements im
+                   JOIN product_variants pv ON pv.id = im.variant_id
+                   JOIN products p ON p.id = pv.product_id
+                   ORDER BY im.id DESC LIMIT ?""",
+                (limit,)
+            )
+        return {"items": [dict(r) for r in cur.fetchall()]}
+
+@app.get("/api/v1/admin/orders/export.csv")
+def admin_export_orders_csv(admin: dict = Depends(require_permission("orders:write"))):
+    with db_session() as conn:
+        cur = conn.cursor()
+        cur.execute("SELECT * FROM orders ORDER BY id DESC")
+        output = io.StringIO()
+        writer = csv.writer(output)
+        writer.writerow([
+            "order_id", "order_reference", "status", "payment_method",
+            "customer_name", "customer_phone", "wilaya_code", "wilaya_name",
+            "commune", "delivery_method", "subtotal_dzd", "delivery_fee_dzd",
+            "total_dzd", "created_at"
+        ])
+        for r in cur.fetchall():
+            writer.writerow([
+                r["id"], r["order_reference"], r["status"], r["payment_method"],
+                r["customer_name"], r["customer_phone"], r["wilaya_code"], r["wilaya_name"],
+                r["commune"], r["delivery_method"], r["subtotal_dzd"], r["delivery_fee_dzd"],
+                r["total_dzd"], r["created_at"]
+            ])
+        return Response(
+            content=output.getvalue(),
+            media_type="text/csv; charset=utf-8",
+            headers={"Content-Disposition": "attachment; filename=mus_luxury_orders.csv"}
+        )
+
+@app.get("/api/v1/admin/orders/{order_id}/invoice")
+def admin_get_order_invoice(
+    order_id: int,
+    admin: dict = Depends(require_permission("orders:write"))
+):
+    with db_session() as conn:
+        cur = conn.cursor()
+        cur.execute("SELECT * FROM orders WHERE id = ?", (order_id,))
+        o = cur.fetchone()
+        if not o:
+            raise HTTPException(status_code=404, detail="Order not found")
+        od = dict(o)
+        cur.execute("SELECT * FROM order_items WHERE order_id = ?", (order_id,))
+        items = [dict(r) for r in cur.fetchall()]
+        od["items"] = items
+        od["boutique_info"] = {
+            "name": "Mus Luxury (LUXE)",
+            "address": "FVX6+GCJ Mus luxury, Ouled Yaïch, Blida (09), Algérie",
+            "phone": "0655534154",
+            "whatsapp": "+213655534154",
+            "instagram": "https://www.instagram.com/musluxury09?rpxt=emk3bjBhdjV5d2Ux",
+            "tiktok": "https://www.tiktok.com/@musluxury.092?_r=1&_t=ZS-9B2mO0gpA7V",
+            "currency": "DZD (DA)",
+            "payment_notice": "Paiement en espèces à la livraison (Cash on Delivery)"
+        }
+        return od

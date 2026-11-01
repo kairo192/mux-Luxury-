@@ -4,13 +4,10 @@ import {
   fetchProducts,
   fetchProductBySlug,
   fetchDeliveryZones,
-  validateCouponCode,
+  calculateDeliveryTotal,
   submitGuestOrder,
 } from "./api/client";
 
-// Production React + TypeScript Storefront (100% Connected to FastAPI /api/v1/*)
-// Renders dynamic CMS category attributes, multi-axis variant selectors (Color, Size, Shoe Size, Shade, etc.),
-// and 69-Wilaya Guest Checkout with server-side DZD calculation.
 export default function App() {
   const [categories, setCategories] = useState<any[]>([]);
   const [products, setProducts] = useState<any[]>([]);
@@ -20,6 +17,15 @@ export default function App() {
   const [selectedAxes, setSelectedAxes] = useState<Record<string, string>>({});
   const [selectedVariant, setSelectedVariant] = useState<any | null>(null);
   const [cart, setCart] = useState<Array<{ variant: any; product: any; quantity: number }>>([]);
+  const [selectedWilaya, setSelectedWilaya] = useState("09");
+  const [deliveryMethod, setDeliveryMethod] = useState<"home" | "stop_desk">("home");
+  const [calcPreview, setCalcPreview] = useState<any | null>(null);
+  const [customerName, setCustomerName] = useState("");
+  const [customerPhone, setCustomerPhone] = useState("");
+  const [commune, setCommune] = useState("Ouled Yaïch");
+  const [address, setAddress] = useState("");
+  const [orderConfirmed, setOrderConfirmed] = useState<any | null>(null);
+  const [errorMsg, setErrorMsg] = useState("");
 
   useEffect(() => {
     fetchCategories().then((res) => setCategories(res.items || []));
@@ -29,6 +35,24 @@ export default function App() {
   useEffect(() => {
     fetchProducts({ category: activeCategory }).then((res) => setProducts(res.items || []));
   }, [activeCategory]);
+
+  const subtotal = cart.reduce(
+    (sum, it) => sum + (it.variant.effective_price_dzd ?? it.product.selling_price_dzd) * it.quantity,
+    0
+  );
+
+  useEffect(() => {
+    if (selectedWilaya) {
+      calculateDeliveryTotal(selectedWilaya, deliveryMethod, subtotal)
+        .then((res) => {
+          setCalcPreview(res);
+          if (res.communes?.length && !res.communes.includes(commune)) {
+            setCommune(res.communes[0]);
+          }
+        })
+        .catch(() => {});
+    }
+  }, [selectedWilaya, deliveryMethod, subtotal]);
 
   async function openProductDetails(slug: string) {
     const fullProd = await fetchProductBySlug(slug);
@@ -45,11 +69,40 @@ export default function App() {
     const exactMatch =
       selectedProduct.variants.find((v: any) =>
         Object.entries(nextAxes).every(([k, val]) => v.attributes?.[k] === val)
-      ) ||
-      selectedProduct.variants.find((v: any) => v.attributes?.[attrKey] === optionVal);
+      ) || selectedProduct.variants.find((v: any) => v.attributes?.[attrKey] === optionVal);
     if (exactMatch) {
       setSelectedVariant(exactMatch);
       setSelectedAxes(exactMatch.attributes || {});
+    }
+  }
+
+  function addToCart() {
+    if (!selectedProduct || !selectedVariant) return;
+    setCart((prev) => [...prev, { product: selectedProduct, variant: selectedVariant, quantity: 1 }]);
+    setSelectedProduct(null);
+  }
+
+  async function handleCheckout(e: React.FormEvent) {
+    e.preventDefault();
+    setErrorMsg("");
+    try {
+      const idemKey = `order-${customerPhone}-${Date.now()}`;
+      const res = await submitGuestOrder(
+        {
+          full_name: customerName,
+          phone: customerPhone,
+          wilaya_code: selectedWilaya,
+          commune,
+          delivery_address: address,
+          delivery_method: deliveryMethod,
+          items: cart.map((c) => ({ variant_id: c.variant.id, quantity: c.quantity })),
+        },
+        idemKey
+      );
+      setOrderConfirmed(res);
+      setCart([]);
+    } catch (err: any) {
+      setErrorMsg(err.message || "Erreur lors de la validation de la commande");
     }
   }
 
@@ -58,6 +111,14 @@ export default function App() {
       <header className="bg-[#063D2E] text-white px-6 py-4 flex items-center justify-between border-b border-[#D4AF62]/30">
         <div className="flex items-center gap-3">
           <img src="/assets/mus_luxury_logo.png" alt="Mus Luxury" className="h-11 w-auto rounded" />
+          <a
+            href="https://www.google.com/maps/search/?api=1&query=FVX6%2BGCJ+Mus+luxury%2C+Ouled+Ya%C3%AFch"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="text-xs text-[#E8D4A5] underline hidden sm:inline"
+          >
+            FVX6+GCJ Mus luxury, Ouled Yaïch
+          </a>
         </div>
         <nav className="flex gap-2 text-xs overflow-x-auto">
           <button onClick={() => setActiveCategory("")} className="px-3.5 py-1.5 rounded-full bg-[#D4AF62] text-[#02291F] font-bold">
@@ -71,7 +132,7 @@ export default function App() {
         </nav>
       </header>
 
-      <main className="max-w-7xl mx-auto p-3 sm:p-6 grid grid-cols-2 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3 sm:gap-6 items-stretch flex-1">
+      <main className="max-w-7xl mx-auto p-4 sm:p-6 grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4 items-stretch flex-1">
         {products.map((p) => (
           <article key={p.id} onClick={() => openProductDetails(p.slug)} className="cursor-pointer bg-white rounded-2xl p-4 border border-[#D4AF62]/30 shadow-sm hover:shadow-lg transition">
             <img src={p.main_image_url} alt={p.name_fr} className="w-full h-56 object-cover rounded-xl" />
@@ -80,6 +141,45 @@ export default function App() {
           </article>
         ))}
       </main>
+
+      {cart.length > 0 && (
+        <section className="max-w-3xl mx-auto w-full p-6 bg-white rounded-2xl border border-[#D4AF62]/40 my-6 space-y-4 text-xs">
+          <h3 className="text-lg font-serif font-bold text-[#063D2E]">Commande Directe (69 Wilayas • Paiement à la livraison)</h3>
+          {errorMsg && <div className="p-3 rounded bg-red-100 text-red-800 font-bold">{errorMsg}</div>}
+          <form onSubmit={handleCheckout} className="space-y-3">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <input value={customerName} onChange={(e) => setCustomerName(e.target.value)} required placeholder="Nom complet" className="px-3 py-2 border rounded-xl" />
+              <input value={customerPhone} onChange={(e) => setCustomerPhone(e.target.value)} required placeholder="0655 53 41 54" className="px-3 py-2 border rounded-xl font-mono" />
+            </div>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <select value={selectedWilaya} onChange={(e) => setSelectedWilaya(e.target.value)} className="px-3 py-2 border rounded-xl bg-white font-bold">
+                {wilayas.map((w) => (
+                  <option key={w.wilaya_code} value={w.wilaya_code}>
+                    {w.wilaya_code} - {w.wilaya_name_fr}
+                  </option>
+                ))}
+              </select>
+              <select value={deliveryMethod} onChange={(e) => setDeliveryMethod(e.target.value as "home" | "stop_desk")} className="px-3 py-2 border rounded-xl bg-white font-bold">
+                <option value="home">À Domicile ({calcPreview?.home_rate?.fee_dzd ?? 500} DA)</option>
+                <option value="stop_desk">Stop-Desk ({calcPreview?.stop_desk_rate?.fee_dzd ?? 350} DA)</option>
+              </select>
+            </div>
+            <input value={address} onChange={(e) => setAddress(e.target.value)} required placeholder="Adresse de livraison" className="w-full px-3 py-2 border rounded-xl" />
+            <div className="p-3 rounded-xl bg-[#F8F6F0] font-extrabold text-sm text-[#063D2E]">
+              Total (Articles + Livraison {selectedWilaya}) : {calcPreview?.total_dzd ?? subtotal} DA
+            </div>
+            <button type="submit" className="w-full py-3 rounded-xl bg-[#063D2E] text-[#D4AF62] font-extrabold">
+              Confirmer la commande
+            </button>
+          </form>
+        </section>
+      )}
+
+      {orderConfirmed && (
+        <div className="max-w-xl mx-auto p-6 bg-emerald-50 border border-emerald-300 rounded-2xl my-4 text-xs">
+          <p className="font-bold text-emerald-900">Commande confirmée : #{orderConfirmed.order_reference} — Total : {orderConfirmed.total_dzd} DA</p>
+        </div>
+      )}
 
       {selectedProduct && (
         <div className="fixed inset-0 bg-black/70 flex items-center justify-center p-4 z-50">
@@ -91,7 +191,6 @@ export default function App() {
             <p className="text-xl font-extrabold text-[#B68F40]">
               {selectedVariant?.effective_price_dzd ?? selectedProduct.selling_price_dzd} DA
             </p>
-            {/* Dynamic Variant Axes from CMS Category Schema */}
             {(selectedProduct.category?.attributes || [])
               .filter((a: any) => a.is_variant_axis)
               .map((axis: any) => (
@@ -114,15 +213,32 @@ export default function App() {
                   </div>
                 </div>
               ))}
-            {/* Dynamic Custom Product Attributes from CMS */}
             <div className="pt-3 border-t text-xs space-y-1">
               {Object.entries(selectedProduct.attributes || {}).map(([k, v]) => (
                 <p key={k}><strong>{k} :</strong> {String(v)}</p>
               ))}
             </div>
+            <button onClick={addToCart} className="w-full py-3 rounded-xl bg-[#D4AF62] text-[#02291F] font-extrabold text-xs">
+              Ajouter au panier
+            </button>
           </div>
         </div>
       )}
+
+      <footer className="bg-[#02291F] text-[#E8D4A5] px-6 py-6 text-xs flex flex-wrap justify-between items-center gap-4">
+        <div>
+          <strong>Mus Luxury</strong> — FVX6+GCJ Mus luxury, Ouled Yaïch (Blida 09) • WhatsApp :{" "}
+          <a href="https://wa.me/213655534154" className="underline text-[#D4AF62] font-mono">0655 53 41 54</a>
+        </div>
+        <div className="flex gap-4">
+          <a href="https://www.instagram.com/musluxury09?rpxt=emk3bjBhdjV5d2Ux" target="_blank" rel="noopener noreferrer" className="underline">
+            Instagram @musluxury09
+          </a>
+          <a href="https://www.tiktok.com/@musluxury.092?_r=1&_t=ZS-9B2mO0gpA7V" target="_blank" rel="noopener noreferrer" className="underline">
+            TikTok @musluxury.092
+          </a>
+        </div>
+      </footer>
     </div>
   );
 }

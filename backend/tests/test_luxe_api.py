@@ -726,6 +726,315 @@ class TestLuxeEcommercePlatform(unittest.TestCase):
         self.assertEqual(r_ord.json()["delivery_fee_dzd"], 250)
         self.assertEqual(r_ord.json()["total_dzd"], 4750)
 
+    # 23. Comprehensive Dashboard Metrics & Real-Time Backup / Sync Status (Section 3.1)
+    def test_23_dashboard_comprehensive_metrics_and_backup_status(self):
+        headers = self.get_admin_headers()
+        r_dash = self.client.get("/api/v1/admin/dashboard", headers=headers)
+        self.assertEqual(r_dash.status_code, 200)
+        d = r_dash.json()
+        self.assertIn("total_active_products", d)
+        self.assertIn("total_categories", d)
+        self.assertIn("low_stock_variants", d)
+        self.assertIn("out_of_stock_variants", d)
+        self.assertIn("orders_by_status", d)
+        self.assertIn("recent_orders", d)
+        self.assertIn("recent_activity", d)
+        self.assertIn("backend_sync_status", d)
+        self.assertTrue(d["backend_sync_status"]["connected"])
+        self.assertGreaterEqual(d["total_categories"], 9)
+
+    # 24. Product Archival Preserves Historical Order Records & Historical Price Immutability (Sections 3.2 & 3.5)
+    def test_24_product_archival_preserves_historical_orders_and_price_immutability(self):
+        headers = self.get_admin_headers()
+        prod = self.client.get("/api/v1/products/sac-a-main-chanel-style").json()
+        prod_id = prod["id"]
+        vid = prod["variants"][0]["id"]
+        original_unit_price = prod["variants"][0]["effective_price_dzd"]
+
+        # Place a guest order at the original price
+        r_ord = self.client.post(
+            "/api/v1/orders",
+            headers={"Idempotency-Key": "idem-hist-price-001"},
+            json={
+                "full_name": "Nadia Benali",
+                "phone": "0655534154",
+                "wilaya_code": "09",
+                "commune": "Ouled Yaïch",
+                "delivery_address": "FVX6+GCJ Mus luxury, Ouled Yaïch",
+                "delivery_method": "home",
+                "items": [{"variant_id": vid, "quantity": 1}]
+            }
+        )
+        self.assertEqual(r_ord.status_code, 201, r_ord.text)
+        order_id = r_ord.json()["order_id"]
+
+        # Admin edits the product's current selling price from 4500 DA to 9900 DA
+        r_admin_prods = self.client.get("/api/v1/admin/products", headers=headers)
+        self.assertEqual(r_admin_prods.status_code, 200)
+        current_ver = next(p["version"] for p in r_admin_prods.json()["items"] if p["id"] == prod_id)
+
+        r_upd = self.client.put(
+            f"/api/v1/admin/products/{prod_id}",
+            headers=headers,
+            json={
+                "name_fr": prod["name_fr"],
+                "selling_price_dzd": 9900,
+                "expected_version": current_ver
+            }
+        )
+        self.assertEqual(r_upd.status_code, 200)
+
+        # Verify historical order invoice STILL records the original unit price (price immutability)
+        r_inv = self.client.get(f"/api/v1/admin/orders/{order_id}/invoice", headers=headers)
+        self.assertEqual(r_inv.status_code, 200)
+        self.assertEqual(r_inv.json()["items"][0]["unit_price_dzd"], original_unit_price)
+        self.assertIn("Ouled Yaïch", r_inv.json()["boutique_info"]["address"])
+        self.assertEqual(r_inv.json()["boutique_info"]["phone"], "0655534154")
+
+        # Now safely archive/delete the product and verify historical order is still intact
+        r_del = self.client.delete(f"/api/v1/admin/products/{prod_id}", headers=headers)
+        self.assertEqual(r_del.status_code, 200)
+        self.assertTrue(r_del.json()["archived"])
+        self.assertGreaterEqual(r_del.json()["historical_order_items_preserved"], 1)
+
+        # Public product page returns 404 after archival, but historical order invoice remains 200 OK
+        r_pub_after = self.client.get("/api/v1/products/sac-a-main-chanel-style")
+        self.assertEqual(r_pub_after.status_code, 404)
+        r_inv_after = self.client.get(f"/api/v1/admin/orders/{order_id}/invoice", headers=headers)
+        self.assertEqual(r_inv_after.status_code, 200)
+        self.assertEqual(len(r_inv_after.json()["items"]), 1)
+
+    # 25. Explicit Idempotency-Key Header, Order Status Transition State Machine & CSV Export (Section 3.5)
+    def test_25_order_idempotency_key_and_status_transition_state_machine(self):
+        headers = self.get_admin_headers()
+        prod = self.client.get("/api/v1/products").json()["items"][0]
+        vid = prod["variants"][0]["id"]
+
+        order_payload = {
+            "full_name": "Karim Mansouri",
+            "phone": "0655534154",
+            "wilaya_code": "09",
+            "commune": "Ouled Yaïch",
+            "delivery_address": "Rue Principale, Ouled Yaïch",
+            "delivery_method": "stop_desk",
+            "items": [{"variant_id": vid, "quantity": 1}]
+        }
+        r1 = self.client.post("/api/v1/orders", headers={"Idempotency-Key": "retry-key-999"}, json=order_payload)
+        self.assertEqual(r1.status_code, 201)
+        oid = r1.json()["order_id"]
+
+        # Retrying with the same Idempotency-Key must be rejected with 409 Conflict
+        r2 = self.client.post("/api/v1/orders", headers={"Idempotency-Key": "retry-key-999"}, json=order_payload)
+        self.assertEqual(r2.status_code, 409)
+
+        # Transition order -> confirmed -> delivered
+        r_conf = self.client.patch(f"/api/v1/admin/orders/{oid}", headers=headers, json={"status": "confirmed"})
+        self.assertEqual(r_conf.status_code, 200)
+        r_deliv = self.client.patch(f"/api/v1/admin/orders/{oid}", headers=headers, json={"status": "delivered"})
+        self.assertEqual(r_deliv.status_code, 200)
+
+        # Invalid transition from terminal 'delivered' back to 'preparing' must fail with 400
+        r_invalid = self.client.patch(f"/api/v1/admin/orders/{oid}", headers=headers, json={"status": "preparing"})
+        self.assertEqual(r_invalid.status_code, 400)
+
+        # Verify CSV export
+        r_csv = self.client.get("/api/v1/admin/orders/export.csv", headers=headers)
+        self.assertEqual(r_csv.status_code, 200)
+        self.assertIn("order_reference", r_csv.text)
+
+    # 26. Real Compressed Backup Archive Creation & Isolated Non-Destructive Restoration Test (Section 7)
+    def test_26_isolated_backup_creation_and_non_destructive_restore_verification(self):
+        headers = self.get_admin_headers()
+        r_bkp = self.client.post("/api/v1/admin/backups", headers=headers)
+        self.assertEqual(r_bkp.status_code, 201)
+        bkp_id = r_bkp.json()["id"]
+        self.assertGreater(r_bkp.json()["size_bytes"], 1000)
+
+        # Trigger isolated restoration verification into temporary database
+        r_ver = self.client.post(f"/api/v1/admin/backups/{bkp_id}/verify-restore", headers=headers)
+        self.assertEqual(r_ver.status_code, 200, r_ver.text)
+        ver_data = r_ver.json()
+        self.assertTrue(ver_data["sha256_verified"])
+        self.assertTrue(ver_data["isolated_restore_success"])
+        self.assertEqual(ver_data["restored_counts"]["delivery_zones"], 69)
+        self.assertGreaterEqual(ver_data["restored_counts"]["categories"], 9)
+
+    # 27. Complete 14-Step End-to-End Integration Journey (Section 10)
+    def test_27_complete_14_step_end_to_end_journey(self):
+        # Step 1: Log in as an authorized administrator
+        headers = self.get_admin_headers()
+
+        # Step 2: Create a category with custom attributes
+        r_cat = self.client.post(
+            "/api/v1/admin/categories",
+            headers=headers,
+            json={
+                "slug": "maroquinerie-voyage",
+                "name_fr": "Maroquinerie de Voyage",
+                "name_ar": "حقائب سفر",
+                "name_en": "Travel Leather Goods",
+                "display_order": 12,
+                "is_active": True,
+                "show_on_homepage": True
+            }
+        )
+        self.assertEqual(r_cat.status_code, 201)
+        cat_id = r_cat.json()["id"]
+
+        r_attr1 = self.client.post(
+            "/api/v1/admin/category-attributes",
+            headers=headers,
+            json={
+                "category_id": cat_id,
+                "attr_key": "color",
+                "label_fr": "Couleur",
+                "input_type": "color",
+                "is_required": True,
+                "is_filterable": True,
+                "is_variant_axis": True,
+                "options": [
+                    {"value": "Émeraude", "label_fr": "Émeraude", "color_hex": "#063D2E"},
+                    {"value": "Noir", "label_fr": "Noir", "color_hex": "#181818"}
+                ]
+            }
+        )
+        self.assertEqual(r_attr1.status_code, 201)
+
+        r_attr2 = self.client.post(
+            "/api/v1/admin/category-attributes",
+            headers=headers,
+            json={
+                "category_id": cat_id,
+                "attr_key": "cabin_approved",
+                "label_fr": "Format Cabine",
+                "input_type": "short_text",
+                "is_required": True,
+                "is_filterable": True,
+                "is_variant_axis": False
+            }
+        )
+        self.assertEqual(r_attr2.status_code, 201)
+
+        # Step 3 & 4: Add a brand, upload a product image, and create a draft product in that category
+        r_brand = self.client.post(
+            "/api/v1/admin/brands",
+            headers=headers,
+            json={"name": "Mus Voyage 09", "slug": "mus-voyage-09", "logo_url": "/assets/mus_luxury_logo.png"}
+        )
+        self.assertEqual(r_brand.status_code, 201)
+        brand_id = r_brand.json()["id"]
+
+        valid_png = b"\x89PNG\r\n\x1a\n" + b"\x00" * 64
+        r_up = self.client.post(
+            "/api/v1/admin/upload",
+            headers=headers,
+            files={"file": ("bagage_luxe.png", valid_png, "image/png")}
+        )
+        self.assertEqual(r_up.status_code, 201)
+        uploaded_url = r_up.json()["url"]
+
+        r_prod = self.client.post(
+            "/api/v1/admin/products",
+            headers=headers,
+            json={
+                "category_id": cat_id,
+                "brand_id": brand_id,
+                "slug": "sac-cabine-ouled-yaich",
+                "sku": "LUX-TRV-009",
+                "name_fr": "Sac Cabine Émeraude",
+                "purchase_cost_dzd": 7500,
+                "selling_price_dzd": 12500,
+                "main_image_url": uploaded_url,
+                "status": "draft",
+                "dynamic_attributes": {"cabin_approved": "Oui (55x35x25 cm)"},
+                "variants": []
+            }
+        )
+        self.assertEqual(r_prod.status_code, 201)
+        prod_id = r_prod.json()["id"]
+
+        # Step 5: Configure variants, prices, and stock via matrix generator
+        r_gen = self.client.post(
+            f"/api/v1/admin/products/{prod_id}/generate-variants",
+            headers=headers,
+            json={"axes": {"color": ["Émeraude", "Noir"]}, "default_stock": 6, "price_override_dzd": 12500}
+        )
+        self.assertEqual(r_gen.status_code, 201)
+        var_id = r_gen.json()["created"][0]["id"]
+
+        # Step 6: Publish the product
+        r_pub = self.client.put(
+            f"/api/v1/admin/products/{prod_id}",
+            headers=headers,
+            json={
+                "name_fr": "Sac Cabine Émeraude",
+                "selling_price_dzd": 12500,
+                "status": "published",
+                "expected_version": 1
+            }
+        )
+        self.assertEqual(r_pub.status_code, 200)
+        self.assertEqual(r_pub.json()["status"], "published")
+
+        # Step 7: Open the public website API and verify actual product data
+        r_web = self.client.get("/api/v1/products/sac-cabine-ouled-yaich")
+        self.assertEqual(r_web.status_code, 200)
+        web_prod = r_web.json()
+        self.assertNotIn("purchase_cost_dzd", web_prod)
+        self.assertEqual(web_prod["attributes"]["cabin_approved"], "Oui (55x35x25 cm)")
+        self.assertEqual(web_prod["total_stock"], 12)
+
+        # Step 8: Submit a guest order (2 units in Wilaya 09 - Blida, Ouled Yaïch)
+        r_order = self.client.post(
+            "/api/v1/orders",
+            headers={"Idempotency-Key": "e2e-14step-order-key"},
+            json={
+                "full_name": "Sofiane Boudiaf",
+                "phone": "0655534154",
+                "wilaya_code": "09",
+                "commune": "Ouled Yaïch",
+                "delivery_address": "FVX6+GCJ Mus luxury, Ouled Yaïch",
+                "delivery_method": "home",
+                "items": [{"variant_id": var_id, "quantity": 2}]
+            }
+        )
+        self.assertEqual(r_order.status_code, 201)
+        order_id = r_order.json()["order_id"]
+
+        # Step 9: Confirm the order appears in the CMS
+        r_cms_orders = self.client.get("/api/v1/admin/orders", headers=headers)
+        self.assertEqual(r_cms_orders.status_code, 200)
+        self.assertTrue(any(o["id"] == order_id for o in r_cms_orders.json()["items"]))
+
+        # Step 10: Confirm inventory changes accurately (6 -> 4) and movement is logged
+        r_web_after = self.client.get("/api/v1/products/sac-cabine-ouled-yaich").json()
+        v_after = next(v for v in r_web_after["variants"] if v["id"] == var_id)
+        self.assertEqual(v_after["stock_qty"], 4)
+
+        r_mov = self.client.get(f"/api/v1/admin/inventory/movements?variant_id={var_id}", headers=headers)
+        self.assertEqual(r_mov.status_code, 200)
+        self.assertGreaterEqual(len(r_mov.json()["items"]), 1)
+
+        # Step 11 & 12: Update the order status (confirmed -> cancelled) and verify stock restoration (4 -> 6)
+        r_st1 = self.client.patch(f"/api/v1/admin/orders/{order_id}", headers=headers, json={"status": "confirmed"})
+        self.assertEqual(r_st1.status_code, 200)
+        r_st2 = self.client.patch(f"/api/v1/admin/orders/{order_id}", headers=headers, json={"status": "cancelled"})
+        self.assertEqual(r_st2.status_code, 200)
+
+        r_web_restored = self.client.get("/api/v1/products/sac-cabine-ouled-yaich").json()
+        v_restored = next(v for v in r_web_restored["variants"] if v["id"] == var_id)
+        self.assertEqual(v_restored["stock_qty"], 6)
+
+        # Step 13: Re-query delta synchronization endpoint as after CMS relaunch and confirm persistent state
+        r_sync = self.client.get("/api/v1/admin/sync/delta?since_order_id=0&since_movement_id=0", headers=headers)
+        self.assertEqual(r_sync.status_code, 200)
+        self.assertGreaterEqual(r_sync.json()["latest_order_id"], order_id)
+
+        # Step 14: Test an unauthorized request and verify it is rejected (401)
+        r_unauth = self.client.post("/api/v1/admin/products", json={})
+        self.assertEqual(r_unauth.status_code, 401)
+
+
 if __name__ == "__main__":
     unittest.main()
 
