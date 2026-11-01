@@ -71,7 +71,7 @@ export default function App() {
         </nav>
       </header>
 
-      <main className="max-w-7xl mx-auto p-6 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6 flex-1">
+      <main className="max-w-7xl mx-auto p-3 sm:p-6 grid grid-cols-2 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3 sm:gap-6 items-stretch flex-1">
         {products.map((p) => (
           <article key={p.id} onClick={() => openProductDetails(p.slug)} className="cursor-pointer bg-white rounded-2xl p-4 border border-[#D4AF62]/30 shadow-sm hover:shadow-lg transition">
             <img src={p.main_image_url} alt={p.name_fr} className="w-full h-56 object-cover rounded-xl" />
