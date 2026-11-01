@@ -46,11 +46,13 @@ export default function App() {
   const [orders, setOrders] = useState<any[]>([]);
   const [movements, setMovements] = useState<any[]>([]);
   const [backups, setBackups] = useState<any[]>([]);
+  const [recoveryStatus, setRecoveryStatus] = useState<any | null>(null);
   const [restoreReport, setRestoreReport] = useState<any | null>(null);
   const [selectedInvoice, setSelectedInvoice] = useState<any | null>(null);
   const [loadingWorkspace, setLoadingWorkspace] = useState(false);
 
-  // Dynamic Product Creation Form State
+  // Product Search, Creation, Edit & Variant Matrix State
+  const [prodSearch, setProdSearch] = useState("");
   const [prodCategoryId, setProdCategoryId] = useState<number>(1);
   const [prodNameFr, setProdNameFr] = useState("");
   const [prodSku, setProdSku] = useState("");
@@ -60,6 +62,23 @@ export default function App() {
   const [prodStatus, setProdStatus] = useState<"published" | "draft">("published");
   const [prodDynamicAttrs, setProdDynamicAttrs] = useState<Record<string, string>>({});
   const [prodVariantStock, setProdVariantStock] = useState(5);
+  const [editingProduct, setEditingProduct] = useState<any | null>(null);
+
+  // Order Filter State
+  const [orderStatusFilter, setOrderStatusFilter] = useState("");
+
+  // Store Settings, Coupon & Static Page State (Tab 7)
+  const [storePhoneInput, setStorePhoneInput] = useState("0655534154");
+  const [storeWhatsappInput, setStoreWhatsappInput] = useState("+213655534154");
+  const [storeLocationInput, setStoreLocationInput] = useState("FVX6+GCJ Mus luxury, Ouled Yaïch");
+  const [freeThresholdInput, setFreeThresholdInput] = useState("25000");
+  const [couponCode, setCouponCode] = useState("");
+  const [couponType, setCouponType] = useState<"percentage" | "fixed_dzd">("percentage");
+  const [couponValue, setCouponValue] = useState(10);
+  const [couponMinOrder, setCouponMinOrder] = useState(5000);
+  const [pageSlug, setPageSlug] = useState("about");
+  const [pageTitleFr, setPageTitleFr] = useState("Maison Mus Luxury — Ouled Yaïch");
+  const [pageContentFr, setPageContentFr] = useState("Boutique officielle Mus Luxury à Ouled Yaïch (Blida 09). Livraison rapide 69 Wilayas avec paiement à la livraison.");
 
   useEffect(() => {
     DesktopCmsApi.getSetupStatus()
@@ -78,13 +97,14 @@ export default function App() {
     setLoadingWorkspace(true);
     setError("");
     try {
-      const [dashData, catData, prodData, ordData, movData, bkpData] = await Promise.all([
+      const [dashData, catData, prodData, ordData, movData, bkpData, recData] = await Promise.all([
         DesktopCmsApi.getDashboard(),
         DesktopCmsApi.listCategories(),
         DesktopCmsApi.listAdminProducts({ include_archived: true }),
-        DesktopCmsApi.listOrders(),
+        DesktopCmsApi.listOrders(orderStatusFilter || undefined),
         DesktopCmsApi.listInventoryMovements(),
         DesktopCmsApi.listBackups(),
+        DesktopCmsApi.getRecoveryStatus().catch(() => null),
       ]);
       setDashboard(dashData);
       setCategories(catData.items || []);
@@ -92,6 +112,7 @@ export default function App() {
       setOrders(ordData.items || []);
       setMovements(movData.items || []);
       setBackups(bkpData.items || []);
+      setRecoveryStatus(recData);
       if (catData.items?.length && !prodCategoryId) {
         setProdCategoryId(catData.items[0].id);
       }
@@ -111,7 +132,7 @@ export default function App() {
     if (user) {
       loadAllWorkspaceData();
     }
-  }, [user]);
+  }, [user, orderStatusFilter]);
 
   async function handleFirstTimeSetup(e: React.FormEvent) {
     e.preventDefault();
@@ -226,6 +247,26 @@ export default function App() {
     }
   }
 
+  async function handleSaveEditedProduct(e: React.FormEvent) {
+    e.preventDefault();
+    if (!editingProduct) return;
+    setError("");
+    try {
+      await DesktopCmsApi.updateProduct(editingProduct.id, {
+        name_fr: editingProduct.name_fr,
+        selling_price_dzd: Number(editingProduct.selling_price_dzd),
+        purchase_cost_dzd: Number(editingProduct.purchase_cost_dzd || 0),
+        status: editingProduct.status,
+        expected_version: Number(editingProduct.version || 1),
+      });
+      setSuccessMsg(`Produit #${editingProduct.id} mis à jour avec contrôle de concurrence optimiste.`);
+      setEditingProduct(null);
+      await loadAllWorkspaceData();
+    } catch (err: any) {
+      setError(err.message || "Erreur lors de la mise à jour du produit");
+    }
+  }
+
   async function handleArchiveProduct(productId: number) {
     setError("");
     try {
@@ -269,6 +310,72 @@ export default function App() {
     }
   }
 
+  async function handleExportOrdersCsv() {
+    setError("");
+    try {
+      const csvText = await DesktopCmsApi.exportOrdersCsv();
+      const blob = new Blob([csvText], { type: "text/csv;charset=utf-8;" });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = "mus_luxury_orders.csv";
+      a.click();
+      URL.revokeObjectURL(url);
+      setSuccessMsg("Export CSV des commandes généré (mus_luxury_orders.csv).");
+    } catch (err: any) {
+      setError(err.message);
+    }
+  }
+
+  async function handleSaveStoreSettings(e: React.FormEvent) {
+    e.preventDefault();
+    setError("");
+    try {
+      await DesktopCmsApi.updateStoreSettings({
+        store_phone: storePhoneInput,
+        whatsapp_contact_number: storeWhatsappInput,
+        store_location: storeLocationInput,
+        free_delivery_threshold_dzd: freeThresholdInput,
+      });
+      setSuccessMsg("Paramètres de la boutique Mus Luxury enregistrés et synchronisés.");
+      await loadAllWorkspaceData();
+    } catch (err: any) {
+      setError(err.message);
+    }
+  }
+
+  async function handleCreateCoupon(e: React.FormEvent) {
+    e.preventDefault();
+    setError("");
+    try {
+      await DesktopCmsApi.createCoupon({
+        code: couponCode.trim().toUpperCase(),
+        discount_type: couponType,
+        discount_value: Number(couponValue),
+        min_order_dzd: Number(couponMinOrder),
+      });
+      setSuccessMsg(`Code promo "${couponCode.toUpperCase()}" créé et activé sur la boutique.`);
+      setCouponCode("");
+    } catch (err: any) {
+      setError(err.message);
+    }
+  }
+
+  async function handleSaveStaticPage(e: React.FormEvent) {
+    e.preventDefault();
+    setError("");
+    try {
+      await DesktopCmsApi.upsertStaticPage(pageSlug, {
+        title_fr: pageTitleFr,
+        content_fr: pageContentFr,
+        is_published: true,
+      });
+      setSuccessMsg(`Page statique "/pages/${pageSlug}" enregistrée et publiée.`);
+    } catch (err: any) {
+      setError(err.message);
+    }
+  }
+
   async function handleTriggerBackup() {
     setError("");
     try {
@@ -286,6 +393,16 @@ export default function App() {
       const rep = await DesktopCmsApi.verifyBackupRestore(backupId);
       setRestoreReport(rep);
       setSuccessMsg(`Test de restauration isolée réussi pour la sauvegarde #${backupId} !`);
+    } catch (err: any) {
+      setError(err.message);
+    }
+  }
+
+  async function handleRotateEmergencyCode() {
+    setError("");
+    try {
+      const res = await DesktopCmsApi.rotateEmergencyCode();
+      setSuccessMsg(`Nouveau Code d'Urgence Hors-Ligne généré : ${res.emergency_code} (Conservez-le en lieu sûr).`);
     } catch (err: any) {
       setError(err.message);
     }
@@ -338,7 +455,7 @@ export default function App() {
               </div>
               <div>
                 <label className="block text-[11px] mb-0.5">2. Numéro Secours / Urgence</label>
-                <input value={emergencyPhone} onChange={(e) => setEmergencyPhone(e.target.value)} required placeholder="+213 661 00 00 02" className="w-full px-2.5 py-1.5 rounded bg-[#063D2E] border border-[#D4AF62]/40 font-mono text-xs" />
+                <input value={emergencyPhone} onChange={(e) => setEmergencyPhone(e.target.value)} required placeholder="+213 550 00 00 01" className="w-full px-2.5 py-1.5 rounded bg-[#063D2E] border border-[#D4AF62]/40 font-mono text-xs" />
               </div>
             </div>
           </div>
@@ -417,6 +534,12 @@ export default function App() {
   }
 
   const activeCategoryObj = categories.find((c) => c.id === Number(prodCategoryId)) || categories[0];
+  const filteredProducts = products.filter(
+    (p) =>
+      !prodSearch ||
+      p.name_fr.toLowerCase().includes(prodSearch.toLowerCase()) ||
+      p.sku.toLowerCase().includes(prodSearch.toLowerCase())
+  );
 
   return (
     <div className="min-h-screen bg-[#F8F6F0] text-[#202923] flex flex-col">
@@ -458,8 +581,8 @@ export default function App() {
           { id: "inventory", label: "4. Stocks & Mouvements" },
           { id: "orders", label: "5. Commandes & Factures" },
           { id: "delivery_wilayas", label: "6. Livraison 69 Wilayas (Domicile / Stop-Desk)" },
-          { id: "content", label: "7. Boutique & Réseaux (Ouled Yaïch)" },
-          { id: "backups", label: "8. Sauvegardes & Restauration" },
+          { id: "content", label: "7. Boutique, Coupons & Pages (Ouled Yaïch)" },
+          { id: "backups", label: "8. Sauvegardes & Sécurité" },
         ].map((t) => (
           <button
             key={t.id}
@@ -516,7 +639,7 @@ export default function App() {
 
             {/* Orders by Status Breakdown */}
             <div className="bg-white p-5 rounded-2xl border border-[#D4AF62]/40 space-y-3 text-xs">
-              <h3 className="font-serif font-bold text-base text-[#063D2E]">Répartition des commandes par statut</h3>
+              <h3 className="font-serif font-bold text-base text-[#063D2E]">Répartition des commandes par statut (9 étapes)</h3>
               <div className="grid grid-cols-3 md:grid-cols-9 gap-2">
                 {Object.entries(dashboard.orders_by_status || {}).map(([st, cnt]) => (
                   <div key={st} className="p-2.5 rounded-xl bg-[#F8F6F0] border text-center">
@@ -524,6 +647,37 @@ export default function App() {
                     <div className="font-extrabold text-base text-[#063D2E]">{String(cnt)}</div>
                   </div>
                 ))}
+              </div>
+            </div>
+
+            {/* Recent Orders & Recent Administrative Activity */}
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-xs">
+              <div className="bg-white p-5 rounded-2xl border border-[#D4AF62]/40 space-y-2">
+                <h3 className="font-serif font-bold text-base text-[#063D2E]">Commandes Récentes</h3>
+                {(dashboard.recent_orders || []).length === 0 ? (
+                  <p className="text-gray-400">Aucune commande récente.</p>
+                ) : (
+                  (dashboard.recent_orders || []).map((ro: any) => (
+                    <div key={ro.id} className="p-2.5 rounded-xl bg-[#F8F6F0] flex justify-between items-center">
+                      <div>
+                        <span className="font-mono font-bold text-[#063D2E]">#{ro.order_reference}</span> • {ro.customer_name} ({ro.wilaya_name})
+                      </div>
+                      <span className="font-extrabold text-[#063D2E]">{ro.total_dzd} DA ({ro.status})</span>
+                    </div>
+                  ))
+                )}
+              </div>
+
+              <div className="bg-white p-5 rounded-2xl border border-[#D4AF62]/40 space-y-2">
+                <h3 className="font-serif font-bold text-base text-[#063D2E]">État de Synchronisation &amp; Dernière Sauvegarde</h3>
+                <div className="p-3 rounded-xl bg-emerald-50 border border-emerald-200 text-emerald-900">
+                  <strong>Serveur API &amp; Base de données :</strong> {dashboard.backend_sync_status?.status || "connected"} ({dashboard.backend_sync_status?.database || "online"})
+                </div>
+                {dashboard.last_backup && (
+                  <div className="p-3 rounded-xl bg-[#F8F6F0] border">
+                    <strong>Dernière sauvegarde vérifiée :</strong> <span className="font-mono">{dashboard.last_backup.filename}</span> ({dashboard.last_backup.status})
+                  </div>
+                )}
               </div>
             </div>
           </div>
@@ -534,7 +688,7 @@ export default function App() {
           <div className="space-y-6">
             <form onSubmit={handleCreateProduct} className="bg-white p-6 rounded-2xl border border-[#D4AF62]/40 space-y-4 text-xs">
               <h2 className="text-lg font-serif font-bold text-[#063D2E]">+ Créer un produit (Formulaire adaptatif selon la catégorie)</h2>
-              <div className="grid grid-cols-1 md:grid-cols-4 gap-3">
+              <div className="grid grid-cols-1 md:grid-cols-5 gap-3">
                 <div>
                   <label className="block font-bold mb-1">Catégorie *</label>
                   <select
@@ -563,6 +717,10 @@ export default function App() {
                 <div>
                   <label className="block font-bold mb-1">Prix de vente (DA) *</label>
                   <input type="number" min={0} value={prodSellingPrice} onChange={(e) => setProdSellingPrice(Number(e.target.value))} required className="w-full px-3 py-2 border rounded-xl font-bold" />
+                </div>
+                <div>
+                  <label className="block font-bold mb-1">Stock initial *</label>
+                  <input type="number" min={0} value={prodVariantStock} onChange={(e) => setProdVariantStock(Number(e.target.value))} required className="w-full px-3 py-2 border rounded-xl font-bold" />
                 </div>
               </div>
 
@@ -614,9 +772,54 @@ export default function App() {
               </button>
             </form>
 
+            {/* Edit Product Modal / Inline Form */}
+            {editingProduct && (
+              <form onSubmit={handleSaveEditedProduct} className="bg-[#F8F6F0] p-5 rounded-2xl border-2 border-[#D4AF62] space-y-3 text-xs">
+                <div className="flex justify-between items-center">
+                  <h4 className="font-serif font-bold text-base text-[#063D2E]">
+                    Modifier Produit #{editingProduct.id} ({editingProduct.sku}) — Version v{editingProduct.version || 1}
+                  </h4>
+                  <button type="button" onClick={() => setEditingProduct(null)} className="font-bold">Fermer ✕</button>
+                </div>
+                <div className="grid grid-cols-1 md:grid-cols-4 gap-3">
+                  <div>
+                    <label className="block font-bold mb-1">Nom (FR)</label>
+                    <input value={editingProduct.name_fr} onChange={(e) => setEditingProduct({ ...editingProduct, name_fr: e.target.value })} className="w-full px-3 py-2 border rounded-xl bg-white" />
+                  </div>
+                  <div>
+                    <label className="block font-bold mb-1">Prix Vente (DA)</label>
+                    <input type="number" value={editingProduct.selling_price_dzd} onChange={(e) => setEditingProduct({ ...editingProduct, selling_price_dzd: Number(e.target.value) })} className="w-full px-3 py-2 border rounded-xl bg-white font-bold" />
+                  </div>
+                  <div>
+                    <label className="block font-bold mb-1">Coût Achat Privé (DA)</label>
+                    <input type="number" value={editingProduct.purchase_cost_dzd || 0} onChange={(e) => setEditingProduct({ ...editingProduct, purchase_cost_dzd: Number(e.target.value) })} className="w-full px-3 py-2 border rounded-xl bg-white" />
+                  </div>
+                  <div>
+                    <label className="block font-bold mb-1">Statut</label>
+                    <select value={editingProduct.status} onChange={(e) => setEditingProduct({ ...editingProduct, status: e.target.value })} className="w-full px-3 py-2 border rounded-xl bg-white font-bold">
+                      <option value="published">published</option>
+                      <option value="draft">draft</option>
+                      <option value="archived">archived</option>
+                    </select>
+                  </div>
+                </div>
+                <button type="submit" className="px-5 py-2 rounded-xl bg-[#063D2E] text-[#D4AF62] font-extrabold">
+                  Enregistrer les modifications
+                </button>
+              </form>
+            )}
+
             {/* Product List */}
             <div className="bg-white p-6 rounded-2xl border border-[#D4AF62]/40 space-y-3 text-xs">
-              <h3 className="text-base font-serif font-bold text-[#063D2E]">Catalogue Produits ({products.length})</h3>
+              <div className="flex flex-wrap items-center justify-between gap-3">
+                <h3 className="text-base font-serif font-bold text-[#063D2E]">Catalogue Produits ({filteredProducts.length})</h3>
+                <input
+                  value={prodSearch}
+                  onChange={(e) => setProdSearch(e.target.value)}
+                  placeholder="Rechercher par nom ou SKU..."
+                  className="px-3 py-1.5 border rounded-xl w-64"
+                />
+              </div>
               <div className="overflow-x-auto">
                 <table className="w-full text-left border-collapse">
                   <thead>
@@ -631,7 +834,7 @@ export default function App() {
                     </tr>
                   </thead>
                   <tbody className="divide-y">
-                    {products.map((p) => (
+                    {filteredProducts.map((p) => (
                       <tr key={p.id}>
                         <td className="p-2.5 font-mono font-bold">#{p.id} • {p.sku}</td>
                         <td className="p-2.5 font-bold">{p.name_fr}</td>
@@ -641,7 +844,14 @@ export default function App() {
                         <td className="p-2.5">
                           <span className="px-2 py-0.5 rounded bg-gray-100 font-semibold">{p.status}</span>
                         </td>
-                        <td className="p-2.5 text-right">
+                        <td className="p-2.5 text-right space-x-2">
+                          <button
+                            type="button"
+                            onClick={() => setEditingProduct(p)}
+                            className="px-2.5 py-1 rounded bg-[#F8F6F0] text-[#063D2E] border border-[#D4AF62]/40 font-bold"
+                          >
+                            Modifier
+                          </button>
                           {p.status !== "archived" && (
                             <button
                               type="button"
@@ -679,6 +889,7 @@ export default function App() {
                       </div>
                       <div className="flex items-center gap-1.5">
                         <button type="button" onClick={() => handleAdjustStock(v.id, -1)} className="px-2.5 py-1 rounded bg-gray-100 font-bold">-1</button>
+                        <button type="button" onClick={() => handleAdjustStock(v.id, 1)} className="px-2.5 py-1 rounded bg-emerald-100 text-emerald-900 font-bold">+1</button>
                         <button type="button" onClick={() => handleAdjustStock(v.id, 5)} className="px-2.5 py-1 rounded bg-[#063D2E] text-[#D4AF62] font-bold">+5</button>
                       </div>
                     </div>
@@ -720,8 +931,27 @@ export default function App() {
         {/* TAB 5: ORDERS & INVOICES */}
         {activeTab === "orders" && (
           <div className="bg-white p-6 rounded-2xl border border-[#D4AF62]/40 space-y-4 text-xs">
-            <div className="flex items-center justify-between">
+            <div className="flex flex-wrap items-center justify-between gap-3">
               <h3 className="text-base font-serif font-bold text-[#063D2E]">Commandes Clients ({orders.length})</h3>
+              <div className="flex items-center gap-2">
+                <select
+                  value={orderStatusFilter}
+                  onChange={(e) => setOrderStatusFilter(e.target.value)}
+                  className="px-3 py-1.5 border rounded-xl bg-[#F8F6F0] font-semibold"
+                >
+                  <option value="">Tous les statuts</option>
+                  {["new", "pending_confirmation", "confirmed", "preparing", "ready_for_shipment", "shipped", "delivered", "cancelled", "returned"].map((st) => (
+                    <option key={st} value={st}>{st}</option>
+                  ))}
+                </select>
+                <button
+                  type="button"
+                  onClick={handleExportOrdersCsv}
+                  className="px-3.5 py-1.5 rounded-xl bg-[#063D2E] text-[#D4AF62] font-bold"
+                >
+                  ⬇ Exporter CSV
+                </button>
+              </div>
             </div>
             <div className="space-y-3">
               {orders.map((o) => (
@@ -776,73 +1006,152 @@ export default function App() {
         {/* TAB 6: 69 WILAYAS DELIVERY TARIFFS */}
         {activeTab === "delivery_wilayas" && <DeliveryWilayasPage />}
 
-        {/* TAB 7: STORE CONTENT & REAL SOCIAL/LOCATION SETTINGS */}
+        {/* TAB 7: STORE CONTENT, COUPONS, STATIC PAGES & REAL SOCIAL/LOCATION SETTINGS */}
         {activeTab === "content" && (
-          <div className="bg-white p-6 rounded-2xl border border-[#D4AF62]/40 space-y-4 text-xs">
-            <h3 className="text-base font-serif font-bold text-[#063D2E]">Coordonnées Officielles &amp; Réseaux Sociaux (Mus Luxury)</h3>
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <div className="p-3.5 rounded-xl bg-[#F8F6F0] border">
-                <span className="text-gray-500 block">Adresse &amp; Localisation Google Maps</span>
-                <strong className="text-sm text-[#063D2E]">FVX6+GCJ Mus luxury, Ouled Yaïch (Blida — 09)</strong>
+          <div className="space-y-6 text-xs">
+            <form onSubmit={handleSaveStoreSettings} className="bg-white p-6 rounded-2xl border border-[#D4AF62]/40 space-y-4">
+              <h3 className="text-base font-serif font-bold text-[#063D2E]">Coordonnées Officielles &amp; Paramètres Boutique (Ouled Yaïch — Blida 09)</h3>
+              <div className="grid grid-cols-1 md:grid-cols-4 gap-3">
+                <div>
+                  <label className="block font-bold mb-1">Téléphone Boutique</label>
+                  <input value={storePhoneInput} onChange={(e) => setStorePhoneInput(e.target.value)} className="w-full px-3 py-2 border rounded-xl font-mono" />
+                </div>
+                <div>
+                  <label className="block font-bold mb-1">WhatsApp Direct (E.164)</label>
+                  <input value={storeWhatsappInput} onChange={(e) => setStoreWhatsappInput(e.target.value)} className="w-full px-3 py-2 border rounded-xl font-mono" />
+                </div>
+                <div>
+                  <label className="block font-bold mb-1">Adresse &amp; Google Maps</label>
+                  <input value={storeLocationInput} onChange={(e) => setStoreLocationInput(e.target.value)} className="w-full px-3 py-2 border rounded-xl" />
+                </div>
+                <div>
+                  <label className="block font-bold mb-1">Seuil Livraison Gratuite (DA)</label>
+                  <input value={freeThresholdInput} onChange={(e) => setFreeThresholdInput(e.target.value)} className="w-full px-3 py-2 border rounded-xl font-bold" />
+                </div>
               </div>
-              <div className="p-3.5 rounded-xl bg-[#F8F6F0] border">
-                <span className="text-gray-500 block">WhatsApp &amp; Téléphone Boutique</span>
-                <strong className="text-sm font-mono text-[#063D2E]">0655534154 (+213655534154)</strong>
-              </div>
-              <div className="p-3.5 rounded-xl bg-[#F8F6F0] border">
-                <span className="text-gray-500 block">Instagram Officiel</span>
-                <strong className="text-sm text-[#063D2E]">https://www.instagram.com/musluxury09?rpxt=emk3bjBhdjV5d2Ux</strong>
-              </div>
-              <div className="p-3.5 rounded-xl bg-[#F8F6F0] border">
-                <span className="text-gray-500 block">TikTok Officiel</span>
-                <strong className="text-sm text-[#063D2E]">https://www.tiktok.com/@musluxury.092?_r=1&amp;_t=ZS-9B2mO0gpA7V</strong>
-              </div>
+              <button type="submit" className="px-5 py-2.5 rounded-xl bg-[#D4AF62] text-[#02291F] font-extrabold">
+                Enregistrer les paramètres de la boutique
+              </button>
+            </form>
+
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+              <form onSubmit={handleCreateCoupon} className="bg-white p-6 rounded-2xl border border-[#D4AF62]/40 space-y-3">
+                <h3 className="text-base font-serif font-bold text-[#063D2E]">+ Créer un Code Promo Client</h3>
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className="block font-bold mb-1">Code (ex: RAMADAN15)</label>
+                    <input value={couponCode} onChange={(e) => setCouponCode(e.target.value)} required placeholder="LUXE20" className="w-full px-3 py-2 border rounded-xl font-mono uppercase" />
+                  </div>
+                  <div>
+                    <label className="block font-bold mb-1">Type de remise</label>
+                    <select value={couponType} onChange={(e) => setCouponType(e.target.value as "percentage" | "fixed_dzd")} className="w-full px-3 py-2 border rounded-xl bg-white">
+                      <option value="percentage">Pourcentage (%)</option>
+                      <option value="fixed_dzd">Montant fixe (DA)</option>
+                    </select>
+                  </div>
+                  <div>
+                    <label className="block font-bold mb-1">Valeur</label>
+                    <input type="number" min={1} value={couponValue} onChange={(e) => setCouponValue(Number(e.target.value))} required className="w-full px-3 py-2 border rounded-xl font-bold" />
+                  </div>
+                  <div>
+                    <label className="block font-bold mb-1">Minimum commande (DA)</label>
+                    <input type="number" min={0} value={couponMinOrder} onChange={(e) => setCouponMinOrder(Number(e.target.value))} required className="w-full px-3 py-2 border rounded-xl" />
+                  </div>
+                </div>
+                <button type="submit" className="px-5 py-2 rounded-xl bg-[#063D2E] text-[#D4AF62] font-bold">
+                  Activer le Code Promo
+                </button>
+              </form>
+
+              <form onSubmit={handleSaveStaticPage} className="bg-white p-6 rounded-2xl border border-[#D4AF62]/40 space-y-3">
+                <h3 className="text-base font-serif font-bold text-[#063D2E]">Éditeur de Pages Statiques (/pages/*)</h3>
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className="block font-bold mb-1">Slug de la page</label>
+                    <select value={pageSlug} onChange={(e) => setPageSlug(e.target.value)} className="w-full px-3 py-2 border rounded-xl bg-white font-mono">
+                      <option value="about">about (À propos)</option>
+                      <option value="faq">faq (Questions fréquentes)</option>
+                      <option value="returns">returns (Livraison &amp; Retours)</option>
+                      <option value="terms">terms (Conditions générales)</option>
+                    </select>
+                  </div>
+                  <div>
+                    <label className="block font-bold mb-1">Titre (FR)</label>
+                    <input value={pageTitleFr} onChange={(e) => setPageTitleFr(e.target.value)} required className="w-full px-3 py-2 border rounded-xl" />
+                  </div>
+                </div>
+                <div>
+                  <label className="block font-bold mb-1">Contenu (FR)</label>
+                  <textarea rows={2} value={pageContentFr} onChange={(e) => setPageContentFr(e.target.value)} required className="w-full px-3 py-2 border rounded-xl" />
+                </div>
+                <button type="submit" className="px-5 py-2 rounded-xl bg-[#063D2E] text-[#D4AF62] font-bold">
+                  Publier la Page
+                </button>
+              </form>
             </div>
           </div>
         )}
 
-        {/* TAB 8: BACKUPS & ISOLATED RESTORE VERIFICATION */}
+        {/* TAB 8: BACKUPS, WHATSAPP RECOVERY STATUS & ISOLATED RESTORE VERIFICATION */}
         {activeTab === "backups" && (
-          <div className="bg-white p-6 rounded-2xl border border-[#D4AF62]/40 space-y-4 text-xs">
-            <div className="flex items-center justify-between">
+          <div className="space-y-6 text-xs">
+            <div className="bg-white p-6 rounded-2xl border border-[#D4AF62]/40 flex flex-wrap items-center justify-between gap-4">
               <div>
-                <h3 className="text-base font-serif font-bold text-[#063D2E]">Sauvegardes Chiffrées &amp; Test de Restauration Isolée</h3>
-                <p className="text-gray-500">Génère une archive SQL compressée (.sql.gz), vérifie son empreinte SHA-256 et teste sa restauration dans une base isolée.</p>
+                <h3 className="text-base font-serif font-bold text-[#063D2E]">Récupération WhatsApp Cloud API &amp; Code d'Urgence Hors-Ligne</h3>
+                <p className="text-gray-500">
+                  État WhatsApp Cloud API : <strong>{recoveryStatus?.whatsapp_cloud_api_configured ? "Configuré" : "Mode Secours Hors-Ligne"}</strong> • Numéro Boutique : <strong className="font-mono">0655534154 (+213655534154)</strong>
+                </p>
               </div>
               <button
                 type="button"
-                onClick={handleTriggerBackup}
-                className="px-4 py-2.5 rounded-xl bg-[#D4AF62] text-[#02291F] font-extrabold"
+                onClick={handleRotateEmergencyCode}
+                className="px-4 py-2.5 rounded-xl bg-[#063D2E] text-[#D4AF62] font-bold"
               >
-                + Créer une sauvegarde maintenant
+                ↻ Générer un nouveau Code de Secours Hors-Ligne
               </button>
             </div>
 
-            {restoreReport && (
-              <div className="p-4 rounded-xl bg-emerald-50 border border-emerald-300 space-y-1">
-                <p className="font-bold text-emerald-900">✓ Restauration isolée vérifiée avec succès ({restoreReport.filename})</p>
-                <p>
-                  Enregistrements restaurés et vérifiés : Produits: <strong>{restoreReport.restored_counts?.products}</strong> • Catégories: <strong>{restoreReport.restored_counts?.categories}</strong> • Commandes: <strong>{restoreReport.restored_counts?.orders}</strong> • Wilayas: <strong>{restoreReport.restored_counts?.delivery_zones}</strong>
-                </p>
-              </div>
-            )}
-
-            <div className="space-y-2">
-              {backups.map((b) => (
-                <div key={b.id} className="p-3 rounded-xl border flex flex-wrap items-center justify-between gap-3">
-                  <div>
-                    <div className="font-mono font-bold text-[#063D2E]">{b.filename} ({b.size_bytes} octets)</div>
-                    <div className="font-mono text-[11px] text-gray-500">SHA-256: {b.sha256_checksum}</div>
-                  </div>
-                  <button
-                    type="button"
-                    onClick={() => handleVerifyBackupRestore(b.id)}
-                    className="px-3 py-1.5 rounded-lg bg-[#063D2E] text-[#D4AF62] font-bold"
-                  >
-                    Tester la restauration isolée
-                  </button>
+            <div className="bg-white p-6 rounded-2xl border border-[#D4AF62]/40 space-y-4">
+              <div className="flex items-center justify-between">
+                <div>
+                  <h3 className="text-base font-serif font-bold text-[#063D2E]">Sauvegardes Chiffrées &amp; Test de Restauration Isolée</h3>
+                  <p className="text-gray-500">Génère une archive SQL compressée (.sql.gz), vérifie son empreinte SHA-256 et teste sa restauration dans une base isolée.</p>
                 </div>
-              ))}
+                <button
+                  type="button"
+                  onClick={handleTriggerBackup}
+                  className="px-4 py-2.5 rounded-xl bg-[#D4AF62] text-[#02291F] font-extrabold"
+                >
+                  + Créer une sauvegarde maintenant
+                </button>
+              </div>
+
+              {restoreReport && (
+                <div className="p-4 rounded-xl bg-emerald-50 border border-emerald-300 space-y-1">
+                  <p className="font-bold text-emerald-900">✓ Restauration isolée vérifiée avec succès ({restoreReport.filename})</p>
+                  <p>
+                    Enregistrements restaurés et vérifiés : Produits: <strong>{restoreReport.restored_counts?.products}</strong> • Catégories: <strong>{restoreReport.restored_counts?.categories}</strong> • Commandes: <strong>{restoreReport.restored_counts?.orders}</strong> • Wilayas: <strong>{restoreReport.restored_counts?.delivery_zones}</strong>
+                  </p>
+                </div>
+              )}
+
+              <div className="space-y-2">
+                {backups.map((b) => (
+                  <div key={b.id} className="p-3 rounded-xl border flex flex-wrap items-center justify-between gap-3">
+                    <div>
+                      <div className="font-mono font-bold text-[#063D2E]">{b.filename} ({b.size_bytes} octets)</div>
+                      <div className="font-mono text-[11px] text-gray-500">SHA-256: {b.sha256_checksum}</div>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => handleVerifyBackupRestore(b.id)}
+                      className="px-3 py-1.5 rounded-lg bg-[#063D2E] text-[#D4AF62] font-bold"
+                    >
+                      Tester la restauration isolée
+                    </button>
+                  </div>
+                ))}
+              </div>
             </div>
           </div>
         )}
