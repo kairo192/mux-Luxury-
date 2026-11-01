@@ -466,7 +466,45 @@ class TestLuxeEcommercePlatform(unittest.TestCase):
         self.assertIn("16", codes)
         self.assertIn("58", codes)
 
+    # 13. Automatic Desktop CMS Reconnection & Delta Sync After Windows PC Turns Back On
+    def test_13_automatic_cms_reconnection_delta_sync_after_pc_off(self):
+        headers = self.get_admin_headers()
+        # Step 1: Desktop CMS checks current sync state before PC is turned off
+        r_sync_before = self.client.get("/api/v1/admin/sync/delta?since_order_id=0&since_movement_id=0", headers=headers)
+        self.assertEqual(r_sync_before.status_code, 200)
+        last_seen_order_id = r_sync_before.json()["latest_order_id"]
+        last_seen_mov_id = r_sync_before.json()["latest_movement_id"]
+
+        # Step 2: Owner's Windows PC is turned OFF. Meanwhile, a customer on the public website places an order!
+        prod = self.client.get("/api/v1/products/baskets-elegantes-urbaines").json()
+        vid = prod["variants"][0]["id"] # Size 38, stock 4
+        r_guest_ord = self.client.post(
+            "/api/v1/orders",
+            json={
+                "full_name": "Yacine Brahimi",
+                "phone": "0552334455",
+                "wilaya_code": "25",
+                "commune": "Constantine",
+                "delivery_address": "Cité Bellevue, Constantine",
+                "delivery_method": "home",
+                "items": [{"variant_id": vid, "quantity": 1}]
+            }
+        )
+        self.assertEqual(r_guest_ord.status_code, 201, r_guest_ord.text)
+
+        # Step 3: Owner turns Windows PC back ON -> Desktop CMS automatically calls /api/v1/admin/sync/delta
+        r_sync_after = self.client.get(
+            f"/api/v1/admin/sync/delta?since_order_id={last_seen_order_id}&since_movement_id={last_seen_mov_id}",
+            headers=headers
+        )
+        self.assertEqual(r_sync_after.status_code, 200)
+        delta = r_sync_after.json()
+        self.assertEqual(delta["missed_orders_count"], 1)
+        self.assertEqual(delta["new_orders"][0]["customer_name"], "Yacine Brahimi")
+        self.assertGreaterEqual(len(delta["new_movements"]), 1)
+
 if __name__ == "__main__":
     unittest.main()
+
 
 

@@ -1355,3 +1355,47 @@ def create_coupon(
         log_audit(conn, int(admin["sub"]), "create_coupon", "coupon", str(cid), {"code": payload.code.upper()})
         cur.execute("SELECT * FROM coupons WHERE id = ?", (cid,))
         return dict(cur.fetchone())
+
+
+@app.get("/api/v1/admin/sync/delta")
+def admin_delta_sync(
+    since_order_id: int = Query(0, ge=0, description="Last order ID seen by the Desktop CMS before PC was turned off"),
+    since_movement_id: int = Query(0, ge=0, description="Last inventory movement ID seen by the Desktop CMS"),
+    admin: dict = Depends(require_permission("dashboard:read"))
+):
+    """
+    Automatic Reconnection & Delta Synchronization Endpoint for the Tauri 2 Desktop CMS.
+    When the owner turns their Windows PC back on (or reconnects to the internet),
+    the Desktop CMS calls this endpoint to immediately fetch all new guest orders,
+    updated stock quantities, and inventory movements recorded by the 24/7 VPS while the PC was off.
+    """
+    with db_session() as conn:
+        cur = conn.cursor()
+        cur.execute("SELECT * FROM orders WHERE id > ? ORDER BY id DESC", (since_order_id,))
+        new_orders = []
+        for r in cur.fetchall():
+            od = dict(r)
+            cur.execute("SELECT * FROM order_items WHERE order_id = ?", (od["id"],))
+            od["items"] = [dict(it) for it in cur.fetchall()]
+            new_orders.append(od)
+
+        cur.execute("SELECT * FROM inventory_movements WHERE id > ? ORDER BY id DESC", (since_movement_id,))
+        new_movements = [dict(m) for m in cur.fetchall()]
+
+        cur.execute("SELECT id, sku, stock_qty, price_override_dzd FROM product_variants ORDER BY id ASC")
+        variant_stocks = [dict(v) for v in cur.fetchall()]
+
+        cur.execute("SELECT COALESCE(MAX(id), 0) AS max_oid FROM orders")
+        latest_order_id = cur.fetchone()["max_oid"]
+        cur.execute("SELECT COALESCE(MAX(id), 0) AS max_mid FROM inventory_movements")
+        latest_movement_id = cur.fetchone()["max_mid"]
+
+        return {
+            "server_timestamp": int(time.time()),
+            "latest_order_id": latest_order_id,
+            "latest_movement_id": latest_movement_id,
+            "missed_orders_count": len(new_orders),
+            "new_orders": new_orders,
+            "new_movements": new_movements,
+            "current_variant_stocks": variant_stocks,
+        }
