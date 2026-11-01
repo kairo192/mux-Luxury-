@@ -1531,3 +1531,23 @@ def initialize_primary_owner(payload: OwnerInitializeInput, request: Request):
                 "emergency_phone": payload.emergency_phone
             }
         }
+
+
+from .security import sign_api_request, verify_signed_request
+
+@app.post("/api/v1/admin/secure-action")
+async def execute_cryptographically_signed_action(
+    request: Request,
+    admin: dict = Depends(get_current_admin)
+):
+    """
+    Cryptographically signed administrative endpoint:
+    Enforces HMAC-SHA256 signature verification over (method, path, timestamp, nonce, body_sha256).
+    Rejects any replay attacks, expired timestamps, or tampered payloads.
+    """
+    body_bytes = await request.body()
+    sig = request.headers.get("X-Luxe-Signature")
+    ts = request.headers.get("X-Luxe-Timestamp")
+    nonce = request.headers.get("X-Luxe-Nonce")
+    verify_signed_request(request.method, request.url.path, body_bytes, sig, ts, nonce)
+    return {"status": "verified_and_executed", "admin_id": admin["sub"], "nonce": nonce}

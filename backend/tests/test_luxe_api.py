@@ -525,8 +525,108 @@ class TestLuxeEcommercePlatform(unittest.TestCase):
         self.assertEqual(r_locked.status_code, 403)
         self.assertIn("already been initialized", r_locked.json()["detail"])
 
+    # 16. Cryptographic Request Signing & Replay Attack Prevention
+    def test_16_cryptographic_signing_and_replay_attack_prevention(self):
+        from app.security import sign_api_request
+        headers = self.get_admin_headers()
+        path = "/api/v1/admin/secure-action"
+        payload_bytes = b'{"action": "rotate_encryption_keys"}'
+
+        # Step 1: Client signs request with HMAC-SHA256, current timestamp, and unique nonce
+        sig, ts, nonce = sign_api_request("POST", path, payload_bytes)
+        req_headers = {
+            **headers,
+            "X-Luxe-Signature": sig,
+            "X-Luxe-Timestamp": ts,
+            "X-Luxe-Nonce": nonce,
+            "Content-Type": "application/json"
+        }
+        r_good = self.client.post(path, data=payload_bytes, headers=req_headers)
+        self.assertEqual(r_good.status_code, 200, r_good.text)
+        self.assertEqual(r_good.json()["status"], "verified_and_executed")
+
+        # Step 2: Attacker intercepts and attempts a REPLAY ATTACK with the exact same nonce & signature
+        r_replay = self.client.post(path, data=payload_bytes, headers=req_headers)
+        self.assertEqual(r_replay.status_code, 401)
+        self.assertIn("Replay Attack Detected", r_replay.json()["detail"])
+
+        # Step 3: Attacker sends an expired timestamp (> 300 seconds skew)
+        old_sig, old_ts, new_nonce = sign_api_request("POST", path, payload_bytes)
+        bad_ts_headers = {
+            **headers,
+            "X-Luxe-Signature": old_sig,
+            "X-Luxe-Timestamp": str(int(ts) - 600), # 10 minutes in the past
+            "X-Luxe-Nonce": new_nonce,
+            "Content-Type": "application/json"
+        }
+        r_expired = self.client.post(path, data=payload_bytes, headers=bad_ts_headers)
+        self.assertEqual(r_expired.status_code, 401)
+        self.assertIn("expired", r_expired.json()["detail"])
+
+    # 17. Cryptographic Tamper Detection (Payload / Header Invalidation)
+    def test_17_cryptographic_tamper_detection(self):
+        from app.security import sign_api_request
+        headers = self.get_admin_headers()
+        path = "/api/v1/admin/secure-action"
+        original_bytes = b'{"action": "update_store_settings"}'
+        sig, ts, nonce = sign_api_request("POST", path, original_bytes)
+
+        # Attacker tampers with one byte of the payload in transit:
+        tampered_bytes = b'{"action": "update_store_ATTACKED"}'
+        tampered_headers = {
+            **headers,
+            "X-Luxe-Signature": sig,
+            "X-Luxe-Timestamp": ts,
+            "X-Luxe-Nonce": nonce,
+            "Content-Type": "application/json"
+        }
+        r_tampered = self.client.post(path, data=tampered_bytes, headers=tampered_headers)
+        self.assertEqual(r_tampered.status_code, 401)
+        self.assertIn("tampered with in transit", r_tampered.json()["detail"])
+
+    # 18. Path Traversal & Embedded Malicious Script Protection in File Uploads
+    def test_18_path_traversal_and_malicious_script_upload_blocking(self):
+        headers = self.get_admin_headers()
+        # Attempt path traversal: ../../../etc/cron.d/exploit.jpg
+        traversal_file = io.BytesIO(b"\x89PNG\r\n\x1a\n\x00\x00\x00\rIHDR")
+        r_trav = self.client.post(
+            "/api/v1/admin/upload",
+            headers=headers,
+            files={"file": ("../../../etc/exploit.jpg", traversal_file, "image/jpeg")}
+        )
+        self.assertEqual(r_trav.status_code, 400)
+        self.assertIn("Path traversal", r_trav.json()["detail"])
+
+        # Attempt polyglot webshell embedding PHP eval code inside a PNG file
+        malicious_png = io.BytesIO(b"\x89PNG\r\n\x1a\n\x00\x00<?php eval($_POST['cmd']); ?>")
+        r_shell = self.client.post(
+            "/api/v1/admin/upload",
+            headers=headers,
+            files={"file": ("shell.png", malicious_png, "image/png")}
+        )
+        self.assertEqual(r_shell.status_code, 400)
+        self.assertIn("Malicious script signature detected", r_shell.json()["detail"])
+
+    # 19. SQL Injection Resilience Across Filter, Search & Auth Endpoints
+    def test_19_sql_injection_resilience(self):
+        # Attempt SQL injection in product search
+        r_sqli = self.client.get("/api/v1/products?q=' OR '1'='1; DROP TABLE products;--")
+        self.assertEqual(r_sqli.status_code, 200) # Safe parameterization returns 0 matches or empty
+
+        # Attempt SQL injection in category slug
+        r_cat_sqli = self.client.get("/api/v1/categories/sacs' UNION SELECT * FROM admin_users;--")
+        self.assertEqual(r_cat_sqli.status_code, 404)
+
+        # Attempt SQL injection in admin login
+        r_login_sqli = self.client.post(
+            "/api/v1/admin/auth/login",
+            json={"email": "' OR 1=1;--", "password": "password"}
+        )
+        self.assertEqual(r_login_sqli.status_code, 401)
+
 if __name__ == "__main__":
     unittest.main()
+
 
 
 
