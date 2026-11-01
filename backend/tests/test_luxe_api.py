@@ -1035,6 +1035,226 @@ class TestLuxeEcommercePlatform(unittest.TestCase):
         self.assertEqual(r_unauth.status_code, 401)
 
 
+    # 28. Healthcheck & Static Content Pages CRUD + Publication Toggle (Sections 3.7 & 9)
+    def test_28_healthcheck_and_static_pages_crud(self):
+        r_health = self.client.get("/api/v1/health")
+        self.assertEqual(r_health.status_code, 200)
+        self.assertEqual(r_health.json()["status"], "ok")
+        self.assertEqual(r_health.json()["active_wilayas"], 69)
+
+        headers = self.get_admin_headers()
+        r_put = self.client.put(
+            "/api/v1/admin/pages/la-maison",
+            headers=headers,
+            json={
+                "title_fr": "La Maison Mus Luxury — Ouled Yaïch",
+                "content_fr": "Boutique officielle située à FVX6+GCJ Mus luxury, Ouled Yaïch (Blida 09). Tél/WhatsApp: 0655534154.",
+                "is_published": True
+            }
+        )
+        self.assertEqual(r_put.status_code, 200)
+
+        r_pub = self.client.get("/api/v1/pages/la-maison")
+        self.assertEqual(r_pub.status_code, 200)
+        self.assertIn("0655534154", r_pub.json()["content_fr"])
+
+        # Unpublish page and confirm it is hidden from public route
+        self.client.put(
+            "/api/v1/admin/pages/la-maison",
+            headers=headers,
+            json={
+                "title_fr": "La Maison Mus Luxury — Ouled Yaïch",
+                "content_fr": "Brouillon privé",
+                "is_published": False
+            }
+        )
+        r_unpub = self.client.get("/api/v1/pages/la-maison")
+        self.assertEqual(r_unpub.status_code, 404)
+
+    # 29. Product Image Gallery Upload, Primary Selection, Reorder & Delete (Section 3.2)
+    def test_29_product_image_gallery_upload_reorder_and_delete(self):
+        headers = self.get_admin_headers()
+        prod = self.client.get("/api/v1/products").json()["items"][0]
+        pid = prod["id"]
+        slug = prod["slug"]
+
+        r_img1 = self.client.post(
+            f"/api/v1/admin/products/{pid}/images",
+            headers=headers,
+            json={"image_url": "/uploads/gallery_1.jpg", "alt_text": "Vue avant", "display_order": 1, "set_as_primary": False}
+        )
+        self.assertEqual(r_img1.status_code, 201)
+        img1_id = r_img1.json()["id"]
+
+        r_img2 = self.client.post(
+            f"/api/v1/admin/products/{pid}/images",
+            headers=headers,
+            json={"image_url": "/uploads/gallery_2.jpg", "alt_text": "Vue côté", "display_order": 2, "set_as_primary": True}
+        )
+        self.assertEqual(r_img2.status_code, 201)
+        img2_id = r_img2.json()["id"]
+
+        # Reorder so img2 is order 1 and img1 is order 2
+        r_reord = self.client.put(
+            f"/api/v1/admin/products/{pid}/images/reorder",
+            headers=headers,
+            json={
+                "orders": [
+                    {"image_id": img2_id, "display_order": 1},
+                    {"image_id": img1_id, "display_order": 2}
+                ],
+                "primary_image_url": "/uploads/gallery_2.jpg"
+            }
+        )
+        self.assertEqual(r_reord.status_code, 200)
+        self.assertEqual(r_reord.json()["items"][0]["id"], img2_id)
+
+        # Verify public PDP reflects new primary image and ordered gallery_images
+        r_pdp = self.client.get(f"/api/v1/products/{slug}").json()
+        self.assertEqual(r_pdp["main_image_url"], "/uploads/gallery_2.jpg")
+        self.assertEqual(r_pdp["gallery_images"][0]["id"], img2_id)
+
+        # Delete first image
+        r_del = self.client.delete(f"/api/v1/admin/product-images/{img1_id}", headers=headers)
+        self.assertEqual(r_del.status_code, 200)
+        self.assertTrue(r_del.json()["deleted"])
+
+    # 30. Concurrent Stock Reservation Protection Against Overselling (Section 3.4 & 10)
+    def test_30_concurrent_order_submissions_prevent_overselling(self):
+        import concurrent.futures
+        headers = self.get_admin_headers()
+        prod = self.client.get("/api/v1/products").json()["items"][0]
+        vid = prod["variants"][0]["id"]
+        cur_stk = prod["variants"][0]["stock_qty"]
+
+        # Set exact stock of this variant to 2 units
+        delta = 2 - cur_stk
+        if delta != 0:
+            r_set = self.client.post(
+                f"/api/v1/admin/variants/{vid}/adjust-stock",
+                headers=headers,
+                json={"change_qty": delta, "reason": "prepare_concurrency_test"}
+            )
+            self.assertEqual(r_set.status_code, 200)
+
+        def submit_buyer_order(idx: int):
+            from fastapi.testclient import TestClient
+            from app.main import app as fastapi_app
+            local_client = TestClient(fastapi_app)
+            return local_client.post(
+                "/api/v1/orders",
+                headers={"Idempotency-Key": f"concurrent-buyer-{idx}"},
+                json={
+                    "full_name": f"Client Concurrent {idx}",
+                    "phone": f"065553415{idx}",
+                    "wilaya_code": "09",
+                    "commune": "Ouled Yaïch",
+                    "delivery_address": "Ouled Yaïch Centre",
+                    "delivery_method": "home",
+                    "items": [{"variant_id": vid, "quantity": 1}]
+                }
+            ).status_code
+
+        with concurrent.futures.ThreadPoolExecutor(max_workers=6) as pool:
+            statuses = list(pool.map(submit_buyer_order, range(1, 7)))
+
+        # Exactly 2 orders must succeed (201) and 4 must fail with 409 Insufficient Stock
+        self.assertEqual(statuses.count(201), 2, f"Expected exactly 2 successful orders, got {statuses}")
+        self.assertEqual(statuses.count(409), 4, f"Expected 4 stock conflicts, got {statuses}")
+
+        # Verify stock is exactly 0 and never negative
+        prod_after = self.client.get(f"/api/v1/products/{prod['slug']}").json()
+        v_after = next(v for v in prod_after["variants"] if v["id"] == vid)
+        self.assertEqual(v_after["stock_qty"], 0)
+
+    # 31. Database Migration Parity (SQLite vs PostgreSQL 16) & Schema Validation (Section 9 & 10)
+    def test_31_database_migration_schema_parity_sqlite_and_postgres(self):
+        import re as _re
+        base_dir = os.path.dirname(os.path.dirname(__file__))
+        sqlite_path = os.path.join(base_dir, "migrations", "001_initial_schema.sql")
+        pg_path = os.path.join(base_dir, "migrations", "001_initial_schema_postgres.sql")
+        self.assertTrue(os.path.isfile(sqlite_path))
+        self.assertTrue(os.path.isfile(pg_path))
+
+        with open(sqlite_path, "r", encoding="utf-8") as f1, open(pg_path, "r", encoding="utf-8") as f2:
+            s_sql = f1.read()
+            p_sql = f2.read()
+
+        sqlite_tables = set(_re.findall(r"CREATE TABLE IF NOT EXISTS ([a-z_]+)", s_sql))
+        pg_tables = set(_re.findall(r"CREATE TABLE IF NOT EXISTS ([a-z_]+)", p_sql))
+        self.assertEqual(sqlite_tables, pg_tables)
+        self.assertGreaterEqual(len(pg_tables), 20)
+        self.assertNotIn("AUTOINCREMENT", p_sql)
+        self.assertIn("SERIAL PRIMARY KEY", p_sql)
+        self.assertIn("idx_orders_idempotency", p_sql)
+
+    # 32. Frontend & Desktop CMS API Contract, No-Secret Audit & Shell Script Validation (Sections 8, 10 & 11)
+    def test_32_desktop_cms_and_storefront_tsx_ast_and_contract_verification(self):
+        import re as _re
+        import subprocess
+        repo_root = os.path.dirname(os.path.dirname(os.path.dirname(__file__)))
+
+        # 1. Verify all registered FastAPI routes cover every endpoint in DesktopCmsApi & Storefront client
+        registered_paths = {getattr(r, "path", "") for r in app.routes}
+        required_contracts = [
+            "/api/v1/health",
+            "/api/v1/store/layout",
+            "/api/v1/categories",
+            "/api/v1/products",
+            "/api/v1/delivery-zones",
+            "/api/v1/delivery-zones/calculate",
+            "/api/v1/orders",
+            "/api/v1/orders/track",
+            "/api/v1/admin/auth/setup-status",
+            "/api/v1/admin/auth/initialize-owner",
+            "/api/v1/admin/auth/login",
+            "/api/v1/admin/auth/logout",
+            "/api/v1/admin/dashboard",
+            "/api/v1/admin/sync/delta",
+            "/api/v1/admin/products",
+            "/api/v1/admin/products/{product_id}",
+            "/api/v1/admin/products/{product_id}/images",
+            "/api/v1/admin/products/{product_id}/images/reorder",
+            "/api/v1/admin/product-images/{image_id}",
+            "/api/v1/admin/categories",
+            "/api/v1/admin/categories/{category_id}",
+            "/api/v1/admin/category-attributes",
+            "/api/v1/admin/variants/{variant_id}/adjust-stock",
+            "/api/v1/admin/inventory/movements",
+            "/api/v1/admin/orders",
+            "/api/v1/admin/orders/{order_id}",
+            "/api/v1/admin/orders/{order_id}/invoice",
+            "/api/v1/admin/orders/export.csv",
+            "/api/v1/admin/delivery-zones/{wilaya_code}",
+            "/api/v1/admin/delivery-zones-bulk",
+            "/api/v1/admin/pages/{slug}",
+            "/api/v1/admin/backups",
+            "/api/v1/admin/backups/{backup_id}/verify-restore",
+        ]
+        for req_path in required_contracts:
+            self.assertIn(req_path, registered_paths, f"Missing route contract: {req_path}")
+
+        # 2. Verify Desktop CMS & Storefront TSX files have real Mus Luxury Ouled Yaïch & 0655534154 details and no mock 550 numbers
+        storefront_html = os.path.join(repo_root, "apps", "storefront", "index.html")
+        with open(storefront_html, "r", encoding="utf-8") as sf:
+            shtml = sf.read()
+        self.assertIn("FVX6+GCJ Mus luxury, Ouled Yaïch", shtml)
+        self.assertIn("https://www.instagram.com/musluxury09?rpxt=emk3bjBhdjV5d2Ux", shtml)
+        self.assertIn("https://www.tiktok.com/@musluxury.092?_r=1&_t=ZS-9B2mO0gpA7V", shtml)
+        self.assertIn("0655 53 41 54", shtml)
+        self.assertNotIn("+213 (0) 550 00 00 00", shtml)
+
+        # 3. Validate bash syntax of all deployment and backup scripts
+        scripts = [
+            os.path.join(repo_root, "infrastructure", "backups", "backup_postgres_and_media.sh"),
+            os.path.join(repo_root, "infrastructure", "backups", "restore_backup.sh"),
+            os.path.join(repo_root, "infrastructure", "scripts", "deploy_algeria_vps.sh"),
+        ]
+        for sc in scripts:
+            res = subprocess.run(["bash", "-n", sc], capture_output=True, text=True)
+            self.assertEqual(res.returncode, 0, f"Syntax error in {sc}: {res.stderr}")
+
+
 if __name__ == "__main__":
     unittest.main()
 

@@ -52,4 +52,11 @@ During the line-by-line inspection of all backend routes, database operations, d
 
 ## 4. Verification Status Post-Remediation
 
-All 8 audit findings (`AUD-01` through `AUD-08`) have been remediated directly in the repository and verified via automated integration and end-to-end tests in `backend/tests/test_luxe_api.py` (see `docs/TEST_REPORT.md` and `docs/API_INVENTORY.md`).
+| **AUD-09** | **HIGH** | `backend/migrations/001_initial_schema.sql`, `docker-compose.yml` | `docker-compose.yml` mounted `001_initial_schema.sql` into PostgreSQL 16 `/docker-entrypoint-initdb.d/`, which used SQLite-specific `INTEGER PRIMARY KEY AUTOINCREMENT` syntax and lacked high-concurrency composite indexes. | Created `backend/migrations/001_initial_schema_postgres.sql` with native PostgreSQL 16 `SERIAL PRIMARY KEY` and composite indexes, wired it in `docker-compose.yml`, and verified schema parity in `test_31`. |
+| **AUD-10** | **MEDIUM** | `backend/app/main.py`, `apps/desktop-cms/src/api/adminClient.ts` | Product image gallery management (`add`, `reorder`, `set_as_primary`, `delete`), static content pages CRUD (`GET/PUT /api/v1/pages/{slug}`), and container healthcheck (`GET /api/v1/health`) were not yet exposed as dedicated endpoints. | Implemented `GET /api/v1/health`, `POST/PUT/DELETE` product gallery routes, and `GET/PUT` static content page routes, verified in `test_28` and `test_29`. |
+
+---
+
+## 4. Verification Status Post-Remediation
+
+All 10 audit findings (`AUD-01` through `AUD-10`) have been remediated directly in the repository and verified via automated integration and end-to-end tests in `backend/tests/test_luxe_api.py` (see `docs/TEST_REPORT.md` and `docs/API_INVENTORY.md`).

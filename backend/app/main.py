@@ -294,6 +294,11 @@ def serialize_product(conn, row: dict, include_private: bool = False) -> dict:
         total_stock += vd["stock_qty"]
         variants.append(vd)
 
+    cur.execute(
+        "SELECT id, product_id, variant_id, image_url, alt_text, display_order FROM product_images WHERE product_id = ? ORDER BY display_order ASC, id ASC",
+        (p["id"],)
+    )
+    p["gallery_images"] = [dict(img) for img in cur.fetchall()]
     p["variants"] = variants
     p["total_stock"] = total_stock
     p["in_stock"] = total_stock > 0
@@ -2296,3 +2301,166 @@ def admin_get_order_invoice(
             "payment_notice": "Paiement en espèces à la livraison (Cash on Delivery)"
         }
         return od
+
+
+# ============================================================================
+# HEALTHCHECK, PRODUCT IMAGE GALLERY MANAGEMENT & STATIC CONTENT PAGES CRUD
+# (SECTIONS 3.2, 3.7, 9)
+# ============================================================================
+
+class ProductImageAddInput(BaseModel):
+    image_url: str = Field(..., min_length=3, max_length=500)
+    alt_text: Optional[str] = ""
+    variant_id: Optional[int] = None
+    display_order: int = 1
+    set_as_primary: bool = False
+
+class ProductImageReorderItem(BaseModel):
+    image_id: int
+    display_order: int
+
+class ProductImageReorderInput(BaseModel):
+    orders: List[ProductImageReorderItem]
+    primary_image_url: Optional[str] = None
+
+class StaticPageUpsertInput(BaseModel):
+    title_fr: str = Field(..., min_length=2, max_length=200)
+    title_ar: Optional[str] = ""
+    title_en: Optional[str] = ""
+    content_fr: str = Field(..., min_length=5)
+    content_ar: Optional[str] = ""
+    content_en: Optional[str] = ""
+    is_published: bool = True
+
+@app.get("/api/v1/health")
+def api_healthcheck():
+    try:
+        with db_session() as conn:
+            cur = conn.cursor()
+            cur.execute("SELECT COUNT(*) AS cnt FROM delivery_zones WHERE is_active = 1")
+            w_cnt = cur.fetchone()["cnt"]
+            cur.execute("SELECT COUNT(*) AS cnt FROM categories WHERE is_active = 1 AND deleted_at IS NULL")
+            c_cnt = cur.fetchone()["cnt"]
+        return {
+            "status": "ok",
+            "database": "connected",
+            "active_wilayas": w_cnt,
+            "active_categories": c_cnt,
+            "timestamp": int(time.time()),
+        }
+    except Exception:
+        raise HTTPException(status_code=503, detail="Database connectivity check failed")
+
+@app.post("/api/v1/admin/products/{product_id}/images", status_code=201)
+def admin_add_product_image(
+    product_id: int,
+    payload: ProductImageAddInput,
+    admin: dict = Depends(require_permission("products:write"))
+):
+    with db_session(commit=True) as conn:
+        cur = conn.cursor()
+        cur.execute("SELECT * FROM products WHERE id = ?", (product_id,))
+        if not cur.fetchone():
+            raise HTTPException(status_code=404, detail="Product not found")
+        cur.execute(
+            """INSERT INTO product_images (product_id, variant_id, image_url, alt_text, display_order)
+               VALUES (?, ?, ?, ?, ?)""",
+            (product_id, payload.variant_id, payload.image_url, payload.alt_text, payload.display_order)
+        )
+        img_id = cur.lastrowid
+        if payload.set_as_primary:
+            cur.execute(
+                "UPDATE products SET main_image_url = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?",
+                (payload.image_url, product_id)
+            )
+        log_audit(conn, int(admin["sub"]), "add_product_image", "product_image", str(img_id), {"product_id": product_id, "primary": payload.set_as_primary})
+        cur.execute("SELECT * FROM product_images WHERE id = ?", (img_id,))
+        return dict(cur.fetchone())
+
+@app.put("/api/v1/admin/products/{product_id}/images/reorder")
+def admin_reorder_product_images(
+    product_id: int,
+    payload: ProductImageReorderInput,
+    admin: dict = Depends(require_permission("products:write"))
+):
+    with db_session(commit=True) as conn:
+        cur = conn.cursor()
+        cur.execute("SELECT * FROM products WHERE id = ?", (product_id,))
+        if not cur.fetchone():
+            raise HTTPException(status_code=404, detail="Product not found")
+        for item in payload.orders:
+            cur.execute(
+                "UPDATE product_images SET display_order = ? WHERE id = ? AND product_id = ?",
+                (item.display_order, item.image_id, product_id)
+            )
+        if payload.primary_image_url:
+            cur.execute(
+                "UPDATE products SET main_image_url = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?",
+                (payload.primary_image_url, product_id)
+            )
+        log_audit(conn, int(admin["sub"]), "reorder_product_images", "product", str(product_id), {"count": len(payload.orders)})
+        cur.execute("SELECT * FROM product_images WHERE product_id = ? ORDER BY display_order ASC, id ASC", (product_id,))
+        return {"items": [dict(r) for r in cur.fetchall()]}
+
+@app.delete("/api/v1/admin/product-images/{image_id}")
+def admin_delete_product_image(
+    image_id: int,
+    admin: dict = Depends(require_permission("products:write"))
+):
+    with db_session(commit=True) as conn:
+        cur = conn.cursor()
+        cur.execute("SELECT * FROM product_images WHERE id = ?", (image_id,))
+        img = cur.fetchone()
+        if not img:
+            raise HTTPException(status_code=404, detail="Product image not found")
+        cur.execute("DELETE FROM product_images WHERE id = ?", (image_id,))
+        log_audit(conn, int(admin["sub"]), "delete_product_image", "product_image", str(image_id), {"product_id": img["product_id"]})
+        return {"deleted": True, "image_id": image_id}
+
+@app.get("/api/v1/pages")
+def list_public_static_pages():
+    with db_session() as conn:
+        cur = conn.cursor()
+        cur.execute("SELECT * FROM static_pages WHERE is_published = 1 ORDER BY id ASC")
+        return {"items": [dict(r) for r in cur.fetchall()]}
+
+@app.get("/api/v1/pages/{slug}")
+def get_public_static_page(slug: str):
+    with db_session() as conn:
+        cur = conn.cursor()
+        cur.execute("SELECT * FROM static_pages WHERE slug = ? AND is_published = 1", (slug,))
+        row = cur.fetchone()
+        if not row:
+            raise HTTPException(status_code=404, detail="Page not found")
+        return dict(row)
+
+@app.put("/api/v1/admin/pages/{slug}")
+def admin_upsert_static_page(
+    slug: str,
+    payload: StaticPageUpsertInput,
+    admin: dict = Depends(require_permission("content:write"))
+):
+    clean_slug = re.sub(r"[^a-z0-9-]", "-", slug.lower()).strip("-")
+    with db_session(commit=True) as conn:
+        cur = conn.cursor()
+        cur.execute(
+            """INSERT INTO static_pages (slug, title_fr, title_ar, title_en, content_fr, content_ar, content_en, is_published, updated_at)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+               ON CONFLICT(slug) DO UPDATE SET
+                   title_fr = excluded.title_fr,
+                   title_ar = excluded.title_ar,
+                   title_en = excluded.title_en,
+                   content_fr = excluded.content_fr,
+                   content_ar = excluded.content_ar,
+                   content_en = excluded.content_en,
+                   is_published = excluded.is_published,
+                   updated_at = CURRENT_TIMESTAMP""",
+            (
+                clean_slug, payload.title_fr, payload.title_ar, payload.title_en,
+                payload.content_fr, payload.content_ar, payload.content_en,
+                1 if payload.is_published else 0
+            )
+        )
+        log_audit(conn, int(admin["sub"]), "upsert_static_page", "static_page", clean_slug, {"is_published": payload.is_published})
+        cur.execute("SELECT * FROM static_pages WHERE slug = ?", (clean_slug,))
+        return dict(cur.fetchone())

@@ -229,6 +229,18 @@ export const DesktopCmsApi = {
       body: JSON.stringify({ settings }),
     }),
 
+  // Product Image Gallery Management & Static Pages
+  checkHealth: () => adminFetch("/health"),
+  addProductImage: (productId: number, payload: unknown) =>
+    adminFetch(`/admin/products/${productId}/images`, { method: "POST", body: JSON.stringify(payload) }),
+  reorderProductImages: (productId: number, payload: unknown) =>
+    adminFetch(`/admin/products/${productId}/images/reorder`, { method: "PUT", body: JSON.stringify(payload) }),
+  deleteProductImage: (imageId: number) =>
+    adminFetch(`/admin/product-images/${imageId}`, { method: "DELETE" }),
+  listStaticPages: () => adminFetch("/pages"),
+  upsertStaticPage: (slug: string, payload: unknown) =>
+    adminFetch(`/admin/pages/${slug}`, { method: "PUT", body: JSON.stringify(payload) }),
+
   // Backups & Isolated Restoration Verification
   listBackups: () => adminFetch("/admin/backups"),
   triggerBackup: () => adminFetch("/admin/backups", { method: "POST" }),

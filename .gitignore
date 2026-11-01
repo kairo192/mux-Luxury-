@@ -25,3 +25,7 @@ storage/uploads/*
 storage/backups/*
 !storage/uploads/.gitkeep
 !storage/backups/.gitkeep
+
+backend/backups/*.sql.gz
+!backend/backups/.gitkeep
+apps/desktop-cms/src-tauri/target/

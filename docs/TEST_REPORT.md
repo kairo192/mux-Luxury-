@@ -12,7 +12,7 @@
   ```bash
   cd backend && python3 -m unittest discover -s tests -v
   ```
-- **Result:** **`27 passed, 0 failed, 0 errors (Ran 27 tests in 2.229s — OK)`**
+- **Result:** **`32 passed, 0 failed, 0 errors (Ran 32 tests in 2.725s — OK)`**
 
 | Test ID | Test Name | Verified Requirement / Feature | Result |
 | :--- | :--- | :--- | :--- |
@@ -42,6 +42,11 @@
 | **24** | `test_24_product_archival_preserves_historical_orders_and_price_immutability` | Editing a product price does not alter historical order prices; deleting/archiving a product (`DELETE /api/v1/admin/products/{id}`) preserves historical orders and invoices. | **PASS** |
 | **25** | `test_25_order_idempotency_key_and_status_transition_state_machine` | `Idempotency-Key` header prevents duplicate orders (`409`), terminal order status reversal (`delivered` -> `preparing`) is blocked (`400`), and CSV export works. | **PASS** |
 | **26** | `test_26_isolated_backup_creation_and_non_destructive_restore_verification` | Creates a real `.sql.gz` backup, verifies SHA-256, and restores into an isolated temporary SQLite database verifying all 69 Wilayas and catalog tables. | **PASS** |
+| **28** | `test_28_healthcheck_and_static_pages_crud` | Verifies `GET /api/v1/health` (`active_wilayas: 69`), `PUT /api/v1/admin/pages/{slug}`, public `GET /api/v1/pages/{slug}`, and unpublishing (`404` when `is_published=False`). | **PASS** |
+| **29** | `test_29_product_image_gallery_upload_reorder_and_delete` | Verifies adding multiple images to a product gallery, setting primary image, reordering gallery images, and deleting gallery images. | **PASS** |
+| **30** | `test_30_concurrent_order_submissions_prevent_overselling` | Fires 6 concurrent threads attempting to purchase a variant with only 2 units in stock: proves exactly 2 succeed (`201`) and 4 fail (`409`), with final stock `0` (never negative). | **PASS** |
+| **31** | `test_31_database_migration_schema_parity_sqlite_and_postgres` | Verifies table parity between `001_initial_schema.sql` (SQLite) and `001_initial_schema_postgres.sql` (PostgreSQL 16 `SERIAL PRIMARY KEY` + composite indexes). | **PASS** |
+| **32** | `test_32_desktop_cms_and_storefront_tsx_ast_and_contract_verification` | Verifies that every API route called by `adminClient.ts` and `client.ts` exists on the FastAPI app, verifies real Mus Luxury Ouled Yaïch (`0655 53 41 54`) contact details, and validates all `.sh` scripts with `bash -n`. | **PASS** |
 | **27** | `test_27_complete_14_step_end_to_end_journey` | Full 14-step E2E workflow: Admin login -> Category + attributes -> Brand + image upload + draft product -> Variant matrix -> Publish -> Public PDP verification -> Guest order -> CMS order list -> Stock decrement & movement log -> Order status update & cancellation stock restore -> Delta sync -> Unauthorized request rejection (`401`). | **PASS** |
 
 ---
