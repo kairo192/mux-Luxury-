@@ -1,13 +1,2941 @@
 <!DOCTYPE html>
-<html lang="fr" dir="ltr">
-  <head>
-    <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Mus Luxury (LUXE) — Boutique Officielle Algérie</title>
-    <meta name="description" content="Boutique de mode, sacs, chaussures, châles, maquillage, montres et accessoires en Algérie. Livraison 58 Wilayas avec paiement à la livraison." />
-  </head>
-  <body class="bg-[#F8F6F0] text-[#202923]">
-    <div id="root"></div>
-    <script type="module" src="/src/main.tsx"></script>
-  </body>
+<html lang="fr" dir="ltr" id="html-root">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Mus Luxury — Boutique Officielle Mode, Sacs &amp; Accessoires en Algérie</title>
+  <script src="https://cdn.tailwindcss.com/3.4.17"></script>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Cairo:wght@400;500;600;700&family=Montserrat:wght@400;500;600;700&family=Playfair+Display:ital,wght@0,500;0,600;0,700;1,400;1,600&display=swap" rel="stylesheet" />
+  <script>
+    tailwind.config = {
+      theme: {
+        extend: {
+          colors: {
+            emerald: {
+              deep: '#063D2E',
+              forest: '#02291F',
+              mid: '#0A523E',
+              soft: '#0D4A3A'
+            },
+            gold: {
+              reflective: '#D4AF62',
+              light: '#E8D4A5',
+              dark: '#B68F40',
+              muted: '#C8A96E'
+            },
+            cream: {
+              DEFAULT: '#F8F6F0',
+              warm: '#F2EFE7',
+              card: '#FAF9F5'
+            },
+            charcoal: '#202923'
+          },
+          fontFamily: {
+            serif: ['"Playfair Display"', 'Georgia', 'serif'],
+            sans: ['Montserrat', 'Cairo', 'sans-serif']
+          },
+          boxShadow: {
+            luxury: '0 10px 30px -10px rgba(2, 41, 31, 0.12)',
+            'luxury-hover': '0 20px 40px -12px rgba(2, 41, 31, 0.22)',
+            'gold-ring': '0 0 0 1px rgba(212, 175, 98, 0.35)'
+          }
+        }
+      }
+    };
+  </script>
+  <style>
+    body {
+      font-family: 'Montserrat', 'Cairo', sans-serif;
+      background-color: #F8F6F0;
+      color: #202923;
+      overflow-x: hidden;
+      -webkit-font-smoothing: antialiased;
+    }
+    [dir="rtl"] body {
+      font-family: 'Cairo', 'Montserrat', sans-serif;
+    }
+    .font-luxury {
+      font-family: 'Playfair Display', Georgia, serif;
+    }
+    .gold-cta {
+      background: linear-gradient(135deg, #D4AF62 0%, #E5C883 50%, #C49B48 100%);
+    }
+    .gold-cta:hover {
+      background: linear-gradient(135deg, #DFBC70 0%, #EED597 50%, #CEA654 100%);
+    }
+    .hero-luxury-bg {
+      background: radial-gradient(circle at 75% 35%, #0B543E 0%, #063D2E 48%, #02291F 100%);
+    }
+    .cat-card-bg {
+      background: linear-gradient(180deg, #063D2E 0%, #02291F 100%);
+    }
+    .no-scrollbar::-webkit-scrollbar {
+      display: none;
+    }
+    .no-scrollbar {
+      -ms-overflow-style: none;
+      scrollbar-width: none;
+    }
+    .zoom-stage {
+      overflow: hidden;
+    }
+    .zoom-stage img {
+      transition: transform 0.4s cubic-bezier(0.16, 1, 0.3, 1);
+      cursor: zoom-in;
+    }
+    .zoom-stage.zoomed img {
+      transform: scale(1.65);
+      cursor: zoom-out;
+    }
+    /* Strict Baseline & Card Grid Alignment Across All Viewports */
+    .product-card-grid {
+      display: grid;
+      align-items: stretch;
+    }
+    .product-card {
+      display: flex;
+      flex-direction: column;
+      height: 100%;
+      backface-visibility: hidden;
+      transform: translateZ(0);
+    }
+    .product-card-media {
+      aspect-ratio: 4 / 3.6;
+      width: 100%;
+      flex-shrink: 0;
+    }
+    @media (max-width: 639px) {
+      .product-card-media {
+        aspect-ratio: 1 / 1.02;
+      }
+    }
+    .cat-nav-mask {
+      mask-image: linear-gradient(to right, transparent 0%, black 2%, black 98%, transparent 100%);
+      -webkit-mask-image: linear-gradient(to right, transparent 0%, black 2%, black 98%, transparent 100%);
+    }
+    /* Mobile Filter Drawer Overlay when active on <1024px */
+    @media (max-width: 1023px) {
+      #catalog-filters-sidebar.mobile-drawer-open {
+        display: block !important;
+        position: fixed;
+        inset: 0;
+        z-index: 60;
+        max-height: 100vh;
+        overflow-y: auto;
+        border-radius: 0;
+        padding: 1.25rem 1rem 5rem 1rem;
+        background-color: #FFFFFF;
+      }
+    }
+  </style>
+</head>
+<body class="min-h-screen flex flex-col bg-cream text-charcoal pb-16 md:pb-0 selection:bg-gold-reflective selection:text-emerald-forest">
+
+  <!-- ===================================================================== -->
+  <!-- 1. TOP LUXURY ANNOUNCEMENT & UTILITY BAR                              -->
+  <!-- ===================================================================== -->
+  <div class="bg-emerald-forest text-gold-light/90 border-b border-gold-reflective/20 text-[11px] sm:text-xs">
+    <div class="max-w-7xl mx-auto px-4 sm:px-6 h-9 flex items-center justify-between gap-3">
+      <!-- Left: Delivery & COD Promise -->
+      <div class="flex items-center gap-2 truncate">
+        <svg class="w-3.5 h-3.5 text-gold-reflective flex-shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+          <rect x="1" y="3" width="15" height="13" rx="1"></rect>
+          <polygon points="16 8 20 8 23 11 23 16 16 16 16 8"></polygon>
+          <circle cx="5.5" cy="18.5" r="2.5"></circle>
+          <circle cx="18.5" cy="18.5" r="2.5"></circle>
+        </svg>
+        <span id="lbl-top-promo" class="truncate font-medium tracking-wide">Livraison rapide 69 Wilayas en Algérie • Paiement à la livraison</span>
+      </div>
+
+      <!-- Right: Wilaya Tariffs, Order Tracking & Language Switcher -->
+      <div class="flex items-center gap-3 flex-shrink-0">
+        <button type="button" onclick="openWilayaTariffsModal()" class="inline-flex items-center gap-1.5 text-gold-reflective hover:text-white transition font-semibold">
+          <svg class="w-3.5 h-3.5 text-gold-reflective" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+            <rect x="1" y="3" width="15" height="13" rx="1"></rect>
+            <polygon points="16 8 20 8 23 11 23 16 16 16 16 8"></polygon>
+            <circle cx="5.5" cy="18.5" r="2.5"></circle>
+            <circle cx="18.5" cy="18.5" r="2.5"></circle>
+          </svg>
+          <span>Tarifs 69 Wilayas</span>
+        </button>
+
+        <span class="hidden sm:inline text-gold-reflective/30">|</span>
+
+        <button type="button" onclick="openOrderTrackingModal()" class="hidden sm:inline-flex items-center gap-1.5 text-gold-light hover:text-gold-reflective transition font-medium">
+          <svg class="w-3.5 h-3.5 text-gold-reflective" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"></path>
+            <circle cx="12" cy="10" r="3"></circle>
+          </svg>
+          <span id="lbl-track-top">Suivre ma commande</span>
+        </button>
+
+        <span class="hidden sm:inline text-gold-reflective/30">|</span>
+
+        <div class="inline-flex items-center rounded-full border border-gold-reflective/30 bg-emerald-deep/80 p-0.5 text-[11px]">
+          <button type="button" id="lang-fr" onclick="setLanguage('fr')" class="px-2 py-0.5 rounded-full font-semibold bg-gold-reflective text-emerald-forest transition">FR</button>
+          <button type="button" id="lang-ar" onclick="setLanguage('ar')" class="px-2 py-0.5 rounded-full font-semibold text-gold-light hover:text-white transition">عربي</button>
+          <button type="button" id="lang-en" onclick="setLanguage('en')" class="px-2 py-0.5 rounded-full font-semibold text-gold-light hover:text-white transition">EN</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ===================================================================== -->
+  <!-- 2. MAIN BOUTIQUE HEADER (LOGO, NAVIGATION, SEARCH, ACTIONS)           -->
+  <!-- ===================================================================== -->
+  <header class="bg-emerald-deep text-white sticky top-0 z-40 shadow-luxury border-b border-gold-reflective/25">
+    <div class="max-w-7xl mx-auto px-4 sm:px-6 py-3 flex items-center justify-between gap-4">
+
+      <!-- Brand Logo -->
+      <button type="button" onclick="navigateStore('home')" class="flex items-center gap-3 text-left group focus:outline-none flex-shrink-0">
+        <img src="user_uploaded_files/ttl=63d/user_uploaded/mus_luxury_logo.png" alt="Mus Luxury" class="h-10 sm:h-12 w-auto rounded-lg border border-gold-reflective/35 shadow-sm group-hover:border-gold-reflective transition" />
+      </button>
+
+      <!-- Desktop Primary Links -->
+      <div class="hidden lg:flex items-center gap-7 text-xs uppercase tracking-[0.14em] font-semibold text-gold-light/90">
+        <button type="button" onclick="navigateStore('home')" id="nav-link-home" class="text-gold-reflective border-b-2 border-gold-reflective pb-1 transition">Accueil</button>
+        <button type="button" onclick="scrollToCatalog()" id="nav-link-shop" class="hover:text-gold-reflective pb-1 transition">Boutique</button>
+        <button type="button" onclick="filterByCategory('sacs')" class="hover:text-gold-reflective pb-1 transition">Maroquinerie</button>
+        <button type="button" onclick="filterByCategory('chaussures')" class="hover:text-gold-reflective pb-1 transition">Chaussures</button>
+        <button type="button" onclick="filterByCategory('maquillage')" class="hover:text-gold-reflective pb-1 transition">Beauté</button>
+        <button type="button" onclick="openStaticPageModal('about')" id="nav-link-about" class="hover:text-gold-reflective pb-1 transition">La Maison</button>
+      </div>
+
+      <!-- Search Bar (Desktop & Tablet) -->
+      <div class="hidden md:block flex-1 max-w-xs lg:max-w-sm">
+        <div class="relative">
+          <input
+            type="text"
+            id="store-search-input"
+            oninput="handleStoreSearch(this.value)"
+            placeholder="Rechercher un article..."
+            class="w-full pl-4 pr-10 py-2 rounded-full bg-emerald-forest/85 border border-gold-reflective/35 text-xs text-white placeholder-gold-light/55 focus:outline-none focus:border-gold-reflective transition"
+          />
+          <button type="button" onclick="triggerSearchBtn()" class="absolute inset-y-0 right-0 px-3.5 text-gold-reflective hover:text-gold-light flex items-center" aria-label="Rechercher">
+            <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <circle cx="11" cy="11" r="8"></circle>
+              <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
+            </svg>
+          </button>
+        </div>
+      </div>
+
+      <!-- Right Action Icons (Track Order, Wishlist, Shopping Bag) -->
+      <div class="flex items-center gap-2 sm:gap-2.5">
+        <!-- Mobile Search Toggle -->
+        <button type="button" onclick="toggleMobileSearch()" class="md:hidden w-9 h-9 rounded-full bg-emerald-forest/80 border border-gold-reflective/30 flex items-center justify-center text-gold-light hover:text-gold-reflective transition" aria-label="Recherche">
+          <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round">
+            <circle cx="11" cy="11" r="8"></circle>
+            <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
+          </svg>
+        </button>
+
+        <!-- Favorites Button -->
+        <button type="button" onclick="toggleFavoritesFilter()" id="btn-header-fav" class="relative h-9 px-3 rounded-full bg-emerald-forest/80 hover:bg-emerald-forest border border-gold-reflective/30 text-gold-light flex items-center gap-1.5 text-xs font-semibold transition" aria-label="Favoris">
+          <svg class="w-4 h-4 text-gold-reflective" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"></path>
+          </svg>
+          <span id="fav-count-badge" class="text-[11px] font-bold">0</span>
+        </button>
+
+        <!-- Shopping Bag Button -->
+        <button type="button" onclick="openCartDrawer()" class="h-9 sm:h-10 px-3.5 sm:px-4 rounded-full gold-cta text-emerald-forest font-bold text-xs flex items-center gap-2 shadow-md transition">
+          <svg class="w-4 h-4 stroke-[2.2]" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M6 2L3 6v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6l-3-4z"></path>
+            <line x1="3" y1="6" x2="21" y2="6"></line>
+            <path d="M16 10a4 4 0 0 1-8 0"></path>
+          </svg>
+          <span id="lbl-header-cart" class="hidden sm:inline">Panier</span>
+          <span id="cart-count-badge" class="px-1.5 py-0.5 rounded-full bg-emerald-forest text-gold-reflective text-[11px] font-extrabold leading-none">0</span>
+        </button>
+      </div>
+    </div>
+
+    <!-- Collapsible Mobile Search Input -->
+    <div id="mobile-search-bar" class="hidden md:hidden px-4 pb-3 bg-emerald-deep">
+      <div class="relative">
+        <input
+          type="text"
+          id="mobile-search-input"
+          oninput="handleStoreSearch(this.value)"
+          placeholder="Rechercher un sac, chaussure, maquillage, montre..."
+          class="w-full pl-4 pr-10 py-2 rounded-full bg-emerald-forest border border-gold-reflective/40 text-xs text-white placeholder-gold-light/60 focus:outline-none focus:border-gold-reflective"
+        />
+        <button type="button" onclick="triggerSearchBtn()" class="absolute inset-y-0 right-0 px-3.5 text-gold-reflective flex items-center" aria-label="Lancer la recherche">
+          <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <circle cx="11" cy="11" r="8"></circle>
+            <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
+          </svg>
+        </button>
+      </div>
+    </div>
+
+    <!-- Category Navigation Bar -->
+    <nav class="bg-emerald-forest/95 border-t border-gold-reflective/20">
+      <div class="max-w-7xl mx-auto px-4 sm:px-6">
+        <div id="dynamic-nav-categories" class="flex items-center gap-1.5 sm:gap-2 overflow-x-auto no-scrollbar py-2.5 text-xs whitespace-nowrap">
+        </div>
+      </div>
+    </nav>
+  </header>
+
+  <!-- ===================================================================== -->
+  <!-- 3. MAIN STOREFRONT CONTENT                                            -->
+  <!-- ===================================================================== -->
+  <main class="flex-1">
+
+    <!-- HOMEPAGE EDITORIAL HERO & CATEGORY SHOWCASE -->
+    <div id="store-home-sections">
+
+      <!-- Editorial Hero Banner (Matches 1000589999.png & 1000590075.png) -->
+      <section class="hero-luxury-bg text-white border-b border-gold-reflective/30 relative overflow-hidden">
+        <div class="max-w-7xl mx-auto px-4 sm:px-6 py-6 sm:py-10 lg:py-14">
+          <div class="grid grid-cols-1 lg:grid-cols-12 gap-6 lg:gap-10 items-center">
+            <!-- Hero Typography -->
+            <div class="lg:col-span-6 space-y-3.5 sm:space-y-5 text-start z-10">
+              <div class="inline-flex items-center gap-2 px-3.5 py-1 rounded-full bg-gold-reflective/15 border border-gold-reflective/40 text-gold-light text-[11px] uppercase tracking-[0.22em] font-semibold">
+                <svg class="w-3.5 h-3.5 text-gold-reflective" viewBox="0 0 24 24" fill="currentColor">
+                  <path d="M12 2L14.8 8.5L22 9.3L16.5 14L18.2 21L12 17.3L5.8 21L7.5 14L2 9.3L9.2 8.5L12 2Z"></path>
+                </svg>
+                <span id="hero-badge">STYLE • QUALITÉ • ÉLÉGANCE</span>
+              </div>
+
+              <h1 class="font-luxury text-4xl sm:text-5xl lg:text-6xl font-bold leading-[1.12] tracking-tight">
+                <span id="hero-title-1" class="block text-white">Votre style,</span>
+                <span id="hero-title-2" class="block italic font-normal text-gold-reflective mt-1">notre passion</span>
+              </h1>
+
+              <p id="hero-desc" class="text-sm sm:text-base text-gold-light/85 max-w-lg leading-relaxed font-normal">
+                Découvrez les meilleures marques et les plus beaux accessoires à des prix exceptionnels. Commandez en toute simplicité avec livraison rapide dans les 69 wilayas d'Algérie.
+              </p>
+
+              <div class="pt-1 sm:pt-2 grid grid-cols-2 sm:flex sm:flex-wrap items-center gap-2.5 sm:gap-3.5">
+                <button type="button" onclick="scrollToCatalog()" class="w-full sm:w-auto justify-center px-4 sm:px-7 py-3 sm:py-3.5 rounded-full gold-cta text-emerald-forest font-bold text-xs sm:text-sm uppercase tracking-wider shadow-lg transition flex items-center gap-2">
+                  <span id="hero-cta-primary">Voir la boutique</span>
+                  <svg class="w-4 h-4 stroke-[2.2] flex-shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round">
+                    <line x1="5" y1="12" x2="19" y2="12"></line>
+                    <polyline points="12 5 19 12 12 19"></polyline>
+                  </svg>
+                </button>
+                <button type="button" onclick="filterByCategory('sacs')" class="w-full sm:w-auto text-center justify-center px-4 sm:px-6 py-3 sm:py-3.5 rounded-full bg-white/5 hover:bg-white/10 text-gold-light border border-gold-reflective/40 font-semibold text-xs sm:text-sm transition flex items-center" id="hero-cta-secondary">
+                  Collection Sacs
+                </button>
+              </div>
+            </div>
+
+            <!-- Hero Visual Showcase -->
+            <div class="lg:col-span-6">
+              <div class="relative rounded-2xl overflow-hidden border border-gold-reflective/40 shadow-2xl bg-emerald-forest">
+                <img src="user_uploaded_files/ttl=63d/user_uploaded/hero_banner_mus.jpg" alt="Collection Mus Luxury" fetchpriority="high" decoding="async" class="w-full h-52 sm:h-72 lg:h-[370px] object-cover object-center" />
+                <div class="absolute inset-0 bg-gradient-to-t from-emerald-forest/60 via-transparent to-transparent"></div>
+                <div class="absolute bottom-4 left-4 right-4 flex items-center justify-between text-xs text-gold-light/95 bg-emerald-forest/85 backdrop-blur-md px-4 py-2.5 rounded-xl border border-gold-reflective/30">
+                  <span class="font-luxury italic text-sm text-gold-reflective">Nouvelle Collection 2026</span>
+                  <span class="font-semibold">Paiement à la livraison • 69 Wilayas</span>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- 4 Luxury Trust Indicators Bar (Clean Vector Icons, Zero Emojis) -->
+      <section class="bg-white border-b border-gold-reflective/20 py-4 sm:py-5 px-3 sm:px-6">
+        <div class="max-w-7xl mx-auto grid grid-cols-2 lg:grid-cols-4 gap-2.5 sm:gap-4 items-stretch">
+          <div class="h-full flex items-center gap-2.5 sm:gap-3.5 p-2.5 sm:p-3.5 rounded-xl bg-cream-card border border-gold-reflective/20">
+            <div class="w-10 h-10 rounded-full bg-emerald-deep text-gold-reflective flex items-center justify-center flex-shrink-0">
+              <svg class="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+                <rect x="1" y="3" width="15" height="13" rx="1"></rect>
+                <polygon points="16 8 20 8 23 11 23 16 16 16 16 8"></polygon>
+                <circle cx="5.5" cy="18.5" r="2.5"></circle>
+                <circle cx="18.5" cy="18.5" r="2.5"></circle>
+              </svg>
+            </div>
+            <div>
+              <p class="font-bold text-emerald-deep text-xs sm:text-sm" id="trust-1-title">Livraison partout en Algérie</p>
+              <p class="text-[11px] text-charcoal/65" id="trust-1-sub">69 Wilayas • Domicile &amp; Stop-Desk</p>
+            </div>
+          </div>
+
+          <div class="h-full flex items-center gap-2.5 sm:gap-3.5 p-2.5 sm:p-3.5 rounded-xl bg-cream-card border border-gold-reflective/20">
+            <div class="w-10 h-10 rounded-full bg-emerald-deep text-gold-reflective flex items-center justify-center flex-shrink-0">
+              <svg class="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"></path>
+                <polyline points="9 12 11 14 15 10"></polyline>
+              </svg>
+            </div>
+            <div>
+              <p class="font-bold text-emerald-deep text-xs sm:text-sm" id="trust-2-title">Paiement à la livraison</p>
+              <p class="text-[11px] text-charcoal/65" id="trust-2-sub">Simple, fiable et sans inscription</p>
+            </div>
+          </div>
+
+          <div class="h-full flex items-center gap-2.5 sm:gap-3.5 p-2.5 sm:p-3.5 rounded-xl bg-cream-card border border-gold-reflective/20">
+            <div class="w-10 h-10 rounded-full bg-emerald-deep text-gold-reflective flex items-center justify-center flex-shrink-0">
+              <svg class="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+                <circle cx="12" cy="8" r="6"></circle>
+                <path d="M15.477 12.89 17 22l-5-3-5 3 1.523-9.11"></path>
+              </svg>
+            </div>
+            <div>
+              <p class="font-bold text-emerald-deep text-xs sm:text-sm" id="trust-3-title">Qualité garantie</p>
+              <p class="text-[11px] text-charcoal/65" id="trust-3-sub">Produits authentiques &amp; vérifiés</p>
+            </div>
+          </div>
+
+          <div class="h-full flex items-center gap-2.5 sm:gap-3.5 p-2.5 sm:p-3.5 rounded-xl bg-cream-card border border-gold-reflective/20">
+            <div class="w-10 h-10 rounded-full bg-emerald-deep text-gold-reflective flex items-center justify-center flex-shrink-0">
+              <svg class="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M3 18v-6a9 9 0 0 1 18 0v6"></path>
+                <path d="M21 19a2 2 0 0 1-2 2h-1a2 2 0 0 1-2-2v-3a2 2 0 0 1 2-2h3zM3 19a2 2 0 0 0 2 2h1a2 2 0 0 0 2-2v-3a2 2 0 0 0-2-2H3z"></path>
+              </svg>
+            </div>
+            <div>
+              <p class="font-bold text-emerald-deep text-xs sm:text-sm" id="trust-4-title">Service client dédié</p>
+              <p class="text-[11px] text-charcoal/65" id="trust-4-sub">Toujours à votre écoute 7j/7</p>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- Shop by Category Section (Matches 1000589999.png Dark Emerald Cards) -->
+      <section class="max-w-7xl mx-auto px-4 sm:px-6 pt-10 pb-4 space-y-5">
+        <div class="flex items-end justify-between">
+          <div>
+            <span class="text-[11px] uppercase tracking-[0.2em] text-gold-dark font-bold">COLLECTIONS</span>
+            <h2 class="font-luxury text-2xl sm:text-3xl font-bold text-emerald-deep mt-0.5" id="sec-categories-title">Nos Catégories</h2>
+          </div>
+          <button type="button" onclick="filterByCategory('all'); scrollToCatalog();" class="text-xs font-bold text-emerald-deep hover:text-gold-dark flex items-center gap-1.5 transition">
+            <span>Tout parcourir</span>
+            <svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <line x1="5" y1="12" x2="19" y2="12"></line>
+              <polyline points="12 5 19 12 12 19"></polyline>
+            </svg>
+          </button>
+        </div>
+
+        <div id="home-categories-grid" class="grid grid-cols-3 sm:grid-cols-3 md:grid-cols-3 lg:grid-cols-9 gap-2.5 sm:gap-3 items-stretch">
+        </div>
+      </section>
+    </div>
+
+    <!-- =================================================================== -->
+    <!-- BOUTIQUE CATALOG & DYNAMIC FILTERING SECTION                        -->
+    <!-- =================================================================== -->
+    <section id="catalog-section" class="max-w-7xl mx-auto px-4 sm:px-6 py-8 space-y-6">
+
+      <!-- Category Header Banner -->
+      <div class="bg-emerald-deep text-white rounded-2xl p-5 sm:p-6 border border-gold-reflective/35 shadow-luxury flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+        <div class="space-y-1">
+          <div class="flex items-center gap-1.5 text-xs text-gold-light/75">
+            <button type="button" onclick="navigateStore('home')" class="hover:text-gold-reflective transition">Accueil</button>
+            <span>/</span>
+            <span id="catalog-breadcrumb" class="text-gold-reflective font-semibold">Toutes les collections</span>
+          </div>
+          <div class="flex items-center gap-2.5">
+            <h2 id="catalog-heading" class="font-luxury text-2xl sm:text-3xl font-bold text-white">Produits en vedette</h2>
+            <span id="catalog-count-pill" class="px-2.5 py-0.5 rounded-full bg-gold-reflective/20 border border-gold-reflective/40 text-gold-reflective text-xs font-bold">11 articles</span>
+          </div>
+          <p id="catalog-description" class="text-xs text-gold-light/80">Sélection certifiée Mus Luxury • Prix en Dinars Algériens (DA)</p>
+        </div>
+
+        <!-- Filter Drawer Trigger (Mobile) + Sort Select -->
+        <div class="flex items-center gap-2.5">
+          <button type="button" onclick="toggleMobileFilters()" class="lg:hidden px-3.5 py-2 rounded-xl bg-emerald-forest border border-gold-reflective/40 text-gold-light text-xs font-semibold flex items-center gap-2">
+            <svg class="w-4 h-4 text-gold-reflective" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
+              <line x1="4" y1="21" x2="4" y2="14"></line>
+              <line x1="4" y1="10" x2="4" y2="3"></line>
+              <line x1="12" y1="21" x2="12" y2="12"></line>
+              <line x1="12" y1="8" x2="12" y2="3"></line>
+              <line x1="20" y1="21" x2="20" y2="16"></line>
+              <line x1="20" y1="12" x2="20" y2="3"></line>
+              <line x1="1" y1="14" x2="7" y2="14"></line>
+              <line x1="9" y1="8" x2="15" y2="8"></line>
+              <line x1="17" y1="16" x2="23" y2="16"></line>
+            </svg>
+            <span>Filtres</span>
+          </button>
+
+          <select id="catalog-sort-select" onchange="handleSortChange(this.value)" aria-label="Trier par" class="px-3.5 py-2 rounded-xl bg-emerald-forest text-white border border-gold-reflective/40 text-xs font-semibold focus:outline-none focus:border-gold-reflective">
+            <option value="newest">Trier par : Plus récents</option>
+            <option value="price_asc">Prix : Croissant (DA)</option>
+            <option value="price_desc">Prix : Décroissant (DA)</option>
+            <option value="popularity">Les plus populaires</option>
+          </select>
+        </div>
+      </div>
+
+      <!-- Main Boutique Grid: Filters Sidebar + Product Cards -->
+      <div class="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
+
+        <!-- Sidebar Filters (Sticky on Desktop, Full Drawer on Mobile) -->
+        <aside id="catalog-filters-sidebar" class="hidden lg:block lg:col-span-3 lg:sticky lg:top-28 bg-white rounded-2xl p-5 border border-gold-reflective/25 shadow-luxury space-y-5">
+          <div class="flex items-center justify-between border-b border-gray-100 pb-3">
+            <div class="flex items-center gap-2">
+              <svg class="w-4 h-4 text-emerald-deep" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <polygon points="22 3 2 3 10 12.46 10 19 14 21 14 12.46 22 3"></polygon>
+              </svg>
+              <h3 class="font-bold text-emerald-deep text-xs uppercase tracking-wider" id="lbl-filters-heading">Filtres</h3>
+            </div>
+            <div class="flex items-center gap-3">
+              <button type="button" onclick="resetCatalogFilters()" class="text-xs text-gold-dark hover:underline font-semibold" id="lbl-reset-filters">Réinitialiser</button>
+              <button type="button" onclick="toggleMobileFilters()" class="lg:hidden px-2.5 py-1 rounded-lg bg-emerald-deep text-gold-reflective text-xs font-bold">Fermer ✕</button>
+            </div>
+          </div>
+
+          <!-- Budget Range Slider -->
+          <div class="space-y-2">
+            <div class="flex justify-between text-xs font-semibold">
+              <span id="lbl-price-max" class="text-charcoal/80">Prix maximum</span>
+              <span id="filter-price-display" class="text-emerald-deep font-bold">25 000 DA</span>
+            </div>
+            <input type="range" id="filter-max-price" min="1500" max="25000" step="500" value="25000" oninput="handlePriceFilter(this.value)" class="w-full accent-emerald-deep cursor-pointer" />
+            <div class="flex justify-between text-[11px] text-gray-400">
+              <span>1 500 DA</span>
+              <span>25 000 DA</span>
+            </div>
+          </div>
+
+          <!-- In-Stock Checkbox -->
+          <label class="flex items-center gap-2.5 text-xs font-semibold text-charcoal cursor-pointer pt-1">
+            <input type="checkbox" id="filter-instock-only" onchange="handleInStockToggle(this.checked)" class="rounded text-emerald-deep focus:ring-emerald-deep w-4 h-4 accent-emerald-deep" />
+            <span id="lbl-instock-only">Articles en stock uniquement</span>
+          </label>
+
+          <!-- Dynamic Category-Specific Attributes -->
+          <div id="dynamic-category-filters" class="space-y-4 pt-3 border-t border-gray-100">
+          </div>
+        </aside>
+
+        <!-- Product Cards Grid -->
+        <div class="lg:col-span-9">
+          <div id="store-products-grid" class="product-card-grid grid-cols-2 sm:grid-cols-2 md:grid-cols-3 xl:grid-cols-3 gap-3 sm:gap-5">
+          </div>
+        </div>
+      </div>
+
+      <!-- 3 Promotional Collection Cards (Matches Bottom of 1000589999.png) -->
+      <div class="grid grid-cols-1 md:grid-cols-3 gap-5 pt-6">
+        <div onclick="filterByCategory('chaussures')" class="group cursor-pointer rounded-2xl overflow-hidden hero-luxury-bg p-5 text-white border border-gold-reflective/35 flex items-center justify-between gap-4 shadow-luxury hover:shadow-luxury-hover transition">
+          <div class="space-y-1.5">
+            <span class="text-[10px] uppercase tracking-[0.2em] text-gold-reflective font-bold">CHAUSSURES</span>
+            <h3 class="font-luxury text-2xl font-bold text-gold-light">Jusqu'à -20%</h3>
+            <p class="text-xs text-white/75">Baskets &amp; créations urbaines</p>
+            <span class="inline-flex items-center gap-1.5 pt-2 text-xs font-bold text-gold-reflective group-hover:translate-x-1 transition">
+              <span>Voir la collection</span>
+              <svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="5" y1="12" x2="19" y2="12"></line><polyline points="12 5 19 12 12 19"></polyline></svg>
+            </span>
+          </div>
+          <img src="user_uploaded_files/ttl=63d/user_uploaded/prod_baskets_elegantes.jpg" alt="Chaussures" class="w-24 h-24 object-cover rounded-xl border border-gold-reflective/40 group-hover:scale-105 transition duration-300" />
+        </div>
+
+        <div onclick="filterByCategory('les-lunettes')" class="group cursor-pointer rounded-2xl overflow-hidden hero-luxury-bg p-5 text-white border border-gold-reflective/35 flex items-center justify-between gap-4 shadow-luxury hover:shadow-luxury-hover transition">
+          <div class="space-y-1.5">
+            <span class="text-[10px] uppercase tracking-[0.2em] text-gold-reflective font-bold">LUNETTES</span>
+            <h3 class="font-luxury text-2xl font-bold text-gold-light">Élégance &amp; protection</h3>
+            <p class="text-xs text-white/75">Montures solaires UV400</p>
+            <span class="inline-flex items-center gap-1.5 pt-2 text-xs font-bold text-gold-reflective group-hover:translate-x-1 transition">
+              <span>Voir la collection</span>
+              <svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="5" y1="12" x2="19" y2="12"></line><polyline points="12 5 19 12 12 19"></polyline></svg>
+            </span>
+          </div>
+          <img src="user_uploaded_files/ttl=63d/user_uploaded/prod_lunettes_soleil.jpg" alt="Lunettes" class="w-24 h-24 object-cover rounded-xl border border-gold-reflective/40 group-hover:scale-105 transition duration-300" />
+        </div>
+
+        <div onclick="filterByCategory('les-montres')" class="group cursor-pointer rounded-2xl overflow-hidden hero-luxury-bg p-5 text-white border border-gold-reflective/35 flex items-center justify-between gap-4 shadow-luxury hover:shadow-luxury-hover transition">
+          <div class="space-y-1.5">
+            <span class="text-[10px] uppercase tracking-[0.2em] text-gold-reflective font-bold">MONTRES</span>
+            <h3 class="font-luxury text-2xl font-bold text-gold-light">Le temps du style</h3>
+            <p class="text-xs text-white/75">Chronographes acier &amp; or</p>
+            <span class="inline-flex items-center gap-1.5 pt-2 text-xs font-bold text-gold-reflective group-hover:translate-x-1 transition">
+              <span>Voir la collection</span>
+              <svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="5" y1="12" x2="19" y2="12"></line><polyline points="12 5 19 12 12 19"></polyline></svg>
+            </span>
+          </div>
+          <img src="user_uploaded_files/ttl=63d/user_uploaded/prod_montre_or.jpg" alt="Montres" class="w-24 h-24 object-cover rounded-xl border border-gold-reflective/40 group-hover:scale-105 transition duration-300" />
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <!-- ===================================================================== -->
+  <!-- 4. LUXURY FOOTER                                                      -->
+  <!-- ===================================================================== -->
+  <footer class="bg-emerald-forest text-gold-light border-t border-gold-reflective/30 mt-12">
+    <div class="max-w-7xl mx-auto px-4 sm:px-6 py-12 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-8 text-xs">
+      <div class="space-y-3.5">
+        <img src="user_uploaded_files/ttl=63d/user_uploaded/mus_luxury_logo.png" alt="Mus Luxury" class="h-12 w-auto rounded-lg border border-gold-reflective/35" />
+        <p class="font-luxury italic text-gold-reflective text-lg">« Le luxe est une attitude. »</p>
+        <p class="text-gold-light/75 leading-relaxed">
+          Votre destination mode, maroquinerie, chaussures, châles, beauté et horlogerie en Algérie. Livraison rapide dans les 69 Wilayas avec paiement en espèces à la réception.
+        </p>
+      </div>
+
+      <div class="space-y-2.5">
+        <h4 class="font-bold text-gold-reflective uppercase tracking-[0.16em] text-xs">Collections</h4>
+        <ul class="space-y-2 text-gold-light/80">
+          <li><button type="button" onclick="filterByCategory('sacs')" class="hover:text-white transition">Sacs à main &amp; Bandoulière</button></li>
+          <li><button type="button" onclick="filterByCategory('chaussures')" class="hover:text-white transition">Chaussures &amp; Baskets</button></li>
+          <li><button type="button" onclick="filterByCategory('chale')" class="hover:text-white transition">Châles &amp; Écharpes</button></li>
+          <li><button type="button" onclick="filterByCategory('maquillage')" class="hover:text-white transition">Maquillage &amp; Coffrets</button></li>
+          <li><button type="button" onclick="filterByCategory('les-montres')" class="hover:text-white transition">Montres &amp; Lunettes</button></li>
+        </ul>
+      </div>
+
+      <div class="space-y-2.5">
+        <h4 class="font-bold text-gold-reflective uppercase tracking-[0.16em] text-xs">Informations &amp; Aide</h4>
+        <ul class="space-y-2 text-gold-light/80">
+          <li><button type="button" onclick="openWilayaTariffsModal()" class="hover:text-white transition text-gold-reflective font-semibold">Tarifs de livraison — 69 Wilayas (Domicile &amp; Stop-Desk)</button></li>
+          <li><button type="button" onclick="openOrderTrackingModal()" class="hover:text-white transition">Suivre ma commande</button></li>
+          <li><button type="button" onclick="openStaticPageModal('about')" class="hover:text-white transition">À propos de Mus Luxury</button></li>
+          <li><button type="button" onclick="openStaticPageModal('faq')" class="hover:text-white transition">Questions fréquentes (FAQ)</button></li>
+          <li><button type="button" onclick="openStaticPageModal('returns')" class="hover:text-white transition">Livraison &amp; Retours sous 7 jours</button></li>
+          <li><button type="button" onclick="openStaticPageModal('terms')" class="hover:text-white transition">Conditions générales &amp; Confidentialité</button></li>
+        </ul>
+      </div>
+
+      <div class="space-y-3">
+        <h4 class="font-bold text-gold-reflective uppercase tracking-[0.16em] text-xs">Contact &amp; Boutique</h4>
+        <div class="space-y-2 text-gold-light/85">
+          <p class="flex items-center gap-2">
+            <svg class="w-4 h-4 text-gold-reflective flex-shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"></path><circle cx="12" cy="10" r="3"></circle></svg>
+            <span>Alger, Algérie (Livraison 69 Wilayas)</span>
+          </p>
+          <p class="flex items-center gap-2">
+            <svg class="w-4 h-4 text-gold-reflective flex-shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72 12.84 12.84 0 0 0 .7 2.81 2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45 12.84 12.84 0 0 0 2.81.7A2 2 0 0 1 22 16.92z"></path></svg>
+            <span class="font-mono">+213 (0) 550 00 00 00</span>
+          </p>
+        </div>
+        <img src="user_uploaded_files/ttl=63d/user_uploaded/mus_luxury_sign.jpg" alt="Boutique Mus Luxury" class="w-full h-20 object-cover rounded-xl border border-gold-reflective/35 mt-2" />
+      </div>
+    </div>
+
+    <div class="border-t border-gold-reflective/15 py-4 px-4 text-center text-[11px] text-gold-light/60">
+      © 2026 Mus Luxury Algérie. Tous droits réservés.
+    </div>
+  </footer>
+
+  <!-- ===================================================================== -->
+  <!-- 5. MOBILE BOTTOM NAVIGATION BAR (Matches 1000590075.png Mobile View)  -->
+  <!-- ===================================================================== -->
+  <div class="md:hidden fixed bottom-0 inset-x-0 z-40 bg-white border-t border-gold-reflective/30 shadow-2xl px-2 py-1.5 grid grid-cols-4 text-[10px] font-semibold text-charcoal/75">
+    <button type="button" onclick="navigateStore('home')" class="flex flex-col items-center justify-center py-1 text-emerald-deep font-bold">
+      <svg class="w-5 h-5 mb-0.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+        <path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"></path>
+        <polyline points="9 22 9 12 15 12 15 22"></polyline>
+      </svg>
+      <span>Accueil</span>
+    </button>
+    <button type="button" onclick="scrollToCatalog()" class="flex flex-col items-center justify-center py-1 hover:text-emerald-deep">
+      <svg class="w-5 h-5 mb-0.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
+        <rect x="3" y="3" width="7" height="7"></rect>
+        <rect x="14" y="3" width="7" height="7"></rect>
+        <rect x="14" y="14" width="7" height="7"></rect>
+        <rect x="3" y="14" width="7" height="7"></rect>
+      </svg>
+      <span>Catégories</span>
+    </button>
+    <button type="button" onclick="openCartDrawer()" class="flex flex-col items-center justify-center py-1 hover:text-emerald-deep relative">
+      <svg class="w-5 h-5 mb-0.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
+        <path d="M6 2L3 6v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6l-3-4z"></path>
+        <line x1="3" y1="6" x2="21" y2="6"></line>
+        <path d="M16 10a4 4 0 0 1-8 0"></path>
+      </svg>
+      <span>Panier</span>
+    </button>
+    <button type="button" onclick="openOrderTrackingModal()" class="flex flex-col items-center justify-center py-1 hover:text-emerald-deep">
+      <svg class="w-5 h-5 mb-0.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
+        <path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"></path>
+        <polyline points="3.27 6.96 12 12.01 20.73 6.96"></polyline>
+        <line x1="12" y1="22.08" x2="12" y2="12"></line>
+      </svg>
+      <span>Suivi</span>
+    </button>
+  </div>
+
+  <!-- ===================================================================== -->
+  <!-- 6. PRODUCT DETAILS MODAL (Matches 1000590000.png PDP)                 -->
+  <!-- ===================================================================== -->
+  <div id="product-detail-modal" class="hidden fixed inset-0 z-50 bg-black/75 backdrop-blur-sm flex items-end sm:items-center justify-center p-0 sm:p-6 overflow-y-auto">
+    <div class="bg-white rounded-t-3xl sm:rounded-2xl max-w-4xl w-full overflow-hidden shadow-2xl border-t sm:border border-gold-reflective/40 sm:my-auto">
+      <div class="bg-emerald-deep text-white px-5 py-3.5 flex items-center justify-between border-b border-gold-reflective/30">
+        <span id="pdp-breadcrumb" class="text-xs text-gold-light truncate">Accueil / Sacs</span>
+        <button type="button" onclick="closeProductDetailModal()" class="w-8 h-8 rounded-full bg-emerald-forest text-gold-light hover:text-white flex items-center justify-center" aria-label="Fermer">
+          <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
+        </button>
+      </div>
+      <div id="pdp-modal-body" class="p-5 sm:p-7 max-h-[85vh] overflow-y-auto"></div>
+    </div>
+  </div>
+
+  <!-- ===================================================================== -->
+  <!-- 7. SHOPPING CART & GUEST CHECKOUT DRAWER                              -->
+  <!-- ===================================================================== -->
+  <div id="cart-checkout-modal" class="hidden fixed inset-0 z-50 bg-black/70 backdrop-blur-sm flex justify-end">
+    <div class="bg-cream w-full max-w-xl h-full flex flex-col shadow-2xl border-l border-gold-reflective/35 overflow-hidden">
+      <div class="bg-emerald-deep text-white px-5 py-4 flex items-center justify-between border-b border-gold-reflective/30">
+        <div class="flex items-center gap-2.5">
+          <svg class="w-5 h-5 text-gold-reflective" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9"><path d="M6 2L3 6v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6l-3-4z"></path><line x1="3" y1="6" x2="21" y2="6"></line><path d="M16 10a4 4 0 0 1-8 0"></path></svg>
+          <div>
+            <h3 class="font-luxury text-lg font-bold text-gold-reflective" id="cart-drawer-title">Votre Panier</h3>
+            <p class="text-[11px] text-gold-light/80" id="cart-drawer-sub">Commande directe sans compte • Paiement à la livraison</p>
+          </div>
+        </div>
+        <button type="button" onclick="closeCartDrawer()" class="w-8 h-8 rounded-full bg-emerald-forest text-gold-light hover:text-white flex items-center justify-center" aria-label="Fermer">
+          <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
+        </button>
+      </div>
+      <div id="cart-drawer-body" class="flex-1 overflow-y-auto p-5 space-y-6"></div>
+    </div>
+  </div>
+
+  <!-- ===================================================================== -->
+  <!-- 8. GUEST ORDER TRACKING MODAL                                         -->
+  <!-- ===================================================================== -->
+  <div id="order-tracking-modal" class="hidden fixed inset-0 z-50 bg-black/70 backdrop-blur-sm flex items-center justify-center p-4">
+    <div class="bg-white rounded-2xl max-w-lg w-full overflow-hidden shadow-2xl border border-gold-reflective/45">
+      <div class="bg-emerald-deep text-white px-5 py-4 flex items-center justify-between border-b border-gold-reflective/30">
+        <div class="flex items-center gap-2">
+          <svg class="w-5 h-5 text-gold-reflective" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"></path><polyline points="3.27 6.96 12 12.01 20.73 6.96"></polyline><line x1="12" y1="22.08" x2="12" y2="12"></line></svg>
+          <h3 class="font-luxury text-lg font-bold text-gold-reflective">Suivi de Commande</h3>
+        </div>
+        <button type="button" onclick="closeOrderTrackingModal()" class="w-8 h-8 rounded-full bg-emerald-forest text-gold-light flex items-center justify-center" aria-label="Fermer">
+          <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
+        </button>
+      </div>
+      <div class="p-5 space-y-4 text-xs">
+        <p class="text-charcoal/75">Saisissez votre numéro de commande et le numéro de téléphone utilisé lors de votre achat :</p>
+        <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+          <div>
+            <label class="block font-bold mb-1">N° de commande *</label>
+            <input type="text" id="track-order-ref" value="LUX-25847-DZ" placeholder="LUX-25847-DZ" class="w-full px-3 py-2.5 rounded-xl border border-gray-300 font-mono uppercase focus:outline-none focus:border-emerald-deep" />
+          </div>
+          <div>
+            <label class="block font-bold mb-1">Téléphone *</label>
+            <input type="tel" id="track-order-phone" value="0551884210" placeholder="0551884210" class="w-full px-3 py-2.5 rounded-xl border border-gray-300 font-mono focus:outline-none focus:border-emerald-deep" />
+          </div>
+        </div>
+        <button type="button" onclick="lookupGuestOrderStatus()" class="w-full py-3 rounded-xl bg-emerald-deep hover:bg-emerald-forest text-gold-reflective font-bold text-xs transition">
+          Rechercher ma commande
+        </button>
+        <div id="track-order-result" class="space-y-2"></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ===================================================================== -->
+  <!-- 9. STATIC PAGES MODAL (LA MAISON, FAQ, LIVRAISON & RETOURS, CGV)      -->
+  <!-- ===================================================================== -->
+  <div id="static-page-modal" class="hidden fixed inset-0 z-50 bg-black/70 backdrop-blur-sm flex items-center justify-center p-4 overflow-y-auto">
+    <div class="bg-white rounded-2xl max-w-2xl w-full overflow-hidden shadow-2xl border border-gold-reflective/45 my-auto">
+      <div class="bg-emerald-deep text-white px-5 py-4 flex items-center justify-between border-b border-gold-reflective/30">
+        <h3 id="static-page-title" class="font-luxury text-xl font-bold text-gold-reflective">Mus Luxury</h3>
+        <button type="button" onclick="closeStaticPageModal()" class="w-8 h-8 rounded-full bg-emerald-forest text-gold-light flex items-center justify-center" aria-label="Fermer">
+          <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
+        </button>
+      </div>
+      <div id="static-page-body" class="p-6 space-y-4 text-xs sm:text-sm text-charcoal leading-relaxed max-h-[75vh] overflow-y-auto"></div>
+    </div>
+  </div>
+
+  <!-- ===================================================================== -->
+  <!-- 10. 69-WILAYA DELIVERY TARIFFS MODAL (DOMICILE & STOP-DESK SYNCED)    -->
+  <!-- ===================================================================== -->
+  <div id="wilaya-tariffs-modal" class="hidden fixed inset-0 z-50 bg-black/75 backdrop-blur-sm flex items-center justify-center p-3 sm:p-6 overflow-y-auto">
+    <div class="bg-white rounded-2xl max-w-4xl w-full overflow-hidden shadow-2xl border border-gold-reflective/45 my-auto">
+      <div class="bg-emerald-deep text-white px-5 py-4 flex items-center justify-between border-b border-gold-reflective/30">
+        <div class="flex items-center gap-2.5">
+          <svg class="w-5 h-5 text-gold-reflective flex-shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9">
+            <rect x="1" y="3" width="15" height="13" rx="1"></rect>
+            <polygon points="16 8 20 8 23 11 23 16 16 16 16 8"></polygon>
+            <circle cx="5.5" cy="18.5" r="2.5"></circle>
+            <circle cx="18.5" cy="18.5" r="2.5"></circle>
+          </svg>
+          <div>
+            <h3 class="font-luxury text-lg sm:text-xl font-bold text-gold-reflective">Tarifs de Livraison — 69 Wilayas d'Algérie</h3>
+            <p class="text-[11px] text-gold-light/80">Tarifs officiels À Domicile &amp; Stop-Desk (Bureau relais) synchronisés avec le calcul automatique du panier</p>
+          </div>
+        </div>
+        <button type="button" onclick="closeWilayaTariffsModal()" class="w-8 h-8 rounded-full bg-emerald-forest text-gold-light hover:text-white flex items-center justify-center" aria-label="Fermer">
+          <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
+        </button>
+      </div>
+      <div class="p-4 sm:p-6 space-y-4 max-h-[82vh] overflow-y-auto text-xs">
+        <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-cream p-3.5 rounded-xl border border-gold-reflective/35">
+          <div class="relative flex-1">
+            <input
+              type="text"
+              id="wilaya-modal-search"
+              oninput="renderWilayaTariffsTable()"
+              placeholder="Rechercher une wilaya par code (01..69) ou nom (ex: Alger, Oran, Constantine, Aflou, Barika...)"
+              class="w-full pl-9 pr-4 py-2 rounded-xl border border-gray-300 bg-white text-xs focus:outline-none focus:border-emerald-deep"
+            />
+            <svg class="w-4 h-4 text-gray-400 absolute left-3 top-2.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line></svg>
+          </div>
+          <div class="flex items-center gap-2 text-[11px] text-emerald-deep font-semibold">
+            <span class="px-2.5 py-1 rounded-lg bg-white border border-gold-reflective/40">69 Wilayas couvertes</span>
+            <span class="px-2.5 py-1 rounded-lg bg-white border border-gold-reflective/40">Paiement à la livraison (DA)</span>
+          </div>
+        </div>
+
+        <div class="overflow-x-auto rounded-xl border border-gray-200">
+          <table class="w-full text-left border-collapse">
+            <thead>
+              <tr class="bg-emerald-deep text-gold-light text-[11px] uppercase tracking-wider">
+                <th class="py-2.5 px-3">Code</th>
+                <th class="py-2.5 px-3">Wilaya</th>
+                <th class="py-2.5 px-3">Livraison à Domicile (DA)</th>
+                <th class="py-2.5 px-3">Stop-Desk / Bureau Relais (DA)</th>
+                <th class="py-2.5 px-3 text-right">Action rapide</th>
+              </tr>
+            </thead>
+            <tbody id="wilaya-tariffs-tbody" class="divide-y divide-gray-100 text-xs"></tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- TOAST NOTIFICATION BANNER -->
+  <div id="toast-container" class="fixed bottom-16 md:bottom-5 right-4 z-50 space-y-2 pointer-events-none"></div>
+
+  <!-- ===================================================================== -->
+  <!-- STOREFRONT LOGIC                                                      -->
+  <!-- ===================================================================== -->
+  <script>
+    const ASSET_MAP = {
+      logo: "user_uploaded_files/ttl=63d/user_uploaded/mus_luxury_logo.png",
+      hero: "user_uploaded_files/ttl=63d/user_uploaded/hero_banner_mus.jpg",
+      sac_chanel: "user_uploaded_files/ttl=63d/user_uploaded/prod_sac_chanel_hd.jpg",
+      sac_burgundy: "user_uploaded_files/ttl=63d/user_uploaded/prod_sac_chanel_burgundy.jpg",
+      sac_emeraude: "user_uploaded_files/ttl=63d/user_uploaded/prod_sac_emeraude.jpg",
+      sac_beige: "user_uploaded_files/ttl=63d/user_uploaded/prod_sac_bandouliere_beige.jpg",
+      sac_noir: "user_uploaded_files/ttl=63d/user_uploaded/prod_sac_noir.jpg",
+      sac_rose: "user_uploaded_files/ttl=63d/user_uploaded/prod_sac_rose.jpg",
+      baskets: "user_uploaded_files/ttl=63d/user_uploaded/prod_baskets_elegantes.jpg",
+      chale: "user_uploaded_files/ttl=63d/user_uploaded/prod_chale_luxueux.jpg",
+      maquillage: "user_uploaded_files/ttl=63d/user_uploaded/prod_set_maquillage.jpg",
+      chapeau: "user_uploaded_files/ttl=63d/user_uploaded/prod_chapeau_elegant.jpg",
+      casquette: "user_uploaded_files/ttl=63d/user_uploaded/prod_casquette_ny.jpg",
+      lunettes: "user_uploaded_files/ttl=63d/user_uploaded/prod_lunettes_soleil.jpg",
+      montre: "user_uploaded_files/ttl=63d/user_uploaded/prod_montre_or.jpg",
+      accessoires: "user_uploaded_files/ttl=63d/user_uploaded/prod_accessoires_or.jpg",
+      cat_sacs: "user_uploaded_files/ttl=63d/user_uploaded/cat_sacs.jpg",
+      cat_chaussures: "user_uploaded_files/ttl=63d/user_uploaded/cat_chaussures.jpg",
+      cat_chale: "user_uploaded_files/ttl=63d/user_uploaded/cat_chale.jpg",
+      cat_maquillage: "user_uploaded_files/ttl=63d/user_uploaded/cat_maquillage.jpg",
+      cat_chapeau: "user_uploaded_files/ttl=63d/user_uploaded/cat_chapeau.jpg"
+    };
+
+    const COLOR_SWATCH_HEX = {
+      "Bordeaux": "#5B1E31",
+      "Vert Émeraude": "#063D2E",
+      "Noir": "#181818",
+      "Beige": "#DFC9AC",
+      "Rose Poudré": "#C98594",
+      "Blanc & Noir": "#EAEAEA",
+      "Or": "#D4AF62",
+      "Beige & Noir": "#D2B895",
+      "Teinte 01 Rose Nude": "#C66B7D",
+      "Teinte 02 Rubis Intense": "#8E1B2B",
+      "Unique (56-58cm)": "#D8C09E",
+      "Noir & Blanc": "#222222",
+      "Écaille & Or": "#5C3A21",
+      "Noir Intense": "#121212",
+      "Noir & Or": "#1C2421",
+      "Émeraude & Or": "#063D2E",
+      "Or 18K Plaqué": "#D4AF62"
+    };
+
+    const I18N = {
+      fr: {
+        topPromo: "Livraison rapide 69 Wilayas en Algérie • Paiement à la livraison",
+        trackTop: "Suivre ma commande",
+        searchPlaceholder: "Rechercher un article...",
+        cart: "Panier",
+        home: "Accueil",
+        allCollections: "Toutes les collections",
+        heroBadge: "STYLE • QUALITÉ • ÉLÉGANCE",
+        heroTitle1: "Votre style,",
+        heroTitle2: "notre passion",
+        heroDesc: "Découvrez les meilleures marques et les plus beaux accessoires à des prix exceptionnels. Commandez en toute simplicité avec livraison rapide dans les 69 wilayas d'Algérie.",
+        heroCta1: "Voir la boutique",
+        heroCta2: "Collection Sacs",
+        categoriesTitle: "Nos Catégories",
+        filtersHeading: "Filtres",
+        resetFilters: "Réinitialiser",
+        priceMax: "Prix maximum",
+        inStockOnly: "Articles en stock uniquement",
+        addToCart: "Ajouter au panier",
+        buyNow: "Acheter maintenant",
+        outOfStock: "Rupture de stock",
+        inStock: "En stock"
+      },
+      ar: {
+        topPromo: "توصيل سريع إلى 69 ولاية في الجزائر • الدفع عند الاستلام",
+        trackTop: "تتبع طلبي",
+        searchPlaceholder: "ابحث عن منتج...",
+        cart: "السلة",
+        home: "الرئيسية",
+        allCollections: "جميع المجموعات",
+        heroBadge: "أناقة • جودة • تميز",
+        heroTitle1: "أسلوبك،",
+        heroTitle2: "شغفنا الدائم",
+        heroDesc: "اكتشفوا أرقى الماركات وأجمل الإكسسوارات بأسعار استثنائية. اطلب الآن بكل سهولة بدون إنشاء حساب مع التوصيل السريع إلى 69 ولاية.",
+        heroCta1: "تصفح المتجر",
+        heroCta2: "مجموعة الحقائب",
+        categoriesTitle: "فئات المتجر",
+        filtersHeading: "التصفية",
+        resetFilters: "إعادة ضبط",
+        priceMax: "السعر الأقصى",
+        inStockOnly: "المتوفر في المخزون فقط",
+        addToCart: "أضف إلى السلة",
+        buyNow: "اشتر الآن",
+        outOfStock: "نفد المخزون",
+        inStock: "متوفر"
+      },
+      en: {
+        topPromo: "Fast Delivery Across All 69 Wilayas in Algeria • Cash on Delivery",
+        trackTop: "Track Order",
+        searchPlaceholder: "Search products...",
+        cart: "Bag",
+        home: "Home",
+        allCollections: "All Collections",
+        heroBadge: "STYLE • QUALITY • ELEGANCE",
+        heroTitle1: "Your style,",
+        heroTitle2: "our passion",
+        heroDesc: "Discover our curated selection of luxury handbags, footwear, shawls, beauty sets, watches and accessories with Cash on Delivery across 69 Wilayas.",
+        heroCta1: "Explore Boutique",
+        heroCta2: "Handbag Collection",
+        categoriesTitle: "Shop by Category",
+        filtersHeading: "Filters",
+        resetFilters: "Reset",
+        priceMax: "Maximum Price",
+        inStockOnly: "In-stock items only",
+        addToCart: "Add to Bag",
+        buyNow: "Buy Now",
+        outOfStock: "Out of Stock",
+        inStock: "In Stock"
+      }
+    };
+
+    const CATEGORIES = [
+      {
+        id: 1, slug: "sacs", name_fr: "Sacs", name_ar: "حقائب", name_en: "Bags",
+        description_fr: "Élégance et praticité au quotidien : sacs à main matelassés, cabas et sacs bandoulière.",
+        image: ASSET_MAP.cat_sacs,
+        attributes: [
+          { key: "color", label_fr: "Couleur", label_ar: "اللون", label_en: "Color", type: "color", variant: true, filterable: true, options: ["Bordeaux", "Vert Émeraude", "Noir", "Beige", "Rose Poudré"] },
+          { key: "size", label_fr: "Taille", label_ar: "المقاس", label_en: "Size", type: "size", variant: true, filterable: true, options: ["S", "M", "L", "Standard"] },
+          { key: "bag_type", label_fr: "Type de sac", label_ar: "نوع الحقيبة", label_en: "Bag Type", type: "single_select", variant: false, filterable: true, options: ["Sac à main", "Sac bandoulière"] },
+          { key: "material", label_fr: "Matériau", label_ar: "الخامة", label_en: "Material", type: "short_text", variant: false, filterable: false, options: [] },
+          { key: "lining", label_fr: "Doublure", label_ar: "البطانة", label_en: "Lining", type: "short_text", variant: false, filterable: false, options: [] },
+          { key: "closure", label_fr: "Fermeture", label_ar: "الإغلاق", label_en: "Closure", type: "short_text", variant: false, filterable: false, options: [] },
+          { key: "dimensions", label_fr: "Dimensions", label_ar: "الأبعاد", label_en: "Dimensions", type: "measurement", variant: false, filterable: false, options: [] },
+          { key: "strap_type", label_fr: "Bandoulière", label_ar: "الحزام", label_en: "Strap Type", type: "short_text", variant: false, filterable: false, options: [] }
+        ]
+      },
+      {
+        id: 2, slug: "chaussures", name_fr: "Chaussures", name_ar: "أحذية", name_en: "Shoes",
+        description_fr: "Baskets urbaines et chaussures de ville aux finitions irréprochables.",
+        image: ASSET_MAP.cat_chaussures,
+        attributes: [
+          { key: "color", label_fr: "Couleur", label_ar: "اللون", label_en: "Color", type: "color", variant: true, filterable: true, options: ["Blanc & Noir", "Noir", "Or"] },
+          { key: "size", label_fr: "Pointure", label_ar: "المقاس", label_en: "Shoe Size", type: "size", variant: true, filterable: true, options: ["37", "38", "39", "40", "41"] },
+          { key: "gender", label_fr: "Genre", label_ar: "الجنس", label_en: "Gender", type: "single_select", variant: false, filterable: true, options: ["Femme", "Homme", "Unisexe"] },
+          { key: "shoe_type", label_fr: "Type de chaussure", label_ar: "نوع الحذاء", label_en: "Shoe Type", type: "single_select", variant: false, filterable: true, options: ["Baskets", "Escarpins"] },
+          { key: "material", label_fr: "Matériau", label_ar: "الخامة", label_en: "Material", type: "short_text", variant: false, filterable: false, options: [] },
+          { key: "sole", label_fr: "Semelle", label_ar: "النعل", label_en: "Sole", type: "short_text", variant: false, filterable: false, options: [] }
+        ]
+      },
+      {
+        id: 3, slug: "chale", name_fr: "Châle", name_ar: "شال", name_en: "Shawls",
+        description_fr: "Châles et écharpes soyeuses aux motifs raffinés.",
+        image: ASSET_MAP.cat_chale,
+        attributes: [
+          { key: "color", label_fr: "Couleur", label_ar: "اللون", label_en: "Color", type: "color", variant: true, filterable: true, options: ["Beige & Noir", "Vert Émeraude", "Or"] },
+          { key: "size", label_fr: "Dimensions", label_ar: "المقاس", label_en: "Dimensions", type: "size", variant: true, filterable: true, options: ["180 × 70 cm", "200 × 80 cm"] },
+          { key: "fabric", label_fr: "Matière", label_ar: "القماش", label_en: "Fabric", type: "single_select", variant: false, filterable: true, options: ["Soie & Cachemire", "Laine fine"] }
+        ]
+      },
+      {
+        id: 4, slug: "maquillage", name_fr: "Maquillage", name_ar: "مكياج", name_en: "Makeup",
+        description_fr: "Coffrets beauté complets, rouges à lèvres satinés et palettes.",
+        image: ASSET_MAP.cat_maquillage,
+        attributes: [
+          { key: "shade", label_fr: "Teinte / Coffret", label_ar: "الدرجة", label_en: "Shade", type: "color", variant: true, filterable: true, options: ["Teinte 01 Rose Nude", "Teinte 02 Rubis Intense"] },
+          { key: "size", label_fr: "Format", label_ar: "الحجم", label_en: "Format", type: "size", variant: true, filterable: true, options: ["Coffret Standard", "Coffret Prestige"] },
+          { key: "skin_type", label_fr: "Type de peau", label_ar: "نوع البشرة", label_en: "Skin Type", type: "single_select", variant: false, filterable: true, options: ["Tous types de peau", "Peau sensible"] },
+          { key: "finish", label_fr: "Fini", label_ar: "اللمسة النهائية", label_en: "Finish", type: "single_select", variant: false, filterable: true, options: ["Satiné & Velours", "Mat"] },
+          { key: "volume", label_fr: "Poids / Volume", label_ar: "الوزن", label_en: "Weight", type: "measurement", variant: false, filterable: false, options: [] }
+        ]
+      },
+      {
+        id: 5, slug: "chapeau", name_fr: "Chapeau", name_ar: "قبعات", name_en: "Hats",
+        description_fr: "Chapeaux d'été et feutres classiques à ruban contrasté.",
+        image: ASSET_MAP.cat_chapeau,
+        attributes: [
+          { key: "color", label_fr: "Couleur", label_ar: "اللون", label_en: "Color", type: "color", variant: true, filterable: true, options: ["Beige", "Noir"] },
+          { key: "size", label_fr: "Tour de tête", label_ar: "المقاس", label_en: "Size", type: "size", variant: true, filterable: true, options: ["M (56-57cm)", "L (58-59cm)"] },
+          { key: "material", label_fr: "Matière", label_ar: "الخامة", label_en: "Material", type: "short_text", variant: false, filterable: false, options: [] }
+        ]
+      },
+      {
+        id: 6, slug: "casquette", name_fr: "Casquette", name_ar: "قبعات رياضية", name_en: "Caps",
+        description_fr: "Casquettes brodées au style sport-chic.",
+        image: ASSET_MAP.casquette,
+        attributes: [
+          { key: "color", label_fr: "Couleur", label_ar: "اللون", label_en: "Color", type: "color", variant: true, filterable: true, options: ["Noir & Blanc", "Vert Émeraude"] },
+          { key: "size", label_fr: "Taille", label_ar: "المقاس", label_en: "Size", type: "size", variant: true, filterable: true, options: ["Ajustable", "M/L"] },
+          { key: "material", label_fr: "Matière", label_ar: "الخامة", label_en: "Material", type: "short_text", variant: false, filterable: false, options: [] }
+        ]
+      },
+      {
+        id: 7, slug: "les-lunettes", name_fr: "Les Lunettes", name_ar: "نظارات", name_en: "Eyewear",
+        description_fr: "Lunettes solaires UV400 aux montures écaille et dorées.",
+        image: ASSET_MAP.lunettes,
+        attributes: [
+          { key: "frame_color", label_fr: "Couleur monture", label_ar: "لون الإطار", label_en: "Frame Color", type: "color", variant: true, filterable: true, options: ["Écaille & Or", "Noir Intense"] },
+          { key: "size", label_fr: "Calibre", label_ar: "المقاس", label_en: "Lens Width", type: "size", variant: true, filterable: true, options: ["52 mm", "55 mm"] },
+          { key: "uv_protection", label_fr: "Protection UV", label_ar: "حماية الأشعة", label_en: "UV Protection", type: "single_select", variant: false, filterable: true, options: ["UV400 Polarisé", "UV400 Catégorie 3"] },
+          { key: "material", label_fr: "Matériau monture", label_ar: "خامة الإطار", label_en: "Frame Material", type: "short_text", variant: false, filterable: false, options: [] }
+        ]
+      },
+      {
+        id: 8, slug: "les-montres", name_fr: "Les Montres", name_ar: "ساعات", name_en: "Watches",
+        description_fr: "Garde-temps chronographes aux finitions dorées.",
+        image: ASSET_MAP.montre,
+        attributes: [
+          { key: "dial_color", label_fr: "Couleur du cadran", label_ar: "لون الميناء", label_en: "Dial Color", type: "color", variant: true, filterable: true, options: ["Noir & Or", "Émeraude & Or"] },
+          { key: "size", label_fr: "Diamètre boîtier", label_ar: "قطر الساعة", label_en: "Case Diameter", type: "size", variant: true, filterable: true, options: ["38 mm", "41 mm"] },
+          { key: "movement", label_fr: "Mouvement", label_ar: "الحركة", label_en: "Movement", type: "single_select", variant: false, filterable: true, options: ["Chronographe Quartz Précision", "Automatique"] },
+          { key: "water_resistance", label_fr: "Étanchéité", label_ar: "مقاومة الماء", label_en: "Water Resistance", type: "short_text", variant: false, filterable: false, options: [] },
+          { key: "strap_material", label_fr: "Bracelet", label_ar: "السوار", label_en: "Strap Material", type: "short_text", variant: false, filterable: false, options: [] }
+        ]
+      },
+      {
+        id: 9, slug: "accessoires", name_fr: "Accessoires", name_ar: "إكسسوارات", name_en: "Accessories",
+        description_fr: "Parures dorées, bagues et boucles d'oreilles ciselées.",
+        image: ASSET_MAP.accessoires,
+        attributes: [
+          { key: "finish", label_fr: "Finition", label_ar: "الطلاء", label_en: "Finish", type: "color", variant: true, filterable: true, options: ["Or 18K Plaqué", "Or"] },
+          { key: "size", label_fr: "Taille coffret", label_ar: "الحجم", label_en: "Set Size", type: "size", variant: true, filterable: true, options: ["Parure 5 pièces", "Parure Complète 8 pièces"] },
+          { key: "material", label_fr: "Alliage", label_ar: "المعدن", label_en: "Material", type: "short_text", variant: false, filterable: false, options: [] }
+        ]
+      }
+    ];
+
+    const PRODUCTS = [
+      {
+        id: 1, category_id: 1, category_slug: "sacs", sku: "LUX-BAG-001",
+        badge: "Nouveau",
+        name_fr: "Sac à main Chanel style", name_ar: "حقيبة يد ستايل شانيل", name_en: "Chanel Style Quilted Handbag",
+        brand: "CHANEL STYLE",
+        rating: "4.8", reviews: 12,
+        description_fr: "Un sac iconique au style intemporel. Élégant, pratique et parfait pour toutes les occasions. Ce modèle allie luxe et raffinement avec ses finitions soignées et sa chaîne argentée.",
+        image: ASSET_MAP.sac_chanel,
+        gallery: [ASSET_MAP.sac_chanel, ASSET_MAP.sac_burgundy, ASSET_MAP.sac_noir, ASSET_MAP.sac_rose],
+        selling_price_dzd: 4500, previous_price_dzd: 5500, discount_percent: 18,
+        sales_count: 24,
+        attributes: {
+          bag_type: "Sac à main",
+          material: "Cuir synthétique matelassé",
+          lining: "Tissu premium doux",
+          closure: "Fermoir rotatif à rabat",
+          dimensions: "26 × 15 × 8 cm",
+          strap_type: "Chaîne argentée tressée cuir"
+        },
+        swatches: ["#5B1E31", "#181818", "#DFC9AC", "#C98594"],
+        variants: [
+          { id: 1001, sku: "LUX-BAG-001-BOR-S", title: "Bordeaux / S", stock: 3, price: 4300, attrs: { color: "Bordeaux", size: "S" }, img: ASSET_MAP.sac_chanel },
+          { id: 1002, sku: "LUX-BAG-001-BOR-M", title: "Bordeaux / M", stock: 4, price: 4500, attrs: { color: "Bordeaux", size: "M" }, img: ASSET_MAP.sac_chanel },
+          { id: 1003, sku: "LUX-BAG-001-BOR-L", title: "Bordeaux / L", stock: 6, price: 4500, attrs: { color: "Bordeaux", size: "L" }, img: ASSET_MAP.sac_chanel },
+          { id: 1004, sku: "LUX-BAG-001-NOI-M", title: "Noir / M", stock: 5, price: 4500, attrs: { color: "Noir", size: "M" }, img: ASSET_MAP.sac_noir },
+          { id: 1005, sku: "LUX-BAG-001-NOI-L", title: "Noir / L", stock: 4, price: 4500, attrs: { color: "Noir", size: "L" }, img: ASSET_MAP.sac_noir },
+          { id: 1006, sku: "LUX-BAG-001-BEI-M", title: "Beige / M", stock: 3, price: 4500, attrs: { color: "Beige", size: "M" }, img: ASSET_MAP.sac_beige },
+          { id: 1007, sku: "LUX-BAG-001-ROS-M", title: "Rose Poudré / M", stock: 2, price: 4500, attrs: { color: "Rose Poudré", size: "M" }, img: ASSET_MAP.sac_rose }
+        ]
+      },
+      {
+        id: 2, category_id: 2, category_slug: "chaussures", sku: "LUX-SHOE-001",
+        badge: "Meilleure vente",
+        name_fr: "Baskets élégantes", name_ar: "حذاء رياضي أنيق", name_en: "Luxury Urban Sneakers",
+        brand: "MUS LUXURY",
+        rating: "4.9", reviews: 8,
+        description_fr: "Baskets basses bicolores à semelle confort et finitions dorées subtiles, pensées pour un style urbain chic au quotidien.",
+        image: ASSET_MAP.baskets,
+        gallery: [ASSET_MAP.baskets],
+        selling_price_dzd: 6800, previous_price_dzd: 8500, discount_percent: 20,
+        sales_count: 19,
+        attributes: {
+          gender: "Unisexe",
+          shoe_type: "Baskets",
+          material: "Cuir grainé supérieur",
+          sole: "Caoutchouc antidérapant cousu"
+        },
+        swatches: ["#EAEAEA", "#181818"],
+        variants: [
+          { id: 2001, sku: "LUX-SHOE-001-BN-37", title: "Blanc & Noir / 37", stock: 3, price: 6800, attrs: { color: "Blanc & Noir", size: "37" } },
+          { id: 2002, sku: "LUX-SHOE-001-BN-38", title: "Blanc & Noir / 38", stock: 4, price: 6800, attrs: { color: "Blanc & Noir", size: "38" } },
+          { id: 2003, sku: "LUX-SHOE-001-BN-39", title: "Blanc & Noir / 39", stock: 6, price: 6800, attrs: { color: "Blanc & Noir", size: "39" } },
+          { id: 2004, sku: "LUX-SHOE-001-BN-40", title: "Blanc & Noir / 40", stock: 3, price: 6800, attrs: { color: "Blanc & Noir", size: "40" } },
+          { id: 2005, sku: "LUX-SHOE-001-BN-41", title: "Blanc & Noir / 41", stock: 0, price: 6800, attrs: { color: "Blanc & Noir", size: "41" } },
+          { id: 2006, sku: "LUX-SHOE-001-NOI-39", title: "Noir / 39", stock: 5, price: 6800, attrs: { color: "Noir", size: "39" } },
+          { id: 2007, sku: "LUX-SHOE-001-NOI-40", title: "Noir / 40", stock: 4, price: 6800, attrs: { color: "Noir", size: "40" } }
+        ]
+      },
+      {
+        id: 3, category_id: 3, category_slug: "chale", sku: "LUX-SHW-001",
+        badge: "Promo",
+        name_fr: "Écharpe luxueuse", name_ar: "شال فاخر", name_en: "Luxury Printed Shawl",
+        brand: "MAISON OR",
+        rating: "4.7", reviews: 5,
+        description_fr: "Écharpe et châle au tombé soyeux, rehaussé de motifs délicats noir et or sur fond beige.",
+        image: ASSET_MAP.chale,
+        gallery: [ASSET_MAP.chale],
+        selling_price_dzd: 2200, previous_price_dzd: 3200, discount_percent: 31,
+        sales_count: 15,
+        attributes: {
+          fabric: "Soie & Cachemire"
+        },
+        swatches: ["#D2B895", "#063D2E"],
+        variants: [
+          { id: 3001, sku: "LUX-SHW-001-BN-180", title: "Beige & Noir / 180 × 70 cm", stock: 8, price: 2200, attrs: { color: "Beige & Noir", size: "180 × 70 cm" } },
+          { id: 3002, sku: "LUX-SHW-001-BN-200", title: "Beige & Noir / 200 × 80 cm", stock: 4, price: 2500, attrs: { color: "Beige & Noir", size: "200 × 80 cm" } },
+          { id: 3003, sku: "LUX-SHW-001-EM-180", title: "Vert Émeraude / 180 × 70 cm", stock: 5, price: 2200, attrs: { color: "Vert Émeraude", size: "180 × 70 cm" } }
+        ]
+      },
+      {
+        id: 4, category_id: 4, category_slug: "maquillage", sku: "LUX-MKP-001",
+        badge: "Populaire",
+        name_fr: "Set maquillage complet", name_ar: "مجموعة مكياج كاملة", name_en: "Complete Luxury Makeup Set",
+        brand: "MUS BEAUTY",
+        rating: "4.8", reviews: 7,
+        description_fr: "Coffret beauté réunissant rouges à lèvres satinés, palette d'ombres à paupières haute pigmentation et poudre compacte.",
+        image: ASSET_MAP.maquillage,
+        gallery: [ASSET_MAP.maquillage],
+        selling_price_dzd: 3900, previous_price_dzd: 5200, discount_percent: 25,
+        sales_count: 21,
+        attributes: {
+          skin_type: "Tous types de peau",
+          finish: "Satiné & Velours",
+          volume: "145 g (Coffret 5 pièces)"
+        },
+        swatches: ["#C66B7D", "#8E1B2B"],
+        variants: [
+          { id: 4001, sku: "LUX-MKP-001-01-STD", title: "Teinte 01 Rose Nude / Coffret Standard", stock: 10, price: 3900, attrs: { shade: "Teinte 01 Rose Nude", size: "Coffret Standard" } },
+          { id: 4002, sku: "LUX-MKP-001-01-PR", title: "Teinte 01 Rose Nude / Coffret Prestige", stock: 4, price: 4600, attrs: { shade: "Teinte 01 Rose Nude", size: "Coffret Prestige" } },
+          { id: 4003, sku: "LUX-MKP-001-02-STD", title: "Teinte 02 Rubis Intense / Coffret Standard", stock: 6, price: 3900, attrs: { shade: "Teinte 02 Rubis Intense", size: "Coffret Standard" } }
+        ]
+      },
+      {
+        id: 5, category_id: 5, category_slug: "chapeau", sku: "LUX-HAT-001",
+        badge: "Été",
+        name_fr: "Chapeau élégant", name_ar: "قبعة أنيقة", name_en: "Classic Ribbon Sun Hat",
+        brand: "MUS LUXURY",
+        rating: "4.6", reviews: 4,
+        description_fr: "Chapeau finement tressé avec ruban noir contrasté pour une allure solaire et distinguée.",
+        image: ASSET_MAP.chapeau,
+        gallery: [ASSET_MAP.chapeau],
+        selling_price_dzd: 1800, previous_price_dzd: 2500, discount_percent: 28,
+        sales_count: 9,
+        attributes: {
+          material: "Paille naturelle tressée main"
+        },
+        swatches: ["#DFC9AC", "#181818"],
+        variants: [
+          { id: 5001, sku: "LUX-HAT-001-BEI-M", title: "Beige / M (56-57cm)", stock: 7, price: 1800, attrs: { color: "Beige", size: "M (56-57cm)" } },
+          { id: 5002, sku: "LUX-HAT-001-BEI-L", title: "Beige / L (58-59cm)", stock: 4, price: 1800, attrs: { color: "Beige", size: "L (58-59cm)" } }
+        ]
+      },
+      {
+        id: 6, category_id: 1, category_slug: "sacs", sku: "LUX-BAG-002",
+        badge: "Exclusif",
+        name_fr: "Sac à main élégant Émeraude", name_ar: "حقيبة يد أنيقة زمردية", name_en: "Emerald Signature Handbag",
+        brand: "ÉMERAUDE PARIS",
+        rating: "4.9", reviews: 18,
+        description_fr: "Ce sac à main est conçu pour les femmes modernes qui recherchent à la fois l'élégance et la praticité. Fabriqué en cuir synthétique haut de gamme avec doublure douce.",
+        image: ASSET_MAP.sac_emeraude,
+        gallery: [ASSET_MAP.sac_emeraude, ASSET_MAP.sac_beige, ASSET_MAP.sac_noir],
+        selling_price_dzd: 12500, previous_price_dzd: 16900, discount_percent: 26,
+        sales_count: 27,
+        attributes: {
+          bag_type: "Sac à main",
+          material: "Cuir synthétique haut de gamme",
+          lining: "Tissu suédé doux",
+          closure: "Zippée & fermoir doré",
+          dimensions: "28 × 20 × 12 cm",
+          strap_type: "Poignée structurée & bandoulière amovible"
+        },
+        swatches: ["#063D2E", "#181818", "#DFC9AC"],
+        variants: [
+          { id: 1008, sku: "LUX-BAG-002-EME-STD", title: "Vert Émeraude / Standard", stock: 5, price: 12500, attrs: { color: "Vert Émeraude", size: "Standard" }, img: ASSET_MAP.sac_emeraude },
+          { id: 1009, sku: "LUX-BAG-002-EME-L", title: "Vert Émeraude / L", stock: 3, price: 13200, attrs: { color: "Vert Émeraude", size: "L" }, img: ASSET_MAP.sac_emeraude },
+          { id: 1010, sku: "LUX-BAG-002-NOI-STD", title: "Noir / Standard", stock: 4, price: 12500, attrs: { color: "Noir", size: "Standard" }, img: ASSET_MAP.sac_noir },
+          { id: 1011, sku: "LUX-BAG-002-BEI-STD", title: "Beige / Standard", stock: 2, price: 12500, attrs: { color: "Beige", size: "Standard" }, img: ASSET_MAP.sac_beige }
+        ]
+      },
+      {
+        id: 7, category_id: 1, category_slug: "sacs", sku: "LUX-BAG-003",
+        badge: null,
+        name_fr: "Sac bandoulière Beige", name_ar: "حقيبة كتف بيج أنيقة", name_en: "Minimalist Beige Crossbody Bag",
+        brand: "MUS LUXURY",
+        rating: "4.8", reviews: 9,
+        description_fr: "Sac bandoulière structuré couleur beige sablé avec fermoir doré.",
+        image: ASSET_MAP.sac_beige,
+        gallery: [ASSET_MAP.sac_beige, ASSET_MAP.sac_rose],
+        selling_price_dzd: 9800, previous_price_dzd: 11900, discount_percent: 18,
+        sales_count: 11,
+        attributes: {
+          bag_type: "Sac bandoulière",
+          material: "Cuir lisse",
+          lining: "Coton sergé",
+          closure: "Rabat magnétique doré",
+          dimensions: "24 × 16 × 7 cm",
+          strap_type: "Bandoulière réglable"
+        },
+        swatches: ["#DFC9AC", "#C98594"],
+        variants: [
+          { id: 1012, sku: "LUX-BAG-003-BEI-S", title: "Beige / S", stock: 3, price: 9500, attrs: { color: "Beige", size: "S" }, img: ASSET_MAP.sac_beige },
+          { id: 1013, sku: "LUX-BAG-003-BEI-M", title: "Beige / M", stock: 4, price: 9800, attrs: { color: "Beige", size: "M" }, img: ASSET_MAP.sac_beige },
+          { id: 1014, sku: "LUX-BAG-003-ROS-M", title: "Rose Poudré / M", stock: 3, price: 9800, attrs: { color: "Rose Poudré", size: "M" }, img: ASSET_MAP.sac_rose }
+        ]
+      },
+      {
+        id: 8, category_id: 6, category_slug: "casquette", sku: "LUX-CAP-001",
+        badge: null,
+        name_fr: "Casquette brodée Urbaine", name_ar: "قبعة رياضية مطرزة", name_en: "Embroidered Urban Cap",
+        brand: "MUS LUXURY",
+        rating: "4.7", reviews: 6,
+        description_fr: "Casquette noire ajustée avec broderie blanche en relief.",
+        image: ASSET_MAP.casquette,
+        gallery: [ASSET_MAP.casquette],
+        selling_price_dzd: 2400, previous_price_dzd: 3000, discount_percent: 20,
+        sales_count: 10,
+        attributes: {
+          material: "Coton sergé respirant"
+        },
+        swatches: ["#222222", "#063D2E"],
+        variants: [
+          { id: 6001, sku: "LUX-CAP-001-NB-ADJ", title: "Noir & Blanc / Ajustable", stock: 9, price: 2400, attrs: { color: "Noir & Blanc", size: "Ajustable" } },
+          { id: 6002, sku: "LUX-CAP-001-EM-ADJ", title: "Vert Émeraude / Ajustable", stock: 5, price: 2400, attrs: { color: "Vert Émeraude", size: "Ajustable" } }
+        ]
+      },
+      {
+        id: 9, category_id: 7, category_slug: "les-lunettes", sku: "LUX-SUN-001",
+        badge: "UV400",
+        name_fr: "Lunettes solaires Prestige", name_ar: "نظارات شمسية فاخرة", name_en: "Prestige UV400 Sunglasses",
+        brand: "MAISON OR",
+        rating: "4.9", reviews: 11,
+        description_fr: "Lunettes solaires aux verres dégradés UV400 et branches finement dorées.",
+        image: ASSET_MAP.lunettes,
+        gallery: [ASSET_MAP.lunettes],
+        selling_price_dzd: 5400, previous_price_dzd: 6900, discount_percent: 22,
+        sales_count: 14,
+        attributes: {
+          uv_protection: "UV400 Polarisé",
+          material: "Acétate écaille & branches dorées"
+        },
+        swatches: ["#5C3A21", "#121212"],
+        variants: [
+          { id: 7001, sku: "LUX-SUN-001-EC-52", title: "Écaille & Or / 52 mm", stock: 5, price: 5400, attrs: { frame_color: "Écaille & Or", size: "52 mm" } },
+          { id: 7002, sku: "LUX-SUN-001-EC-55", title: "Écaille & Or / 55 mm", stock: 3, price: 5400, attrs: { frame_color: "Écaille & Or", size: "55 mm" } },
+          { id: 7003, sku: "LUX-SUN-001-NO-55", title: "Noir Intense / 55 mm", stock: 4, price: 5400, attrs: { frame_color: "Noir Intense", size: "55 mm" } }
+        ]
+      },
+      {
+        id: 10, category_id: 8, category_slug: "les-montres", sku: "LUX-WTC-001",
+        badge: "Édition Or",
+        name_fr: "Montre Chronographe Impériale", name_ar: "ساعة كرونوغراف ذهبية", name_en: "Imperial Gold Chronograph Watch",
+        brand: "MAISON OR",
+        rating: "4.9", reviews: 16,
+        description_fr: "Chronographe en acier doré à cadran soleillé noir et étanchéité 5 ATM.",
+        image: ASSET_MAP.montre,
+        gallery: [ASSET_MAP.montre],
+        selling_price_dzd: 15900, previous_price_dzd: 19500, discount_percent: 18,
+        sales_count: 17,
+        attributes: {
+          movement: "Chronographe Quartz Précision",
+          water_resistance: "5 ATM (50 mètres)",
+          strap_material: "Maillons acier inoxydable doré"
+        },
+        swatches: ["#1C2421", "#063D2E"],
+        variants: [
+          { id: 8001, sku: "LUX-WTC-001-NO-41", title: "Noir & Or / 41 mm", stock: 4, price: 15900, attrs: { dial_color: "Noir & Or", size: "41 mm" } },
+          { id: 8002, sku: "LUX-WTC-001-NO-38", title: "Noir & Or / 38 mm", stock: 3, price: 15500, attrs: { dial_color: "Noir & Or", size: "38 mm" } },
+          { id: 8003, sku: "LUX-WTC-001-EO-41", title: "Émeraude & Or / 41 mm", stock: 2, price: 15900, attrs: { dial_color: "Émeraude & Or", size: "41 mm" } }
+        ]
+      },
+      {
+        id: 11, category_id: 9, category_slug: "accessoires", sku: "LUX-ACC-001",
+        badge: null,
+        name_fr: "Parure Bijoux & Bagues Dorées", name_ar: "طقم مجوهرات وإكسسوارات ذهبية", name_en: "Gold-Plated Jewelry Set",
+        brand: "MAISON OR",
+        rating: "4.8", reviews: 10,
+        description_fr: "Ensemble raffiné de bagues, boucles d'oreilles et chaîne dorée.",
+        image: ASSET_MAP.accessoires,
+        gallery: [ASSET_MAP.accessoires],
+        selling_price_dzd: 3800, previous_price_dzd: 4800, discount_percent: 21,
+        sales_count: 13,
+        attributes: {
+          material: "Acier chirurgical plaqué Or 18K"
+        },
+        swatches: ["#D4AF62"],
+        variants: [
+          { id: 9001, sku: "LUX-ACC-001-OR-5P", title: "Or 18K Plaqué / Parure 5 pièces", stock: 8, price: 3800, attrs: { finish: "Or 18K Plaqué", size: "Parure 5 pièces" } },
+          { id: 9002, sku: "LUX-ACC-001-OR-8P", title: "Or 18K Plaqué / Parure Complète 8 pièces", stock: 4, price: 4900, attrs: { finish: "Or 18K Plaqué", size: "Parure Complète 8 pièces" } }
+        ]
+      }
+    ];
+
+    // Official List of All 69 Algerian Wilayas (01 Adrar to 69 El Abiodh Sidi Cheikh — Law n° 26-06)
+    const WILAYAS = [
+      { code: "01", name_fr: "Adrar", name_ar: "أدرار", communes: ["Adrar", "Reggane", "Aoulef"], home_fee: 900, desk_fee: 600 },
+      { code: "02", name_fr: "Chlef", name_ar: "الشلف", communes: ["Chlef", "Ténès", "Oued Fodda"], home_fee: 600, desk_fee: 400 },
+      { code: "03", name_fr: "Laghouat", name_ar: "الأغواط", communes: ["Laghouat", "Ksar El Hirane", "Hassi R'Mel"], home_fee: 750, desk_fee: 500 },
+      { code: "04", name_fr: "Oum El Bouaghi", name_ar: "أم البواقي", communes: ["Oum El Bouaghi", "Aïn Beïda", "Aïn M'lila"], home_fee: 650, desk_fee: 450 },
+      { code: "05", name_fr: "Batna", name_ar: "باتنة", communes: ["Batna", "Aïn Touta", "Arris"], home_fee: 650, desk_fee: 450 },
+      { code: "06", name_fr: "Béjaïa", name_ar: "بجاية", communes: ["Béjaïa", "Akbou", "El Kseur", "Tichy"], home_fee: 650, desk_fee: 450 },
+      { code: "07", name_fr: "Biskra", name_ar: "بسكرة", communes: ["Biskra", "Tolga", "Sidi Okba"], home_fee: 700, desk_fee: 450 },
+      { code: "08", name_fr: "Béchar", name_ar: "بشار", communes: ["Béchar", "Kenadsa", "Abadla"], home_fee: 850, desk_fee: 550 },
+      { code: "09", name_fr: "Blida", name_ar: "البليدة", communes: ["Blida", "Boufarik", "Ouled Yaïch", "Beni Mered"], home_fee: 500, desk_fee: 350 },
+      { code: "10", name_fr: "Bouira", name_ar: "البويرة", communes: ["Bouira", "Lakhdaria", "Sour El Ghozlane"], home_fee: 600, desk_fee: 400 },
+      { code: "11", name_fr: "Tamanrasset", name_ar: "تمنراست", communes: ["Tamanrasset", "Abalessa"], home_fee: 1100, desk_fee: 750 },
+      { code: "12", name_fr: "Tébessa", name_ar: "تبسة", communes: ["Tébessa", "Cheria", "Ouenza"], home_fee: 700, desk_fee: 450 },
+      { code: "13", name_fr: "Tlemcen", name_ar: "تلمسان", communes: ["Tlemcen", "Maghnia", "Mansourah", "Remchi"], home_fee: 700, desk_fee: 450 },
+      { code: "14", name_fr: "Tiaret", name_ar: "تيارت", communes: ["Tiaret", "Frenda", "Sougueur"], home_fee: 650, desk_fee: 450 },
+      { code: "15", name_fr: "Tizi Ouzou", name_ar: "تيزي وزو", communes: ["Tizi Ouzou", "Azazga", "Draâ Ben Khedda"], home_fee: 600, desk_fee: 400 },
+      { code: "16", name_fr: "Alger", name_ar: "الجزائر", communes: ["Alger Centre", "Hydra", "Bab Ezzouar", "Chéraga", "Kouba", "Dély Ibrahim"], home_fee: 400, desk_fee: 300 },
+      { code: "17", name_fr: "Djelfa", name_ar: "الجلفة", communes: ["Djelfa", "Hassi Bahbah", "Charef"], home_fee: 700, desk_fee: 450 },
+      { code: "18", name_fr: "Jijel", name_ar: "جيجل", communes: ["Jijel", "Taher", "El Milia"], home_fee: 650, desk_fee: 450 },
+      { code: "19", name_fr: "Sétif", name_ar: "سطيف", communes: ["Sétif", "El Eulma", "Aïn Oulmene"], home_fee: 600, desk_fee: 400 },
+      { code: "20", name_fr: "Saïda", name_ar: "سعيدة", communes: ["Saïda", "Aïn El Hadjar"], home_fee: 700, desk_fee: 450 },
+      { code: "21", name_fr: "Skikda", name_ar: "سكيكدة", communes: ["Skikda", "Azzaba", "Collo"], home_fee: 650, desk_fee: 450 },
+      { code: "22", name_fr: "Sidi Bel Abbès", name_ar: "سيدي بلعباس", communes: ["Sidi Bel Abbès", "Telagh", "Sfisef"], home_fee: 650, desk_fee: 450 },
+      { code: "23", name_fr: "Annaba", name_ar: "عنابة", communes: ["Annaba", "El Bouni", "Sidi Amar"], home_fee: 650, desk_fee: 450 },
+      { code: "24", name_fr: "Guelma", name_ar: "قالمة", communes: ["Guelma", "Oued Zenati", "Bouchegouf"], home_fee: 650, desk_fee: 450 },
+      { code: "25", name_fr: "Constantine", name_ar: "قسنطينة", communes: ["Constantine", "El Khroub", "Ali Mendjeli", "Hamma Bouziane"], home_fee: 600, desk_fee: 400 },
+      { code: "26", name_fr: "Médéa", name_ar: "المدية", communes: ["Médéa", "Berrouaghia", "Beni Slimane"], home_fee: 550, desk_fee: 350 },
+      { code: "27", name_fr: "Mostaganem", name_ar: "مستغانم", communes: ["Mostaganem", "Sidi Ali", "Mazagran"], home_fee: 650, desk_fee: 450 },
+      { code: "28", name_fr: "M'Sila", name_ar: "المسيلة", communes: ["M'Sila", "Sidi Aïssa", "Magra"], home_fee: 650, desk_fee: 450 },
+      { code: "29", name_fr: "Mascara", name_ar: "معسكر", communes: ["Mascara", "Sig", "Mohammadia"], home_fee: 650, desk_fee: 450 },
+      { code: "30", name_fr: "Ouargla", name_ar: "ورقلة", communes: ["Ouargla", "Hassi Messaoud"], home_fee: 900, desk_fee: 600 },
+      { code: "31", name_fr: "Oran", name_ar: "وهران", communes: ["Oran Centre", "Bir El Djir", "Es Senia", "Arzew"], home_fee: 600, desk_fee: 400 },
+      { code: "32", name_fr: "El Bayadh", name_ar: "البيض", communes: ["El Bayadh", "Bougtob"], home_fee: 800, desk_fee: 550 },
+      { code: "33", name_fr: "Illizi", name_ar: "إليزي", communes: ["Illizi", "In Amenas"], home_fee: 1100, desk_fee: 750 },
+      { code: "34", name_fr: "Bordj Bou Arréridj", name_ar: "برج بوعريريج", communes: ["Bordj Bou Arréridj", "Ras El Oued"], home_fee: 600, desk_fee: 400 },
+      { code: "35", name_fr: "Boumerdès", name_ar: "بومرداس", communes: ["Boumerdès", "Boudouaou", "Bordj Menaïel"], home_fee: 500, desk_fee: 350 },
+      { code: "36", name_fr: "El Tarf", name_ar: "الطارف", communes: ["El Tarf", "El Kala", "Dréan"], home_fee: 700, desk_fee: 450 },
+      { code: "37", name_fr: "Tindouf", name_ar: "تندوف", communes: ["Tindouf", "Oum El Assel"], home_fee: 1100, desk_fee: 750 },
+      { code: "38", name_fr: "Tissemsilt", name_ar: "تيسمسيلت", communes: ["Tissemsilt", "Theniet El Had"], home_fee: 650, desk_fee: 450 },
+      { code: "39", name_fr: "El Oued", name_ar: "الوادي", communes: ["El Oued", "Guemar", "Robbah"], home_fee: 800, desk_fee: 550 },
+      { code: "40", name_fr: "Khenchela", name_ar: "خنشلة", communes: ["Khenchela", "Kais", "Chechar"], home_fee: 700, desk_fee: 450 },
+      { code: "41", name_fr: "Souk Ahras", name_ar: "سوق أهراس", communes: ["Souk Ahras", "Sedrata"], home_fee: 700, desk_fee: 450 },
+      { code: "42", name_fr: "Tipaza", name_ar: "تيبازة", communes: ["Tipaza", "Koléa", "Cherchell", "Hadjout"], home_fee: 500, desk_fee: 350 },
+      { code: "43", name_fr: "Mila", name_ar: "ميلة", communes: ["Mila", "Chelghoum Laïd", "Ferdjioua"], home_fee: 650, desk_fee: 450 },
+      { code: "44", name_fr: "Aïn Defla", name_ar: "عين الدفلى", communes: ["Aïn Defla", "Khemis Miliana", "El Attaf"], home_fee: 600, desk_fee: 400 },
+      { code: "45", name_fr: "Naâma", name_ar: "النعامة", communes: ["Naâma", "Mécheria", "Aïn Sefra"], home_fee: 800, desk_fee: 550 },
+      { code: "46", name_fr: "Aïn Témouchent", name_ar: "عين تموشنت", communes: ["Aïn Témouchent", "Beni Saf", "Hammam Bou Hadjar"], home_fee: 650, desk_fee: 450 },
+      { code: "47", name_fr: "Ghardaïa", name_ar: "غرداية", communes: ["Ghardaïa", "Metlili", "El Guerrara"], home_fee: 800, desk_fee: 550 },
+      { code: "48", name_fr: "Relizane", name_ar: "غليزان", communes: ["Relizane", "Oued Rhiou", "Mazouna"], home_fee: 650, desk_fee: 450 },
+      { code: "49", name_fr: "Timimoun", name_ar: "تيميمون", communes: ["Timimoun", "Aougrout"], home_fee: 950, desk_fee: 650 },
+      { code: "50", name_fr: "Bordj Badji Mokhtar", name_ar: "برج باجي مختار", communes: ["Bordj Badji Mokhtar"], home_fee: 1150, desk_fee: 800 },
+      { code: "51", name_fr: "Ouled Djellal", name_ar: "أولاد جلال", communes: ["Ouled Djellal", "Sidi Khaled"], home_fee: 750, desk_fee: 500 },
+      { code: "52", name_fr: "Béni Abbès", name_ar: "بني عباس", communes: ["Béni Abbès", "Kerzaz"], home_fee: 950, desk_fee: 650 },
+      { code: "53", name_fr: "In Salah", name_ar: "عين صالح", communes: ["In Salah", "Foggaret Ezzaouia"], home_fee: 1050, desk_fee: 700 },
+      { code: "54", name_fr: "In Guezzam", name_ar: "عين قزام", communes: ["In Guezzam"], home_fee: 1150, desk_fee: 800 },
+      { code: "55", name_fr: "Touggourt", name_ar: "تقرت", communes: ["Touggourt", "Témacine", "Megarine"], home_fee: 850, desk_fee: 550 },
+      { code: "56", name_fr: "Djanet", name_ar: "جانت", communes: ["Djanet", "Bordj El Haouas"], home_fee: 1150, desk_fee: 800 },
+      { code: "57", name_fr: "El M'Ghair", name_ar: "المغير", communes: ["El M'Ghair", "Djamaa"], home_fee: 800, desk_fee: 550 },
+      { code: "58", name_fr: "El Meniaa", name_ar: "المنيعة", communes: ["El Meniaa", "Hassi Gara"], home_fee: 850, desk_fee: 550 },
+      { code: "59", name_fr: "Aflou", name_ar: "آفلو", communes: ["Aflou", "Sidi Bouzid", "Sebgag"], home_fee: 750, desk_fee: 500 },
+      { code: "60", name_fr: "Barika", name_ar: "بريكة", communes: ["Barika", "M'Doukal", "Bitam"], home_fee: 650, desk_fee: 450 },
+      { code: "61", name_fr: "El Kantara", name_ar: "القنطرة", communes: ["El Kantara", "Aïn Zaatout"], home_fee: 700, desk_fee: 450 },
+      { code: "62", name_fr: "Bir El Ater", name_ar: "بئر العاتر", communes: ["Bir El Ater", "El Ogla El Malha"], home_fee: 700, desk_fee: 450 },
+      { code: "63", name_fr: "El Aricha", name_ar: "العريشة", communes: ["El Aricha", "El Gor"], home_fee: 750, desk_fee: 500 },
+      { code: "64", name_fr: "Ksar Chellala", name_ar: "قصر الشلالة", communes: ["Ksar Chellala", "Serghine"], home_fee: 650, desk_fee: 450 },
+      { code: "65", name_fr: "Aïn Oussera", name_ar: "عين وسارة", communes: ["Aïn Oussera", "Guernini"], home_fee: 600, desk_fee: 400 },
+      { code: "66", name_fr: "Messaad", name_ar: "مسعد", communes: ["Messaad", "Deldoul", "Selmana"], home_fee: 700, desk_fee: 450 },
+      { code: "67", name_fr: "Ksar El Boukhari", name_ar: "قصر البخاري", communes: ["Ksar El Boukhari", "Meftaha", "Saneg"], home_fee: 550, desk_fee: 350 },
+      { code: "68", name_fr: "Bou Saâda", name_ar: "بوسعادة", communes: ["Bou Saâda", "El Hamel", "Oultem"], home_fee: 650, desk_fee: 450 },
+      { code: "69", name_fr: "El Abiodh Sidi Cheikh", name_ar: "الأبيض سيدي الشيخ", communes: ["El Abiodh Sidi Cheikh", "El Bnoud"], home_fee: 850, desk_fee: 550 }
+    ];
+
+    const COUPONS = [
+      { code: "BIENVENUE10", type: "percentage", value: 10, minOrder: 4000, maxDiscount: 2500 },
+      { code: "ALGERIE500", type: "fixed_dzd", value: 500, minOrder: 5000, maxDiscount: 500 }
+    ];
+
+    const state = {
+      lang: "fr",
+      activeCategorySlug: "all",
+      searchQuery: "",
+      maxPriceFilter: 25000,
+      inStockOnly: false,
+      onlyFavorites: false,
+      sortBy: "newest",
+      dynamicFilterSelections: {},
+      favorites: new Set([1, 6]),
+      cart: [
+        { variantId: 1001, productId: 1, quantity: 1 }
+      ],
+      appliedCoupon: null,
+      lastConfirmedOrder: null,
+      categories: JSON.parse(JSON.stringify(CATEGORIES)),
+      products: JSON.parse(JSON.stringify(PRODUCTS)),
+      orders: [
+        {
+          id: 501,
+          reference: "LUX-25847-DZ",
+          customer_name: "Yasmine Khelifi",
+          customer_phone: "0551884210",
+          wilaya_code: "16",
+          wilaya_name: "Alger",
+          commune: "Hydra",
+          address: "18 Chemin Mackley, Hydra, Alger",
+          delivery_method: "home",
+          subtotal_dzd: 17000,
+          delivery_fee_dzd: 400,
+          total_dzd: 17400,
+          status: "Confirmée — En préparation",
+          items: [
+            { product_name: "Sac à main élégant Émeraude", variant_title: "Vert Émeraude / Standard", quantity: 1 },
+            { product_name: "Sac à main Chanel style", variant_title: "Bordeaux / L", quantity: 1 }
+          ]
+        }
+      ],
+      activePdpProductId: null,
+      activePdpVariantId: null,
+      activePdpQty: 1,
+      activePdpTab: "desc"
+    };
+
+    function formatDZD(amount) {
+      const n = Number(amount) || 0;
+      return n.toString().replace(/\B(?=(\d{3})+(?!\d))/g, " ") + " DA";
+    }
+
+    function catName(cat) {
+      if (state.lang === "ar") return cat.name_ar || cat.name_fr;
+      if (state.lang === "en") return cat.name_en || cat.name_fr;
+      return cat.name_fr;
+    }
+
+    function prodName(prod) {
+      if (state.lang === "ar") return prod.name_ar || prod.name_fr;
+      if (state.lang === "en") return prod.name_en || prod.name_fr;
+      return prod.name_fr;
+    }
+
+    function attrLabel(attr) {
+      if (state.lang === "ar") return attr.label_ar || attr.label_fr;
+      if (state.lang === "en") return attr.label_en || attr.label_fr;
+      return attr.label_fr;
+    }
+
+    function showToast(msg, type = "success") {
+      const container = document.getElementById("toast-container");
+      const el = document.createElement("div");
+      const bg = type === "error" ? "bg-red-800 border-red-400" : "bg-emerald-deep border-gold-reflective";
+      el.className = `pointer-events-auto px-4 py-3 rounded-xl text-white text-xs font-semibold shadow-luxury-hover border ${bg} flex items-center gap-2.5 transition-all`;
+      const iconSvg = type === "error"
+        ? `<svg class="w-4 h-4 text-red-200 flex-shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"></circle><line x1="12" y1="8" x2="12" y2="12"></line><line x1="12" y1="16" x2="12.01" y2="16"></line></svg>`
+        : `<svg class="w-4 h-4 text-gold-reflective flex-shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><polyline points="20 6 9 17 4 12"></polyline></svg>`;
+      el.innerHTML = `${iconSvg}<span>${msg}</span>`;
+      container.appendChild(el);
+      setTimeout(() => {
+        el.remove();
+      }, 3200);
+    }
+
+    function toggleMobileSearch() {
+      const bar = document.getElementById("mobile-search-bar");
+      if (bar) {
+        bar.classList.toggle("hidden");
+        if (!bar.classList.contains("hidden")) {
+          document.getElementById("mobile-search-input")?.focus();
+        }
+      }
+    }
+
+    function toggleMobileFilters() {
+      const sb = document.getElementById("catalog-filters-sidebar");
+      if (sb) {
+        sb.classList.toggle("mobile-drawer-open");
+        sb.classList.toggle("hidden");
+      }
+    }
+
+    function setLanguage(lang) {
+      state.lang = lang;
+      const root = document.getElementById("html-root");
+      root.setAttribute("lang", lang);
+      root.setAttribute("dir", lang === "ar" ? "rtl" : "ltr");
+
+      ["fr", "ar", "en"].forEach((l) => {
+        const b = document.getElementById(`lang-${l}`);
+        if (l === lang) {
+          b.className = "px-2 py-0.5 rounded-full font-semibold bg-gold-reflective text-emerald-forest transition";
+        } else {
+          b.className = "px-2 py-0.5 rounded-full font-semibold text-gold-light hover:text-white transition";
+        }
+      });
+
+      const t = I18N[lang];
+      document.getElementById("lbl-top-promo").textContent = t.topPromo;
+      document.getElementById("lbl-track-top").textContent = t.trackTop;
+      document.getElementById("store-search-input").placeholder = t.searchPlaceholder;
+      document.getElementById("lbl-header-cart").textContent = t.cart;
+      document.getElementById("hero-badge").textContent = t.heroBadge;
+      document.getElementById("hero-title-1").textContent = t.heroTitle1;
+      document.getElementById("hero-title-2").textContent = t.heroTitle2;
+      document.getElementById("hero-desc").textContent = t.heroDesc;
+      document.getElementById("hero-cta-primary").textContent = t.heroCta1;
+      document.getElementById("hero-cta-secondary").textContent = t.heroCta2;
+      document.getElementById("sec-categories-title").textContent = t.categoriesTitle;
+      document.getElementById("lbl-filters-heading").textContent = t.filtersHeading;
+      document.getElementById("lbl-reset-filters").textContent = t.resetFilters;
+      document.getElementById("lbl-price-max").textContent = t.priceMax;
+      document.getElementById("lbl-instock-only").textContent = t.inStockOnly;
+
+      renderStorefront();
+    }
+
+    function navigateStore(target) {
+      if (target === "home") {
+        state.activeCategorySlug = "all";
+        state.onlyFavorites = false;
+        state.dynamicFilterSelections = {};
+        document.getElementById("store-home-sections").classList.remove("hidden");
+      }
+      renderStorefront();
+      window.scrollTo({ top: 0, behavior: "smooth" });
+    }
+
+    function filterByCategory(slug) {
+      state.activeCategorySlug = slug;
+      state.onlyFavorites = false;
+      state.dynamicFilterSelections = {};
+      if (slug === "all") {
+        document.getElementById("store-home-sections").classList.remove("hidden");
+      } else {
+        document.getElementById("store-home-sections").classList.add("hidden");
+      }
+      renderStorefront();
+      const catSec = document.getElementById("catalog-section");
+      if (catSec && slug !== "all") {
+        catSec.scrollIntoView({ behavior: "smooth" });
+      }
+    }
+
+    function scrollToCatalog() {
+      const el = document.getElementById("catalog-section");
+      if (el) el.scrollIntoView({ behavior: "smooth" });
+    }
+
+    function handleStoreSearch(val) {
+      state.searchQuery = val.trim().toLowerCase();
+      renderCatalogProducts();
+    }
+
+    function triggerSearchBtn() {
+      scrollToCatalog();
+      renderCatalogProducts();
+    }
+
+    function handlePriceFilter(val) {
+      state.maxPriceFilter = Number(val);
+      document.getElementById("filter-price-display").textContent = formatDZD(val);
+      renderCatalogProducts();
+    }
+
+    function handleInStockToggle(checked) {
+      state.inStockOnly = checked;
+      renderCatalogProducts();
+    }
+
+    function handleSortChange(val) {
+      state.sortBy = val;
+      renderCatalogProducts();
+    }
+
+    function toggleFavoritesFilter() {
+      state.onlyFavorites = !state.onlyFavorites;
+      if (state.onlyFavorites) {
+        showToast("Affichage de votre sélection de favoris");
+        scrollToCatalog();
+      }
+      renderStorefront();
+    }
+
+    function toggleFavoriteProduct(prodId) {
+      if (state.favorites.has(prodId)) {
+        state.favorites.delete(prodId);
+      } else {
+        state.favorites.add(prodId);
+        showToast("Article ajouté à vos favoris");
+      }
+      document.getElementById("fav-count-badge").textContent = state.favorites.size;
+      renderCatalogProducts();
+    }
+
+    function resetCatalogFilters() {
+      state.activeCategorySlug = "all";
+      state.searchQuery = "";
+      state.maxPriceFilter = 25000;
+      state.inStockOnly = false;
+      state.onlyFavorites = false;
+      state.dynamicFilterSelections = {};
+      document.getElementById("store-search-input").value = "";
+      document.getElementById("filter-max-price").value = "25000";
+      document.getElementById("filter-price-display").textContent = formatDZD(25000);
+      document.getElementById("filter-instock-only").checked = false;
+      document.getElementById("store-home-sections").classList.remove("hidden");
+      renderStorefront();
+    }
+
+    function toggleDynamicAttrFilter(attrKey, optionVal) {
+      if (state.dynamicFilterSelections[attrKey] === optionVal) {
+        delete state.dynamicFilterSelections[attrKey];
+      } else {
+        state.dynamicFilterSelections[attrKey] = optionVal;
+      }
+      renderDynamicSidebarFilters();
+      renderCatalogProducts();
+    }
+
+    function renderStorefront() {
+      const t = I18N[state.lang];
+      document.getElementById("fav-count-badge").textContent = state.favorites.size;
+      const totalCartCount = state.cart.reduce((sum, item) => sum + item.quantity, 0);
+      document.getElementById("cart-count-badge").textContent = totalCartCount;
+
+      // 1. Category Navigation Bar
+      const navEl = document.getElementById("dynamic-nav-categories");
+      let navHtml = `<button type="button" onclick="navigateStore('home')" class="px-3.5 py-1.5 rounded-full font-semibold transition ${
+        state.activeCategorySlug === "all"
+          ? "bg-gold-reflective text-emerald-forest font-bold shadow-sm"
+          : "text-gold-light/90 hover:text-white hover:bg-emerald-deep"
+      }">${t.home}</button>`;
+
+      state.categories.forEach((c) => {
+        const isAct = state.activeCategorySlug === c.slug;
+        navHtml += `<button type="button" onclick="filterByCategory('${c.slug}')" class="px-3.5 py-1.5 rounded-full font-semibold transition ${
+          isAct
+            ? "bg-gold-reflective text-emerald-forest font-bold shadow-sm"
+            : "text-gold-light/90 hover:text-white hover:bg-emerald-deep"
+        }">${catName(c)}</button>`;
+      });
+      navEl.innerHTML = navHtml;
+
+      // 2. Homepage Categories Grid (Matches 1000589999.png Dark Emerald & Gold Cards)
+      const homeGrid = document.getElementById("home-categories-grid");
+      homeGrid.innerHTML = state.categories
+        .map((c) => {
+          return `
+            <button type="button" onclick="filterByCategory('${c.slug}')" class="h-full group cat-card-bg rounded-xl sm:rounded-2xl overflow-hidden border border-gold-reflective/35 shadow-luxury hover:shadow-luxury-hover hover:border-gold-reflective transition text-center flex flex-col justify-between">
+              <div class="aspect-[4/3] w-full overflow-hidden bg-emerald-forest relative">
+                <img src="${c.image}" alt="${catName(c)}" loading="lazy" decoding="async" class="w-full h-full object-cover group-hover:scale-105 transition duration-500" />
+                <div class="absolute inset-0 bg-gradient-to-t from-emerald-forest/75 via-transparent to-transparent"></div>
+              </div>
+              <div class="w-full px-1.5 sm:px-2 py-2 sm:py-2.5 flex items-center justify-center gap-1.5 bg-emerald-forest/95 border-t border-gold-reflective/20">
+                <span class="w-1.5 h-1.5 rounded-full bg-gold-reflective flex-shrink-0"></span>
+                <span class="font-semibold text-[11px] sm:text-xs text-white group-hover:text-gold-reflective truncate transition">${catName(c)}</span>
+              </div>
+            </button>
+          `;
+        })
+        .join("");
+
+      renderDynamicSidebarFilters();
+      renderCatalogProducts();
+    }
+
+    function renderDynamicSidebarFilters() {
+      const container = document.getElementById("dynamic-category-filters");
+      const activeCat = state.categories.find((c) => c.slug === state.activeCategorySlug);
+
+      let html = `
+        <div class="space-y-2.5">
+          <p class="text-[11px] font-bold text-charcoal/70 uppercase tracking-wider">Catégories</p>
+          <div class="flex flex-wrap gap-1.5">
+            <button type="button" onclick="filterByCategory('all')" class="px-3 py-1 rounded-full text-xs font-semibold border transition ${
+              state.activeCategorySlug === "all"
+                ? "bg-emerald-deep text-gold-reflective border-emerald-deep"
+                : "bg-cream text-charcoal border-gray-200 hover:border-gold-reflective"
+            }">Tout voir</button>
+            ${state.categories
+              .map(
+                (c) => `
+              <button type="button" onclick="filterByCategory('${c.slug}')" class="px-3 py-1 rounded-full text-xs font-semibold border transition ${
+                  state.activeCategorySlug === c.slug
+                    ? "bg-emerald-deep text-gold-reflective border-emerald-deep"
+                    : "bg-cream text-charcoal border-gray-200 hover:border-gold-reflective"
+                }">${catName(c)}</button>
+            `
+              )
+              .join("")}
+          </div>
+        </div>
+      `;
+
+      if (activeCat && activeCat.attributes) {
+        activeCat.attributes.forEach((attr) => {
+          const selectedVal = state.dynamicFilterSelections[attr.key] || "";
+          html += `
+            <div class="space-y-2 pt-3 border-t border-gray-100">
+              <p class="text-[11px] font-bold text-charcoal/70 uppercase tracking-wider">${attrLabel(attr)}</p>
+              <div class="flex flex-wrap gap-1.5">
+                ${attr.options
+                  .map((opt) => {
+                    const isSel = selectedVal === opt;
+                    const hex = COLOR_SWATCH_HEX[opt];
+                    return `<button type="button" onclick="toggleDynamicAttrFilter('${attr.key}', '${opt.replace(/'/g, "\\'")}')" class="px-2.5 py-1 rounded-full text-xs font-semibold border flex items-center gap-1.5 transition ${
+                      isSel
+                        ? "bg-gold-reflective text-emerald-forest border-gold-dark font-bold"
+                        : "bg-white text-charcoal border-gray-200 hover:border-gold-reflective"
+                    }">
+                      ${hex ? `<span class="w-3 h-3 rounded-full border border-black/20" style="background-color:${hex}"></span>` : ""}
+                      <span>${opt}</span>
+                    </button>`;
+                  })
+                  .join("")}
+              </div>
+            </div>
+          `;
+        });
+      }
+
+      container.innerHTML = html;
+    }
+
+    function renderCatalogProducts() {
+      const t = I18N[state.lang];
+      const activeCat = state.categories.find((c) => c.slug === state.activeCategorySlug);
+
+      document.getElementById("catalog-breadcrumb").textContent = activeCat ? catName(activeCat) : t.allCollections;
+      document.getElementById("catalog-heading").textContent = activeCat ? catName(activeCat) : "Produits en vedette";
+      document.getElementById("catalog-description").textContent = activeCat
+        ? activeCat.description_fr
+        : "Sélection certifiée Mus Luxury • Livraison 69 Wilayas avec paiement à la livraison.";
+
+      let list = [...state.products];
+
+      if (activeCat) {
+        list = list.filter((p) => p.category_id === activeCat.id);
+      }
+      if (state.onlyFavorites) {
+        list = list.filter((p) => state.favorites.has(p.id));
+      }
+      if (state.searchQuery) {
+        list = list.filter(
+          (p) =>
+            p.name_fr.toLowerCase().includes(state.searchQuery) ||
+            (p.name_ar && p.name_ar.includes(state.searchQuery)) ||
+            (p.name_en && p.name_en.toLowerCase().includes(state.searchQuery)) ||
+            (p.brand && p.brand.toLowerCase().includes(state.searchQuery))
+        );
+      }
+      list = list.filter((p) => p.selling_price_dzd <= state.maxPriceFilter);
+
+      if (state.inStockOnly) {
+        list = list.filter((p) => p.variants.reduce((s, v) => s + v.stock, 0) > 0);
+      }
+
+      Object.entries(state.dynamicFilterSelections).forEach(([key, val]) => {
+        list = list.filter((p) => {
+          if (p.attributes && p.attributes[key] === val) return true;
+          return p.variants.some((v) => v.attrs && v.attrs[key] === val);
+        });
+      });
+
+      if (state.sortBy === "price_asc") {
+        list.sort((a, b) => a.selling_price_dzd - b.selling_price_dzd);
+      } else if (state.sortBy === "price_desc") {
+        list.sort((a, b) => b.selling_price_dzd - a.selling_price_dzd);
+      } else if (state.sortBy === "popularity") {
+        list.sort((a, b) => (b.sales_count || 0) - (a.sales_count || 0));
+      } else {
+        list.sort((a, b) => a.id - b.id);
+      }
+
+      document.getElementById("catalog-count-pill").textContent = `${list.length} article${list.length > 1 ? "s" : ""}`;
+
+      const grid = document.getElementById("store-products-grid");
+      if (list.length === 0) {
+        grid.innerHTML = `
+          <div class="col-span-full bg-white rounded-2xl p-10 text-center border border-gold-reflective/25 space-y-3">
+            <p class="font-luxury text-xl font-bold text-emerald-deep">Aucun article ne correspond à votre sélection</p>
+            <p class="text-xs text-gray-500">Essayez de modifier vos filtres ou de parcourir toutes nos collections.</p>
+            <button type="button" onclick="resetCatalogFilters()" class="px-5 py-2.5 rounded-full bg-emerald-deep text-gold-reflective text-xs font-bold">Afficher toute la boutique</button>
+          </div>
+        `;
+        return;
+      }
+
+      grid.innerHTML = list
+        .map((p) => {
+          const totalStock = p.variants.reduce((s, v) => s + v.stock, 0);
+          const firstAvailableVar = p.variants.find((v) => v.stock > 0) || p.variants[0];
+          const isFav = state.favorites.has(p.id);
+          const swatches = p.swatches || ["#063D2E", "#181818"];
+
+          return `
+            <article class="product-card bg-white rounded-xl sm:rounded-2xl overflow-hidden border border-gold-reflective/25 shadow-luxury hover:shadow-luxury-hover transition duration-300">
+              <!-- Image Container with Strict Aspect Ratio -->
+              <div class="product-card-media relative bg-cream-warm overflow-hidden group">
+                <img src="${p.image}" alt="${prodName(p)}" loading="lazy" decoding="async" onclick="openProductDetailModal(${p.id})" class="w-full h-full object-cover cursor-pointer group-hover:scale-105 transition duration-500" />
+                ${
+                  p.badge
+                    ? `<span class="absolute top-2.5 left-2.5 px-2.5 py-0.5 sm:px-3 sm:py-1 rounded-full ${
+                        p.badge === "Promo" ? "bg-red-600 text-white" : "bg-emerald-deep text-gold-light border border-gold-reflective/40"
+                      } text-[9px] sm:text-[10px] font-bold uppercase tracking-wider shadow-sm">${p.badge}</span>`
+                    : ""
+                }
+                <button type="button" onclick="toggleFavoriteProduct(${p.id})" class="absolute top-2.5 right-2.5 w-7 h-7 sm:w-8 sm:h-8 rounded-full bg-white/95 hover:bg-white flex items-center justify-center shadow-md transition" aria-label="Favori">
+                  <svg class="w-3.5 h-3.5 sm:w-4 sm:h-4 ${isFav ? "text-red-600 fill-red-600" : "text-charcoal/70"}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"></path>
+                  </svg>
+                </button>
+              </div>
+
+              <!-- Card Body with Uniform Baselines -->
+              <div class="p-3 sm:p-4 flex-1 flex flex-col justify-between space-y-2.5 sm:space-y-3">
+                <div>
+                  <p class="text-[9px] sm:text-[10px] font-bold uppercase tracking-widest text-gold-dark truncate">${p.brand || "MUS LUXURY"}</p>
+                  <h3 onclick="openProductDetailModal(${p.id})" class="font-bold text-charcoal text-xs sm:text-base hover:text-emerald-deep cursor-pointer line-clamp-1 mt-0.5">${prodName(p)}</h3>
+
+                  <!-- Price & Discount Badge Row -->
+                  <div class="flex flex-wrap items-center justify-between gap-1 mt-1.5">
+                    <div class="flex items-baseline gap-1.5">
+                      <span class="text-sm sm:text-lg font-extrabold text-emerald-deep">${formatDZD(p.selling_price_dzd)}</span>
+                      ${
+                        p.previous_price_dzd
+                          ? `<span class="text-[10px] sm:text-xs text-gray-400 line-through">${formatDZD(p.previous_price_dzd)}</span>`
+                          : ""
+                      }
+                    </div>
+                    ${
+                      p.discount_percent > 0
+                        ? `<span class="px-1.5 py-0.5 rounded bg-red-600 text-white text-[9px] sm:text-[10px] font-bold">-${p.discount_percent}%</span>`
+                        : ""
+                    }
+                  </div>
+
+                  <!-- Star Rating Row -->
+                  <div class="flex items-center gap-1 mt-1.5 text-xs text-gold-reflective">
+                    <div class="flex items-center">
+                      <svg class="w-3.5 h-3.5 fill-current" viewBox="0 0 20 20"><path d="M9.049 2.927c.3-.921 1.603-.921 1.902 0l1.07 3.292a1 1 0 00.95.69h3.462c.969 0 1.371 1.24.588 1.81l-2.8 2.034a1 1 0 00-.364 1.118l1.07 3.292c.3.921-.755 1.688-1.54 1.118l-2.8-2.034a1 1 0 00-1.175 0l-2.8 2.034c-.784.57-1.838-.197-1.539-1.118l1.07-3.292a1 1 0 00-.364-1.118L2.98 8.72c-.783-.57-.38-1.81.588-1.81h3.461a1 1 0 00.951-.69l1.07-3.292z"/></svg>
+                      <svg class="w-3.5 h-3.5 fill-current" viewBox="0 0 20 20"><path d="M9.049 2.927c.3-.921 1.603-.921 1.902 0l1.07 3.292a1 1 0 00.95.69h3.462c.969 0 1.371 1.24.588 1.81l-2.8 2.034a1 1 0 00-.364 1.118l1.07 3.292c.3.921-.755 1.688-1.54 1.118l-2.8-2.034a1 1 0 00-1.175 0l-2.8 2.034c-.784.57-1.838-.197-1.539-1.118l1.07-3.292a1 1 0 00-.364-1.118L2.98 8.72c-.783-.57-.38-1.81.588-1.81h3.461a1 1 0 00.951-.69l1.07-3.292z"/></svg>
+                      <svg class="w-3.5 h-3.5 fill-current" viewBox="0 0 20 20"><path d="M9.049 2.927c.3-.921 1.603-.921 1.902 0l1.07 3.292a1 1 0 00.95.69h3.462c.969 0 1.371 1.24.588 1.81l-2.8 2.034a1 1 0 00-.364 1.118l1.07 3.292c.3.921-.755 1.688-1.54 1.118l-2.8-2.034a1 1 0 00-1.175 0l-2.8 2.034c-.784.57-1.838-.197-1.539-1.118l1.07-3.292a1 1 0 00-.364-1.118L2.98 8.72c-.783-.57-.38-1.81.588-1.81h3.461a1 1 0 00.951-.69l1.07-3.292z"/></svg>
+                      <svg class="w-3.5 h-3.5 fill-current" viewBox="0 0 20 20"><path d="M9.049 2.927c.3-.921 1.603-.921 1.902 0l1.07 3.292a1 1 0 00.95.69h3.462c.969 0 1.371 1.24.588 1.81l-2.8 2.034a1 1 0 00-.364 1.118l1.07 3.292c.3.921-.755 1.688-1.54 1.118l-2.8-2.034a1 1 0 00-1.175 0l-2.8 2.034c-.784.57-1.838-.197-1.539-1.118l1.07-3.292a1 1 0 00-.364-1.118L2.98 8.72c-.783-.57-.38-1.81.588-1.81h3.461a1 1 0 00.951-.69l1.07-3.292z"/></svg>
+                      <svg class="w-3.5 h-3.5 fill-current" viewBox="0 0 20 20"><path d="M9.049 2.927c.3-.921 1.603-.921 1.902 0l1.07 3.292a1 1 0 00.95.69h3.462c.969 0 1.371 1.24.588 1.81l-2.8 2.034a1 1 0 00-.364 1.118l1.07 3.292c.3.921-.755 1.688-1.54 1.118l-2.8-2.034a1 1 0 00-1.175 0l-2.8 2.034c-.784.57-1.838-.197-1.539-1.118l1.07-3.292a1 1 0 00-.364-1.118L2.98 8.72c-.783-.57-.38-1.81.588-1.81h3.461a1 1 0 00.951-.69l1.07-3.292z"/></svg>
+                    </div>
+                    <span class="text-[11px] text-gray-500">(${p.reviews})</span>
+                  </div>
+
+                  <!-- Color Swatch Dots -->
+                  <div class="flex items-center gap-1.5 mt-2.5">
+                    ${swatches
+                      .map(
+                        (hex) =>
+                          `<span onclick="openProductDetailModal(${p.id})" class="w-4 h-4 rounded-full border border-gray-300 cursor-pointer hover:scale-110 transition" style="background-color:${hex}"></span>`
+                      )
+                      .join("")}
+                  </div>
+                </div>
+
+                <!-- Full-Width Deep Emerald Add to Cart Button (Matches 1000589999.png) -->
+                <div class="pt-1">
+                  <button
+                    type="button"
+                    onclick="quickAddToCart(${p.id}, ${firstAvailableVar ? firstAvailableVar.id : 0})"
+                    ${totalStock <= 0 ? "disabled" : ""}
+                    class="w-full py-2.5 px-4 rounded-xl font-bold text-xs flex items-center justify-center gap-2 transition ${
+                      totalStock > 0
+                        ? "bg-emerald-deep text-white hover:bg-emerald-forest shadow-sm"
+                        : "bg-gray-200 text-gray-400 cursor-not-allowed"
+                    }"
+                  >
+                    <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                      <circle cx="9" cy="21" r="1"></circle>
+                      <circle cx="20" cy="21" r="1"></circle>
+                      <path d="M1 1h4l2.68 13.39a2 2 0 0 0 2 1.61h9.72a2 2 0 0 0 2-1.61L23 6H6"></path>
+                    </svg>
+                    <span>${totalStock > 0 ? t.addToCart : t.outOfStock}</span>
+                  </button>
+                </div>
+              </div>
+            </article>
+          `;
+        })
+        .join("");
+    }
+
+    // ========================================================================
+    // PRODUCT DETAILS MODAL — CMS-DRIVEN MULTI-AXIS SELECTORS (Couleur, Taille, Pointure, etc.)
+    // ========================================================================
+    state.activePdpAxes = {};
+    state.activePdpWilaya = "16";
+    state.activePdpDeliveryMethod = "home";
+    state.checkoutWilaya = "16";
+    state.checkoutMethod = "home";
+
+    function openProductDetailModal(prodId) {
+      const prod = state.products.find((p) => p.id === prodId);
+      if (!prod) return;
+      state.activePdpProductId = prod.id;
+      const firstAvail = prod.variants.find((v) => v.stock > 0) || prod.variants[0];
+      state.activePdpVariantId = firstAvail ? firstAvail.id : null;
+      state.activePdpAxes = firstAvail && firstAvail.attrs ? { ...firstAvail.attrs } : {};
+      state.activePdpQty = 1;
+      state.activePdpTab = "desc";
+
+      const cat = state.categories.find((c) => c.id === prod.category_id);
+      document.getElementById("pdp-breadcrumb").textContent = `Accueil  ›  ${cat ? catName(cat) : "Boutique"}  ›  ${prodName(prod)}`;
+      renderPdpModalContent();
+      document.getElementById("product-detail-modal").classList.remove("hidden");
+    }
+
+    function closeProductDetailModal() {
+      document.getElementById("product-detail-modal").classList.add("hidden");
+    }
+
+    function selectPdpAxisValue(axisKey, optionVal) {
+      const prod = state.products.find((p) => p.id === state.activePdpProductId);
+      if (!prod) return;
+      state.activePdpAxes[axisKey] = optionVal;
+
+      // Find exact matching variant for all selected axes, or closest match that has this axisKey=optionVal
+      let matched = prod.variants.find((v) => {
+        if (!v.attrs) return false;
+        return Object.entries(state.activePdpAxes).every(([k, val]) => v.attrs[k] === val);
+      });
+
+      if (!matched) {
+        matched = prod.variants.find((v) => v.attrs && v.attrs[axisKey] === optionVal && v.stock > 0)
+               || prod.variants.find((v) => v.attrs && v.attrs[axisKey] === optionVal)
+               || prod.variants[0];
+        if (matched && matched.attrs) {
+          state.activePdpAxes = { ...matched.attrs };
+        }
+      }
+
+      if (matched) {
+        state.activePdpVariantId = matched.id;
+      }
+      state.activePdpQty = 1;
+      renderPdpModalContent();
+    }
+
+    function selectPdpVariant(varId) {
+      const prod = state.products.find((p) => p.id === state.activePdpProductId);
+      if (!prod) return;
+      const v = prod.variants.find((x) => x.id === varId);
+      if (v) {
+        state.activePdpVariantId = v.id;
+        state.activePdpAxes = v.attrs ? { ...v.attrs } : {};
+      }
+      state.activePdpQty = 1;
+      renderPdpModalContent();
+    }
+
+    function changePdpWilayaEstimate(wilayaCode) {
+      state.activePdpWilaya = wilayaCode;
+      state.checkoutWilaya = wilayaCode;
+      renderPdpModalContent();
+    }
+
+    function changePdpDeliveryMethod(method) {
+      state.activePdpDeliveryMethod = method === "stop_desk" ? "stop_desk" : "home";
+      state.checkoutMethod = state.activePdpDeliveryMethod;
+      renderPdpModalContent();
+    }
+
+    function changePdpQty(delta) {
+      const prod = state.products.find((p) => p.id === state.activePdpProductId);
+      const variant = prod ? prod.variants.find((v) => v.id === state.activePdpVariantId) : null;
+      const maxStock = variant ? variant.stock : 1;
+      const next = state.activePdpQty + delta;
+      if (next >= 1 && next <= Math.max(1, maxStock)) {
+        state.activePdpQty = next;
+        renderPdpModalContent();
+      }
+    }
+
+    function switchPdpImage(imgUrl) {
+      const mainImg = document.getElementById("pdp-main-img");
+      if (mainImg) mainImg.src = imgUrl;
+    }
+
+    function togglePdpZoom() {
+      const wrap = document.getElementById("pdp-zoom-wrap");
+      if (wrap) wrap.classList.toggle("zoomed");
+    }
+
+    function switchPdpTab(tabName) {
+      state.activePdpTab = tabName;
+      renderPdpModalContent();
+    }
+
+    function renderPdpModalContent() {
+      const prod = state.products.find((p) => p.id === state.activePdpProductId);
+      if (!prod) return;
+      const cat = state.categories.find((c) => c.id === prod.category_id);
+      const variant = prod.variants.find((v) => v.id === state.activePdpVariantId) || prod.variants[0];
+      const effectivePrice = variant && variant.price ? variant.price : prod.selling_price_dzd;
+      const varStock = variant ? variant.stock : 0;
+      const activeImage = (variant && variant.img) ? variant.img : prod.image;
+      const gallery = prod.gallery && prod.gallery.length ? prod.gallery : [prod.image];
+
+      // 1. Dynamically build interactive selectors for EVERY variant axis defined on this category in the CMS
+      //    (e.g., Couleur swatches, Taille / Pointure boxes, Teinte, Calibre, Cadran, etc.)
+      const variantAxesAttrs = (cat && cat.attributes ? cat.attributes : []).filter((a) => a.variant);
+      let axesSelectorsHtml = "";
+
+      variantAxesAttrs.forEach((axisAttr) => {
+        // Collect unique option values actually present across this product's variants for this axis
+        const prodAxisValues = [];
+        prod.variants.forEach((v) => {
+          const val = v.attrs ? v.attrs[axisAttr.key] : null;
+          if (val && !prodAxisValues.includes(val)) prodAxisValues.push(val);
+        });
+        if (prodAxisValues.length === 0) return;
+
+        const currentSelectedVal = state.activePdpAxes[axisAttr.key] || prodAxisValues[0];
+        const isColorAxis = axisAttr.type === "color";
+
+        if (isColorAxis) {
+          axesSelectorsHtml += `
+            <div class="space-y-2">
+              <div class="flex items-center justify-between text-xs">
+                <span class="text-charcoal/80">${attrLabel(axisAttr)} : <strong class="text-emerald-deep">${currentSelectedVal}</strong></span>
+              </div>
+              <div class="flex flex-wrap items-center gap-2.5">
+                ${prodAxisValues
+                  .map((val) => {
+                    const isSel = currentSelectedVal === val;
+                    const hex = COLOR_SWATCH_HEX[val] || "#063D2E";
+                    return `
+                      <button
+                        type="button"
+                        onclick="selectPdpAxisValue('${axisAttr.key}', '${val.replace(/'/g, "\'")}')"
+                        class="group flex items-center gap-2 px-3 py-1.5 rounded-full border text-xs font-semibold transition ${
+                          isSel
+                            ? "border-gold-reflective bg-emerald-deep text-gold-light shadow-gold-ring"
+                            : "border-gray-300 bg-white text-charcoal hover:border-emerald-deep"
+                        }"
+                      >
+                        <span class="w-4 h-4 rounded-full border border-black/20 flex-shrink-0" style="background-color:${hex}"></span>
+                        <span>${val}</span>
+                      </button>
+                    `;
+                  })
+                  .join("")}
+              </div>
+            </div>
+          `;
+        } else {
+          axesSelectorsHtml += `
+            <div class="space-y-2">
+              <div class="flex items-center justify-between text-xs">
+                <span class="text-charcoal/80">${attrLabel(axisAttr)} : <strong class="text-emerald-deep">${currentSelectedVal}</strong></span>
+              </div>
+              <div class="flex flex-wrap items-center gap-2">
+                ${prodAxisValues
+                  .map((val) => {
+                    const isSel = currentSelectedVal === val;
+                    // Check if this option has stock with current other selections
+                    const candidateVar = prod.variants.find(
+                      (v) => v.attrs && v.attrs[axisAttr.key] === val && Object.entries(state.activePdpAxes).every(([k, ov]) => k === axisAttr.key || v.attrs[k] === ov)
+                    ) || prod.variants.find((v) => v.attrs && v.attrs[axisAttr.key] === val);
+                    const hasStock = candidateVar ? candidateVar.stock > 0 : true;
+                    return `
+                      <button
+                        type="button"
+                        onclick="selectPdpAxisValue('${axisAttr.key}', '${val.replace(/'/g, "\'")}')"
+                        class="min-w-[44px] px-3.5 py-2 rounded-xl text-xs font-bold border transition ${
+                          isSel
+                            ? "bg-emerald-deep text-gold-reflective border-gold-reflective shadow-sm"
+                            : hasStock
+                            ? "bg-white text-charcoal border-gray-300 hover:border-emerald-deep"
+                            : "bg-gray-100 text-gray-400 border-gray-200 line-through"
+                        }"
+                      >
+                        ${val}
+                      </button>
+                    `;
+                  })
+                  .join("")}
+              </div>
+            </div>
+          `;
+        }
+      });
+
+      // 2. Dynamically build Custom Product Specifications from the Category's non-variant attributes + selected variant
+      const customSpecEntries = [];
+      if (cat && cat.attributes) {
+        cat.attributes
+          .filter((a) => !a.variant)
+          .forEach((a) => {
+            const val = prod.attributes ? prod.attributes[a.key] : null;
+            if (val) {
+              customSpecEntries.push([attrLabel(a), val]);
+            }
+          });
+      }
+      // Also include selected variant attributes in technical specs
+      if (variant && variant.attrs && cat && cat.attributes) {
+        Object.entries(variant.attrs).forEach(([k, val]) => {
+          const attrDef = cat.attributes.find((a) => a.key === k);
+          customSpecEntries.push([attrDef ? attrLabel(attrDef) : k, val]);
+        });
+      }
+
+      const specRows = customSpecEntries
+        .map(
+          ([label, val]) =>
+            `<tr class="border-b border-gray-100"><td class="py-2 font-semibold text-gray-500 text-xs">${label}</td><td class="py-2 font-bold text-charcoal text-xs">${val}</td></tr>`
+        )
+        .join("");
+
+      const highlightPills = customSpecEntries
+        .slice(0, 4)
+        .map(
+          ([label, val]) =>
+            `<span class="px-2.5 py-1 rounded-lg bg-cream border border-gold-reflective/30 text-[11px] text-charcoal"><strong class="text-emerald-deep">${label} :</strong> ${val}</span>`
+        )
+        .join("");
+
+      // 3. Live 69-Wilaya Delivery Estimator inside PDP
+      const selWilaya = WILAYAS.find((w) => w.code === state.activePdpWilaya) || WILAYAS[15];
+
+      const body = document.getElementById("pdp-modal-body");
+      body.innerHTML = `
+        <div class="grid grid-cols-1 md:grid-cols-12 gap-6">
+          <!-- Left Column: Gallery & Thumbnails -->
+          <div class="md:col-span-6 space-y-3">
+            <div id="pdp-zoom-wrap" onclick="togglePdpZoom()" class="zoom-stage relative h-72 sm:h-80 rounded-2xl bg-cream border border-gold-reflective/40 flex items-center justify-center">
+              <img id="pdp-main-img" src="${activeImage}" alt="${prodName(prod)}" class="w-full h-full object-cover" />
+              <span class="absolute top-3 left-3 px-2.5 py-1 rounded-full bg-emerald-deep/90 text-gold-light text-[10px] font-mono">SKU: ${variant ? variant.sku : prod.sku}</span>
+              <span class="absolute bottom-3 right-3 px-2.5 py-1 rounded-full bg-emerald-forest/85 text-gold-light text-[10px] pointer-events-none">Cliquer pour zoomer</span>
+            </div>
+            <div class="flex items-center gap-2 overflow-x-auto">
+              ${gallery
+                .map(
+                  (g) => `
+                <button type="button" onclick="switchPdpImage('${g}')" class="w-16 h-16 rounded-xl overflow-hidden border-2 border-gold-reflective/40 hover:border-emerald-deep flex-shrink-0">
+                  <img src="${g}" alt="Miniature" class="w-full h-full object-cover" />
+                </button>
+              `
+                )
+                .join("")}
+            </div>
+          </div>
+
+          <!-- Right Column: Dynamic CMS Variant Selectors, Custom Attributes & Actions -->
+          <div class="md:col-span-6 space-y-4">
+            <div>
+              <div class="flex items-center justify-between">
+                <span class="text-[11px] font-bold uppercase tracking-[0.2em] text-gold-dark">${prod.brand || "MUS LUXURY"}</span>
+                <span class="px-2.5 py-0.5 rounded-full text-[11px] font-bold ${
+                  varStock > 0 ? "bg-emerald-50 text-emerald-800 border border-emerald-200" : "bg-red-50 text-red-700 border border-red-200"
+                }">
+                  ${varStock > 0 ? `● En stock (${varStock} disponible${varStock > 1 ? "s" : ""})` : "✕ Rupture de stock"}
+                </span>
+              </div>
+              <h2 class="font-luxury text-2xl sm:text-3xl font-bold text-emerald-deep mt-1">${prodName(prod)}</h2>
+              <div class="flex items-baseline gap-3 mt-2">
+                <span class="text-2xl font-extrabold text-gold-dark">${formatDZD(effectivePrice)}</span>
+                ${
+                  prod.previous_price_dzd
+                    ? `<span class="text-sm text-gray-400 line-through">${formatDZD(prod.previous_price_dzd)}</span>`
+                    : ""
+                }
+                ${
+                  prod.discount_percent > 0
+                    ? `<span class="px-2 py-0.5 rounded bg-red-600 text-white text-xs font-bold">-${prod.discount_percent}%</span>`
+                    : ""
+                }
+              </div>
+            </div>
+
+            <p class="text-xs sm:text-sm text-charcoal/80 leading-relaxed">${prod.description_fr}</p>
+
+            <!-- Quick Custom Attribute Highlights from CMS -->
+            <div class="flex flex-wrap gap-1.5">
+              ${highlightPills}
+            </div>
+
+            <!-- Dynamic Variant Axes Selectors (Couleur, Taille, Pointure, Teinte, etc.) -->
+            <div class="space-y-3.5 pt-3 border-t border-gray-100">
+              ${axesSelectorsHtml}
+            </div>
+
+            <!-- Quantity & CTA Buttons -->
+            <div class="space-y-3 pt-2">
+              <div class="flex items-center gap-3">
+                <span class="text-xs font-bold">Quantité :</span>
+                <div class="inline-flex items-center rounded-xl border border-gray-300 bg-white">
+                  <button type="button" onclick="changePdpQty(-1)" class="px-3 py-1.5 text-sm font-bold hover:bg-gray-100">-</button>
+                  <span class="px-4 py-1.5 text-xs font-extrabold">${state.activePdpQty}</span>
+                  <button type="button" onclick="changePdpQty(1)" class="px-3 py-1.5 text-sm font-bold hover:bg-gray-100">+</button>
+                </div>
+              </div>
+
+              <div class="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+                <button
+                  type="button"
+                  onclick="addPdpToCart(false)"
+                  ${varStock <= 0 ? "disabled" : ""}
+                  class="py-3 px-4 rounded-xl gold-cta text-emerald-forest font-extrabold text-xs uppercase tracking-wider shadow-md flex items-center justify-center gap-2 transition"
+                >
+                  <svg class="w-4 h-4 stroke-[2.2]" viewBox="0 0 24 24" fill="none" stroke="currentColor"><circle cx="9" cy="21" r="1"></circle><circle cx="20" cy="21" r="1"></circle><path d="M1 1h4l2.68 13.39a2 2 0 0 0 2 1.61h9.72a2 2 0 0 0 2-1.61L23 6H6"></path></svg>
+                  <span>Ajouter au panier</span>
+                </button>
+                <button
+                  type="button"
+                  onclick="addPdpToCart(true)"
+                  ${varStock <= 0 ? "disabled" : ""}
+                  class="py-3 px-4 rounded-xl bg-emerald-deep hover:bg-emerald-forest text-gold-light border border-gold-reflective/40 font-bold text-xs uppercase tracking-wider transition"
+                >
+                  Acheter maintenant
+                </button>
+              </div>
+            </div>
+
+            <!-- Live 69-Wilaya Delivery Estimator & Automatic Total Calculator Box -->
+            <div class="p-3.5 rounded-xl bg-emerald-deep/5 border border-emerald-deep/20 space-y-2.5 text-xs">
+              <div class="flex flex-wrap items-center justify-between gap-2">
+                <span class="font-bold text-emerald-deep flex items-center gap-1.5">
+                  <svg class="w-4 h-4 text-gold-dark" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="1" y="3" width="15" height="13" rx="1"></rect><polygon points="16 8 20 8 23 11 23 16 16 16 16 8"></polygon><circle cx="5.5" cy="18.5" r="2.5"></circle><circle cx="18.5" cy="18.5" r="2.5"></circle></svg>
+                  <span>Livraison (69 Wilayas) :</span>
+                </span>
+                <select onchange="changePdpWilayaEstimate(this.value)" class="px-2.5 py-1.5 rounded-lg border border-gray-300 bg-white font-semibold text-xs focus:outline-none focus:border-emerald-deep">
+                  ${WILAYAS.map((w) => `<option value="${w.code}" ${w.code === selWilaya.code ? "selected" : ""}>${w.code} - ${w.name_fr}</option>`).join("")}
+                </select>
+              </div>
+              <div class="grid grid-cols-2 gap-2">
+                <button
+                  type="button"
+                  onclick="changePdpDeliveryMethod('home')"
+                  class="p-2 rounded-xl border text-left transition flex items-center justify-between ${
+                    state.activePdpDeliveryMethod === "home"
+                      ? "bg-emerald-deep text-white border-gold-reflective shadow-sm"
+                      : "bg-white text-charcoal border-gray-200 hover:border-emerald-deep"
+                  }"
+                >
+                  <div>
+                    <div class="font-bold text-[11px]">À Domicile</div>
+                    <div class="text-[10px] ${state.activePdpDeliveryMethod === "home" ? "text-gold-light/85" : "text-gray-500"}">Livraison chez vous</div>
+                  </div>
+                  <span class="font-extrabold text-xs ${state.activePdpDeliveryMethod === "home" ? "text-gold-reflective" : "text-emerald-deep"}">${formatDZD(selWilaya.home_fee)}</span>
+                </button>
+                <button
+                  type="button"
+                  onclick="changePdpDeliveryMethod('stop_desk')"
+                  class="p-2 rounded-xl border text-left transition flex items-center justify-between ${
+                    state.activePdpDeliveryMethod === "stop_desk"
+                      ? "bg-emerald-deep text-white border-gold-reflective shadow-sm"
+                      : "bg-white text-charcoal border-gray-200 hover:border-emerald-deep"
+                  }"
+                >
+                  <div>
+                    <div class="font-bold text-[11px]">Stop-Desk</div>
+                    <div class="text-[10px] ${state.activePdpDeliveryMethod === "stop_desk" ? "text-gold-light/85" : "text-gray-500"}">Bureau relais</div>
+                  </div>
+                  <span class="font-extrabold text-xs ${state.activePdpDeliveryMethod === "stop_desk" ? "text-gold-reflective" : "text-emerald-deep"}">${formatDZD(selWilaya.desk_fee)}</span>
+                </button>
+              </div>
+              <div class="flex items-center justify-between pt-1.5 border-t border-emerald-deep/15 text-[11px]">
+                <span class="text-charcoal/80">Total estimé (${state.activePdpQty} article${state.activePdpQty > 1 ? "s" : ""} + ${state.activePdpDeliveryMethod === "stop_desk" ? "Stop-Desk" : "Domicile"}) :</span>
+                <strong class="text-sm font-extrabold text-emerald-deep">${formatDZD(effectivePrice * state.activePdpQty + (state.activePdpDeliveryMethod === "stop_desk" ? selWilaya.desk_fee : selWilaya.home_fee))}</strong>
+              </div>
+            </div>
+
+            <!-- Specifications & Delivery Tabs -->
+            <div class="pt-2 border-t border-gray-100 space-y-2.5">
+              <div class="flex gap-2 text-xs font-bold">
+                <button type="button" onclick="switchPdpTab('desc')" class="px-3 py-1.5 rounded-lg ${
+                  state.activePdpTab === "desc" ? "bg-cream text-emerald-deep border border-gold-reflective/40" : "text-gray-500"
+                }">Caractéristiques techniques</button>
+                <button type="button" onclick="switchPdpTab('ship')" class="px-3 py-1.5 rounded-lg ${
+                  state.activePdpTab === "ship" ? "bg-cream text-emerald-deep border border-gold-reflective/40" : "text-gray-500"
+                }">Livraison &amp; Retours</button>
+              </div>
+              ${
+                state.activePdpTab === "desc"
+                  ? `<table class="w-full">${specRows}</table>`
+                  : `<div class="text-xs text-charcoal/80 space-y-1 bg-cream p-3 rounded-xl border border-gold-reflective/25">
+                      <p class="font-bold text-emerald-deep">Expédition rapide dans les 69 Wilayas d'Algérie</p>
+                      <p>Paiement en espèces à la réception (Cash on Delivery) • Échange ou retour sous 7 jours.</p>
+                    </div>`
+              }
+            </div>
+          </div>
+        </div>
+      `;
+    }
+
+    function addPdpToCart(buyNow) {
+      const prod = state.products.find((p) => p.id === state.activePdpProductId);
+      if (!prod) return;
+      addToCartInternal(prod.id, state.activePdpVariantId, state.activePdpQty);
+      closeProductDetailModal();
+      if (buyNow) {
+        openCartDrawer();
+      }
+    }
+
+    // ========================================================================
+    // CART & GUEST CHECKOUT
+    // ========================================================================
+    function quickAddToCart(prodId, variantId) {
+      addToCartInternal(prodId, variantId, 1);
+    }
+
+    function addToCartInternal(prodId, variantId, qty) {
+      const prod = state.products.find((p) => p.id === prodId);
+      if (!prod) return;
+      const variant = prod.variants.find((v) => v.id === variantId);
+      if (!variant || variant.stock <= 0) {
+        showToast("Cette variante est momentanément indisponible", "error");
+        return;
+      }
+      const existing = state.cart.find((item) => item.variantId === variantId);
+      const currentQty = existing ? existing.quantity : 0;
+      if (currentQty + qty > variant.stock) {
+        showToast(`Quantité disponible pour ${variant.title} : ${variant.stock}`, "error");
+        return;
+      }
+      if (existing) {
+        existing.quantity += qty;
+      } else {
+        state.cart.push({ variantId, productId: prodId, quantity: qty });
+      }
+      state.lastConfirmedOrder = null;
+      renderStorefront();
+      showToast(`${prodName(prod)} (${variant.title}) ajouté au panier`);
+    }
+
+    function updateCartItemQty(variantId, delta) {
+      const idx = state.cart.findIndex((i) => i.variantId === variantId);
+      if (idx === -1) return;
+      const item = state.cart[idx];
+      const prod = state.products.find((p) => p.id === item.productId);
+      const variant = prod ? prod.variants.find((v) => v.id === variantId) : null;
+      const next = item.quantity + delta;
+      if (next <= 0) {
+        state.cart.splice(idx, 1);
+      } else if (variant && next <= variant.stock) {
+        item.quantity = next;
+      } else {
+        showToast("Quantité maximale en stock atteinte", "error");
+      }
+      renderStorefront();
+      renderCartDrawerContent();
+    }
+
+    function openCartDrawer() {
+      renderCartDrawerContent();
+      document.getElementById("cart-checkout-modal").classList.remove("hidden");
+    }
+
+    function closeCartDrawer() {
+      document.getElementById("cart-checkout-modal").classList.add("hidden");
+    }
+
+    function computeCartSubtotal() {
+      return state.cart.reduce((sum, item) => {
+        const prod = state.products.find((p) => p.id === item.productId);
+        const variant = prod ? prod.variants.find((v) => v.id === item.variantId) : null;
+        const unitPrice = variant && variant.price ? variant.price : prod ? prod.selling_price_dzd : 0;
+        return sum + unitPrice * item.quantity;
+      }, 0);
+    }
+
+    function computeCouponDiscount(subtotal) {
+      if (!state.appliedCoupon) return 0;
+      const c = state.appliedCoupon;
+      if (subtotal < c.minOrder) return 0;
+      if (c.type === "percentage") {
+        return Math.min(Math.floor((subtotal * c.value) / 100), c.maxDiscount || 999999);
+      }
+      return Math.min(c.value, subtotal);
+    }
+
+    function applyGuestCheckoutCoupon() {
+      const raw = (document.getElementById("chk-coupon")?.value || "").trim().toUpperCase();
+      if (!raw) {
+        state.appliedCoupon = null;
+        updateCheckoutCalculation();
+        return;
+      }
+      const found = COUPONS.find((c) => c.code === raw);
+      if (!found) {
+        showToast("Code promo invalide", "error");
+        return;
+      }
+      const subtotal = computeCartSubtotal();
+      if (subtotal < found.minOrder) {
+        showToast(`Minimum de commande requis : ${formatDZD(found.minOrder)}`, "error");
+        return;
+      }
+      state.appliedCoupon = found;
+      updateCheckoutCalculation();
+      showToast(`Code promo ${found.code} appliqué`);
+    }
+
+    function selectCheckoutDeliveryMethod(method) {
+      state.checkoutMethod = method === "stop_desk" ? "stop_desk" : "home";
+      const methodInput = document.getElementById("chk-method");
+      if (methodInput) methodInput.value = state.checkoutMethod;
+      updateCheckoutCalculation();
+    }
+
+    function updateCheckoutCalculation() {
+      const wilayaSel = document.getElementById("chk-wilaya");
+      const methodInput = document.getElementById("chk-method");
+      const communeSel = document.getElementById("chk-commune");
+      if (!wilayaSel || !methodInput) return;
+
+      state.checkoutWilaya = wilayaSel.value;
+      state.checkoutMethod = methodInput.value === "stop_desk" ? "stop_desk" : "home";
+
+      const wObj = WILAYAS.find((w) => w.code === state.checkoutWilaya) || WILAYAS[15] || WILAYAS[0];
+      if (communeSel && communeSel.dataset.wilaya !== wObj.code) {
+        communeSel.dataset.wilaya = wObj.code;
+        communeSel.innerHTML = wObj.communes.map((c) => `<option value="${c}">${c}</option>`).join("");
+      }
+
+      // Update live prices and Wilaya labels inside the Home vs Stop-Desk selector cards
+      const homeFeeBadge = document.getElementById("chk-card-home-fee");
+      const deskFeeBadge = document.getElementById("chk-card-desk-fee");
+      const homeWilayaSub = document.getElementById("chk-card-home-sub");
+      const deskWilayaSub = document.getElementById("chk-card-desk-sub");
+      const homeCardBtn = document.getElementById("chk-card-home-btn");
+      const deskCardBtn = document.getElementById("chk-card-desk-btn");
+
+      if (homeFeeBadge) homeFeeBadge.textContent = `+ ${formatDZD(wObj.home_fee)}`;
+      if (deskFeeBadge) deskFeeBadge.textContent = `+ ${formatDZD(wObj.desk_fee)}`;
+      if (homeWilayaSub) homeWilayaSub.textContent = `À votre adresse (${wObj.code} - ${wObj.name_fr})`;
+      if (deskWilayaSub) deskWilayaSub.textContent = `Bureau relais (${wObj.code} - ${wObj.name_fr})`;
+
+      if (homeCardBtn && deskCardBtn) {
+        if (state.checkoutMethod === "home") {
+          homeCardBtn.className = "p-3 rounded-xl border-2 border-gold-reflective bg-emerald-deep text-white text-left transition shadow-sm flex items-center justify-between gap-2";
+          deskCardBtn.className = "p-3 rounded-xl border border-gray-300 bg-white text-charcoal hover:border-emerald-deep text-left transition flex items-center justify-between gap-2";
+          if (homeFeeBadge) homeFeeBadge.className = "font-extrabold text-xs text-gold-reflective whitespace-nowrap";
+          if (deskFeeBadge) deskFeeBadge.className = "font-extrabold text-xs text-emerald-deep whitespace-nowrap";
+          if (homeWilayaSub) homeWilayaSub.className = "text-[10px] text-gold-light/85 truncate";
+          if (deskWilayaSub) deskWilayaSub.className = "text-[10px] text-gray-500 truncate";
+        } else {
+          deskCardBtn.className = "p-3 rounded-xl border-2 border-gold-reflective bg-emerald-deep text-white text-left transition shadow-sm flex items-center justify-between gap-2";
+          homeCardBtn.className = "p-3 rounded-xl border border-gray-300 bg-white text-charcoal hover:border-emerald-deep text-left transition flex items-center justify-between gap-2";
+          if (deskFeeBadge) deskFeeBadge.className = "font-extrabold text-xs text-gold-reflective whitespace-nowrap";
+          if (homeFeeBadge) homeFeeBadge.className = "font-extrabold text-xs text-emerald-deep whitespace-nowrap";
+          if (deskWilayaSub) deskWilayaSub.className = "text-[10px] text-gold-light/85 truncate";
+          if (homeWilayaSub) homeWilayaSub.className = "text-[10px] text-gray-500 truncate";
+        }
+      }
+
+      const fee = state.checkoutMethod === "stop_desk" ? wObj.desk_fee : wObj.home_fee;
+      const subtotal = computeCartSubtotal();
+      const discount = computeCouponDiscount(subtotal);
+      const total = subtotal - discount + fee;
+
+      const feeLabelEl = document.getElementById("chk-summary-fee-label");
+      const feeEl = document.getElementById("chk-summary-fee");
+      const discEl = document.getElementById("chk-summary-discount");
+      const totEl = document.getElementById("chk-summary-total");
+      if (feeLabelEl) {
+        feeLabelEl.textContent = `Livraison (${wObj.code} - ${wObj.name_fr} • ${state.checkoutMethod === "stop_desk" ? "Stop-Desk" : "À domicile"}) :`;
+      }
+      if (feeEl) feeEl.textContent = `+ ${formatDZD(fee)}`;
+      if (discEl) discEl.textContent = discount > 0 ? `- ${formatDZD(discount)}` : "0 DA";
+      if (totEl) totEl.textContent = formatDZD(total);
+    }
+
+    function submitGuestCheckoutOrder() {
+      const name = (document.getElementById("chk-name")?.value || "").trim();
+      const phone = (document.getElementById("chk-phone")?.value || "").trim().replace(/[\s\-\.]/g, "");
+      const wilayaCode = document.getElementById("chk-wilaya")?.value || "16";
+      const commune = document.getElementById("chk-commune")?.value || "Alger Centre";
+      const address = (document.getElementById("chk-address")?.value || "").trim();
+      const method = document.getElementById("chk-method")?.value || "home";
+
+      if (name.length < 3) {
+        showToast("Veuillez indiquer votre nom et prénom", "error");
+        return;
+      }
+      if (!/^(\+213|0)(5|6|7)[0-9]{8}$/.test(phone)) {
+        showToast("Numéro de téléphone mobile algérien invalide (ex: 0550123456)", "error");
+        return;
+      }
+      if (address.length < 5) {
+        showToast("Veuillez préciser votre adresse de livraison", "error");
+        return;
+      }
+
+      const wObj = WILAYAS.find((w) => w.code === wilayaCode) || WILAYAS[0];
+      const deliveryFee = method === "stop_desk" ? wObj.desk_fee : wObj.home_fee;
+      let subtotal = 0;
+      const orderItems = [];
+
+      for (const item of state.cart) {
+        const prod = state.products.find((p) => p.id === item.productId);
+        const variant = prod ? prod.variants.find((v) => v.id === item.variantId) : null;
+        if (!prod || !variant || variant.stock < item.quantity) {
+          showToast(`Stock insuffisant pour ${prod ? prod.name_fr : "cet article"}`, "error");
+          return;
+        }
+        const unitPrice = variant.price || prod.selling_price_dzd;
+        subtotal += unitPrice * item.quantity;
+        orderItems.push({
+          product_id: prod.id,
+          variant_id: variant.id,
+          product_name: prod.name_fr,
+          variant_title: variant.title,
+          unit_price_dzd: unitPrice,
+          quantity: item.quantity
+        });
+      }
+
+      const discount = computeCouponDiscount(subtotal);
+      const orderRef = `LUX-${Math.floor(10000 + Math.random() * 89999)}-DZ`;
+
+      for (const line of orderItems) {
+        const prod = state.products.find((p) => p.id === line.product_id);
+        const variant = prod.variants.find((v) => v.id === line.variant_id);
+        variant.stock -= line.quantity;
+      }
+
+      const newOrder = {
+        id: state.orders.length + 502,
+        reference: orderRef,
+        customer_name: name,
+        customer_phone: phone,
+        wilaya_code: wObj.code,
+        wilaya_name: wObj.name_fr,
+        commune,
+        address,
+        delivery_method: method,
+        subtotal_dzd: subtotal,
+        discount_dzd: discount,
+        delivery_fee_dzd: deliveryFee,
+        total_dzd: subtotal - discount + deliveryFee,
+        status: "Nouvelle — En attente d'confirmation téléphonique",
+        items: orderItems
+      };
+
+      state.orders.unshift(newOrder);
+      state.cart = [];
+      state.appliedCoupon = null;
+      state.lastConfirmedOrder = newOrder;
+      renderStorefront();
+      renderCartDrawerContent();
+      showToast(`Commande #${orderRef} enregistrée`);
+    }
+
+    function resetConfirmedOrder() {
+      state.lastConfirmedOrder = null;
+      closeCartDrawer();
+    }
+
+    function renderCartDrawerContent() {
+      const container = document.getElementById("cart-drawer-body");
+
+      if (state.lastConfirmedOrder) {
+        const o = state.lastConfirmedOrder;
+        container.innerHTML = `
+          <div class="bg-white rounded-2xl p-6 border border-gold-reflective/40 text-center space-y-4 shadow-luxury">
+            <div class="w-14 h-14 rounded-full bg-emerald-deep text-gold-reflective mx-auto flex items-center justify-center">
+              <svg class="w-7 h-7 stroke-[2.5]" viewBox="0 0 24 24" fill="none" stroke="currentColor"><polyline points="20 6 9 17 4 12"></polyline></svg>
+            </div>
+            <h4 class="font-luxury text-2xl font-bold text-emerald-deep">Commande confirmée !</h4>
+            <p class="text-xs text-gray-600">Merci pour votre achat, <strong>${o.customer_name}</strong>.</p>
+            <div class="bg-cream p-3.5 rounded-xl border border-gold-reflective/40">
+              <p class="text-[11px] uppercase text-gray-500 font-bold">Numéro de commande</p>
+              <p class="font-mono text-lg font-extrabold text-emerald-deep mt-0.5">#${o.reference}</p>
+            </div>
+            <div class="text-left text-xs space-y-1.5 bg-gray-50 p-4 rounded-xl border border-gray-200">
+              <p><strong>Destination :</strong> ${o.wilaya_code} - ${o.wilaya_name} (${o.commune})</p>
+              <p><strong>Mode de livraison :</strong> ${o.delivery_method === "home" ? "Livraison à domicile" : "Stop-Desk (Bureau relais)"}</p>
+              <p><strong>Paiement :</strong> Paiement à la livraison (Espèces)</p>
+              <p class="text-sm font-extrabold text-emerald-deep pt-1.5 border-t border-gray-200">Total à payer à la réception : ${formatDZD(o.total_dzd)}</p>
+            </div>
+            <button type="button" onclick="resetConfirmedOrder()" class="w-full py-3 rounded-xl bg-emerald-deep text-gold-reflective font-bold text-xs">
+              Retour à la boutique
+            </button>
+          </div>
+        `;
+        return;
+      }
+
+      if (state.cart.length === 0) {
+        container.innerHTML = `
+          <div class="bg-white rounded-2xl p-8 text-center border border-gold-reflective/25 space-y-3">
+            <div class="w-12 h-12 rounded-full bg-cream mx-auto flex items-center justify-center text-emerald-deep">
+              <svg class="w-6 h-6" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M6 2L3 6v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6l-3-4z"></path><line x1="3" y1="6" x2="21" y2="6"></line><path d="M16 10a4 4 0 0 1-8 0"></path></svg>
+            </div>
+            <h4 class="font-luxury text-xl font-bold text-emerald-deep">Votre panier est vide</h4>
+            <p class="text-xs text-gray-500">Découvrez nos collections et commandez directement sans créer de compte.</p>
+            <button type="button" onclick="closeCartDrawer()" class="px-6 py-2.5 rounded-full bg-emerald-deep text-gold-reflective font-bold text-xs">Continuer mes achats</button>
+          </div>
+        `;
+        return;
+      }
+
+      const subtotal = computeCartSubtotal();
+      const discount = computeCouponDiscount(subtotal);
+      const defaultWilaya = WILAYAS.find((w) => w.code === state.checkoutWilaya) || WILAYAS[15] || WILAYAS[0];
+      const activeMethod = state.checkoutMethod === "stop_desk" ? "stop_desk" : "home";
+      const defaultFee = activeMethod === "stop_desk" ? defaultWilaya.desk_fee : defaultWilaya.home_fee;
+
+      const itemsHtml = state.cart
+        .map((item) => {
+          const prod = state.products.find((p) => p.id === item.productId);
+          const variant = prod ? prod.variants.find((v) => v.id === item.variantId) : null;
+          if (!prod || !variant) return "";
+          const unitPrice = variant.price || prod.selling_price_dzd;
+          return `
+            <div class="flex items-center gap-3 bg-white p-3 rounded-xl border border-gold-reflective/25 shadow-sm">
+              <img src="${prod.image}" alt="${prodName(prod)}" class="w-16 h-16 rounded-lg object-cover border border-gray-100" />
+              <div class="flex-1 min-w-0">
+                <p class="font-bold text-xs text-charcoal truncate">${prodName(prod)}</p>
+                <p class="text-[11px] text-gray-500">${variant.title}</p>
+                <p class="text-xs font-extrabold text-emerald-deep mt-0.5">${formatDZD(unitPrice)}</p>
+              </div>
+              <div class="flex items-center gap-1.5">
+                <button type="button" onclick="updateCartItemQty(${variant.id}, -1)" class="w-7 h-7 rounded-lg bg-cream hover:bg-gray-200 font-bold text-xs">-</button>
+                <span class="text-xs font-extrabold px-1">${item.quantity}</span>
+                <button type="button" onclick="updateCartItemQty(${variant.id}, 1)" class="w-7 h-7 rounded-lg bg-cream hover:bg-gray-200 font-bold text-xs">+</button>
+              </div>
+            </div>
+          `;
+        })
+        .join("");
+
+      container.innerHTML = `
+        <div class="space-y-2.5">
+          <h4 class="font-bold text-xs uppercase tracking-wider text-emerald-deep">Articles (${state.cart.length})</h4>
+          ${itemsHtml}
+        </div>
+
+        <div class="bg-white rounded-2xl p-5 border border-gold-reflective/35 shadow-sm space-y-4">
+          <div class="border-b border-gray-100 pb-2.5">
+            <h4 class="font-luxury text-lg font-bold text-emerald-deep">Informations de livraison</h4>
+            <p class="text-[11px] text-gray-500">Veuillez remplir vos informations pour la livraison en Algérie</p>
+          </div>
+
+          <div class="space-y-3 text-xs">
+            <div>
+              <label class="block font-bold mb-1">Nom complet *</label>
+              <input type="text" id="chk-name" placeholder="Votre nom et prénom" class="w-full px-3.5 py-2.5 rounded-xl border border-gray-300 focus:outline-none focus:border-emerald-deep" />
+            </div>
+            <div>
+              <label class="block font-bold mb-1">Téléphone *</label>
+              <input type="tel" id="chk-phone" placeholder="0550 12 34 56" class="w-full px-3.5 py-2.5 rounded-xl border border-gray-300 font-mono focus:outline-none focus:border-emerald-deep" />
+            </div>
+            <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <div>
+                <div class="flex items-center justify-between mb-1">
+                  <label class="block font-bold">Wilaya (69 Wilayas) *</label>
+                  <button type="button" onclick="openWilayaTariffsModal()" class="text-[10px] font-bold text-emerald-deep underline hover:text-gold-dark">Voir grille tarifs</button>
+                </div>
+                <select id="chk-wilaya" onchange="updateCheckoutCalculation()" class="w-full px-3 py-2.5 rounded-xl border border-gray-300 bg-white font-semibold focus:outline-none focus:border-emerald-deep">
+                  ${WILAYAS.map((w) => `<option value="${w.code}" ${w.code === defaultWilaya.code ? "selected" : ""}>${w.code} - ${w.name_fr} (Dom: ${w.home_fee} DA | Desk: ${w.desk_fee} DA)</option>`).join("")}
+                </select>
+              </div>
+              <div>
+                <label class="block font-bold mb-1">Commune *</label>
+                <select id="chk-commune" data-wilaya="${defaultWilaya.code}" class="w-full px-3 py-2.5 rounded-xl border border-gray-300 bg-white focus:outline-none focus:border-emerald-deep">
+                  ${defaultWilaya.communes.map((c) => `<option value="${c}">${c}</option>`).join("")}
+                </select>
+              </div>
+            </div>
+            <div>
+              <label class="block font-bold mb-1.5">Mode de livraison (calcul automatique selon la Wilaya) *</label>
+              <input type="hidden" id="chk-method" value="${activeMethod}" />
+              <div class="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+                <button
+                  type="button"
+                  id="chk-card-home-btn"
+                  onclick="selectCheckoutDeliveryMethod('home')"
+                  class="${
+                    activeMethod === "home"
+                      ? "p-3 rounded-xl border-2 border-gold-reflective bg-emerald-deep text-white text-left transition shadow-sm flex items-center justify-between gap-2"
+                      : "p-3 rounded-xl border border-gray-300 bg-white text-charcoal hover:border-emerald-deep text-left transition flex items-center justify-between gap-2"
+                  }"
+                >
+                  <div class="min-w-0">
+                    <div class="font-bold text-xs flex items-center gap-1.5">
+                      <svg class="w-3.5 h-3.5 flex-shrink-0 text-gold-reflective" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"></path><polyline points="9 22 9 12 15 12 15 22"></polyline></svg>
+                      <span>À Domicile</span>
+                    </div>
+                    <div id="chk-card-home-sub" class="text-[10px] ${activeMethod === "home" ? "text-gold-light/85" : "text-gray-500"} truncate">À votre adresse (${defaultWilaya.code} - ${defaultWilaya.name_fr})</div>
+                  </div>
+                  <span id="chk-card-home-fee" class="font-extrabold text-xs ${activeMethod === "home" ? "text-gold-reflective" : "text-emerald-deep"} whitespace-nowrap">+ ${formatDZD(defaultWilaya.home_fee)}</span>
+                </button>
+
+                <button
+                  type="button"
+                  id="chk-card-desk-btn"
+                  onclick="selectCheckoutDeliveryMethod('stop_desk')"
+                  class="${
+                    activeMethod === "stop_desk"
+                      ? "p-3 rounded-xl border-2 border-gold-reflective bg-emerald-deep text-white text-left transition shadow-sm flex items-center justify-between gap-2"
+                      : "p-3 rounded-xl border border-gray-300 bg-white text-charcoal hover:border-emerald-deep text-left transition flex items-center justify-between gap-2"
+                  }"
+                >
+                  <div class="min-w-0">
+                    <div class="font-bold text-xs flex items-center gap-1.5">
+                      <svg class="w-3.5 h-3.5 flex-shrink-0 text-gold-reflective" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="7" width="20" height="14" rx="2" ry="2"></rect><path d="M16 21V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v16"></path></svg>
+                      <span>Stop-Desk</span>
+                    </div>
+                    <div id="chk-card-desk-sub" class="text-[10px] ${activeMethod === "stop_desk" ? "text-gold-light/85" : "text-gray-500"} truncate">Bureau relais (${defaultWilaya.code} - ${defaultWilaya.name_fr})</div>
+                  </div>
+                  <span id="chk-card-desk-fee" class="font-extrabold text-xs ${activeMethod === "stop_desk" ? "text-gold-reflective" : "text-emerald-deep"} whitespace-nowrap">+ ${formatDZD(defaultWilaya.desk_fee)}</span>
+                </button>
+              </div>
+            </div>
+            <div>
+              <label class="block font-bold mb-1">Adresse complète *</label>
+              <input type="text" id="chk-address" placeholder="Votre adresse complète" class="w-full px-3.5 py-2.5 rounded-xl border border-gray-300 focus:outline-none focus:border-emerald-deep" />
+            </div>
+            <div>
+              <label class="block font-bold mb-1">Code promo (ex: BIENVENUE10)</label>
+              <div class="flex gap-2">
+                <input type="text" id="chk-coupon" placeholder="Code promo optionnel" class="flex-1 px-3.5 py-2 rounded-xl border border-gray-300 font-mono uppercase focus:outline-none focus:border-emerald-deep" />
+                <button type="button" onclick="applyGuestCheckoutCoupon()" class="px-4 py-2 rounded-xl bg-emerald-deep text-gold-reflective font-bold text-xs">Appliquer</button>
+              </div>
+            </div>
+          </div>
+
+          <div class="bg-cream p-4 rounded-xl border border-gold-reflective/35 space-y-1.5 text-xs">
+            <div class="flex justify-between">
+              <span class="text-gray-600">Sous-total :</span>
+              <span class="font-bold">${formatDZD(subtotal)}</span>
+            </div>
+            <div class="flex justify-between">
+              <span class="text-gray-600">Remise promo :</span>
+              <span id="chk-summary-discount" class="font-bold text-emerald-700">${discount > 0 ? `- ${formatDZD(discount)}` : "0 DA"}</span>
+            </div>
+            <div class="flex justify-between">
+              <span id="chk-summary-fee-label" class="text-gray-600">Livraison (${defaultWilaya.code} - ${defaultWilaya.name_fr} • ${activeMethod === "stop_desk" ? "Stop-Desk" : "À domicile"}) :</span>
+              <span id="chk-summary-fee" class="font-bold text-emerald-deep">+ ${formatDZD(defaultFee)}</span>
+            </div>
+            <div class="flex justify-between text-sm font-extrabold text-emerald-deep pt-2 border-t border-gold-reflective/30">
+              <span>Total (Paiement à la livraison) :</span>
+              <span id="chk-summary-total">${formatDZD(subtotal - discount + defaultFee)}</span>
+            </div>
+          </div>
+
+          <button type="button" onclick="submitGuestCheckoutOrder()" class="w-full py-3.5 rounded-xl bg-emerald-deep hover:bg-emerald-forest text-white font-bold text-sm shadow-lg transition">
+            Passer la commande
+          </button>
+        </div>
+      `;
+    }
+
+    // ========================================================================
+    // ORDER TRACKING & STATIC PAGES
+    // ========================================================================
+    function openOrderTrackingModal() {
+      document.getElementById("order-tracking-modal").classList.remove("hidden");
+      lookupGuestOrderStatus();
+    }
+
+    function closeOrderTrackingModal() {
+      document.getElementById("order-tracking-modal").classList.add("hidden");
+    }
+
+    function lookupGuestOrderStatus() {
+      const ref = (document.getElementById("track-order-ref").value || "").trim().toUpperCase().replace(/^#/, "");
+      const phone = (document.getElementById("track-order-phone").value || "").trim().replace(/[\s\-\.]/g, "");
+      const resEl = document.getElementById("track-order-result");
+      const found = state.orders.find((o) => o.reference.toUpperCase() === ref && o.customer_phone.replace(/[\s\-\.]/g, "") === phone);
+      if (!found) {
+        resEl.innerHTML = `<div class="p-3.5 rounded-xl bg-red-50 border border-red-200 text-red-700 font-semibold">Aucune commande trouvée pour ce numéro et ce téléphone.</div>`;
+        return;
+      }
+      resEl.innerHTML = `
+        <div class="p-4 rounded-xl bg-cream border border-gold-reflective/40 space-y-1.5">
+          <div class="flex items-center justify-between">
+            <span class="font-mono font-extrabold text-emerald-deep">#${found.reference}</span>
+            <span class="px-2.5 py-0.5 rounded-full bg-emerald-deep text-gold-reflective font-bold text-[11px]">${found.status}</span>
+          </div>
+          <p><strong>Client :</strong> ${found.customer_name} (${found.wilaya_code} - ${found.wilaya_name}, ${found.commune})</p>
+          <p><strong>Articles :</strong> ${found.items.map((i) => `${i.quantity}× ${i.product_name}`).join(", ")}</p>
+          <p class="font-extrabold text-emerald-deep pt-1 border-t border-gold-reflective/25">Total à la livraison : ${formatDZD(found.total_dzd)}</p>
+        </div>
+      `;
+    }
+
+    const STATIC_PAGES_CONTENT = {
+      about: {
+        title: "La Maison Mus Luxury",
+        body: `
+          <p><strong>Mus Luxury</strong> sélectionne pour vous des pièces de maroquinerie, chaussures, châles, coffrets de maquillage, lunettes et montres alliant coupe contemporaine et finitions soignées.</p>
+          <p>Nous livrons dans les <strong>69 Wilayas d'Algérie</strong> (à domicile ou en bureau Stop-Desk) avec paiement simple et sécurisé à la réception de votre colis.</p>
+        `
+      },
+      faq: {
+        title: "Questions Fréquentes (FAQ)",
+        body: `
+          <div class="space-y-3">
+            <div><p class="font-bold text-emerald-deep">1. Comment passer commande ?</p><p>Sélectionnez votre article et sa variante, cliquez sur « Ajouter au panier », puis renseignez votre nom, numéro de téléphone, Wilaya et Commune. Aucun compte n'est requis.</p></div>
+            <div><p class="font-bold text-emerald-deep">2. Quand s'effectue le paiement ?</p><p>Le paiement s'effectue intégralement en espèces à la livraison (Cash on Delivery) à la réception de votre commande.</p></div>
+          </div>
+        `
+      },
+      returns: {
+        title: "Livraison & Retours sous 7 Jours",
+        body: `
+          <p><strong>Livraison 69 Wilayas :</strong> 24h à 48h pour Alger et les grandes villes, 48h à 72h pour les autres wilayas.</p>
+          <p><strong>Échange & Retour :</strong> Vous disposez de 7 jours après réception pour demander un échange de taille ou de modèle dans son emballage d'origine.</p>
+        `
+      },
+      terms: {
+        title: "Conditions Générales & Confidentialité",
+        body: `
+          <p>Tous nos tarifs sont affichés en Dinar Algérien (DA). Les coordonnées transmises lors de votre commande sont utilisées uniquement pour l'expédition et le suivi de votre colis.</p>
+        `
+      }
+    };
+
+    function openStaticPageModal(pageKey) {
+      const p = STATIC_PAGES_CONTENT[pageKey] || STATIC_PAGES_CONTENT.about;
+      document.getElementById("static-page-title").textContent = p.title;
+      document.getElementById("static-page-body").innerHTML = p.body;
+      document.getElementById("static-page-modal").classList.remove("hidden");
+    }
+
+    function closeStaticPageModal() {
+      document.getElementById("static-page-modal").classList.add("hidden");
+    }
+
+    function openWilayaTariffsModal() {
+      renderWilayaTariffsTable();
+      document.getElementById("wilaya-tariffs-modal").classList.remove("hidden");
+    }
+
+    function closeWilayaTariffsModal() {
+      document.getElementById("wilaya-tariffs-modal").classList.add("hidden");
+    }
+
+    function updateWilayaRateLive(wilayaCode, field, rawVal) {
+      const val = Math.max(0, parseInt(rawVal || "0", 10) || 0);
+      const w = WILAYAS.find((item) => item.code === wilayaCode);
+      if (!w) return;
+      if (field === "home") {
+        w.home_fee = val;
+      } else {
+        w.desk_fee = val;
+      }
+      // Automatically refresh PDP and Checkout totals if open
+      if (!document.getElementById("product-detail-modal").classList.contains("hidden")) {
+        renderPdpModalContent();
+      }
+      if (!document.getElementById("cart-checkout-modal").classList.contains("hidden")) {
+        renderCartDrawerContent();
+      }
+      showToast(`Tarif ${w.code} - ${w.name_fr} mis à jour (${w.home_fee} DA Domicile / ${w.desk_fee} DA Stop-Desk)`);
+    }
+
+    function selectWilayaFromTariffModal(wilayaCode, method) {
+      state.checkoutWilaya = wilayaCode;
+      state.checkoutMethod = method === "stop_desk" ? "stop_desk" : "home";
+      state.activePdpWilaya = wilayaCode;
+      state.activePdpDeliveryMethod = state.checkoutMethod;
+      closeWilayaTariffsModal();
+      if (!document.getElementById("product-detail-modal").classList.contains("hidden")) {
+        renderPdpModalContent();
+      }
+      if (!document.getElementById("cart-checkout-modal").classList.contains("hidden")) {
+        renderCartDrawerContent();
+      } else {
+        const w = WILAYAS.find((x) => x.code === wilayaCode);
+        if (w) {
+          const fee = state.checkoutMethod === "stop_desk" ? w.desk_fee : w.home_fee;
+          showToast(`Wilaya ${w.code} - ${w.name_fr} sélectionnée (${state.checkoutMethod === "stop_desk" ? "Stop-Desk" : "À domicile"} : ${formatDZD(fee)})`);
+        }
+      }
+    }
+
+    function renderWilayaTariffsTable() {
+      const tbody = document.getElementById("wilaya-tariffs-tbody");
+      if (!tbody) return;
+      const q = (document.getElementById("wilaya-modal-search")?.value || "").trim().toLowerCase();
+      const filtered = WILAYAS.filter(
+        (w) =>
+          !q ||
+          w.code.toLowerCase().includes(q) ||
+          w.name_fr.toLowerCase().includes(q) ||
+          (w.name_ar && w.name_ar.includes(q))
+      );
+
+      tbody.innerHTML = filtered
+        .map(
+          (w) => `
+          <tr class="hover:bg-cream/60 transition">
+            <td class="py-2 px-3 font-mono font-extrabold text-emerald-deep">${w.code}</td>
+            <td class="py-2 px-3 font-bold text-charcoal">${w.name_fr} <span class="text-gray-400 font-normal text-[11px] ml-1">${w.name_ar || ""}</span></td>
+            <td class="py-2 px-3">
+              <div class="inline-flex items-center gap-1 bg-emerald-50 border border-emerald-200 rounded-lg px-2 py-1">
+                <input
+                  type="number"
+                  min="0"
+                  step="50"
+                  value="${w.home_fee}"
+                  onchange="updateWilayaRateLive('${w.code}', 'home', this.value)"
+                  aria-label="Tarif domicile ${w.name_fr}"
+                  class="w-16 bg-transparent font-extrabold text-emerald-900 text-xs focus:outline-none"
+                />
+                <span class="text-[10px] font-bold text-emerald-700">DA</span>
+              </div>
+            </td>
+            <td class="py-2 px-3">
+              <div class="inline-flex items-center gap-1 bg-amber-50 border border-amber-200 rounded-lg px-2 py-1">
+                <input
+                  type="number"
+                  min="0"
+                  step="50"
+                  value="${w.desk_fee}"
+                  onchange="updateWilayaRateLive('${w.code}', 'desk', this.value)"
+                  aria-label="Tarif stop-desk ${w.name_fr}"
+                  class="w-16 bg-transparent font-extrabold text-amber-900 text-xs focus:outline-none"
+                />
+                <span class="text-[10px] font-bold text-amber-800">DA</span>
+              </div>
+            </td>
+            <td class="py-2 px-3 text-right whitespace-nowrap space-x-1">
+              <button
+                type="button"
+                onclick="selectWilayaFromTariffModal('${w.code}', 'home')"
+                class="px-2.5 py-1 rounded-lg bg-emerald-deep text-gold-reflective font-bold text-[10px] hover:bg-emerald-forest transition"
+              >
+                Choisir Domicile
+              </button>
+              <button
+                type="button"
+                onclick="selectWilayaFromTariffModal('${w.code}', 'stop_desk')"
+                class="px-2.5 py-1 rounded-lg bg-cream border border-gold-reflective/50 text-emerald-deep font-bold text-[10px] hover:bg-gold-reflective/20 transition"
+              >
+                Choisir Desk
+              </button>
+            </td>
+          </tr>
+        `
+        )
+        .join("");
+    }
+
+    window.addEventListener("DOMContentLoaded", () => {
+      renderStorefront();
+    });
+  </script>
+</body>
 </html>

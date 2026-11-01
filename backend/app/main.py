@@ -1590,9 +1590,22 @@ class CouponValidateRequest(BaseModel):
 class DeliveryZoneUpdateInput(BaseModel):
     home_fee_dzd: int = Field(..., ge=0)
     stop_desk_fee_dzd: int = Field(..., ge=0)
+    home_supported: bool = True
+    stop_desk_supported: bool = True
     estimated_days: str = "24h - 48h"
     communes: Optional[List[str]] = None
     is_active: bool = True
+
+class BulkWilayaRateItem(BaseModel):
+    wilaya_code: str
+    home_fee_dzd: int = Field(..., ge=0)
+    stop_desk_fee_dzd: int = Field(..., ge=0)
+    home_supported: bool = True
+    stop_desk_supported: bool = True
+    estimated_days: str = "24h - 48h"
+
+class BulkWilayaRatesUpdate(BaseModel):
+    zones: List[BulkWilayaRateItem]
 
 class StockAdjustmentInput(BaseModel):
     change_qty: int
@@ -1653,12 +1666,12 @@ def admin_update_delivery_zone(
                 (1 if payload.is_active else 0, zone["id"])
             )
         cur.execute(
-            "UPDATE delivery_rates SET fee_dzd = ?, estimated_days = ? WHERE zone_id = ? AND delivery_method = 'home'",
-            (payload.home_fee_dzd, payload.estimated_days, zone["id"])
+            "UPDATE delivery_rates SET fee_dzd = ?, estimated_days = ?, is_supported = ? WHERE zone_id = ? AND delivery_method = 'home'",
+            (payload.home_fee_dzd, payload.estimated_days, 1 if payload.home_supported else 0, zone["id"])
         )
         cur.execute(
-            "UPDATE delivery_rates SET fee_dzd = ?, estimated_days = ? WHERE zone_id = ? AND delivery_method = 'stop_desk'",
-            (payload.stop_desk_fee_dzd, payload.estimated_days, zone["id"])
+            "UPDATE delivery_rates SET fee_dzd = ?, estimated_days = ?, is_supported = ? WHERE zone_id = ? AND delivery_method = 'stop_desk'",
+            (payload.stop_desk_fee_dzd, payload.estimated_days, 1 if payload.stop_desk_supported else 0, zone["id"])
         )
         log_audit(conn, int(admin["sub"]), "update_delivery_zone", "delivery_zone", wilaya_code, {
             "home_fee_dzd": payload.home_fee_dzd,
@@ -1719,3 +1732,87 @@ def admin_analytics_reports(admin: dict = Depends(require_permission("dashboard:
         )
         product_perf = [dict(r) for r in cur.fetchall()]
         return {"orders_by_status": by_status, "product_performance": product_perf}
+
+
+@app.get("/api/v1/delivery-zones/calculate")
+def calculate_delivery_and_order_preview(
+    wilaya_code: str = Query(..., description="Wilaya code 01 to 69"),
+    delivery_method: str = Query("home", regex=r"^(home|stop_desk)$"),
+    subtotal_dzd: int = Query(0, ge=0),
+    coupon_code: Optional[str] = None
+):
+    """
+    Real-time server-side calculator for the Storefront Cart & Checkout:
+    Returns the exact admin-configured Home or Stop-Desk delivery fee for the chosen Wilaya,
+    plus the discount and final total in DA.
+    """
+    with db_session() as conn:
+        cur = conn.cursor()
+        cur.execute("SELECT * FROM delivery_zones WHERE wilaya_code = ? AND is_active = 1", (wilaya_code.zfill(2),))
+        zone = cur.fetchone()
+        if not zone:
+            raise HTTPException(status_code=404, detail=f"Wilaya {wilaya_code} non disponible")
+
+        cur.execute("SELECT delivery_method, fee_dzd, estimated_days, is_supported FROM delivery_rates WHERE zone_id = ?", (zone["id"],))
+        rates_map = {r["delivery_method"]: dict(r) for r in cur.fetchall()}
+        chosen_rate = rates_map.get(delivery_method)
+        if not chosen_rate or not chosen_rate["is_supported"]:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Le mode de livraison '{delivery_method}' n'est pas disponible pour la wilaya {zone['wilaya_name_fr']}"
+            )
+
+        delivery_fee_dzd = int(chosen_rate["fee_dzd"])
+        discount_dzd = 0
+        if coupon_code:
+            cur.execute("SELECT * FROM coupons WHERE UPPER(code) = ? AND is_active = 1", (coupon_code.strip().upper(),))
+            cpn = cur.fetchone()
+            if cpn and subtotal_dzd >= int(cpn["min_order_dzd"]):
+                if cpn["discount_type"] == "percentage":
+                    discount_dzd = (subtotal_dzd * int(cpn["discount_value"])) // 100
+                    if cpn["max_discount_dzd"] is not None:
+                        discount_dzd = min(discount_dzd, int(cpn["max_discount_dzd"]))
+                else:
+                    discount_dzd = int(cpn["discount_value"])
+                discount_dzd = min(discount_dzd, subtotal_dzd)
+
+        total_dzd = (subtotal_dzd - discount_dzd) + delivery_fee_dzd
+        return {
+            "wilaya_code": zone["wilaya_code"],
+            "wilaya_name_fr": zone["wilaya_name_fr"],
+            "wilaya_name_ar": zone["wilaya_name_ar"],
+            "communes": json.loads(zone["communes_json"]),
+            "selected_method": delivery_method,
+            "home_rate": rates_map.get("home"),
+            "stop_desk_rate": rates_map.get("stop_desk"),
+            "subtotal_dzd": subtotal_dzd,
+            "discount_dzd": discount_dzd,
+            "delivery_fee_dzd": delivery_fee_dzd,
+            "total_dzd": total_dzd
+        }
+
+@app.put("/api/v1/admin/delivery-zones-bulk")
+def admin_bulk_update_delivery_zones(
+    payload: BulkWilayaRatesUpdate,
+    admin: dict = Depends(require_permission("content:write"))
+):
+    with db_session(commit=True) as conn:
+        cur = conn.cursor()
+        updated_count = 0
+        for item in payload.zones:
+            code = item.wilaya_code.zfill(2)
+            cur.execute("SELECT id FROM delivery_zones WHERE wilaya_code = ?", (code,))
+            z = cur.fetchone()
+            if not z:
+                continue
+            cur.execute(
+                "UPDATE delivery_rates SET fee_dzd = ?, estimated_days = ?, is_supported = ? WHERE zone_id = ? AND delivery_method = 'home'",
+                (item.home_fee_dzd, item.estimated_days, 1 if item.home_supported else 0, z["id"])
+            )
+            cur.execute(
+                "UPDATE delivery_rates SET fee_dzd = ?, estimated_days = ?, is_supported = ? WHERE zone_id = ? AND delivery_method = 'stop_desk'",
+                (item.stop_desk_fee_dzd, item.estimated_days, 1 if item.stop_desk_supported else 0, z["id"])
+            )
+            updated_count += 1
+        log_audit(conn, int(admin["sub"]), "bulk_update_delivery_zones", "delivery_zone", "bulk", {"updated_count": updated_count})
+        return {"updated_count": updated_count}

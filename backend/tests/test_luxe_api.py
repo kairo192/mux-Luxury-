@@ -676,8 +676,59 @@ class TestLuxeEcommercePlatform(unittest.TestCase):
         self.assertEqual(r_rep.status_code, 200)
         self.assertIn("product_performance", r_rep.json())
 
+    # 22. End-to-End CMS Wilaya Home vs Stop-Desk Pricing -> Storefront Live Display & Automatic Order Total Calculation
+    def test_22_cms_wilaya_home_and_stop_desk_pricing_auto_calculates_order_total(self):
+        headers = self.get_admin_headers()
+        # Step 1: Admin configures Wilaya 16 (Alger) Home = 450 DA and Stop-Desk = 250 DA in the CMS
+        r_upd = self.client.put(
+            "/api/v1/admin/delivery-zones/16",
+            headers=headers,
+            json={
+                "home_fee_dzd": 450,
+                "stop_desk_fee_dzd": 250,
+                "home_supported": True,
+                "stop_desk_supported": True,
+                "estimated_days": "24h"
+            }
+        )
+        self.assertEqual(r_upd.status_code, 200, r_upd.text)
+
+        # Step 2: Customer on Storefront selects Wilaya 16 (subtotal = 4500 DA) and toggles between Home and Stop-Desk
+        r_calc_home = self.client.get("/api/v1/delivery-zones/calculate?wilaya_code=16&delivery_method=home&subtotal_dzd=4500")
+        self.assertEqual(r_calc_home.status_code, 200)
+        self.assertEqual(r_calc_home.json()["delivery_fee_dzd"], 450)
+        self.assertEqual(r_calc_home.json()["total_dzd"], 4950)
+        self.assertEqual(r_calc_home.json()["home_rate"]["fee_dzd"], 450)
+        self.assertEqual(r_calc_home.json()["stop_desk_rate"]["fee_dzd"], 250)
+
+        r_calc_desk = self.client.get("/api/v1/delivery-zones/calculate?wilaya_code=16&delivery_method=stop_desk&subtotal_dzd=4500")
+        self.assertEqual(r_calc_desk.status_code, 200)
+        self.assertEqual(r_calc_desk.json()["delivery_fee_dzd"], 250)
+        self.assertEqual(r_calc_desk.json()["total_dzd"], 4750)
+
+        # Step 3: Customer places Guest Order with Stop-Desk in Wilaya 16 -> Server automatically calculates 4500 + 250 = 4750 DA
+        prod = self.client.get("/api/v1/products/sac-a-main-chanel-style").json()
+        vid = prod["variants"][2]["id"] # Bordeaux / L (4500 DA)
+        r_ord = self.client.post(
+            "/api/v1/orders",
+            json={
+                "full_name": "Meriem Touati",
+                "phone": "0559887766",
+                "wilaya_code": "16",
+                "commune": "Bab Ezzouar",
+                "delivery_address": "Agence Stop-Desk Bab Ezzouar",
+                "delivery_method": "stop_desk",
+                "items": [{"variant_id": vid, "quantity": 1}]
+            }
+        )
+        self.assertEqual(r_ord.status_code, 201, r_ord.text)
+        self.assertEqual(r_ord.json()["subtotal_dzd"], 4500)
+        self.assertEqual(r_ord.json()["delivery_fee_dzd"], 250)
+        self.assertEqual(r_ord.json()["total_dzd"], 4750)
+
 if __name__ == "__main__":
     unittest.main()
+
 
 
 

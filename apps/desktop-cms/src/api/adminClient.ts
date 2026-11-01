@@ -91,6 +91,17 @@ export const DesktopCmsApi = {
     method: "POST",
     body: JSON.stringify(payload),
   }),
+  getDeliveryZones: () => adminFetch("/delivery-zones"),
+  updateDeliveryZone: (wilayaCode: string, payload: unknown) =>
+    adminFetch(`/admin/delivery-zones/${wilayaCode}`, {
+      method: "PUT",
+      body: JSON.stringify(payload),
+    }),
+  bulkUpdateDeliveryZones: (zones: unknown[]) =>
+    adminFetch("/admin/delivery-zones-bulk", {
+      method: "PUT",
+      body: JSON.stringify({ zones }),
+    }),
   getDashboard: () => adminFetch("/admin/dashboard"),
   getStoreLayout: () => adminFetch("/store/layout"),
   createCategory: (payload: unknown) =>
