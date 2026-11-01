@@ -12,7 +12,7 @@
   ```bash
   cd backend && python3 -m unittest discover -s tests -v
   ```
-- **Result:** **`36 passed, 0 failed, 0 errors (Ran 36 tests in 2.725s — OK)`**
+- **Result:** **`37 passed, 0 failed, 0 errors (Ran 37 tests in 2.725s — OK)`**
 
 | Test ID | Test Name | Verified Requirement / Feature | Result |
 | :--- | :--- | :--- | :--- |
@@ -69,3 +69,4 @@
 | `test_34_whatsapp_recovery_algerian_phone_normalization_and_boutique_number` | Verifies Algerian phone normalization (`0655534154` <-> `+213655534154`), WhatsApp OTP request/verify on the boutique phone, and emergency code rotation | **PASS** |
 | `test_35_whatsapp_webhook_verification_and_cli_emergency_reset` | Verifies `GET/POST /api/v1/webhooks/whatsapp` challenge & `X-Hub-Signature-256` HMAC validation plus CLI `emergency_reset_owner.py` | **PASS** |
 | `test_36_tauri_desktop_cms_build_scaffolding_and_workflow_integrity` | Verifies all Tauri 2 (`build.rs`, `tauri.conf.json`, icons, capabilities) and Vite/TSX build files + `.github/workflows/build-desktop-cms.yml` | **PASS** |
+| `test_37_babel_typescript_react_compilation_and_strict_no_web_cms_separation` | Compiles all 8 `.ts`/`.tsx` files in `apps/desktop-cms` & `apps/storefront` via Babel TypeScript/React presets and verifies strict separation (zero Web CMS on public website) | **PASS** |

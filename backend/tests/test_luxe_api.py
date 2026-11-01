@@ -1486,8 +1486,64 @@ class TestLuxeEcommercePlatform(unittest.TestCase):
             self.assertTrue(os.path.isfile(rf), f"Missing Tauri 2 / Desktop CMS build file: {rf}")
 
 
+    # 37. Babel TypeScript/React Compilation of Windows Desktop CMS & Strict No-Web-CMS Separation
+    def test_37_babel_typescript_react_compilation_and_strict_no_web_cms_separation(self):
+        import subprocess
+        repo_root = os.path.dirname(os.path.dirname(os.path.dirname(__file__)))
+
+        # 1. Compile all Windows Desktop CMS & Public Storefront .ts/.tsx files via Babel TypeScript + React presets
+        js_check = """
+const fs = require("fs");
+const path = require("path");
+const babel = require("@babel/core");
+const files = [
+  "apps/desktop-cms/src/api/adminClient.ts",
+  "apps/desktop-cms/src/pages/CategoryBuilderPage.tsx",
+  "apps/desktop-cms/src/pages/DeliveryWilayasPage.tsx",
+  "apps/desktop-cms/src/App.tsx",
+  "apps/desktop-cms/src/main.tsx",
+  "apps/storefront/src/api/client.ts",
+  "apps/storefront/src/App.tsx",
+  "apps/storefront/src/main.tsx",
+];
+for (const f of files) {
+  const full = path.resolve(process.cwd(), f);
+  const src = fs.readFileSync(full, "utf8");
+  const out = babel.transformSync(src, {
+    filename: full,
+    presets: [
+      ["/usr/share/nodejs/@babel/preset-env", { targets: { esmodules: true } }],
+      ["/usr/share/nodejs/@babel/preset-react", { runtime: "automatic" }],
+      ["/usr/share/nodejs/@babel/preset-typescript", { isTSX: f.endsWith(".tsx"), allExtensions: true }],
+    ],
+  });
+  if (!out || !out.code || out.code.length < 50) {
+    throw new Error("Compilation produced empty output for " + f);
+  }
+}
+console.log("ALL_TSX_COMPILED_OK");
+"""
+        env = os.environ.copy()
+        env["NODE_PATH"] = "/usr/share/nodejs"
+        res = subprocess.run(["node", "-e", js_check], cwd=repo_root, env=env, capture_output=True, text=True)
+        self.assertEqual(res.returncode, 0, f"TypeScript/React compilation failed: {res.stderr}")
+        self.assertIn("ALL_TSX_COMPILED_OK", res.stdout)
+
+        # 2. Enforce Strict Architecture Separation: Public Website must NEVER contain Web CMS or Admin Login
+        for pub_file in [
+            os.path.join(repo_root, "apps", "storefront", "index.html"),
+            os.path.join(repo_root, "apps", "storefront", "src", "App.tsx"),
+            os.path.join(repo_root, "apps", "storefront", "src", "api", "client.ts"),
+        ]:
+            with open(pub_file, "r", encoding="utf-8") as pf:
+                content = pf.read()
+            self.assertNotIn("/admin/auth/login", content, f"Public website file {pub_file} must not contain admin login")
+            self.assertNotIn("DesktopCmsApi", content, f"Public website file {pub_file} must not import DesktopCmsApi")
+
+
 if __name__ == "__main__":
     unittest.main()
+
 
 
 
