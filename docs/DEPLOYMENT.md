@@ -81,3 +81,38 @@ docker compose up -d --build
 2. **TLS Certificates**: Run `certbot --nginx -d musluxury.dz -d www.musluxury.dz -d api.musluxury.dz` so HTTPS and HSTS are active.
 3. **First-Time Owner Setup**: Open the Windows Desktop CMS on first launch, enter the owner's full name, email, password, primary WhatsApp number (`0655534154`), and emergency number, and save the generated `EMERGENCY-...` offline recovery code in a physical safe.
 4. **WhatsApp Business Cloud API (Optional)**: Until `WHATSAPP_CLOUD_API_TOKEN` and `WHATSAPP_PHONE_NUMBER_ID` are populated in `.env`, the backend honestly returns `503 Service Unavailable` for `whatsapp_cloud_api` OTP requests and directs the owner to use the offline emergency recovery code.
+
+
+---
+
+## 9. Database, CMS Administrator & WhatsApp Cloud API Credentials Reference
+
+### A. PostgreSQL 16 Database Credentials (Docker & Production VPS)
+- **Container / Host (`POSTGRES_HOST`)**: `db` (internal Docker network) or `127.0.0.1` (via WireGuard `10.8.0.1`)
+- **Port (`POSTGRES_PORT`)**: `5432`
+- **Database Name (`POSTGRES_DB`)**: `luxe_ecommerce`
+- **Username (`POSTGRES_USER`)**: `luxe_app_user`
+- **Password (`POSTGRES_PASSWORD`)**:Configured in `.env` (default template value: `LuxePgProd_2026_Dz!99482aBc` — rotate via `.env` on live VPS)
+- **Connection URI (`DATABASE_URL`)**:
+  `postgresql+psycopg://luxe_app_user:LuxePgProd_2026_Dz!99482aBc@db:5432/luxe_ecommerce`
+
+### B. Local / CI SQLite 3 Database
+- **File Path (`LUXE_SQLITE_PATH`)**: `./backend/luxe_store.sqlite3`
+- **Schema**: `backend/migrations/001_initial_schema.sql` (24 tables, identical to `001_initial_schema_postgres.sql`)
+
+### C. Initial Seeded CMS Accounts & Recovery Credentials
+| Role | Email | Default Password | Verified WhatsApp Phones | Offline Emergency Code |
+| :--- | :--- | :--- | :--- | :--- |
+| **Owner (`super_admin`)** | `admin@musluxury.dz` | `MusLuxury2026!` | `0655534154` (`+213655534154`) & `+213550000001` | `LUXE-EMERGENCY-2026-RECOVERY` |
+| **Product Manager (`product_manager`)** | `editor@musluxury.dz` | `EditorLuxury2026!` | `+213550000002` (`0550000002`) | — |
+
+### D. WhatsApp Cloud API & External Tokens in `.env`
+All required tokens are pre-structured in `.env.example` (and `.env` for local execution, protected by `.gitignore`):
+- `WHATSAPP_CLOUD_API_TOKEN` / `WHATSAPP_ACCESS_TOKEN`
+- `WHATSAPP_PHONE_NUMBER_ID`
+- `WHATSAPP_BUSINESS_ACCOUNT_ID`
+- `WHATSAPP_APP_ID` & `WHATSAPP_APP_SECRET`
+- `WHATSAPP_WEBHOOK_VERIFY_TOKEN` (`mus_luxury_wa_webhook_verify_2026_secret`)
+- `WHATSAPP_API_VERSION=v20.0` & `WHATSAPP_TEMPLATE_NAME=luxe_admin_password_reset`
+- `WHATSAPP_SANDBOX_MODE=true` (set to `false` once live Meta permanent token is inserted)
+- Optional Algerian courier tokens (`YALIDINE_API_ID`, `YALIDINE_API_TOKEN`, `ZR_EXPRESS_API_KEY`, `ZR_EXPRESS_TOKEN`, `MAYSTRO_API_TOKEN`) & `CHARGILY_SECRET_KEY`.

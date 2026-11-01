@@ -34,8 +34,10 @@ export default function App() {
   const [loginPassword, setLoginPassword] = useState("");
   const [showRecoveryModal, setShowRecoveryModal] = useState(false);
   const [recPhone, setRecPhone] = useState("0655534154");
+  const [recChannel, setRecChannel] = useState<"whatsapp_cloud_api" | "offline_emergency">("whatsapp_cloud_api");
   const [recCode, setRecCode] = useState("");
   const [recNewPassword, setRecNewPassword] = useState("");
+  const [recStepInfo, setRecStepInfo] = useState("");
 
   // Workspace Data States
   const [dashboard, setDashboard] = useState<any | null>(null);
@@ -146,13 +148,33 @@ export default function App() {
     }
   }
 
+  async function handleRequestRecoveryOtp() {
+    setError("");
+    setRecStepInfo("");
+    try {
+      const res = await DesktopCmsApi.requestPasswordRecovery(recPhone, recChannel);
+      if (res.test_otp) {
+        setRecCode(res.test_otp);
+        setRecStepInfo(`Code OTP WhatsApp (Mode Sandbox) généré : ${res.test_otp} (valable 5 min).`);
+      } else {
+        setRecStepInfo(res.message || "Code OTP envoyé sur votre WhatsApp administrateur vérifié.");
+      }
+    } catch (err: any) {
+      setError(err.message || "Impossible d'envoyer le code OTP WhatsApp. Utilisez le canal Code de Secours Hors-Ligne.");
+    }
+  }
+
   async function handlePasswordRecoveryVerify(e: React.FormEvent) {
     e.preventDefault();
     setError("");
     try {
-      await DesktopCmsApi.verifyPasswordRecovery(recPhone, recCode, recNewPassword);
+      const res = await DesktopCmsApi.verifyPasswordRecovery(recPhone, recCode, recNewPassword);
       setShowRecoveryModal(false);
-      setSuccessMsg("Mot de passe réinitialisé avec succès. Connectez-vous avec votre nouveau mot de passe.");
+      setRecStepInfo("");
+      const extra = res.replacement_emergency_code
+        ? ` Nouveau code de secours généré : ${res.replacement_emergency_code}`
+        : "";
+      setSuccessMsg(`Mot de passe réinitialisé avec succès.${extra} Connectez-vous avec votre nouveau mot de passe.`);
     } catch (err: any) {
       setError(err.message || "Code de récupération invalide ou expiré");
     }
@@ -359,12 +381,33 @@ export default function App() {
 
           {showRecoveryModal && (
             <form onSubmit={handlePasswordRecoveryVerify} className="pt-4 border-t border-[#D4AF62]/30 space-y-3 text-xs">
-              <h3 className="font-bold text-[#D4AF62]">Récupération Administrateur (WhatsApp / Code d'Urgence)</h3>
-              <input value={recPhone} onChange={(e) => setRecPhone(e.target.value)} placeholder="Téléphone (+213...)" required className="w-full px-3 py-2 rounded bg-[#02291F] border border-[#D4AF62]/40 font-mono" />
-              <input value={recCode} onChange={(e) => setRecCode(e.target.value)} placeholder="Code OTP WhatsApp ou Code d'Urgence" required className="w-full px-3 py-2 rounded bg-[#02291F] border border-[#D4AF62]/40 font-mono" />
+              <h3 className="font-bold text-[#D4AF62]">Récupération Administrateur (WhatsApp Cloud API / Code Secours)</h3>
+              {recStepInfo && <div className="p-2.5 rounded bg-emerald-900/90 border border-emerald-400/40 text-emerald-100">{recStepInfo}</div>}
+              <div>
+                <label className="block text-[11px] mb-1 text-[#E8D4A5]">Canal de récupération</label>
+                <select
+                  value={recChannel}
+                  onChange={(e) => setRecChannel(e.target.value as "whatsapp_cloud_api" | "offline_emergency")}
+                  className="w-full px-3 py-2 rounded bg-[#02291F] border border-[#D4AF62]/40 text-white"
+                >
+                  <option value="whatsapp_cloud_api">WhatsApp Business Cloud API (OTP 6 chiffres)</option>
+                  <option value="offline_emergency">Code de Secours Hors-Ligne (Urgence Propriétaire)</option>
+                </select>
+              </div>
+              <div className="flex gap-2">
+                <input value={recPhone} onChange={(e) => setRecPhone(e.target.value)} placeholder="Téléphone (0655534154 ou +213...)" required className="flex-1 px-3 py-2 rounded bg-[#02291F] border border-[#D4AF62]/40 font-mono" />
+                <button
+                  type="button"
+                  onClick={handleRequestRecoveryOtp}
+                  className="px-3 py-2 rounded bg-[#D4AF62] text-[#02291F] font-extrabold whitespace-nowrap"
+                >
+                  1. Envoyer OTP WhatsApp
+                </button>
+              </div>
+              <input value={recCode} onChange={(e) => setRecCode(e.target.value)} placeholder="Code OTP 6 chiffres ou LUXE-EMERGENCY-2026-RECOVERY" required className="w-full px-3 py-2 rounded bg-[#02291F] border border-[#D4AF62]/40 font-mono" />
               <input type="password" value={recNewPassword} onChange={(e) => setRecNewPassword(e.target.value)} placeholder="Nouveau mot de passe (≥ 10 caractères)" required className="w-full px-3 py-2 rounded bg-[#02291F] border border-[#D4AF62]/40" />
               <button type="submit" className="w-full py-2.5 rounded-xl bg-emerald-700 text-white font-bold">
-                Vérifier le code &amp; Réinitialiser le mot de passe
+                2. Vérifier le code &amp; Réinitialiser le mot de passe
               </button>
             </form>
           )}

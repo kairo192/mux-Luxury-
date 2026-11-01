@@ -1,30 +1,52 @@
-name: Build Tauri 2 Windows Desktop CMS (.exe / .msi)
+name: Build Desktop CMS
 
 on:
   workflow_dispatch:
   push:
+    branches:
+      - main
     tags:
       - "v*"
 
 jobs:
-  build-tauri-windows:
-    name: Compile Windows Desktop CMS Installer
+  build-tauri:
+    name: Build Tauri 2 Windows Desktop CMS (.exe / .msi)
     runs-on: windows-latest
     defaults:
       run:
         working-directory: ./apps/desktop-cms
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js 20
+        uses: actions/setup-node@v4
         with:
           node-version: "20"
-      - name: Install Rust Stable for Tauri 2
+
+      - name: Install Rust Stable Toolchain
         uses: dtolnay/rust-toolchain@stable
-      - name: Install Frontend Dependencies
-        run: npm install
-      - name: Build Tauri 2 Windows Application (.exe and .msi)
-        uses: tauri-apps/tauri-action@v0
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Rust Cargo Cache
+        uses: Swatinem/rust-cache@v2
         with:
-          projectPath: ./apps/desktop-cms
+          workspaces: "./apps/desktop-cms/src-tauri -> target"
+
+      - name: Install Frontend & Tauri CLI Dependencies
+        run: npm install
+
+      - name: Build React + TypeScript Frontend Bundle
+        run: npm run build
+
+      - name: Compile Tauri 2 Windows Installer (.exe and .msi)
+        run: npx tauri build
+
+      - name: Upload Windows Desktop CMS Installers
+        uses: actions/upload-artifact@v4
+        with:
+          name: Mus-Luxury-Desktop-CMS-Windows-Installer
+          path: |
+            apps/desktop-cms/src-tauri/target/release/bundle/msi/*.msi
+            apps/desktop-cms/src-tauri/target/release/bundle/nsis/*.exe
+            apps/desktop-cms/src-tauri/target/release/*.exe
+          if-no-files-found: warn

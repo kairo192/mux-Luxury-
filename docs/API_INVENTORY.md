@@ -70,3 +70,12 @@
 | `POST /api/v1/admin/products/{product_id}/images` | Adds an image to a product's gallery and optionally sets it as `main_image_url`. | Bearer (`products:write`) | `ProductImageAddInput` | `ProductImage` | `201`, `404` | `test_29_product_image_gallery_upload_reorder_and_delete` |
 | `PUT /api/v1/admin/products/{product_id}/images/reorder` | Reorders a product's gallery images and optionally updates `main_image_url`. | Bearer (`products:write`) | `ProductImageReorderInput` | `{ items: ProductImage[] }` | `200`, `404` | `test_29` |
 | `DELETE /api/v1/admin/product-images/{image_id}` | Removes an image from a product's gallery. | Bearer (`products:write`) | `image_id: int` | `{ deleted: true, image_id }` | `200`, `404` | `test_29` |
+
+### Additional WhatsApp Cloud API & Emergency Recovery Routes
+
+| Method | Path | Auth | Permission | Purpose | Status Codes | Test Coverage |
+| :--- | :--- | :--- | :--- | :--- | :--- | :--- |
+| `GET` | `/api/v1/admin/auth/recovery/status` | Public | None | Inspects WhatsApp Cloud API readiness, sandbox mode, and supported recovery channels | `200` | `test_34` |
+| `POST` | `/api/v1/admin/auth/recovery/rotate-emergency-code` | Bearer Token | `settings:write` | Rotates and returns a fresh single-use offline emergency recovery code | `200, 401, 403` | `test_34` |
+| `GET` | `/api/v1/webhooks/whatsapp` | Meta Token | `hub.verify_token` | Official Meta WhatsApp Cloud API webhook verification challenge | `200, 403` | `test_35` |
+| `POST` | `/api/v1/webhooks/whatsapp` | HMAC-SHA256 | `X-Hub-Signature-256` | Receives and logs WhatsApp message delivery/read status callbacks | `200, 400, 401` | `test_35` |

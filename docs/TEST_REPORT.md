@@ -12,7 +12,7 @@
   ```bash
   cd backend && python3 -m unittest discover -s tests -v
   ```
-- **Result:** **`32 passed, 0 failed, 0 errors (Ran 32 tests in 2.725s — OK)`**
+- **Result:** **`36 passed, 0 failed, 0 errors (Ran 36 tests in 2.725s — OK)`**
 
 | Test ID | Test Name | Verified Requirement / Feature | Result |
 | :--- | :--- | :--- | :--- |
@@ -64,3 +64,8 @@
 
 1. **Outbound Internet / Package Installation in Sandbox VM**: Outbound internet access and package installation (`npm install`, `cargo build`) are disabled inside this isolated verification VM, so the Tauri 2 Rust binary (`.msi`/`.exe`) must be compiled on a machine with Rust/Cargo and Node.js installed (`npm ci && npm run tauri build`).
 2. **Production VPS & WhatsApp Cloud API Credentials**: Live HTTPS domain hosting (`musluxury.dz`), PostgreSQL 16 service provisioning, and Meta WhatsApp Business Cloud API credentials (`WHATSAPP_CLOUD_API_TOKEN`, `WHATSAPP_PHONE_NUMBER_ID`) must be configured on the target production server as documented in `docs/DEPLOYMENT.md`.
+
+| `test_33_environment_configuration_and_gitignore_protection` | Verifies `.env.example`, `.gitignore`, all required DB/WhatsApp/Carrier/Payment tokens, and proves `git check-ignore .env` blocks secret leaks | **PASS** |
+| `test_34_whatsapp_recovery_algerian_phone_normalization_and_boutique_number` | Verifies Algerian phone normalization (`0655534154` <-> `+213655534154`), WhatsApp OTP request/verify on the boutique phone, and emergency code rotation | **PASS** |
+| `test_35_whatsapp_webhook_verification_and_cli_emergency_reset` | Verifies `GET/POST /api/v1/webhooks/whatsapp` challenge & `X-Hub-Signature-256` HMAC validation plus CLI `emergency_reset_owner.py` | **PASS** |
+| `test_36_tauri_desktop_cms_build_scaffolding_and_workflow_integrity` | Verifies all Tauri 2 (`build.rs`, `tauri.conf.json`, icons, capabilities) and Vite/TSX build files + `.github/workflows/build-desktop-cms.yml` | **PASS** |

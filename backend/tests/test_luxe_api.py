@@ -1255,8 +1255,240 @@ class TestLuxeEcommercePlatform(unittest.TestCase):
             self.assertEqual(res.returncode, 0, f"Syntax error in {sc}: {res.stderr}")
 
 
+    # 33. Environment Configuration (.env / .env.example) & .gitignore Protection (User Verification)
+    def test_33_environment_configuration_and_gitignore_protection(self):
+        import subprocess
+        repo_root = os.path.dirname(os.path.dirname(os.path.dirname(__file__)))
+        env_example_path = os.path.join(repo_root, ".env.example")
+        gitignore_path = os.path.join(repo_root, ".gitignore")
+        self.assertTrue(os.path.isfile(env_example_path), ".env.example must exist at repo root")
+        self.assertTrue(os.path.isfile(gitignore_path), ".gitignore must exist at repo root")
+
+        with open(env_example_path, "r", encoding="utf-8") as f:
+            env_text = f.read()
+
+        required_env_keys = [
+            "SECRET_KEY=",
+            "CMS_HMAC_SIGNING_SECRET=",
+            "POSTGRES_HOST=",
+            "POSTGRES_PORT=",
+            "POSTGRES_DB=",
+            "POSTGRES_USER=",
+            "POSTGRES_PASSWORD=",
+            "DATABASE_URL=",
+            "LUXE_SQLITE_PATH=",
+            "ADMIN_INITIAL_EMAIL=",
+            "ADMIN_INITIAL_PASSWORD=",
+            "ADMIN_INITIAL_WHATSAPP_PHONE=",
+            "ADMIN_EMERGENCY_RECOVERY_CODE=",
+            "WHATSAPP_CLOUD_API_TOKEN=",
+            "WHATSAPP_PHONE_NUMBER_ID=",
+            "WHATSAPP_BUSINESS_ACCOUNT_ID=",
+            "WHATSAPP_APP_ID=",
+            "WHATSAPP_APP_SECRET=",
+            "WHATSAPP_WEBHOOK_VERIFY_TOKEN=",
+            "WHATSAPP_API_VERSION=",
+            "WHATSAPP_TEMPLATE_NAME=",
+            "WHATSAPP_SANDBOX_MODE=",
+            "YALIDINE_API_ID=",
+            "YALIDINE_API_TOKEN=",
+            "ZR_EXPRESS_API_KEY=",
+            "ZR_EXPRESS_TOKEN=",
+            "MAYSTRO_API_TOKEN=",
+            "CHARGILY_PUBLIC_KEY=",
+            "CHARGILY_SECRET_KEY=",
+            "S3_ACCESS_KEY_ID=",
+            "S3_SECRET_ACCESS_KEY=",
+            "VITE_API_BASE_URL=",
+            "VITE_CMS_API_URL=",
+        ]
+        for key in required_env_keys:
+            self.assertIn(key, env_text, f"Missing required environment variable {key} in .env.example")
+
+        # Verify .gitignore blocks .env, *.sqlite3, *.db, and backups from being committed
+        res_ignore = subprocess.run(
+            ["git", "check-ignore", ".env", "backend/luxe_store.sqlite3"],
+            cwd=repo_root,
+            capture_output=True,
+            text=True,
+        )
+        self.assertEqual(res_ignore.returncode, 0, f".gitignore did not ignore .env: {res_ignore.stderr}")
+        self.assertIn(".env", res_ignore.stdout)
+
+    # 34. Algerian Phone Normalization, Boutique Number (0655534154) WhatsApp Recovery & Emergency Code Rotation
+    def test_34_whatsapp_recovery_algerian_phone_normalization_and_boutique_number(self):
+        from app.whatsapp import normalize_algerian_phone
+
+        for raw in ["0655 53 41 54", "0655-53-41-54", "+213 655 53 41 54", "00213655534154", "213655534154"]:
+            e164, local_num, meta_id = normalize_algerian_phone(raw)
+            self.assertEqual(e164, "+213655534154")
+            self.assertEqual(local_num, "0655534154")
+            self.assertEqual(meta_id, "213655534154")
+
+        # Check recovery status endpoint
+        os.environ["WHATSAPP_CLOUD_API_TOKEN"] = "EAATest_Sandbox_Token_2026"
+        os.environ["WHATSAPP_PHONE_NUMBER_ID"] = "109283746519283"
+        os.environ["WHATSAPP_SANDBOX_MODE"] = "true"
+        try:
+            r_stat = self.client.get("/api/v1/admin/auth/recovery/status")
+            self.assertEqual(r_stat.status_code, 200)
+            sdata = r_stat.json()
+            self.assertTrue(sdata["whatsapp_cloud_api_configured"])
+            self.assertEqual(sdata["boutique_whatsapp_local"], "0655534154")
+
+            # Request OTP using local Algerian format 0655534154 (matches owner emergency_phone +213655534154)
+            reset_rate_limits()
+            r_req = self.client.post(
+                "/api/v1/admin/auth/recovery/request",
+                json={"phone": "0655 53 41 54", "channel": "whatsapp_cloud_api"}
+            )
+            self.assertEqual(r_req.status_code, 200, r_req.text)
+            req_json = r_req.json()
+            self.assertEqual(req_json["status"], "recovery_initiated")
+            self.assertIn("test_otp", req_json)
+            otp_code = req_json["test_otp"]
+
+            # Verify OTP using international format +213655534154 and set a new password
+            r_ver = self.client.post(
+                "/api/v1/admin/auth/recovery/verify",
+                json={
+                    "phone": "+213655534154",
+                    "verification_code": otp_code,
+                    "new_password": "RecoveredVia0655534154!"
+                }
+            )
+            self.assertEqual(r_ver.status_code, 200, r_ver.text)
+
+            # Log in with the newly recovered password and rotate the offline emergency code
+            reset_rate_limits()
+            r_login = self.client.post(
+                "/api/v1/admin/auth/login",
+                json={"email": "admin@musluxury.dz", "password": "RecoveredVia0655534154!"}
+            )
+            self.assertEqual(r_login.status_code, 200, r_login.text)
+            new_token = r_login.json()["access_token"]
+
+            r_rot = self.client.post(
+                "/api/v1/admin/auth/recovery/rotate-emergency-code",
+                headers={"Authorization": f"Bearer {new_token}"}
+            )
+            self.assertEqual(r_rot.status_code, 200, r_rot.text)
+            fresh_emerg_code = r_rot.json()["emergency_code"]
+            self.assertTrue(fresh_emerg_code.startswith("LUXE-EMERG-"))
+
+            # Use the rotated offline emergency code with local phone 0655534154 to restore default password
+            r_restore = self.client.post(
+                "/api/v1/admin/auth/recovery/verify",
+                json={
+                    "phone": "0655534154",
+                    "verification_code": fresh_emerg_code,
+                    "new_password": "MusLuxury2026!"
+                }
+            )
+            self.assertEqual(r_restore.status_code, 200, r_restore.text)
+            self.assertIn("replacement_emergency_code", r_restore.json())
+        finally:
+            reset_rate_limits()
+
+    # 35. Meta WhatsApp Webhook Verification, HMAC Signature Check & CLI Emergency Reset Utility
+    def test_35_whatsapp_webhook_verification_and_cli_emergency_reset(self):
+        import hashlib as _hashlib
+        import hmac as _hmac
+        import json
+        from scripts.emergency_reset_owner import reset_owner_credentials
+
+        os.environ["WHATSAPP_WEBHOOK_VERIFY_TOKEN"] = "mus_luxury_wa_webhook_verify_2026_secret"
+        os.environ["WHATSAPP_APP_SECRET"] = "meta_app_secret_test_key_2026"
+
+        # 1. GET Webhook Verification Challenge
+        r_ok = self.client.get(
+            "/api/v1/webhooks/whatsapp",
+            params={
+                "hub.mode": "subscribe",
+                "hub.verify_token": "mus_luxury_wa_webhook_verify_2026_secret",
+                "hub.challenge": "9988776655",
+            },
+        )
+        self.assertEqual(r_ok.status_code, 200)
+        self.assertEqual(r_ok.text, "9988776655")
+
+        r_bad = self.client.get(
+            "/api/v1/webhooks/whatsapp",
+            params={
+                "hub.mode": "subscribe",
+                "hub.verify_token": "wrong_token",
+                "hub.challenge": "9988776655",
+            },
+        )
+        self.assertEqual(r_bad.status_code, 403)
+
+        # 2. POST Webhook Delivery Status Receipt with X-Hub-Signature-256
+        webhook_payload = json.dumps({
+            "object": "whatsapp_business_account",
+            "entry": [{
+                "id": "987654321",
+                "changes": [{
+                    "field": "messages",
+                    "value": {
+                        "statuses": [{
+                            "id": "wamid.TEST_DELIVERED_01",
+                            "status": "delivered",
+                            "recipient_id": "213655534154"
+                        }]
+                    }
+                }]
+            }]
+        }).encode("utf-8")
+        valid_sig = "sha256=" + _hmac.new(b"meta_app_secret_test_key_2026", webhook_payload, _hashlib.sha256).hexdigest()
+
+        r_post_ok = self.client.post(
+            "/api/v1/webhooks/whatsapp",
+            content=webhook_payload,
+            headers={"Content-Type": "application/json", "X-Hub-Signature-256": valid_sig},
+        )
+        self.assertEqual(r_post_ok.status_code, 200, r_post_ok.text)
+        self.assertEqual(r_post_ok.json()["statuses_logged"], 1)
+
+        r_post_tampered = self.client.post(
+            "/api/v1/webhooks/whatsapp",
+            content=webhook_payload,
+            headers={"Content-Type": "application/json", "X-Hub-Signature-256": "sha256=0000bad"},
+        )
+        self.assertEqual(r_post_tampered.status_code, 401)
+
+        # 3. Verify CLI Emergency Reset Utility
+        info = reset_owner_credentials("admin@musluxury.dz", "MusLuxury2026!")
+        self.assertEqual(info["email"], "admin@musluxury.dz")
+        self.assertTrue(info["new_emergency_code"].startswith("LUXE-EMERG-"))
+
+    # 36. Tauri 2 Desktop CMS Build Scaffolding & GitHub Actions Workflow Verification
+    def test_36_tauri_desktop_cms_build_scaffolding_and_workflow_integrity(self):
+        repo_root = os.path.dirname(os.path.dirname(os.path.dirname(__file__)))
+        required_files = [
+            os.path.join(repo_root, "apps", "desktop-cms", "package.json"),
+            os.path.join(repo_root, "apps", "desktop-cms", "tsconfig.json"),
+            os.path.join(repo_root, "apps", "desktop-cms", "vite.config.ts"),
+            os.path.join(repo_root, "apps", "desktop-cms", "tailwind.config.js"),
+            os.path.join(repo_root, "apps", "desktop-cms", "postcss.config.js"),
+            os.path.join(repo_root, "apps", "desktop-cms", "index.html"),
+            os.path.join(repo_root, "apps", "desktop-cms", "src", "main.tsx"),
+            os.path.join(repo_root, "apps", "desktop-cms", "src", "App.tsx"),
+            os.path.join(repo_root, "apps", "desktop-cms", "src-tauri", "Cargo.toml"),
+            os.path.join(repo_root, "apps", "desktop-cms", "src-tauri", "build.rs"),
+            os.path.join(repo_root, "apps", "desktop-cms", "src-tauri", "tauri.conf.json"),
+            os.path.join(repo_root, "apps", "desktop-cms", "src-tauri", "capabilities", "default.json"),
+            os.path.join(repo_root, "apps", "desktop-cms", "src-tauri", "icons", "icon.ico"),
+            os.path.join(repo_root, "apps", "desktop-cms", "src-tauri", "icons", "32x32.png"),
+            os.path.join(repo_root, "apps", "desktop-cms", "src-tauri", "icons", "128x128.png"),
+            os.path.join(repo_root, ".github", "workflows", "build-desktop-cms.yml"),
+        ]
+        for rf in required_files:
+            self.assertTrue(os.path.isfile(rf), f"Missing Tauri 2 / Desktop CMS build file: {rf}")
+
+
 if __name__ == "__main__":
     unittest.main()
+
 
 
 

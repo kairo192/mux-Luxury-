@@ -136,9 +136,9 @@ def seed_initial_data() -> None:
 
         # 2. Seed Admin Users with Verified Algerian Phone Numbers for WhatsApp Recovery
         cur.execute(
-            """INSERT INTO admin_users (email, full_name, phone, whatsapp_verified, totp_enabled, password_hash, role_id, is_active)
-               VALUES (?, ?, ?, 1, 1, ?, ?, 1)""",
-            ("admin@musluxury.dz", "Mustapha Harbit (Owner)", "+213550000001", hash_password("MusLuxury2026!"), role_ids["super_admin"])
+            """INSERT INTO admin_users (email, full_name, phone, emergency_phone, whatsapp_verified, totp_enabled, password_hash, role_id, is_active)
+               VALUES (?, ?, ?, ?, 1, 1, ?, ?, 1)""",
+            ("admin@musluxury.dz", "Mustapha Harbit (Owner)", "+213550000001", "+213655534154", hash_password("MusLuxury2026!"), role_ids["super_admin"])
         )
         owner_id = cur.lastrowid
 

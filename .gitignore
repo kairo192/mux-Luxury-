@@ -1,31 +1,85 @@
-# Byte-compiled / cache
-__pycache__/
-*.py[cod]
-*.sqlite3
-*.db
-.pytest_cache/
-.venv/
-venv/
+# ============================================================================
+# MUS LUXURY (LUXE) MONOREPO — GITIGNORE
+# Protects environment secrets, databases, backups, keys, and build artifacts
+# ============================================================================
 
-# Environments & Secrets (NEVER COMMIT)
+# 1. Environment Variables & Secrets (NEVER COMMIT)
 .env
-.env.local
-.env.production
+.env.*
+!.env.example
+**/.*.env
+**/.env
+**/.env.local
+**/.env.development
+**/.env.test
+**/.env.production
+!**/.env.example
+
+# 2. Cryptographic Keys, Certificates & WireGuard Private Keys
 *.pem
 *.key
+*.crt
+*.p12
+*.pfx
+infrastructure/vpn/*.key
 
-# Node / Frontend / Tauri
-node_modules/
-dist/
-build/
-desktop-cms/src-tauri/target/
+# 3. Python / FastAPI Backend
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+.venv/
+venv/
+env/
+ENV/
+.pytest_cache/
+.coverage
+htmlcov/
+.mypy_cache/
+.ruff_cache/
 
-# Backups & uploads runtime
+# 4. SQLite Databases & Local Database Journals
+*.sqlite3
+*.sqlite3-journal
+*.sqlite3-wal
+*.sqlite3-shm
+*.db
+*.db-journal
+
+# 5. Runtime Backups, WhatsApp Sandbox Outbox & Uploaded Media
 storage/uploads/*
 storage/backups/*
 !storage/uploads/.gitkeep
 !storage/backups/.gitkeep
-
 backend/backups/*.sql.gz
+backend/backups/*.jsonl
+backend/backups/*.log
+backend/backups/*.tmp
 !backend/backups/.gitkeep
+
+# 6. Node.js / React Storefront / Vite
+node_modules/
+dist/
+dist-ssr/
+build/
+*.local
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# 7. Tauri 2 / Rust Desktop CMS Build Artifacts
 apps/desktop-cms/src-tauri/target/
+apps/desktop-cms/src-tauri/WixTools/
+apps/desktop-cms/src-tauri/gen/
+desktop-cms/src-tauri/target/
+Cargo.lock
+
+# 8. OS & Editor Files
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+*.swp
+*.swo

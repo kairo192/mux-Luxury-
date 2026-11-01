@@ -117,6 +117,8 @@ export const DesktopCmsApi = {
       setAccessToken(null);
     }
   },
+  getRecoveryStatus: () => adminFetch("/admin/auth/recovery/status"),
+  rotateEmergencyCode: () => adminFetch("/admin/auth/recovery/rotate-emergency-code", { method: "POST" }),
   requestPasswordRecovery: (phone: string, channel: "whatsapp_cloud_api" | "offline_emergency" = "whatsapp_cloud_api") =>
     adminFetch("/admin/auth/recovery/request", {
       method: "POST",

@@ -1,3 +1,4 @@
+from . import config
 import csv
 import gzip
 import hmac
@@ -1365,50 +1366,115 @@ class CouponCreateInput(BaseModel):
     min_order_dzd: int = Field(0, ge=0)
     max_discount_dzd: Optional[int] = None
 
+from .whatsapp import (
+    normalize_algerian_phone,
+    get_whatsapp_config,
+    dispatch_whatsapp_recovery_otp,
+    verify_whatsapp_webhook_signature,
+)
+
+@app.get("/api/v1/admin/auth/recovery/status")
+def get_admin_recovery_status():
+    """
+    Returns WhatsApp Business Cloud API readiness and recovery channels status
+    without exposing any secret tokens.
+    """
+    cfg = get_whatsapp_config()
+    return {
+        "whatsapp_cloud_api_configured": cfg["is_configured"],
+        "sandbox_mode": cfg["sandbox_mode"],
+        "api_version": cfg["api_version"],
+        "template_name": cfg["template_name"],
+        "offline_emergency_enabled": True,
+        "supported_channels": ["whatsapp_cloud_api", "offline_emergency"],
+        "boutique_whatsapp_e164": "+213655534154",
+        "boutique_whatsapp_local": "0655534154",
+    }
+
 @app.post("/api/v1/admin/auth/recovery/request")
 def request_admin_password_recovery(payload: RecoveryRequestInput, request: Request):
     """
-    Initiates administrator password recovery via the official WhatsApp Business Cloud API.
+    Initiates administrator password recovery via the official WhatsApp Business Cloud API
+    or validates readiness for Offline Emergency Code verification.
     Strict Rule (Section 6): If WhatsApp API credentials are not configured on the server,
     explicitly report 503 Service Unavailable — never silently simulate message delivery.
+    Supports both international (+213...) and local Algerian (05/06/07...) phone formats,
+    matching either primary `phone` or `emergency_phone`.
     """
     client_ip = request.client.host if request.client else "127.0.0.1"
     check_rate_limit(f"recovery_req:{client_ip}", max_requests=3, window_seconds=300)
 
-    wa_token = os.getenv("WHATSAPP_CLOUD_API_TOKEN", "").strip()
-    wa_phone_id = os.getenv("WHATSAPP_PHONE_NUMBER_ID", "").strip()
-
-    if payload.channel == "whatsapp_cloud_api" and (not wa_token or not wa_phone_id):
+    cfg = get_whatsapp_config()
+    if payload.channel == "whatsapp_cloud_api" and not cfg["is_configured"]:
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
             detail="Official WhatsApp Business Cloud API is not configured on this server (missing WHATSAPP_CLOUD_API_TOKEN / WHATSAPP_PHONE_NUMBER_ID). Use an administrator-generated offline emergency recovery code instead."
         )
 
-    cleaned_phone = re.sub(r"[\s\-\.]", "", payload.phone)
+    e164_phone, local_phone, _ = normalize_algerian_phone(payload.phone)
     with db_session(commit=True) as conn:
         cur = conn.cursor()
         cur.execute(
-            "SELECT * FROM admin_users WHERE phone = ? AND is_active = 1 AND whatsapp_verified = 1",
-            (cleaned_phone,)
+            """SELECT * FROM admin_users
+               WHERE (phone IN (?, ?) OR emergency_phone IN (?, ?))
+                 AND is_active = 1 AND whatsapp_verified = 1""",
+            (e164_phone, local_phone, e164_phone, local_phone)
         )
         user = cur.fetchone()
-        # Do not reveal whether a phone number is registered
+
+        if payload.channel == "offline_emergency":
+            if user:
+                log_audit(conn, user["id"], "offline_emergency_recovery_initiated", "admin_user", str(user["id"]), {"channel": "offline_emergency"})
+            return {
+                "status": "recovery_initiated",
+                "channel": "offline_emergency",
+                "message": "Saisissez votre code de secours hors-ligne à usage unique et votre nouveau mot de passe."
+            }
+
+        # Do not reveal whether an arbitrary phone number is registered
         if user and payload.channel == "whatsapp_cloud_api":
             otp = f"{secrets.randbelow(900000) + 100000}"
             otp_hash = hashlib.sha256(otp.encode("utf-8")).hexdigest()
-            expires_at = int(time.time()) + 300 # 5 minutes expiry
+            expires_at = int(time.time()) + 300  # 5 minutes expiry
+
+            # Invalidate any older unused WhatsApp OTP codes for this user before issuing a new one
+            cur.execute(
+                "UPDATE admin_recovery_codes SET is_used = 1 WHERE admin_user_id = ? AND channel = 'whatsapp_cloud_api' AND is_used = 0",
+                (user["id"],)
+            )
             cur.execute(
                 """INSERT INTO admin_recovery_codes (admin_user_id, phone, code_hash, channel, max_attempts, expires_at)
                    VALUES (?, ?, ?, 'whatsapp_cloud_api', 3, ?)""",
-                (user["id"], cleaned_phone, otp_hash, expires_at)
+                (user["id"], e164_phone, otp_hash, expires_at)
             )
-            log_audit(conn, user["id"], "whatsapp_recovery_requested", "admin_user", str(user["id"]), {"channel": payload.channel})
-            # In test mode when WHATSAPP_TEST_CAPTURE=1 is explicitly set by unit test harness
-            if os.getenv("WHATSAPP_TEST_CAPTURE") == "1":
-                return {"status": "recovery_initiated", "test_otp": otp, "expires_in_seconds": 300}
+            try:
+                dispatch_info = dispatch_whatsapp_recovery_otp(e164_phone, otp, expires_minutes=5)
+            except RuntimeError as exc:
+                raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail=str(exc))
+
+            log_audit(
+                conn,
+                user["id"],
+                "whatsapp_recovery_requested",
+                "admin_user",
+                str(user["id"]),
+                {"channel": payload.channel, "mode": dispatch_info.get("mode"), "message_id": dispatch_info.get("message_id")},
+            )
+            resp = {
+                "status": "recovery_initiated",
+                "channel": "whatsapp_cloud_api",
+                "delivery_mode": dispatch_info.get("mode", "live"),
+                "message_id": dispatch_info.get("message_id"),
+                "expires_in_seconds": 300,
+                "message": "If this verified administrator number is eligible, a single-use verification code has been dispatched."
+            }
+            if cfg["test_capture"] or cfg["sandbox_mode"]:
+                resp["test_otp"] = otp
+            return resp
 
         return {
             "status": "recovery_initiated",
+            "channel": payload.channel,
             "message": "If this verified administrator number is eligible, a single-use verification code has been dispatched."
         }
 
@@ -1417,15 +1483,17 @@ def verify_admin_password_recovery(payload: RecoveryVerifyInput, request: Reques
     client_ip = request.client.host if request.client else "127.0.0.1"
     check_rate_limit(f"recovery_verify:{client_ip}", max_requests=5, window_seconds=300)
 
-    cleaned_phone = re.sub(r"[\s\-\.]", "", payload.phone)
+    e164_phone, local_phone, _ = normalize_algerian_phone(payload.phone)
     submitted_hash = hashlib.sha256(payload.verification_code.strip().encode("utf-8")).hexdigest()
     now_ts = int(time.time())
 
     with db_session(commit=True) as conn:
         cur = conn.cursor()
         cur.execute(
-            "SELECT * FROM admin_users WHERE phone = ? AND is_active = 1",
-            (cleaned_phone,)
+            """SELECT * FROM admin_users
+               WHERE (phone IN (?, ?) OR emergency_phone IN (?, ?))
+                 AND is_active = 1""",
+            (e164_phone, local_phone, e164_phone, local_phone)
         )
         user = cur.fetchone()
         if not user:
@@ -1434,7 +1502,7 @@ def verify_admin_password_recovery(payload: RecoveryVerifyInput, request: Reques
         cur.execute(
             """SELECT * FROM admin_recovery_codes
                WHERE admin_user_id = ? AND is_used = 0 AND expires_at >= ?
-               ORDER BY id DESC LIMIT 5""",
+               ORDER BY id DESC LIMIT 10""",
             (user["id"], now_ts)
         )
         active_codes = cur.fetchall()
@@ -1449,18 +1517,109 @@ def verify_admin_password_recovery(payload: RecoveryVerifyInput, request: Reques
                 cur.execute("UPDATE admin_recovery_codes SET attempts = attempts + 1 WHERE id = ?", (c["id"],))
 
         if not matched_code:
-            log_audit(conn, user["id"], "password_recovery_failed", "admin_user", str(user["id"]), {"phone": cleaned_phone})
+            log_audit(conn, user["id"], "password_recovery_failed", "admin_user", str(user["id"]), {"phone": e164_phone})
             raise HTTPException(status_code=400, detail="Invalid or expired verification code")
 
-        # Mark single-use code as used, update password with PBKDF2/Argon2, and revoke existing tokens
+        # Mark single-use code as used, update password with PBKDF2-HMAC-SHA256, and revoke existing tokens
         cur.execute("UPDATE admin_recovery_codes SET is_used = 1, attempts = attempts + 1 WHERE id = ?", (matched_code["id"],))
         new_hash = hash_password(payload.new_password)
         cur.execute(
             "UPDATE admin_users SET password_hash = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?",
             (new_hash, user["id"])
         )
+
+        # If an offline_emergency code was consumed, automatically provision a replacement single-use emergency code
+        replacement_emergency_code = None
+        if matched_code["channel"] == "offline_emergency":
+            replacement_emergency_code = f"LUXE-EMERG-{secrets.token_hex(4).upper()}"
+            repl_hash = hashlib.sha256(replacement_emergency_code.encode("utf-8")).hexdigest()
+            cur.execute(
+                """INSERT INTO admin_recovery_codes (admin_user_id, phone, code_hash, channel, max_attempts, expires_at)
+                   VALUES (?, ?, ?, 'offline_emergency', 3, ?)""",
+                (user["id"], user["emergency_phone"] or user["phone"], repl_hash, int(time.time()) + 86400 * 365)
+            )
+
         log_audit(conn, user["id"], "password_recovered_and_rotated", "admin_user", str(user["id"]), {"channel": matched_code["channel"]})
-        return {"status": "password_updated", "sessions_revoked": True}
+        result = {"status": "password_updated", "sessions_revoked": True, "channel_used": matched_code["channel"]}
+        if replacement_emergency_code:
+            result["replacement_emergency_code"] = replacement_emergency_code
+        return result
+
+@app.post("/api/v1/admin/auth/recovery/rotate-emergency-code")
+def rotate_admin_emergency_recovery_code(admin: dict = Depends(require_permission("settings:write"))):
+    """
+    Generates a fresh single-use offline emergency recovery code for the authenticated administrator
+    and invalidates previous unused offline emergency codes.
+    """
+    admin_id = int(admin["sub"])
+    new_code = f"LUXE-EMERG-{secrets.token_hex(6).upper()}"
+    new_hash = hashlib.sha256(new_code.encode("utf-8")).hexdigest()
+    with db_session(commit=True) as conn:
+        cur = conn.cursor()
+        cur.execute("SELECT phone, emergency_phone FROM admin_users WHERE id = ?", (admin_id,))
+        u = cur.fetchone()
+        target_phone = (u["emergency_phone"] or u["phone"]) if u else "+213655534154"
+        cur.execute(
+            "UPDATE admin_recovery_codes SET is_used = 1 WHERE admin_user_id = ? AND channel = 'offline_emergency' AND is_used = 0",
+            (admin_id,)
+        )
+        cur.execute(
+            """INSERT INTO admin_recovery_codes (admin_user_id, phone, code_hash, channel, max_attempts, expires_at)
+               VALUES (?, ?, ?, 'offline_emergency', 3, ?)""",
+            (admin_id, target_phone, new_hash, int(time.time()) + 86400 * 365)
+        )
+        log_audit(conn, admin_id, "rotate_emergency_recovery_code", "admin_user", str(admin_id), {})
+        return {
+            "status": "rotated",
+            "emergency_code": new_code,
+            "expires_in_days": 365,
+            "notice": "Conservez ce code hors-ligne en lieu sûr. Seul son hash SHA-256 est stocké en base."
+        }
+
+@app.get("/api/v1/webhooks/whatsapp")
+def verify_whatsapp_webhook(
+    hub_mode: Optional[str] = Query(None, alias="hub.mode"),
+    hub_verify_token: Optional[str] = Query(None, alias="hub.verify_token"),
+    hub_challenge: Optional[str] = Query(None, alias="hub.challenge"),
+):
+    """
+    Meta WhatsApp Cloud API Webhook Verification Endpoint (GET).
+    """
+    cfg = get_whatsapp_config()
+    if hub_mode == "subscribe" and hub_verify_token and hmac.compare_digest(hub_verify_token, cfg["webhook_verify_token"]):
+        return Response(content=str(hub_challenge or ""), media_type="text/plain")
+    raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Webhook verification token mismatch")
+
+@app.post("/api/v1/webhooks/whatsapp")
+async def receive_whatsapp_webhook(request: Request):
+    """
+    Meta WhatsApp Cloud API Webhook Receiver (POST) for message delivery & read receipts.
+    """
+    raw_body = await request.body()
+    sig_header = request.headers.get("X-Hub-Signature-256")
+    if sig_header and not verify_whatsapp_webhook_signature(raw_body, sig_header):
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid X-Hub-Signature-256 webhook signature")
+    try:
+        payload = json.loads(raw_body.decode("utf-8") or "{}")
+    except Exception:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Malformed JSON webhook payload")
+
+    statuses_logged = 0
+    with db_session(commit=True) as conn:
+        for entry in payload.get("entry", []):
+            for change in entry.get("changes", []):
+                val = change.get("value", {})
+                for st in val.get("statuses", []):
+                    statuses_logged += 1
+                    log_audit(
+                        conn,
+                        None,
+                        "whatsapp_webhook_status",
+                        "whatsapp_message",
+                        str(st.get("id", "unknown")),
+                        {"status": st.get("status"), "recipient_id": st.get("recipient_id")},
+                    )
+    return {"received": True, "statuses_logged": statuses_logged}
 
 # ============================================================================
 # SECTION 5 & 9: GUEST ORDER TRACKING, COUPONS & OPTIMISTIC CONCURRENCY SYNC
