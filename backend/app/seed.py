@@ -10,7 +10,7 @@ SUPPORTED_ATTRIBUTE_TYPES = [
     "date", "measurement", "brand", "barcode_sku"
 ]
 
-ALGERIA_58_WILAYAS = [
+ALGERIA_69_WILAYAS = [
     ("01", "Adrar", "أدرار", ["Adrar", "Reggane", "Timimoun"], 900, 600, "48h - 72h"),
     ("02", "Chlef", "الشلف", ["Chlef", "Ténès", "Oued Fodda"], 600, 400, "24h - 48h"),
     ("03", "Laghouat", "الأغواط", ["Laghouat", "Aflou"], 750, 500, "48h"),
@@ -68,7 +68,18 @@ ALGERIA_58_WILAYAS = [
     ("55", "Touggourt", "تقرت", ["Touggourt", "Témacine", "Megarine"], 850, 550, "48h"),
     ("56", "Djanet", "جانت", ["Djanet"], 1150, 800, "72h"),
     ("57", "El M'Ghair", "المغير", ["El M'Ghair", "Djamaa"], 800, 550, "48h"),
-    ("58", "El Meniaa", "المنيعة", ["El Meniaa", "Hassi Gara"], 850, 550, "48h")
+    ("58", "El Meniaa", "المنيعة", ["El Meniaa", "Hassi Gara"], 850, 550, "48h"),
+    ("59", "Aflou", "آفلو", ["Aflou", "Sidi Bouzid", "Sebgag"], 750, 500, "48h"),
+    ("60", "Barika", "بريكة", ["Barika", "M'Doukal", "Bitam"], 650, 450, "24h - 48h"),
+    ("61", "El Kantara", "القنطرة", ["El Kantara", "Aïn Zaatout"], 700, 450, "48h"),
+    ("62", "Bir El Ater", "بئر العاتر", ["Bir El Ater", "El Ogla El Malha"], 700, 450, "48h"),
+    ("63", "El Aricha", "العريشة", ["El Aricha", "El Gor"], 750, 500, "48h"),
+    ("64", "Ksar Chellala", "قصر الشلالة", ["Ksar Chellala", "Serghine", "Zmalet El Emir Abdelkader"], 650, 450, "24h - 48h"),
+    ("65", "Aïn Oussera", "عين وسارة", ["Aïn Oussera", "Guernini"], 600, 400, "24h - 48h"),
+    ("66", "Messaad", "مسعد", ["Messaad", "Deldoul", "Selmana"], 700, 450, "48h"),
+    ("67", "Ksar El Boukhari", "قصر البخاري", ["Ksar El Boukhari", "Meftaha", "Saneg"], 550, 350, "24h"),
+    ("68", "Bou Saâda", "بوسعادة", ["Bou Saâda", "El Hamel", "Oultem"], 650, 450, "24h - 48h"),
+    ("69", "El Abiodh Sidi Cheikh", "الأبيض سيدي الشيخ", ["El Abiodh Sidi Cheikh", "El Bnoud"], 850, 550, "48h")
 ]
 
 def seed_initial_data() -> None:
@@ -320,7 +331,7 @@ def seed_initial_data() -> None:
         ln_uv_attr = add_attr("les-lunettes", "uv_protection", "Protection UV", "حماية الأشعة", "UV Protection", "short_text", req=1, filt=1, var=0, order=2)
 
         # 7. Seed All 58 Algerian Wilayas & Delivery Rates
-        for code, w_fr, w_ar, communes, home_fee, desk_fee, est in ALGERIA_58_WILAYAS:
+        for code, w_fr, w_ar, communes, home_fee, desk_fee, est in ALGERIA_69_WILAYAS:
             cur.execute(
                 "INSERT INTO delivery_zones (wilaya_code, wilaya_name_fr, wilaya_name_ar, communes_json, is_active) VALUES (?, ?, ?, ?, 1)",
                 (code, w_fr, w_ar, json.dumps(communes, ensure_ascii=False))

@@ -455,16 +455,15 @@ class TestLuxeEcommercePlatform(unittest.TestCase):
         )
         self.assertEqual(r_conflict.status_code, 409)
 
-    # 12. All 58 Algerian Wilayas Seeded & Verified
-    def test_12_all_58_algerian_wilayas_configured(self):
+    # 12. All 69 Official Algerian Wilayas (01 to 69) Seeded & Verified
+    def test_12_all_69_algerian_wilayas_configured(self):
         r_zones = self.client.get("/api/v1/delivery-zones")
         self.assertEqual(r_zones.status_code, 200)
         zones = r_zones.json()["items"]
-        self.assertEqual(len(zones), 58)
+        self.assertEqual(len(zones), 69)
         codes = [z["wilaya_code"] for z in zones]
-        self.assertIn("01", codes)
-        self.assertIn("16", codes)
-        self.assertIn("58", codes)
+        for expected_code in ["01", "16", "31", "58", "59", "60", "64", "68", "69"]:
+            self.assertIn(expected_code, codes)
 
     # 13. Automatic Desktop CMS Reconnection & Delta Sync After Windows PC Turns Back On
     def test_13_automatic_cms_reconnection_delta_sync_after_pc_off(self):
@@ -624,8 +623,62 @@ class TestLuxeEcommercePlatform(unittest.TestCase):
         )
         self.assertEqual(r_login_sqli.status_code, 401)
 
+    # 20. Dynamic PDP Schema (Category Attributes + Multi-Axis Variants) & Attribute Filtering
+    def test_20_dynamic_pdp_schema_and_attribute_filtering(self):
+        # Product detail response includes full category attribute definitions (variant axes + custom fields)
+        r_pdp = self.client.get("/api/v1/products/sac-a-main-chanel-style")
+        self.assertEqual(r_pdp.status_code, 200)
+        pdp = r_pdp.json()
+        cat_attrs = pdp["category"]["attributes"]
+        axis_keys = [a["attr_key"] for a in cat_attrs if a["is_variant_axis"]]
+        self.assertIn("color", axis_keys)
+        self.assertIn("size", axis_keys)
+        self.assertEqual(pdp["attributes"]["bag_type"], "Sac à main")
+
+        # Filter products dynamically by custom attribute or variant option (?attr_color=Bordeaux)
+        r_filt = self.client.get("/api/v1/products?category=sacs&attr_color=Bordeaux")
+        self.assertEqual(r_filt.status_code, 200)
+        self.assertGreaterEqual(r_filt.json()["total"], 1)
+
+        # Public coupon validation endpoint
+        r_cpn = self.client.post("/api/v1/coupons/validate", json={"code": "BIENVENUE10", "subtotal_dzd": 10000})
+        self.assertEqual(r_cpn.status_code, 200)
+        self.assertEqual(r_cpn.json()["discount_dzd"], 1000)
+
+    # 21. Admin 69-Wilaya Rate Update, Variant Stock Adjustment & Reports Endpoints
+    def test_21_wilaya_rate_update_stock_adjustment_and_reports(self):
+        headers = self.get_admin_headers()
+        # Update Wilaya 59 (Aflou) delivery rates
+        r_wil = self.client.put(
+            "/api/v1/admin/delivery-zones/59",
+            headers=headers,
+            json={"home_fee_dzd": 700, "stop_desk_fee_dzd": 450, "estimated_days": "24h - 48h"}
+        )
+        self.assertEqual(r_wil.status_code, 200)
+        self.assertEqual(r_wil.json()["home_fee_dzd"], 700)
+
+        # Adjust variant stock and verify movement logging
+        prod = self.client.get("/api/v1/products/sac-a-main-chanel-style").json()
+        vid = prod["variants"][0]["id"]
+        prev_stk = prod["variants"][0]["stock_qty"]
+        r_adj = self.client.post(
+            f"/api/v1/admin/variants/{vid}/adjust-stock",
+            headers=headers,
+            json={"change_qty": 5, "reason": "restock_arrival"}
+        )
+        self.assertEqual(r_adj.status_code, 200)
+        self.assertEqual(r_adj.json()["new_qty"], prev_stk + 5)
+
+        # Verify customers & reports endpoints
+        r_cust = self.client.get("/api/v1/admin/customers", headers=headers)
+        self.assertEqual(r_cust.status_code, 200)
+        r_rep = self.client.get("/api/v1/admin/reports", headers=headers)
+        self.assertEqual(r_rep.status_code, 200)
+        self.assertIn("product_performance", r_rep.json())
+
 if __name__ == "__main__":
     unittest.main()
+
 
 
 

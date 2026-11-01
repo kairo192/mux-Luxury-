@@ -244,9 +244,20 @@ def serialize_product(conn, row: dict, include_private: bool = False) -> dict:
     b = cur.fetchone()
     p["brand"] = dict(b) if b else None
 
-    cur.execute("SELECT slug, name_fr, name_ar, name_en FROM categories WHERE id = ?", (p["category_id"],))
+    cur.execute("SELECT * FROM categories WHERE id = ?", (p["category_id"],))
     c = cur.fetchone()
-    p["category"] = dict(c) if c else None
+    if c:
+        cat_full = serialize_category(conn, dict(c))
+        p["category"] = {
+            "id": cat_full["id"],
+            "slug": cat_full["slug"],
+            "name_fr": cat_full["name_fr"],
+            "name_ar": cat_full["name_ar"],
+            "name_en": cat_full["name_en"],
+            "attributes": cat_full["attributes"]
+        }
+    else:
+        p["category"] = None
 
     cur.execute(
         """SELECT ca.attr_key, ca.label_fr, ca.label_ar, ca.label_en, ca.input_type, ca.unit, pav.value_text
@@ -343,6 +354,7 @@ def list_delivery_zones():
 
 @app.get("/api/v1/products")
 def list_public_products(
+    request: Request,
     category: Optional[str] = None,
     brand: Optional[str] = None,
     q: Optional[str] = None,
@@ -391,6 +403,18 @@ def list_public_products(
         items = [serialize_product(conn, dict(r), include_private=False) for r in cur.fetchall()]
         if in_stock_only:
             items = [it for it in items if it["in_stock"]]
+
+        # Dynamic Category Attribute & Variant Axis Filtering (e.g. ?attr_color=Bordeaux&attr_size=L)
+        reserved_params = {"category", "brand", "q", "min_price", "max_price", "in_stock_only", "sort", "page", "page_size"}
+        for qp_key, qp_val in request.query_params.items():
+            if qp_key in reserved_params or not qp_val:
+                continue
+            attr_key = qp_key[5:] if qp_key.startswith("attr_") else qp_key
+            items = [
+                it for it in items
+                if it.get("attributes", {}).get(attr_key) == qp_val
+                or any(v.get("attributes", {}).get(attr_key) == qp_val for v in it.get("variants", []))
+            ]
         total = len(items)
         start = (page - 1) * page_size
         return {
@@ -1551,3 +1575,147 @@ async def execute_cryptographically_signed_action(
     nonce = request.headers.get("X-Luxe-Nonce")
     verify_signed_request(request.method, request.url.path, body_bytes, sig, ts, nonce)
     return {"status": "verified_and_executed", "admin_id": admin["sub"], "nonce": nonce}
+
+
+
+# ============================================================================
+# PRODUCTION ENDPOINTS: COUPON VALIDATION, 69-WILAYA RATE MANAGEMENT,
+# VARIANT STOCK ADJUSTMENTS, GUEST CUSTOMER RECORDS & ANALYTICS REPORTS
+# ============================================================================
+
+class CouponValidateRequest(BaseModel):
+    code: str
+    subtotal_dzd: int = Field(..., ge=0)
+
+class DeliveryZoneUpdateInput(BaseModel):
+    home_fee_dzd: int = Field(..., ge=0)
+    stop_desk_fee_dzd: int = Field(..., ge=0)
+    estimated_days: str = "24h - 48h"
+    communes: Optional[List[str]] = None
+    is_active: bool = True
+
+class StockAdjustmentInput(BaseModel):
+    change_qty: int
+    reason: str = Field("manual_adjustment", min_length=3, max_length=120)
+
+@app.post("/api/v1/coupons/validate")
+def validate_public_coupon(payload: CouponValidateRequest):
+    with db_session() as conn:
+        cur = conn.cursor()
+        cur.execute(
+            "SELECT * FROM coupons WHERE UPPER(code) = ? AND is_active = 1",
+            (payload.code.strip().upper(),)
+        )
+        cpn = cur.fetchone()
+        if not cpn:
+            raise HTTPException(status_code=404, detail="Code promo invalide ou expiré")
+        if payload.subtotal_dzd < int(cpn["min_order_dzd"]):
+            raise HTTPException(
+                status_code=400,
+                detail=f"Ce code promo requiert un montant minimum de {cpn['min_order_dzd']} DA"
+            )
+        if cpn["discount_type"] == "percentage":
+            disc = (payload.subtotal_dzd * int(cpn["discount_value"])) // 100
+            if cpn["max_discount_dzd"] is not None:
+                disc = min(disc, int(cpn["max_discount_dzd"]))
+        else:
+            disc = int(cpn["discount_value"])
+        disc = min(disc, payload.subtotal_dzd)
+        return {
+            "valid": True,
+            "code": cpn["code"],
+            "discount_type": cpn["discount_type"],
+            "discount_value": cpn["discount_value"],
+            "discount_dzd": disc,
+            "new_subtotal_dzd": payload.subtotal_dzd - disc
+        }
+
+@app.put("/api/v1/admin/delivery-zones/{wilaya_code}")
+def admin_update_delivery_zone(
+    wilaya_code: str,
+    payload: DeliveryZoneUpdateInput,
+    admin: dict = Depends(require_permission("content:write"))
+):
+    with db_session(commit=True) as conn:
+        cur = conn.cursor()
+        cur.execute("SELECT * FROM delivery_zones WHERE wilaya_code = ?", (wilaya_code.zfill(2),))
+        zone = cur.fetchone()
+        if not zone:
+            raise HTTPException(status_code=404, detail=f"Wilaya {wilaya_code} introuvable")
+        if payload.communes is not None:
+            cur.execute(
+                "UPDATE delivery_zones SET communes_json = ?, is_active = ? WHERE id = ?",
+                (json.dumps(payload.communes, ensure_ascii=False), 1 if payload.is_active else 0, zone["id"])
+            )
+        else:
+            cur.execute(
+                "UPDATE delivery_zones SET is_active = ? WHERE id = ?",
+                (1 if payload.is_active else 0, zone["id"])
+            )
+        cur.execute(
+            "UPDATE delivery_rates SET fee_dzd = ?, estimated_days = ? WHERE zone_id = ? AND delivery_method = 'home'",
+            (payload.home_fee_dzd, payload.estimated_days, zone["id"])
+        )
+        cur.execute(
+            "UPDATE delivery_rates SET fee_dzd = ?, estimated_days = ? WHERE zone_id = ? AND delivery_method = 'stop_desk'",
+            (payload.stop_desk_fee_dzd, payload.estimated_days, zone["id"])
+        )
+        log_audit(conn, int(admin["sub"]), "update_delivery_zone", "delivery_zone", wilaya_code, {
+            "home_fee_dzd": payload.home_fee_dzd,
+            "stop_desk_fee_dzd": payload.stop_desk_fee_dzd
+        })
+        return {"updated": True, "wilaya_code": wilaya_code.zfill(2), "home_fee_dzd": payload.home_fee_dzd, "stop_desk_fee_dzd": payload.stop_desk_fee_dzd}
+
+@app.post("/api/v1/admin/variants/{variant_id}/adjust-stock")
+def admin_adjust_variant_stock(
+    variant_id: int,
+    payload: StockAdjustmentInput,
+    admin: dict = Depends(require_permission("products:write"))
+):
+    with db_session(commit=True) as conn:
+        conn.execute("BEGIN IMMEDIATE")
+        cur = conn.cursor()
+        cur.execute("SELECT * FROM product_variants WHERE id = ?", (variant_id,))
+        v = cur.fetchone()
+        if not v:
+            raise HTTPException(status_code=404, detail="Variant not found")
+        prev_qty = int(v["stock_qty"])
+        new_qty = prev_qty + payload.change_qty
+        if new_qty < 0:
+            raise HTTPException(status_code=400, detail="Stock quantity cannot become negative")
+        cur.execute("UPDATE product_variants SET stock_qty = ? WHERE id = ?", (new_qty, variant_id))
+        cur.execute(
+            """INSERT INTO inventory_movements
+               (variant_id, admin_user_id, change_qty, previous_qty, new_qty, reason)
+               VALUES (?, ?, ?, ?, ?, ?)""",
+            (variant_id, int(admin["sub"]), payload.change_qty, prev_qty, new_qty, payload.reason)
+        )
+        log_audit(conn, int(admin["sub"]), "adjust_variant_stock", "product_variant", str(variant_id), {
+            "sku": v["sku"], "previous_qty": prev_qty, "new_qty": new_qty, "reason": payload.reason
+        })
+        return {"variant_id": variant_id, "sku": v["sku"], "previous_qty": prev_qty, "new_qty": new_qty}
+
+@app.get("/api/v1/admin/customers")
+def admin_list_customers(admin: dict = Depends(require_permission("orders:write"))):
+    with db_session() as conn:
+        cur = conn.cursor()
+        cur.execute("SELECT * FROM customers ORDER BY total_spent_dzd DESC, id DESC")
+        return {"items": [dict(r) for r in cur.fetchall()]}
+
+@app.get("/api/v1/admin/reports")
+def admin_analytics_reports(admin: dict = Depends(require_permission("dashboard:read"))):
+    with db_session() as conn:
+        cur = conn.cursor()
+        cur.execute("SELECT status, COUNT(*) AS count, COALESCE(SUM(total_dzd), 0) AS total_dzd FROM orders GROUP BY status")
+        by_status = [dict(r) for r in cur.fetchall()]
+        cur.execute(
+            """SELECT p.id, p.sku, p.name_fr, p.sales_count, p.selling_price_dzd, p.purchase_cost_dzd,
+                      COALESCE(SUM(pv.stock_qty), 0) AS total_stock
+               FROM products p
+               LEFT JOIN product_variants pv ON pv.product_id = p.id
+               WHERE p.deleted_at IS NULL
+               GROUP BY p.id
+               ORDER BY p.sales_count DESC"""
+        )
+        product_perf = [dict(r) for r in cur.fetchall()]
+        return {"orders_by_status": by_status, "product_performance": product_perf}
