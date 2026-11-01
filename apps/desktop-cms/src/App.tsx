@@ -113,7 +113,7 @@ export default function App() {
             <div className="grid grid-cols-2 gap-2">
               <div>
                 <label className="block text-[11px] mb-0.5">1. WhatsApp Récupération</label>
-                <input value={whatsappPhone} onChange={(e) => setWhatsappPhone(e.target.value)} required placeholder="+213 550 00 00 01" className="w-full px-2.5 py-1.5 rounded bg-[#063D2E] border border-[#D4AF62]/40 font-mono text-xs" />
+                <input value={whatsappPhone} onChange={(e) => setWhatsappPhone(e.target.value)} required placeholder="0655 53 41 54" className="w-full px-2.5 py-1.5 rounded bg-[#063D2E] border border-[#D4AF62]/40 font-mono text-xs" />
               </div>
               <div>
                 <label className="block text-[11px] mb-0.5">2. Numéro Secours / Urgence</label>
