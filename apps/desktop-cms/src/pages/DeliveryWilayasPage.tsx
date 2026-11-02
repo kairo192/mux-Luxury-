@@ -43,6 +43,26 @@ export function DeliveryWilayasPage() {
     }
   }
 
+  async function handleBulkSaveAllWilayas() {
+    setSavingCode("ALL");
+    setBannerMsg("");
+    try {
+      const payload = zones.map((z) => ({
+        wilaya_code: z.wilaya_code,
+        home_fee_dzd: Number(z.rates.home.fee_dzd),
+        stop_desk_fee_dzd: Number(z.rates.stop_desk.fee_dzd),
+        home_supported: Boolean(z.rates.home.is_supported),
+        stop_desk_supported: Boolean(z.rates.stop_desk.is_supported),
+        estimated_days: z.rates.home.estimated_days,
+        is_active: Boolean(z.is_active),
+      }));
+      await DesktopCmsApi.bulkUpdateDeliveryZones(payload);
+      setBannerMsg(`Les 69 Wilayas ont été enregistrées et synchronisées en lot avec succès.`);
+    } finally {
+      setSavingCode(null);
+    }
+  }
+
   function updateLocalRate(code: string, method: "home" | "stop_desk", field: string, value: any) {
     setZones((prev) =>
       prev.map((z) =>
@@ -83,6 +103,7 @@ export function DeliveryWilayasPage() {
           placeholder="Rechercher une wilaya (01 à 69)..."
           className="px-3.5 py-2 rounded-xl border border-gray-300 text-xs w-64"
         />
+        <button type="button" onClick={handleBulkSaveAllWilayas} className="px-4 py-2 rounded-xl bg-[#D4AF62] text-[#02291F] font-extrabold text-xs">Enregistrer les 69 Wilayas (Lot)</button>
       </div>
 
       {bannerMsg && (

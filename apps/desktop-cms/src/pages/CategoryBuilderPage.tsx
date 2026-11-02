@@ -194,6 +194,39 @@ export function CategoryBuilderPage({ onCategoryChanged }: { onCategoryChanged?:
     }
   }
 
+  async function handleToggleCategoryHomepage(cat: any) {
+    setError("");
+    try {
+      await DesktopCmsApi.updateCategory(cat.id, {
+        slug: cat.slug,
+        name_fr: cat.name_fr,
+        name_ar: cat.name_ar || cat.name_fr,
+        name_en: cat.name_en || cat.name_fr,
+        description_fr: cat.description_fr || "",
+        display_order: cat.display_order || 1,
+        is_active: true,
+        show_on_homepage: !cat.show_on_homepage,
+      });
+      setStatusMsg(`Visibilité accueil mise à jour pour "${cat.name_fr}".`);
+      await loadCategories();
+      if (onCategoryChanged) onCategoryChanged();
+    } catch (err: any) {
+      setError(err.message);
+    }
+  }
+
+  async function handleArchiveCategory(catId: number, catName: string) {
+    setError("");
+    try {
+      await DesktopCmsApi.archiveCategory(catId);
+      setStatusMsg(`Catégorie "${catName}" archivée en toute sécurité.`);
+      await loadCategories();
+      if (onCategoryChanged) onCategoryChanged();
+    } catch (err: any) {
+      setError(err.message);
+    }
+  }
+
   return (
     <div className="space-y-6">
       <form onSubmit={handleSaveCategory} className="space-y-4 bg-white p-6 rounded-2xl border border-[#D4AF62]/40 shadow-sm">
@@ -342,13 +375,29 @@ export function CategoryBuilderPage({ onCategoryChanged }: { onCategoryChanged?:
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             {categories.map((c) => (
               <div key={c.id} className="p-4 rounded-xl border border-gray-200 space-y-2 text-xs">
-                <div className="flex items-center justify-between">
+                <div className="flex flex-wrap items-center justify-between gap-2">
                   <span className="font-bold text-sm text-[#063D2E]">
                     {c.name_fr} <span className="text-gray-400 font-mono text-xs">({c.slug})</span>
                   </span>
-                  <span className="px-2 py-0.5 rounded bg-emerald-50 text-emerald-800 font-bold text-[11px]">
-                    {(c.attributes || []).length} attribut(s)
-                  </span>
+                  <div className="flex items-center gap-1.5">
+                    <span className="px-2 py-0.5 rounded bg-emerald-50 text-emerald-800 font-bold text-[11px]">
+                      {(c.attributes || []).length} attribut(s)
+                    </span>
+                    <button
+                      type="button"
+                      onClick={() => handleToggleCategoryHomepage(c)}
+                      className="px-2 py-0.5 rounded bg-[#F8F6F0] border text-[11px] font-semibold"
+                    >
+                      {c.show_on_homepage ? "Accueil: Oui" : "Accueil: Non"}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => handleArchiveCategory(c.id, c.name_fr)}
+                      className="px-2 py-0.5 rounded bg-red-50 text-red-700 border border-red-200 text-[11px] font-bold"
+                    >
+                      Archiver
+                    </button>
+                  </div>
                 </div>
                 <div className="flex flex-wrap gap-1.5">
                   {(c.attributes || []).map((a: any) => (

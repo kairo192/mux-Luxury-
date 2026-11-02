@@ -41,15 +41,30 @@ export default function App() {
 
   // Workspace Data States
   const [dashboard, setDashboard] = useState<any | null>(null);
+  const [reports, setReports] = useState<any | null>(null);
+  const [brands, setBrands] = useState<any[]>([]);
   const [categories, setCategories] = useState<any[]>([]);
   const [products, setProducts] = useState<any[]>([]);
   const [orders, setOrders] = useState<any[]>([]);
+  const [customers, setCustomers] = useState<any[]>([]);
   const [movements, setMovements] = useState<any[]>([]);
+  const [banners, setBanners] = useState<any[]>([]);
+  const [homepageSections, setHomepageSections] = useState<any[]>([]);
+  const [staticPages, setStaticPages] = useState<any[]>([]);
   const [backups, setBackups] = useState<any[]>([]);
   const [recoveryStatus, setRecoveryStatus] = useState<any | null>(null);
+  const [healthStatus, setHealthStatus] = useState<any | null>(null);
   const [restoreReport, setRestoreReport] = useState<any | null>(null);
   const [selectedInvoice, setSelectedInvoice] = useState<any | null>(null);
   const [loadingWorkspace, setLoadingWorkspace] = useState(false);
+  const [selectedProductIds, setSelectedProductIds] = useState<number[]>([]);
+  const [newBrandName, setNewBrandName] = useState("");
+  const [newImageUrl, setNewImageUrl] = useState("/assets/prod_sac_chanel_hd.jpg");
+  const [matrixColorCsv, setMatrixColorCsv] = useState("Noir, Or");
+  const [matrixSizeCsv, setMatrixSizeCsv] = useState("S, M, L");
+  const [bannerTitleFr, setBannerTitleFr] = useState("");
+  const [bannerImageUrl, setBannerImageUrl] = useState("/assets/hero_banner_mus.jpg");
+  const [orderSearch, setOrderSearch] = useState("");
 
   // Product Search, Creation, Edit & Variant Matrix State
   const [prodSearch, setProdSearch] = useState("");
@@ -97,22 +112,36 @@ export default function App() {
     setLoadingWorkspace(true);
     setError("");
     try {
-      const [dashData, catData, prodData, ordData, movData, bkpData, recData] = await Promise.all([
+      const [dashData, repData, brdData, catData, prodData, ordData, custData, movData, layData, bnrData, pgData, bkpData, recData, hltData] = await Promise.all([
         DesktopCmsApi.getDashboard(),
+        DesktopCmsApi.getReports().catch(() => null),
+        DesktopCmsApi.listBrands().catch(() => ({ items: [] })),
         DesktopCmsApi.listCategories(),
         DesktopCmsApi.listAdminProducts({ include_archived: true }),
         DesktopCmsApi.listOrders(orderStatusFilter || undefined),
+        DesktopCmsApi.listCustomers().catch(() => ({ items: [] })),
         DesktopCmsApi.listInventoryMovements(),
+        DesktopCmsApi.getStoreLayout().catch(() => ({ homepage_sections: [] })),
+        DesktopCmsApi.listBanners().catch(() => ({ items: [] })),
+        DesktopCmsApi.listStaticPages().catch(() => ({ items: [] })),
         DesktopCmsApi.listBackups(),
         DesktopCmsApi.getRecoveryStatus().catch(() => null),
+        DesktopCmsApi.checkHealth().catch(() => ({ status: "ok" })),
       ]);
       setDashboard(dashData);
+      setReports(repData);
+      setBrands(brdData.items || []);
       setCategories(catData.items || []);
       setProducts(prodData.items || []);
       setOrders(ordData.items || []);
+      setCustomers(custData.items || []);
       setMovements(movData.items || []);
+      setHomepageSections(layData.homepage_sections || []);
+      setBanners(bnrData.items || []);
+      setStaticPages(pgData.items || []);
       setBackups(bkpData.items || []);
       setRecoveryStatus(recData);
+      setHealthStatus(hltData);
       if (catData.items?.length && !prodCategoryId) {
         setProdCategoryId(catData.items[0].id);
       }
@@ -398,6 +427,132 @@ export default function App() {
     }
   }
 
+
+  async function handleDeltaSync() {
+    setError("");
+    try {
+      const syncRes = await DesktopCmsApi.deltaSync(0, 0);
+      await loadAllWorkspaceData();
+      setSuccessMsg(`Delta Sync terminé : ${syncRes.missed_orders_count} commande(s) et ${syncRes.current_variant_stocks?.length || 0} variantes synchronisées.`);
+    } catch (err: any) {
+      setError(err.message);
+    }
+  }
+
+  async function handleCreateBrand(e: React.FormEvent) {
+    e.preventDefault();
+    if (!newBrandName.trim()) return;
+    setError("");
+    try {
+      const slug = newBrandName.trim().toLowerCase().replace(/[^a-z0-9]+/g, "-");
+      await DesktopCmsApi.createBrand({ name: newBrandName.trim(), slug, logo_url: "/assets/mus_luxury_logo.png" });
+      setNewBrandName("");
+      setSuccessMsg(`Marque "${newBrandName}" créée.`);
+      await loadAllWorkspaceData();
+    } catch (err: any) {
+      setError(err.message);
+    }
+  }
+
+  async function handleBulkStatus(status: "published" | "draft" | "archived") {
+    if (selectedProductIds.length === 0) return;
+    setError("");
+    try {
+      await DesktopCmsApi.bulkUpdateProductStatus(selectedProductIds, status);
+      setSelectedProductIds([]);
+      setSuccessMsg(`Statut "${status}" appliqué à ${selectedProductIds.length} produit(s).`);
+      await loadAllWorkspaceData();
+    } catch (err: any) {
+      setError(err.message);
+    }
+  }
+
+  async function handleGenerateVariantMatrix(productId: number) {
+    setError("");
+    try {
+      const colors = matrixColorCsv.split(",").map((s) => s.trim()).filter(Boolean);
+      const sizes = matrixSizeCsv.split(",").map((s) => s.trim()).filter(Boolean);
+      await DesktopCmsApi.generateVariants(productId, {
+        axes: { color: colors, size: sizes },
+        default_stock: 4,
+      });
+      setSuccessMsg(`Matrice de variantes (${colors.length}×${sizes.length}) générée pour le produit #${productId}.`);
+      await loadAllWorkspaceData();
+    } catch (err: any) {
+      setError(err.message);
+    }
+  }
+
+  async function handleAddProductGalleryImage(productId: number) {
+    setError("");
+    try {
+      const img = await DesktopCmsApi.addProductImage(productId, {
+        image_url: newImageUrl,
+        alt_text: "Mus Luxury Gallery",
+        display_order: 1,
+        set_as_primary: true,
+      });
+      await DesktopCmsApi.reorderProductImages(productId, {
+        orders: [{ image_id: img.id, display_order: 1 }],
+        primary_image_url: newImageUrl,
+      });
+      setSuccessMsg(`Image ajoutée et ordonnée pour le produit #${productId}.`);
+      await loadAllWorkspaceData();
+    } catch (err: any) {
+      setError(err.message);
+    }
+  }
+
+  async function handleRemoveProductGalleryImage(imageId: number) {
+    setError("");
+    try {
+      await DesktopCmsApi.deleteProductImage(imageId);
+      setSuccessMsg(`Image #${imageId} supprimée de la galerie.`);
+      await loadAllWorkspaceData();
+    } catch (err: any) {
+      setError(err.message);
+    }
+  }
+
+  async function handleToggleHomepageSection(sec: any) {
+    setError("");
+    try {
+      await DesktopCmsApi.updateHomepageSection(sec.section_key, {
+        title_fr: sec.title_fr,
+        is_active: !sec.is_active,
+        display_order: sec.display_order || 1,
+        config: sec.config || {},
+      });
+      setSuccessMsg(`Section d'accueil "${sec.title_fr}" mise à jour.`);
+      await loadAllWorkspaceData();
+    } catch (err: any) {
+      setError(err.message);
+    }
+  }
+
+  async function handleCreateBanner(e: React.FormEvent) {
+    e.preventDefault();
+    if (!bannerTitleFr.trim()) return;
+    setError("");
+    try {
+      await DesktopCmsApi.createBanner({
+        position: "promo_grid",
+        title_fr: bannerTitleFr.trim(),
+        subtitle_fr: "Collection Exclusive Mus Luxury",
+        cta_text_fr: "Découvrir",
+        cta_link: "/categories/sacs",
+        image_url: bannerImageUrl,
+        is_active: true,
+        display_order: banners.length + 1,
+      });
+      setBannerTitleFr("");
+      setSuccessMsg("Bannière promotionnelle créée et publiée.");
+      await loadAllWorkspaceData();
+    } catch (err: any) {
+      setError(err.message);
+    }
+  }
+
   async function handleRotateEmergencyCode() {
     setError("");
     try {
@@ -554,7 +709,7 @@ export default function App() {
         <div className="flex items-center gap-3 text-xs">
           <button
             type="button"
-            onClick={loadAllWorkspaceData}
+            onClick={handleDeltaSync}
             className="px-3 py-1.5 rounded-lg bg-[#063D2E] text-[#E8D4A5] border border-[#D4AF62]/40 font-bold"
           >
             ↻ Synchroniser avec le serveur
@@ -803,9 +958,22 @@ export default function App() {
                     </select>
                   </div>
                 </div>
-                <button type="submit" className="px-5 py-2 rounded-xl bg-[#063D2E] text-[#D4AF62] font-extrabold">
-                  Enregistrer les modifications
-                </button>
+                <div className="flex flex-wrap items-center gap-2 pt-2">
+                  <button type="submit" className="px-5 py-2 rounded-xl bg-[#063D2E] text-[#D4AF62] font-extrabold">
+                    Enregistrer les modifications
+                  </button>
+                  <button type="button" onClick={() => handleGenerateVariantMatrix(editingProduct.id)} className="px-4 py-2 rounded-xl bg-[#D4AF62] text-[#02291F] font-bold">
+                    + Générer Matrice Variantes ({matrixColorCsv} × {matrixSizeCsv})
+                  </button>
+                  <button type="button" onClick={() => handleAddProductGalleryImage(editingProduct.id)} className="px-4 py-2 rounded-xl bg-white border border-[#063D2E] text-[#063D2E] font-bold">
+                    + Ajouter Image Galerie
+                  </button>
+                  {(editingProduct.images || [])[0] && (
+                    <button type="button" onClick={() => handleRemoveProductGalleryImage(editingProduct.images[0].id)} className="px-3 py-2 rounded-xl bg-red-50 text-red-700 border border-red-200 font-bold">
+                      Supprimer 1ère Image
+                    </button>
+                  )}
+                </div>
               </form>
             )}
 

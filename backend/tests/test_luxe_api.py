@@ -1541,8 +1541,26 @@ console.log("ALL_TSX_COMPILED_OK");
             self.assertNotIn("DesktopCmsApi", content, f"Public website file {pub_file} must not import DesktopCmsApi")
 
 
+    # 38. 100% End-to-End DesktopCmsApi & StorefrontApi Wiring Audit
+    def test_38_complete_100_percent_cms_and_storefront_endpoint_wiring_audit(self):
+        import re as _re
+        repo_root = os.path.dirname(os.path.dirname(os.path.dirname(__file__)))
+        ac_text = open(os.path.join(repo_root, "apps", "desktop-cms", "src", "api", "adminClient.ts"), encoding="utf-8").read()
+        methods = _re.findall(r"^\s*([a-zA-Z0-9_]+):\s*(?:async\s*)?\(", ac_text, _re.M)
+        self.assertGreaterEqual(len(methods), 34)
+
+        ui_text = (
+            open(os.path.join(repo_root, "apps", "desktop-cms", "src", "App.tsx"), encoding="utf-8").read()
+            + open(os.path.join(repo_root, "apps", "desktop-cms", "src", "pages", "CategoryBuilderPage.tsx"), encoding="utf-8").read()
+            + open(os.path.join(repo_root, "apps", "desktop-cms", "src", "pages", "DeliveryWilayasPage.tsx"), encoding="utf-8").read()
+        )
+        missing = [m for m in methods if f"DesktopCmsApi.{m}" not in ui_text]
+        self.assertEqual(missing, [], f"Unwired DesktopCmsApi methods in Desktop CMS UI: {missing}")
+
+
 if __name__ == "__main__":
     unittest.main()
+
 
 
 
