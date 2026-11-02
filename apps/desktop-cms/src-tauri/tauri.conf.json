@@ -13,7 +13,7 @@
     "windows": [
       {
         "label": "main",
-        "title": "Mus Luxury (LUXE) — Administration & Inventaire",
+        "title": "Mus Luxury (LUXE) \u2014 Administration & Inventaire",
         "width": 1440,
         "height": 900,
         "minWidth": 1100,
@@ -22,7 +22,7 @@
       }
     ],
     "security": {
-      "csp": "default-src 'self'; connect-src 'self' https://api.musluxury.dz http://localhost:8000; img-src 'self' data: https: http://localhost:8000; style-src 'self' 'unsafe-inline'"
+      "csp": "default-src 'self'; connect-src 'self' https://api.musluxury.dz http://localhost:8000 http://127.0.0.1:8000 https: http:; img-src 'self' data: blob: https: http://localhost:8000 http://127.0.0.1:8000; style-src 'self' 'unsafe-inline'"
     }
   },
   "bundle": {

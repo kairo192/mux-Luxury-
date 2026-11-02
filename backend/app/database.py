@@ -1,12 +1,138 @@
 import json
 import os
+import re
 import sqlite3
 from contextlib import contextmanager
+from typing import Any, Iterable, Optional, Tuple
 
 DB_PATH = os.getenv("LUXE_SQLITE_PATH", os.path.join(os.path.dirname(__file__), "..", "luxe_store.sqlite3"))
 SCHEMA_PATH = os.path.join(os.path.dirname(__file__), "..", "migrations", "001_initial_schema.sql")
+PG_SCHEMA_PATH = os.path.join(os.path.dirname(__file__), "..", "migrations", "001_initial_schema_postgres.sql")
 
-def get_connection() -> sqlite3.Connection:
+
+def translate_sql_for_postgres(sql: str) -> Tuple[str, bool]:
+    """
+    Translates SQLite-flavored parameterized SQL into PostgreSQL 16 SQL:
+    1. Converts `?` positional placeholders outside string literals into `%s`.
+    2. Converts `INSERT OR IGNORE INTO <table> ...` into `INSERT INTO <table> ... ON CONFLICT DO NOTHING`.
+    3. Converts `BEGIN IMMEDIATE` into `BEGIN`.
+    4. Appends `RETURNING id` on standard `INSERT INTO` statements so `cursor.lastrowid` works seamlessly.
+    """
+    stripped = sql.strip()
+    upper = stripped.upper()
+
+    if upper.startswith("PRAGMA "):
+        return "SELECT 1", False
+
+    if upper == "BEGIN IMMEDIATE":
+        return "BEGIN", False
+
+    is_insert_ignore = False
+    if re.match(r"^INSERT\s+OR\s+IGNORE\s+INTO\b", stripped, flags=re.IGNORECASE):
+        is_insert_ignore = True
+        stripped = re.sub(r"^INSERT\s+OR\s+IGNORE\s+INTO\b", "INSERT INTO", stripped, count=1, flags=re.IGNORECASE)
+
+    # Replace ? with %s outside single-quoted literals
+    out_chars = []
+    in_quote = False
+    for ch in stripped:
+        if ch == "'":
+            in_quote = not in_quote
+            out_chars.append(ch)
+        elif ch == "?" and not in_quote:
+            out_chars.append("%s")
+        else:
+            out_chars.append(ch)
+    pg_sql = "".join(out_chars).rstrip(";")
+
+    if is_insert_ignore and "ON CONFLICT" not in pg_sql.upper():
+        pg_sql += " ON CONFLICT DO NOTHING"
+
+    needs_returning_id = (
+        pg_sql.upper().startswith("INSERT INTO ")
+        and "RETURNING " not in pg_sql.upper()
+        and "role_permissions" not in pg_sql.lower()
+        and "store_settings" not in pg_sql.lower()
+    )
+    if needs_returning_id:
+        pg_sql += " RETURNING id"
+
+    return pg_sql, needs_returning_id
+
+
+class PostgresCompatCursor:
+    def __init__(self, raw_cur):
+        self._cur = raw_cur
+        self.lastrowid: Optional[int] = None
+        self.rowcount: int = 0
+
+    def execute(self, sql: str, params: Iterable[Any] = ()):
+        pg_sql, has_returning = translate_sql_for_postgres(sql)
+        self._cur.execute(pg_sql, tuple(params))
+        self.rowcount = self._cur.rowcount
+        if has_returning:
+            row = self._cur.fetchone()
+            if row:
+                self.lastrowid = row["id"] if isinstance(row, dict) else row[0]
+        return self
+
+    def fetchone(self):
+        return self._cur.fetchone()
+
+    def fetchall(self):
+        return self._cur.fetchall()
+
+
+class PostgresCompatConnection:
+    def __init__(self, raw_conn):
+        self._conn = raw_conn
+        self.in_transaction = False
+
+    def cursor(self) -> PostgresCompatCursor:
+        return PostgresCompatCursor(self._conn.cursor())
+
+    def execute(self, sql: str, params: Iterable[Any] = ()):
+        cur = self.cursor()
+        cur.execute(sql, params)
+        if sql.strip().upper().startswith("BEGIN"):
+            self.in_transaction = True
+        return cur._cur
+
+    def executescript(self, sql_script: str):
+        with self._conn.cursor() as cur:
+            cur.execute(sql_script)
+
+    def iterdump(self):
+        with open(PG_SCHEMA_PATH, "r", encoding="utf-8") as f:
+            for line in f:
+                yield line.rstrip("\n")
+
+    def commit(self):
+        self._conn.commit()
+        self.in_transaction = False
+
+    def rollback(self):
+        self._conn.rollback()
+        self.in_transaction = False
+
+    def close(self):
+        self._conn.close()
+
+
+def get_connection():
+    """
+    Connects to PostgreSQL 16 when LUXE_DB_ENGINE=postgres (and DATABASE_URL is reachable),
+    or uses high-concurrency SQLite WAL mode with foreign_keys=ON and 30s busy_timeout.
+    """
+    if os.getenv("LUXE_DB_ENGINE", "").lower() == "postgres" and os.getenv("DATABASE_URL"):
+        try:
+            import psycopg
+            from psycopg.rows import dict_row
+            raw_pg = psycopg.connect(os.environ["DATABASE_URL"], row_factory=dict_row)
+            return PostgresCompatConnection(raw_pg)
+        except Exception:
+            pass
+
     conn = sqlite3.connect(DB_PATH, timeout=30.0, check_same_thread=False)
     conn.row_factory = sqlite3.Row
     conn.execute("PRAGMA foreign_keys = ON;")
@@ -14,6 +140,7 @@ def get_connection() -> sqlite3.Connection:
     conn.execute("PRAGMA synchronous = NORMAL;")
     conn.execute("PRAGMA busy_timeout = 30000;")
     return conn
+
 
 @contextmanager
 def db_session(commit: bool = False):
@@ -28,9 +155,17 @@ def db_session(commit: bool = False):
     finally:
         conn.close()
 
+
 def init_db() -> None:
-    with open(SCHEMA_PATH, "r", encoding="utf-8") as f:
-        schema_sql = f.read()
-    with db_session(commit=True) as conn:
-        conn.executescript(schema_sql)
-        conn.execute("PRAGMA foreign_keys = ON;")
+    conn = get_connection()
+    try:
+        if isinstance(conn, PostgresCompatConnection):
+            with open(PG_SCHEMA_PATH, "r", encoding="utf-8") as f:
+                conn.executescript(f.read())
+        else:
+            with open(SCHEMA_PATH, "r", encoding="utf-8") as f:
+                conn.executescript(f.read())
+            conn.execute("PRAGMA foreign_keys = ON;")
+        conn.commit()
+    finally:
+        conn.close()

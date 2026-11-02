@@ -2215,6 +2215,103 @@ console.log("CLIENT_NOTIFIER_ALL_TESTS_PASSED");
         self.assertIn("/api/v1/pages/", shtml)
 
 
+
+    # 55. Tauri 2 Windows WebView2 CORS Preflight Verification & python-multipart Dependency Audit
+    def test_55_tauri_windows_webview2_cors_preflight_and_multipart_dependency_audit(self):
+        from pathlib import Path
+        repo_root = Path(__file__).resolve().parents[2]
+
+        # 1. Verify Tauri 2 Windows WebView2 origins pass CORS preflight OPTIONS on FastAPI
+        allowed_origins = [
+            "http://tauri.localhost",
+            "https://tauri.localhost",
+            "tauri://localhost",
+            "http://127.0.0.1:1420",
+            "http://localhost:1420",
+            "https://musluxury.dz",
+        ]
+        for origin in allowed_origins:
+            r_opt = self.client.options(
+                "/api/v1/admin/auth/login",
+                headers={
+                    "Origin": origin,
+                    "Access-Control-Request-Method": "POST",
+                    "Access-Control-Request-Headers": "Authorization,Content-Type",
+                },
+            )
+            self.assertEqual(r_opt.status_code, 200, f"CORS preflight failed for {origin}: {r_opt.text}")
+            self.assertEqual(r_opt.headers.get("access-control-allow-origin"), origin)
+
+        # Untrusted origin must NOT receive Access-Control-Allow-Origin
+        r_bad = self.client.options(
+            "/api/v1/admin/auth/login",
+            headers={
+                "Origin": "https://malicious-attacker-site.org",
+                "Access-Control-Request-Method": "POST",
+            },
+        )
+        self.assertIsNone(r_bad.headers.get("access-control-allow-origin"))
+
+        # 2. Verify python-multipart and psycopg[binary] in backend/requirements.txt
+        reqs = (repo_root / "backend" / "requirements.txt").read_text(encoding="utf-8")
+        self.assertIn("python-multipart", reqs)
+        self.assertIn("psycopg[binary]", reqs)
+
+    # 56. Dual-Engine PostgreSQL 16 SQL Translator & Cursor Compatibility Verification
+    def test_56_dual_engine_postgres_sql_translator_and_cursor_compatibility_verification(self):
+        from app.database import PostgresCompatConnection, translate_sql_for_postgres
+
+        # 1. PRAGMA and BEGIN IMMEDIATE translation
+        self.assertEqual(translate_sql_for_postgres("PRAGMA foreign_keys = ON;"), ("SELECT 1", False))
+        self.assertEqual(translate_sql_for_postgres("BEGIN IMMEDIATE"), ("BEGIN", False))
+
+        # 2. INSERT OR IGNORE -> ON CONFLICT DO NOTHING with %s placeholders
+        pg_sql, has_ret = translate_sql_for_postgres(
+            "INSERT OR IGNORE INTO static_pages (slug, title_fr) VALUES (?, ?)"
+        )
+        self.assertEqual(
+            pg_sql,
+            "INSERT INTO static_pages (slug, title_fr) VALUES (%s, %s) ON CONFLICT DO NOTHING RETURNING id",
+        )
+        self.assertTrue(has_ret)
+
+        # 3. Literal ? inside single quotes is preserved while positional ? becomes %s
+        pg_sel, has_ret_sel = translate_sql_for_postgres(
+            "SELECT * FROM products WHERE slug = ? AND description_fr != 'Why?'"
+        )
+        self.assertEqual(pg_sel, "SELECT * FROM products WHERE slug = %s AND description_fr != 'Why?'")
+        self.assertFalse(has_ret_sel)
+
+        # 4. Verify PostgresCompatConnection & PostgresCompatCursor populate lastrowid from RETURNING id
+        class _DummyPgCur:
+            def __init__(self):
+                self.last_sql = ""
+                self.last_params = ()
+                self.rowcount = 1
+            def execute(self, q, p=()):
+                self.last_sql = q
+                self.last_params = p
+            def fetchone(self):
+                return {"id": 777}
+            def fetchall(self):
+                return [{"id": 777}]
+
+        class _DummyPgConn:
+            def cursor(self):
+                return _DummyPgCur()
+            def commit(self):
+                pass
+            def rollback(self):
+                pass
+            def close(self):
+                pass
+
+        compat_conn = PostgresCompatConnection(_DummyPgConn())
+        cur = compat_conn.cursor()
+        cur.execute("INSERT INTO brands (name, slug) VALUES (?, ?)", ("Mus Test", "mus-test"))
+        self.assertEqual(cur.lastrowid, 777)
+
+
 if __name__ == "__main__":
     unittest.main()
 

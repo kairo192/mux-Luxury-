@@ -2518,7 +2518,7 @@
       if (totEl) totEl.textContent = formatDZD(total);
     }
 
-    function submitGuestCheckoutOrder() {
+    async function submitGuestCheckoutOrder() {
       const name = (document.getElementById("chk-name")?.value || "").trim();
       const phone = (document.getElementById("chk-phone")?.value || "").trim().replace(/[\s\-\.]/g, "");
       const wilayaCode = document.getElementById("chk-wilaya")?.value || "16";
@@ -2564,7 +2564,47 @@
       }
 
       const discount = computeCouponDiscount(subtotal);
-      const orderRef = `LUX-${Math.floor(10000 + Math.random() * 89999)}-DZ`;
+      let orderRef = `LUX-${Math.floor(10000 + Math.random() * 89999)}-DZ`;
+
+      try {
+        const apiOrdRes = await fetch("/api/v1/orders", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "Idempotency-Key": `storefront-${phone}-${Date.now()}`,
+          },
+          body: JSON.stringify({
+            full_name: name,
+            phone: phone,
+            wilaya_code: wilayaCode,
+            commune: commune,
+            delivery_address: address,
+            delivery_method: method,
+            coupon_code: state.appliedCoupon ? state.appliedCoupon.code : undefined,
+            items: orderItems.map((it) => ({ variant_id: it.variant_id, quantity: it.quantity })),
+          }),
+        });
+        if (!apiOrdRes.ok) {
+          const errJson = await apiOrdRes.json().catch(() => ({}));
+          if (apiOrdRes.status === 403 && errJson.detail) {
+            showToast(String(errJson.detail), "error");
+            return;
+          }
+          if (apiOrdRes.status === 409) {
+            showToast("Stock insuffisant ou commande déjà transmise.", "error");
+            return;
+          }
+          if (apiOrdRes.status === 422) {
+            showToast("Veuillez vérifier vos coordonnées de livraison.", "error");
+            return;
+          }
+        } else {
+          const createdOrd = await apiOrdRes.json();
+          if (createdOrd.order_reference) {
+            orderRef = createdOrd.order_reference;
+          }
+        }
+      } catch (_e) {}
 
       for (const line of orderItems) {
         const prod = state.products.find((p) => p.id === line.product_id);

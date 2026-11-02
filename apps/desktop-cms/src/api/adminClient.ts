@@ -12,9 +12,20 @@ import { ClientSafeApiError, sanitizeAndTranslateError } from "../utils/clientNo
 // ============================================================================
 
 let accessToken: string | null = null;
-let apiBaseUrl: string =
-  (typeof import.meta !== "undefined" && (import.meta as any).env?.VITE_CMS_API_URL) ||
-  "https://api.musluxury.dz/api/v1";
+function resolveDefaultApiBaseUrl(): string {
+  if (typeof import.meta !== "undefined" && (import.meta as any).env?.VITE_CMS_API_URL) {
+    return String((import.meta as any).env.VITE_CMS_API_URL).replace(/\/+$/, "");
+  }
+  if (typeof window !== "undefined" && window.location) {
+    const h = window.location.hostname;
+    if (h === "localhost" || h === "127.0.0.1") {
+      return "http://127.0.0.1:8000/api/v1";
+    }
+  }
+  return "https://api.musluxury.dz/api/v1";
+}
+
+let apiBaseUrl: string = resolveDefaultApiBaseUrl();
 let defaultTimeoutMs = 15000;
 
 export function configureApiBaseUrl(url: string) {
