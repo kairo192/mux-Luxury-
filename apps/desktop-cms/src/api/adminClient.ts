@@ -355,7 +355,9 @@ export const DesktopCmsApi = {
   upsertStaticPage: (slug: string, payload: unknown) =>
     adminFetch(`/admin/pages/${slug}`, { method: "PUT", body: JSON.stringify(payload) }),
 
-  // Backups & Isolated Restoration Verification
+  // Backups, Audit History & Isolated Restoration Verification
+  listAuditLogs: (limit = 40) => adminFetch(`/admin/audit-logs?limit=${limit}`),
+  checkReadiness: () => adminFetch("/ready"),
   listBackups: () => adminFetch("/admin/backups"),
   triggerBackup: () => adminFetch("/admin/backups", { method: "POST" }),
   verifyBackupRestore: (backupId: number) =>

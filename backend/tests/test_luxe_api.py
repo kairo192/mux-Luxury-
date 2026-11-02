@@ -2476,6 +2476,122 @@ flushOfflineMutationQueue(async () => true).then((res) => {
         self.assertIn("NETWORK_QUEUE_ALL_TESTS_PASSED", res.stdout)
 
 
+
+    # 61. Password Reset Immediately Revokes All Previously Issued User Sessions (Phase 5.F)
+    def test_61_password_reset_revokes_all_prior_user_sessions(self):
+        from app.security import reset_rate_limits
+        reset_rate_limits()
+
+        # 1. Log in as admin@musluxury.dz and confirm token works before password reset
+        pre_reset_headers = self.get_admin_headers("admin@musluxury.dz", "MusLuxury2026!")
+        r_before = self.client.get("/api/v1/admin/dashboard", headers=pre_reset_headers)
+        self.assertEqual(r_before.status_code, 200)
+
+        # 2. Rotate emergency code so we have a fresh single-use code, then reset password
+        r_rot = self.client.post("/api/v1/admin/auth/recovery/rotate-emergency-code", headers=pre_reset_headers)
+        self.assertEqual(r_rot.status_code, 200)
+        emerg_code = r_rot.json()["emergency_code"]
+
+        r_ver = self.client.post(
+            "/api/v1/admin/auth/recovery/verify",
+            json={
+                "phone": "0655534154",
+                "verification_code": emerg_code,
+                "new_password": "MusLuxury2026!ResetPass",
+            },
+        )
+        self.assertEqual(r_ver.status_code, 200, r_ver.text)
+        repl_code = r_ver.json()["replacement_emergency_code"]
+
+        # 3. Verify pre_reset_headers token is now IMMEDIATELY REJECTED with 401 Unauthorized
+        r_revoked = self.client.get("/api/v1/admin/dashboard", headers=pre_reset_headers)
+        self.assertEqual(r_revoked.status_code, 401, "Prior session token must be revoked after password reset")
+
+        # 4. Restore default password using replacement_emergency_code so subsequent tests use MusLuxury2026!
+        reset_rate_limits()
+        r_restore = self.client.post(
+            "/api/v1/admin/auth/recovery/verify",
+            json={
+                "phone": "0655534154",
+                "verification_code": repl_code,
+                "new_password": "MusLuxury2026!",
+            },
+        )
+        self.assertEqual(r_restore.status_code, 200, r_restore.text)
+
+    # 62. Readiness Probe (/api/v1/ready) & Administrative Audit Trail (/api/v1/admin/audit-logs)
+    def test_62_audit_logs_and_readiness_endpoints_verification(self):
+        headers = self.get_admin_headers()
+
+        r_ready = self.client.get("/api/v1/ready")
+        self.assertEqual(r_ready.status_code, 200)
+        rdata = r_ready.json()
+        self.assertTrue(rdata["ready"])
+        self.assertEqual(rdata["active_wilayas"], 69)
+        self.assertTrue(rdata["storage_writable"])
+
+        r_audit = self.client.get("/api/v1/admin/audit-logs?limit=25", headers=headers)
+        self.assertEqual(r_audit.status_code, 200)
+        adata = r_audit.json()
+        self.assertGreaterEqual(adata["count"], 1)
+        self.assertIsInstance(adata["items"][0]["details"], dict)
+
+    # 63. Measured API Response-Time Benchmarks & Pagination Boundary Verification (Phase 9)
+    def test_63_measured_api_performance_and_pagination_benchmarks(self):
+        import time as _time
+        headers = self.get_admin_headers()
+
+        benchmarks = [
+            ("/api/v1/health", None),
+            ("/api/v1/ready", None),
+            ("/api/v1/products?page=1&page_size=5", None),
+            ("/api/v1/delivery-zones/calculate?wilaya_code=09&delivery_method=home&subtotal_dzd=12500", None),
+            ("/api/v1/admin/dashboard", headers),
+        ]
+        for path, hdrs in benchmarks:
+            t0 = _time.perf_counter()
+            resp = self.client.get(path, headers=hdrs or {})
+            elapsed_ms = (_time.perf_counter() - t0) * 1000.0
+            self.assertEqual(resp.status_code, 200)
+            self.assertLess(elapsed_ms, 150.0, f"Endpoint {path} exceeded 150ms budget: {elapsed_ms:.2f}ms")
+
+        # Verify pagination slicing returns distinct pages
+        p1 = self.client.get("/api/v1/products?page=1&page_size=4").json()
+        p2 = self.client.get("/api/v1/products?page=2&page_size=4").json()
+        self.assertEqual(len(p1["items"]), 4)
+        self.assertGreaterEqual(len(p2["items"]), 1)
+        p1_ids = {x["id"] for x in p1["items"]}
+        p2_ids = {x["id"] for x in p2["items"]}
+        self.assertTrue(p1_ids.isdisjoint(p2_ids))
+
+    # 64. Master Prompt All 8 Documentation Deliverables & OpenAPI 3.0 Schema Verification (Phase 12)
+    def test_64_master_prompt_all_8_documentation_deliverables_and_openapi_verification(self):
+        import json as _json
+        from pathlib import Path
+        repo_root = Path(__file__).resolve().parents[2]
+
+        required_docs = [
+            "docs/PRODUCTION_ACCEPTANCE_REPORT.md",
+            "docs/ARCHITECTURE.md",
+            "docs/API_CONTRACT.md",
+            "docs/SECURITY.md",
+            "docs/DEPLOYMENT.md",
+            "docs/TESTING.md",
+            "docs/BACKUP_AND_RECOVERY.md",
+            "docs/PRODUCTION_AUDIT.md",
+            "docs/openapi.json",
+        ]
+        for rel in required_docs:
+            p = repo_root / rel
+            self.assertTrue(p.is_file(), f"Missing required Master Prompt deliverable: {rel}")
+            self.assertGreater(p.stat().st_size, 1200, f"Deliverable {rel} is too short ({p.stat().st_size} bytes)")
+
+        openapi_data = _json.loads((repo_root / "docs" / "openapi.json").read_text(encoding="utf-8"))
+        self.assertIn("/api/v1/orders", openapi_data["paths"])
+        self.assertIn("/api/v1/admin/audit-logs", openapi_data["paths"])
+        self.assertIn("/api/v1/ready", openapi_data["paths"])
+
+
 if __name__ == "__main__":
     unittest.main()
 

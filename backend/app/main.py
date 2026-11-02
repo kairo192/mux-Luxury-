@@ -1531,7 +1531,7 @@ def admin_update_store_settings(
 # SECTION 6: WHATSAPP CLOUD API PASSWORD RECOVERY & OFFLINE EMERGENCY RECOVERY
 # ============================================================================
 
-from .security import hash_password, REVOKED_TOKENS
+from .security import hash_password, REVOKED_TOKENS, revoke_all_user_sessions
 
 class RecoveryRequestInput(BaseModel):
     phone: str
@@ -1735,6 +1735,7 @@ def verify_admin_password_recovery(payload: RecoveryVerifyInput, request: Reques
             "UPDATE admin_users SET password_hash = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?",
             (new_hash, user["id"])
         )
+        revoke_all_user_sessions(int(user["id"]))
 
         # If an offline_emergency code was consumed, automatically provision a replacement single-use emergency code
         replacement_emergency_code = None
@@ -2981,4 +2982,63 @@ def admin_list_communications_outbox(
         "boutique_whatsapp_e164": "+213655534154",
         "boutique_whatsapp_local": "0655534154",
     }
+
+
+@app.get("/api/v1/ready")
+def api_readiness_check():
+    try:
+        with db_session() as conn:
+            cur = conn.cursor()
+            cur.execute("SELECT COUNT(*) AS cnt FROM delivery_zones WHERE is_active = 1")
+            w_cnt = int(cur.fetchone()["cnt"])
+            cur.execute("SELECT COUNT(*) AS cnt FROM products WHERE deleted_at IS NULL")
+            p_cnt = int(cur.fetchone()["cnt"])
+        storage_ok = os.path.isdir(UPLOAD_STORAGE_DIR) and os.access(UPLOAD_STORAGE_DIR, os.W_OK)
+        return {
+            "ready": w_cnt == 69 and storage_ok,
+            "status": "ready" if (w_cnt == 69 and storage_ok) else "degraded",
+            "database": "connected",
+            "storage_writable": storage_ok,
+            "active_wilayas": w_cnt,
+            "catalog_products": p_cnt,
+            "timestamp": int(time.time()),
+        }
+    except Exception:
+        raise HTTPException(status_code=503, detail="Service not ready")
+
+
+@app.get("/api/v1/admin/audit-logs")
+def admin_list_audit_logs(
+    limit: int = Query(40, ge=1, le=200),
+    action_filter: Optional[str] = Query(None, alias="action"),
+    admin: dict = Depends(require_permission("dashboard:read")),
+):
+    with db_session() as conn:
+        cur = conn.cursor()
+        if action_filter:
+            cur.execute(
+                """SELECT al.*, au.email AS admin_email, au.full_name AS admin_name
+                   FROM audit_logs al
+                   LEFT JOIN admin_users au ON au.id = al.admin_user_id
+                   WHERE al.action = ?
+                   ORDER BY al.id DESC LIMIT ?""",
+                (action_filter.strip(), limit),
+            )
+        else:
+            cur.execute(
+                """SELECT al.*, au.email AS admin_email, au.full_name AS admin_name
+                   FROM audit_logs al
+                   LEFT JOIN admin_users au ON au.id = al.admin_user_id
+                   ORDER BY al.id DESC LIMIT ?""",
+                (limit,),
+            )
+        items = []
+        for r in cur.fetchall():
+            d = dict(r)
+            try:
+                d["details"] = json.loads(d.pop("details_json") or "{}")
+            except Exception:
+                d["details"] = {}
+            items.append(d)
+        return {"items": items, "count": len(items)}
 

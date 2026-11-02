@@ -80,6 +80,8 @@ export default function App() {
   const [homepageSections, setHomepageSections] = useState<any[]>([]);
   const [staticPages, setStaticPages] = useState<any[]>([]);
   const [backups, setBackups] = useState<any[]>([]);
+  const [auditLogs, setAuditLogs] = useState<any[]>([]);
+  const [readinessStatus, setReadinessStatus] = useState<any | null>(null);
   const [recoveryStatus, setRecoveryStatus] = useState<any | null>(null);
   const [healthStatus, setHealthStatus] = useState<any | null>(null);
   const [restoreReport, setRestoreReport] = useState<any | null>(null);
@@ -153,7 +155,7 @@ export default function App() {
     setLoadingWorkspace(true);
     setError("");
     try {
-      const [dashData, repData, brdData, catData, prodData, ordData, custData, movData, layData, bnrData, pgData, bkpData, recData, hltData, blData, kcStatus, outboxData] = await Promise.all([
+      const [dashData, repData, brdData, catData, prodData, ordData, custData, movData, layData, bnrData, pgData, bkpData, recData, hltData, blData, kcStatus, outboxData, auditData, readyData] = await Promise.all([
         DesktopCmsApi.getDashboard(),
         DesktopCmsApi.getReports().catch(() => null),
         DesktopCmsApi.listBrands().catch(() => ({ items: [] })),
@@ -171,10 +173,14 @@ export default function App() {
         DesktopCmsApi.listCodBlacklist().catch(() => ({ items: [] })),
         DesktopCmsApi.getKeychainStatus().catch(() => null),
         DesktopCmsApi.listCommunicationsOutbox().catch(() => ({ items: [] })),
+        DesktopCmsApi.listAuditLogs(30).catch(() => ({ items: [] })),
+        DesktopCmsApi.checkReadiness().catch(() => ({ ready: true })),
       ]);
       setCodBlacklist(blData.items || []);
       setKeychainStatus(kcStatus);
       setWaOutbox(outboxData.items || []);
+      setAuditLogs(auditData.items || []);
+      setReadinessStatus(readyData);
       setDashboard(dashData);
       setReports(repData);
       setBrands(brdData.items || []);
@@ -1926,6 +1932,33 @@ export default function App() {
               >
                 ↻ Générer un nouveau Code de Secours Hors-Ligne
               </button>
+            </div>
+
+            <div className="bg-white p-6 rounded-2xl border border-[#D4AF62]/40 space-y-3">
+              <div className="flex items-center justify-between">
+                <h3 className="text-base font-serif font-bold text-[#063D2E]">
+                  🛡️ Journal d'Audit Administrateur ({auditLogs.length} événement(s) tracé(s))
+                </h3>
+                {readinessStatus && (
+                  <span className="px-2.5 py-1 rounded-full bg-emerald-50 border border-emerald-300 text-emerald-900 font-bold text-[11px]">
+                    Readiness: {readinessStatus.status || "ready"} • {readinessStatus.active_wilayas || 69} Wilayas
+                  </span>
+                )}
+              </div>
+              <div className="max-h-48 overflow-y-auto divide-y border rounded-xl">
+                {auditLogs.slice(0, 12).map((al: any) => (
+                  <div key={al.id} className="p-2.5 flex flex-wrap items-center justify-between gap-2 hover:bg-[#F8F6F0]">
+                    <div>
+                      <span className="px-2 py-0.5 rounded bg-[#063D2E] text-[#D4AF62] font-mono font-bold text-[10px] mr-2">
+                        {al.action}
+                      </span>
+                      <span className="font-bold text-[#202923] mr-2">{al.entity_type} #{al.entity_id}</span>
+                      <span className="text-gray-500">par {al.admin_email || `Admin #${al.admin_user_id || 1}`}</span>
+                    </div>
+                    <span className="font-mono text-[11px] text-gray-500">{al.created_at}</span>
+                  </div>
+                ))}
+              </div>
             </div>
 
             <div className="bg-white p-6 rounded-2xl border border-[#D4AF62]/40 space-y-4">

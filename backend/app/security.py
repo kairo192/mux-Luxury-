@@ -14,6 +14,7 @@ TOKEN_TTL_SECONDS = int(os.getenv("ACCESS_TOKEN_EXPIRE_MINUTES", "480")) * 60
 
 # Revoked token blacklist (for explicit logout)
 REVOKED_TOKENS: Set[str] = set()
+USER_SESSION_REVOKED_NS: Dict[int, int] = {}
 
 # Nonce cache with timestamps to prevent Replay Attacks (OWASP Anti-Replay)
 SEEN_NONCES: Dict[str, float] = {}
@@ -46,6 +47,7 @@ def create_access_token(user_id: int, email: str, role: str, permissions: list) 
         "role": role,
         "perms": permissions,
         "iat": int(time.time()),
+        "iat_ns": time.time_ns(),
         "exp": int(time.time()) + TOKEN_TTL_SECONDS,
         "jti": secrets.token_hex(16),
     }
@@ -64,9 +66,16 @@ def decode_access_token(token: str) -> dict:
         payload = json.loads(base64.urlsafe_b64decode(raw.encode("utf-8")).decode("utf-8"))
         if payload.get("exp", 0) < int(time.time()):
             raise ValueError("Token expired")
+        uid = int(payload.get("sub") or 0)
+        revoked_ns = USER_SESSION_REVOKED_NS.get(uid, 0)
+        if revoked_ns and int(payload.get("iat_ns") or 0) < revoked_ns:
+            raise ValueError("Token revoked by password reset")
         return payload
     except Exception:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid or expired authentication token")
+
+def revoke_all_user_sessions(user_id: int) -> None:
+    USER_SESSION_REVOKED_NS[int(user_id)] = time.time_ns()
 
 def revoke_token(token: str) -> None:
     if len(REVOKED_TOKENS) >= MAX_REVOKED_TOKENS:

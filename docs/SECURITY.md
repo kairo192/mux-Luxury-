@@ -1,41 +1,32 @@
-# SECURITY ARCHITECTURE & THREAT MODEL — MUS LUXURY (`LUXE`)
+# Mus Luxury (LUXE) — Application Security Architecture & Incident Response
 
----
+## 1. Defense-in-Depth Security Controls
+1. **Authentication & Session Revocation (`backend/app/security.py`)**:
+   - Passwords hashed with **PBKDF2-HMAC-SHA256 (`310,000` OWASP iterations)** and 128-bit random salt (`secrets.token_hex(16)`), verified via constant-time `hmac.compare_digest`.
+   - Access tokens carry `sub`, `role`, `perms`, `iat`, `iat_ns`, `exp`, and `jti`, signed with HMAC-SHA256.
+   - Explicit logout adds the token to `REVOKED_TOKENS`, and password recovery verification (`POST /api/v1/admin/auth/recovery/verify`) calls `revoke_all_user_sessions(user_id)` (`USER_SESSION_REVOKED_NS`), immediately invalidating all prior tokens issued for that account (`test_61`).
+2. **Role-Based Access Control (RBAC)**:
+   - Enforced server-side via `Depends(require_permission("..."))` across every `/api/v1/admin/*` route (`test_03`, `test_04`, `test_45`).
+3. **Cryptographic Request Signing & Anti-Replay (`Section 8`)**:
+   - Sensitive mutations verify `X-Luxe-Signature` (`HMAC-SHA256(method|path|timestamp|nonce|sha256(body))`), enforce a 300-second clock skew window on `X-Luxe-Timestamp`, and block replayed nonces via bounded `SEEN_NONCES` (`test_16`, `test_17`).
+4. **Windows Credential Manager (`wincred`) Desktop Token Storage**:
+   - The Tauri 2 Desktop CMS (`apps/desktop-cms/src-tauri/src/main.rs`) binds `luxe_cms_access_token` and `luxe_cms_hmac_secret` to the native OS Keychain (`service = "dz.musluxury.cms.wincred"`) via `keyring` (`windows-native`) and `tauri-plugin-store`. Zero tokens are ever stored in `window.localStorage` (`test_41`).
+5. **Input Validation, XSS, SQLi, & CSV Formula Injection Defenses**:
+   - All SQL queries use parameterized placeholders (`?` / `%s`).
+   - `GuestOrderCreate` rejects `<script>`, `<iframe>`, `<svg>`, `<img>`, `javascript:`, `onerror=`, and `< >` angle brackets (`422 Unprocessable Entity`, `test_42`).
+   - `GET /api/v1/admin/orders/export.csv` neutralizes Excel/DDE formula prefixes (`=`, `-`, `@`, `+`) with a leading single quote while preserving `+213...` phone numbers (`test_44`).
+   - `POST /api/v1/admin/upload` inspects magic bytes (`JPEG`, `PNG`, `WEBP`), enforces a 5 MB ceiling, blocks path traversal (`..`, `/`, `\`), and scans for embedded polyglot script tags (`<?php`, `<script`, `eval(`, `test_07`, `test_18`, `test_47`).
+6. **Client-Side Error Sanitization (`apps/desktop-cms/src/utils/clientNotifier.ts`)**:
+   - Strips all raw backend exceptions, SQLite/PostgreSQL errors, Python tracebacks, and `[object Object]` validation arrays, translating every error into polite French Modal Message Boxes (`test_51`, `test_52`).
 
-## 1. Authentication, Password Hashing & Session Security
-
-1. **Password Hashing (`backend/app/security.py`)**:
-   - Uses **PBKDF2-HMAC-SHA256** with **310,000 OWASP-recommended iterations** and a cryptographically random 128-bit salt per password.
-   - Verification uses constant-time `hmac.compare_digest` to prevent timing side-channel attacks.
-2. **One-Time First-Run Owner Provisioning (`POST /api/v1/admin/auth/initialize-owner`)**:
-   - On an uninitialized database, the first launch of the Desktop CMS requires setting the Owner's credentials, primary WhatsApp recovery phone, and secondary emergency phone.
-   - Immediately sets `system_initialized = 'true'` in `store_settings`. All subsequent calls to `/api/v1/admin/auth/initialize-owner` from any machine return **`403 Forbidden`** (verified by `test_15_one_time_owner_initialization_lockout`).
-3. **Session Expiration & Token Revocation (`POST /api/v1/admin/auth/logout`)**:
-   - Access tokens carry a signed `exp` timestamp and unique `jti`.
-   - Logging out adds the token to `REVOKED_TOKENS`, immediately rejecting any subsequent request using that token with `401 Unauthorized` (verified by `test_03`).
-4. **Role-Based Access Control (`RBAC`)**:
-   - Every `/api/v1/admin/*` endpoint enforces granular permission checks via `require_permission(...)` (`dashboard:read`, `products:write`, `categories:write`, `orders:write`, `content:write`, `settings:write`, `backups:write`).
-   - Verified in `test_04_rbac_permission_enforcement` where a `product_manager` is allowed to manage products but blocked (`403 Forbidden`) from triggering system backups.
-
----
-
-## 2. API & Transport Security Controls
-
-| Threat / Vulnerability | Implemented Defense | Verification Test |
-| :--- | :--- | :--- |
-| **Client-Side Price & Delivery Fee Tampering** | `POST /api/v1/orders` ignores `client_tampered_price` and `client_submitted_total_dzd`, querying authoritative variant prices and Wilaya `home` / `stop_desk` fees from the database inside a `BEGIN IMMEDIATE` transaction. | `test_06`, `test_22` |
-| **IDOR on Guest Order Tracking** | `GET /api/v1/orders/track` requires **both** `order_reference` and the matching `customer_phone`, and strips `internal_notes` and `idempotency_hash`. | `test_10` |
-| **Replay Attacks & Man-in-the-Middle Tampering** | High-security CMS actions (`POST /api/v1/admin/secure-action`) verify HMAC-SHA256 signatures (`X-Luxe-Signature`) over `METHOD\|PATH\|TIMESTAMP\|NONCE\|BODY_SHA256`, enforce a 300s clock-skew window (`X-Luxe-Timestamp`), and reject reused nonces (`X-Luxe-Nonce` in `SEEN_NONCES`). | `test_16`, `test_17` |
-| **SQL Injection (`SQLi`)** | 100% of SQL queries use parameterized `?` placeholders; malicious SQL payloads in search, category filters, and login fields are neutralized safely. | `test_19_sql_injection_resilience` |
-| **Malicious File Upload & Path Traversal** | `validate_uploaded_image` inspects binary magic bytes (`JPEG`, `PNG`, `WEBP`), enforces a 5 MB limit, rejects `..` / `/` / `\` path traversal characters, scans for embedded PHP/JS polyglot payloads (`<?php`, `<script`, `eval(`), and renames files to `img_<sha256>.<ext>`. | `test_07`, `test_18` |
-| **Brute-Force Login & Recovery Abuse** | Sliding-window IP rate limiter (`check_rate_limit`) restricts login (`5/min`), owner initialization (`3/5min`), recovery requests (`3/5min`), recovery verification (`5/5min`), and order creation (`15/min`), returning `429 Too Many Requests`. | `test_07` |
-| **Private Cost Data Exposure** | `serialize_product(..., include_private=False)` strips `purchase_cost_dzd` from all public storefront endpoints. | `test_02`, `test_27` |
-| **Silent Concurrent Overwrites** | `PUT /api/v1/admin/products/{id}` checks `expected_version` against the database `version` column, returning `409 Conflict` if another administrator updated the record first. | `test_11` |
-
----
-
-## 3. WhatsApp Password Recovery & Honest Fallback
-
-- **No Fake Delivery**: `POST /api/v1/admin/auth/recovery/request` checks for `WHATSAPP_CLOUD_API_TOKEN` and `WHATSAPP_PHONE_NUMBER_ID`. When absent, it returns `503 Service Unavailable` rather than pretending a WhatsApp message was sent.
-- **Single-Use Hashed OTPs**: Recovery codes are hashed with `SHA-256` before storage in `admin_recovery_codes`, expire after 5 minutes (`300s`), allow at most 3 verification attempts, and are marked `is_used = 1` immediately upon use (verified by `test_09`).
-- **Offline Emergency Fallback**: During First-Time Owner Setup, a high-entropy `offline_emergency` recovery code (`EMERGENCY-...`) hashed in `admin_recovery_codes` is issued for the owner's secondary emergency phone so the owner can always recover access even if Meta's WhatsApp API is unreachable.
+## 2. Operational Incident Response Runbook
+- **Scenario A — Suspected Administrator Credential or Token Compromise**:
+  1. Run the offline CLI emergency reset on the VPS:
+     `docker compose exec api python3 scripts/emergency_reset_owner.py --email admin@musluxury.dz --phone 0655534154`
+  2. Rotate `SECRET_KEY` in `.env` and restart `api` (`docker compose up -d api`) to invalidate all active tokens globally.
+  3. Inspect `/api/v1/admin/audit-logs` (Tab 8 in Desktop CMS) to review all actions performed during the window.
+- **Scenario B — Database Corruption or Accidental Bulk Modification**:
+  1. Trigger or select the latest verified `.sql.gz` archive in Tab 8 (`Sauvegardes & Sécurité`) and run **Tester la restauration isolée** (`POST /api/v1/admin/backups/{id}/verify-restore`).
+  2. Restore onto PostgreSQL via `./infrastructure/backups/restore_backup.sh /var/lib/luxe/backups/<archive>.sql.gz`.
+- **Scenario C — Abusive COD Non-Pickup / Repeat Return Fraud**:
+  1. Open Tab 5 (`5. Commandes & Factures`) in the Desktop CMS, inspect the automatic `cod_risk` badge next to the customer phone, and click **🚫 Bloquer Numéro (Anti-Retour)** (`POST /api/v1/admin/cod-risk/blacklist`). Future guest checkouts from that phone are blocked at `POST /api/v1/orders` with `HTTP 403`.
