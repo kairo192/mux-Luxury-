@@ -138,8 +138,12 @@ export default function App() {
   const [pageTitleFr, setPageTitleFr] = useState("Maison Mus Luxury — Ouled Yaïch");
   const [pageContentFr, setPageContentFr] = useState("Boutique officielle Mus Luxury à Ouled Yaïch (Blida 09). Livraison rapide 69 Wilayas avec paiement à la livraison.");
 
+  const [keychainReady, setKeychainReady] = useState(false);
+
   useEffect(() => {
-    restoreSessionFromOsKeychain().catch(() => null);
+    restoreSessionFromOsKeychain()
+      .catch(() => null)
+      .finally(() => setKeychainReady(true));
     DesktopCmsApi.getSetupStatus()
       .then((status) => {
         setRequiresOwnerSetup(Boolean(status.requires_owner_setup));
@@ -265,18 +269,18 @@ export default function App() {
   }, []);
 
   useEffect(() => {
-    if (user) {
+    if (user && keychainReady) {
       loadAllWorkspaceData();
     }
-  }, [user]);
+  }, [user, keychainReady]);
 
   useEffect(() => {
-    if (user) {
+    if (user && keychainReady) {
       DesktopCmsApi.listOrders(orderStatusFilter || undefined)
         .then((ordData) => setOrders(ordData.items || []))
         .catch(() => {});
     }
-  }, [orderStatusFilter]);
+  }, [orderStatusFilter, keychainReady]);
 
   async function handleFirstTimeSetup(e: React.FormEvent) {
     e.preventDefault();
@@ -302,6 +306,9 @@ export default function App() {
         emergency_phone: emergencyPhone.trim(),
       });
       setRequiresOwnerSetup(false);
+      if (res?.user) {
+        setUser(res.user);
+      }
       const okMsg = `Propriétaire configuré dans PostgreSQL. Code d'urgence : ${res.emergency_code_backup}. Cet écran est désormais verrouillé définitivement.`;
       setSuccessMsg(okMsg);
       notifyClientSuccess("Initialisation Propriétaire Verrouillée", okMsg, true);
@@ -447,9 +454,14 @@ export default function App() {
     try {
       await DesktopCmsApi.updateProduct(editingProduct.id, {
         name_fr: editingProduct.name_fr.trim(),
+        sku: editingProduct.sku?.trim() || undefined,
+        category_id: editingProduct.category_id ? Number(editingProduct.category_id) : undefined,
+        brand_id: editingProduct.brand_id ? Number(editingProduct.brand_id) : undefined,
+        main_image_url: editingProduct.main_image_url || undefined,
         selling_price_dzd: Number(editingProduct.selling_price_dzd),
         purchase_cost_dzd: Number(editingProduct.purchase_cost_dzd || 0),
         status: editingProduct.status,
+        dynamic_attributes: editingProduct.attributes || undefined,
         expected_version: Number(editingProduct.version || 1),
       });
       const okMsg = `Produit #${editingProduct.id} mis à jour avec contrôle de concurrence optimiste.`;

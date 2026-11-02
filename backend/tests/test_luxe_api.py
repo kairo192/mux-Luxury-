@@ -3047,6 +3047,24 @@ flushOfflineMutationQueue(async () => true).then((res) => {
         self.assertIn("npm run build", ci_yml)
 
 
+    # 76. Desktop CMS Startup Keychain Race Guard, Owner Setup Auto-Session & Docker Compose DB Env Audit
+    def test_76_desktop_cms_keychain_startup_race_guard_and_docker_compose_db_env_audit(self):
+        from pathlib import Path
+        repo_root = Path(__file__).resolve().parents[2]
+
+        # 1. Verify Desktop CMS App.tsx waits for restoreSessionFromOsKeychain (keychainReady) before firing loadAllWorkspaceData
+        cms_code = (repo_root / "apps" / "desktop-cms" / "src" / "App.tsx").read_text(encoding="utf-8")
+        self.assertIn("const [keychainReady, setKeychainReady] = useState(false);", cms_code)
+        self.assertIn("if (user && keychainReady)", cms_code)
+        self.assertIn("if (res?.user)", cms_code)
+        self.assertIn("dynamic_attributes: editingProduct.attributes || undefined", cms_code)
+
+        # 2. Verify docker-compose.yml passes LUXE_DB_ENGINE and DATABASE_URL defaults to api service
+        dc_txt = (repo_root / "docker-compose.yml").read_text(encoding="utf-8")
+        self.assertIn("LUXE_DB_ENGINE: ${LUXE_DB_ENGINE:-postgres}", dc_txt)
+        self.assertIn("DATABASE_URL: ${DATABASE_URL:-postgresql://", dc_txt)
+
+
 if __name__ == "__main__":
     unittest.main()
 
