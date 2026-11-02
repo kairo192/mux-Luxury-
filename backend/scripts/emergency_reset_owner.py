@@ -13,7 +13,7 @@ import time
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from app.database import db_session, init_db
-from app.security import hash_password
+from app.security import hash_password, revoke_all_user_sessions
 
 
 def reset_owner_credentials(email: str, new_password: str) -> dict:
@@ -42,6 +42,11 @@ def reset_owner_credentials(email: str, new_password: str) -> dict:
             """INSERT INTO admin_recovery_codes (admin_user_id, phone, code_hash, channel, max_attempts, expires_at)
                VALUES (?, ?, ?, 'offline_emergency', 3, ?)""",
             (user["id"], user["emergency_phone"] or user["phone"], code_hash, int(time.time()) + 86400 * 365),
+        )
+        revoke_all_user_sessions(int(user["id"]), conn)
+        cur.execute(
+            "INSERT INTO audit_logs (admin_user_id, action, entity_type, entity_id, details_json) VALUES (?, ?, ?, ?, ?)",
+            (user["id"], "emergency_cli_password_reset", "admin_user", str(user["id"]), "{\"channel\": \"cli\"}"),
         )
         return {
             "admin_id": user["id"],

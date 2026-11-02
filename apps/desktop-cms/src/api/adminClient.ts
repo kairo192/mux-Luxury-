@@ -172,17 +172,22 @@ async function adminFetch(path: string, options: RequestInit = {}, timeoutMs = d
 export const DesktopCmsApi = {
   // Authentication & First-Time Setup
   getSetupStatus: () => adminFetch("/admin/auth/setup-status"),
-  initializeOwner: (payload: {
+  initializeOwner: async (payload: {
     full_name: string;
     email: string;
     password: string;
     whatsapp_phone: string;
     emergency_phone: string;
-  }) =>
-    adminFetch("/admin/auth/initialize-owner", {
+  }) => {
+    const data = await adminFetch("/admin/auth/initialize-owner", {
       method: "POST",
       body: JSON.stringify(payload),
-    }),
+    });
+    if (data?.access_token) {
+      setAccessToken(data.access_token);
+    }
+    return data;
+  },
   login: async (email: string, password: string) => {
     const data = await adminFetch("/admin/auth/login", {
       method: "POST",
@@ -330,8 +335,13 @@ export const DesktopCmsApi = {
   listBanners: () => adminFetch("/admin/banners"),
   createBanner: (payload: unknown) =>
     adminFetch("/admin/banners", { method: "POST", body: JSON.stringify(payload) }),
+  deleteBanner: (bannerId: number) =>
+    adminFetch(`/admin/banners/${bannerId}`, { method: "DELETE" }),
+  listCoupons: () => adminFetch("/admin/coupons"),
   createCoupon: (payload: unknown) =>
     adminFetch("/admin/coupons", { method: "POST", body: JSON.stringify(payload) }),
+  deactivateCoupon: (couponId: number) =>
+    adminFetch(`/admin/coupons/${couponId}`, { method: "DELETE" }),
   updateStoreSettings: (settings: Record<string, unknown>) =>
     adminFetch("/admin/settings", {
       method: "PUT",

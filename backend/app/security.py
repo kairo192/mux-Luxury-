@@ -74,8 +74,18 @@ def decode_access_token(token: str) -> dict:
     except Exception:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid or expired authentication token")
 
-def revoke_all_user_sessions(user_id: int) -> None:
-    USER_SESSION_REVOKED_NS[int(user_id)] = time.time_ns()
+def revoke_all_user_sessions(user_id: int, conn=None) -> int:
+    now_ns = time.time_ns()
+    uid = int(user_id)
+    USER_SESSION_REVOKED_NS[uid] = now_ns
+    if conn is not None:
+        conn.cursor().execute(
+            """INSERT INTO store_settings (setting_key, setting_value, updated_at)
+               VALUES (?, ?, CURRENT_TIMESTAMP)
+               ON CONFLICT(setting_key) DO UPDATE SET setting_value = excluded.setting_value, updated_at = CURRENT_TIMESTAMP""",
+            (f"session_revoked_ns:{uid}", str(now_ns)),
+        )
+    return now_ns
 
 def revoke_token(token: str) -> None:
     if len(REVOKED_TOKENS) >= MAX_REVOKED_TOKENS:

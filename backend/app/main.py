@@ -99,6 +99,13 @@ def get_current_admin(authorization: Optional[str] = Header(None)) -> dict:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Missing or invalid Bearer token")
     token = authorization.split(" ", 1)[1].strip()
     payload = decode_access_token(token)
+    uid = int(payload.get("sub") or 0)
+    with db_session() as conn:
+        cur = conn.cursor()
+        cur.execute("SELECT setting_value FROM store_settings WHERE setting_key = ?", (f"session_revoked_ns:{uid}",))
+        rev_row = cur.fetchone()
+        if rev_row and int(payload.get("iat_ns") or 0) < int(rev_row["setting_value"] or 0):
+            raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid or expired authentication token")
     payload["raw_token"] = token
     return payload
 
@@ -354,7 +361,7 @@ _INTERNAL_SETTING_KEYS = {"system_initialized"}
 
 def _is_protected_setting_key(key: str) -> bool:
     k = (key or "").strip().lower()
-    return k in _INTERNAL_SETTING_KEYS or k.startswith("system_") or k.startswith("internal_")
+    return k in _INTERNAL_SETTING_KEYS or k.startswith("system_") or k.startswith("internal_") or k.startswith("session_revoked_ns:")
 
 def _ensure_safe_url_or_text(val: str, field_name: str = "value") -> str:
     s = str(val or "").strip()
@@ -1527,6 +1534,21 @@ def admin_create_banner(
         cur.execute("SELECT * FROM banners WHERE id = ?", (bid,))
         return dict(cur.fetchone())
 
+@app.delete("/api/v1/admin/banners/{banner_id}")
+def admin_delete_banner(
+    banner_id: int,
+    admin: dict = Depends(require_permission("content:write"))
+):
+    with db_session(commit=True) as conn:
+        cur = conn.cursor()
+        cur.execute("SELECT * FROM banners WHERE id = ?", (banner_id,))
+        b = cur.fetchone()
+        if not b:
+            raise HTTPException(status_code=404, detail="Banner not found")
+        cur.execute("DELETE FROM banners WHERE id = ?", (banner_id,))
+        log_audit(conn, int(admin["sub"]), "delete_banner", "banner", str(banner_id), {"title_fr": b["title_fr"]})
+        return {"deleted": True, "banner_id": banner_id}
+
 @app.put("/api/v1/admin/homepage-sections/{section_key}")
 def admin_update_homepage_section(
     section_key: str,
@@ -1795,7 +1817,7 @@ def verify_admin_password_recovery(payload: RecoveryVerifyInput, request: Reques
             "UPDATE admin_users SET password_hash = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?",
             (new_hash, user["id"])
         )
-        revoke_all_user_sessions(int(user["id"]))
+        revoke_all_user_sessions(int(user["id"]), conn)
 
         # If an offline_emergency code was consumed, automatically provision a replacement single-use emergency code
         replacement_emergency_code = None
@@ -2034,6 +2056,28 @@ def create_coupon(
         log_audit(conn, int(admin["sub"]), "create_coupon", "coupon", str(cid), {"code": payload.code.upper()})
         cur.execute("SELECT * FROM coupons WHERE id = ?", (cid,))
         return dict(cur.fetchone())
+
+@app.get("/api/v1/admin/coupons")
+def admin_list_coupons(admin: dict = Depends(require_permission("content:write"))):
+    with db_session() as conn:
+        cur = conn.cursor()
+        cur.execute("SELECT * FROM coupons ORDER BY id DESC")
+        return {"items": [dict(r) for r in cur.fetchall()]}
+
+@app.delete("/api/v1/admin/coupons/{coupon_id}")
+def admin_deactivate_coupon(
+    coupon_id: int,
+    admin: dict = Depends(require_permission("content:write"))
+):
+    with db_session(commit=True) as conn:
+        cur = conn.cursor()
+        cur.execute("SELECT * FROM coupons WHERE id = ?", (coupon_id,))
+        cpn = cur.fetchone()
+        if not cpn:
+            raise HTTPException(status_code=404, detail="Coupon not found")
+        cur.execute("UPDATE coupons SET is_active = 0 WHERE id = ?", (coupon_id,))
+        log_audit(conn, int(admin["sub"]), "deactivate_coupon", "coupon", str(coupon_id), {"code": cpn["code"]})
+        return {"deactivated": True, "coupon_id": coupon_id, "code": cpn["code"]}
 
 
 @app.get("/api/v1/admin/sync/delta")

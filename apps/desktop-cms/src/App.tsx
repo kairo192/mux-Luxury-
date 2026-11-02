@@ -77,6 +77,7 @@ export default function App() {
   const [customers, setCustomers] = useState<any[]>([]);
   const [movements, setMovements] = useState<any[]>([]);
   const [banners, setBanners] = useState<any[]>([]);
+  const [coupons, setCoupons] = useState<any[]>([]);
   const [homepageSections, setHomepageSections] = useState<any[]>([]);
   const [staticPages, setStaticPages] = useState<any[]>([]);
   const [backups, setBackups] = useState<any[]>([]);
@@ -155,7 +156,7 @@ export default function App() {
     setLoadingWorkspace(true);
     setError("");
     try {
-      const [dashData, repData, brdData, catData, prodData, ordData, custData, movData, layData, bnrData, pgData, bkpData, recData, hltData, blData, kcStatus, outboxData, auditData, readyData] = await Promise.all([
+      const [dashData, repData, brdData, catData, prodData, ordData, custData, movData, layData, bnrData, pgData, bkpData, recData, hltData, blData, kcStatus, outboxData, auditData, readyData, cpnData] = await Promise.all([
         DesktopCmsApi.getDashboard(),
         DesktopCmsApi.getReports().catch(() => null),
         DesktopCmsApi.listBrands().catch(() => ({ items: [] })),
@@ -175,12 +176,14 @@ export default function App() {
         DesktopCmsApi.listCommunicationsOutbox().catch(() => ({ items: [] })),
         DesktopCmsApi.listAuditLogs(30).catch(() => ({ items: [] })),
         DesktopCmsApi.checkReadiness().catch(() => ({ ready: true })),
+        DesktopCmsApi.listCoupons().catch(() => ({ items: [] })),
       ]);
       setCodBlacklist(blData.items || []);
       setKeychainStatus(kcStatus);
       setWaOutbox(outboxData.items || []);
       setAuditLogs(auditData.items || []);
       setReadinessStatus(readyData);
+      setCoupons(cpnData.items || []);
       setDashboard(dashData);
       setReports(repData);
       setBrands(brdData.items || []);
@@ -653,8 +656,37 @@ export default function App() {
       setSuccessMsg(okMsg);
       notifyClientSuccess("Code promotionnel activé", okMsg);
       setCouponCode("");
+      await loadAllWorkspaceData();
     } catch (err: any) {
       const tr = notifyClientError(err, "Création du code promo refusée");
+      setError(tr.message);
+    }
+  }
+
+  async function handleDeactivateCoupon(couponId: number, code: string) {
+    setError("");
+    try {
+      await DesktopCmsApi.deactivateCoupon(couponId);
+      const okMsg = `Code promo "${code}" désactivé avec succès.`;
+      setSuccessMsg(okMsg);
+      notifyClientSuccess("Code promo désactivé", okMsg);
+      await loadAllWorkspaceData();
+    } catch (err: any) {
+      const tr = notifyClientError(err, "Désactivation du code promo impossible");
+      setError(tr.message);
+    }
+  }
+
+  async function handleDeleteBanner(bannerId: number) {
+    setError("");
+    try {
+      await DesktopCmsApi.deleteBanner(bannerId);
+      const okMsg = `Bannière #${bannerId} supprimée.`;
+      setSuccessMsg(okMsg);
+      notifyClientSuccess("Bannière supprimée", okMsg);
+      await loadAllWorkspaceData();
+    } catch (err: any) {
+      const tr = notifyClientError(err, "Suppression de la bannière impossible");
       setError(tr.message);
     }
   }
@@ -1863,6 +1895,25 @@ export default function App() {
                 <button type="submit" className="px-5 py-2 rounded-xl bg-[#063D2E] text-[#D4AF62] font-bold">
                   Activer le Code Promo
                 </button>
+                {coupons.length > 0 && (
+                  <div className="pt-3 border-t space-y-1.5">
+                    <p className="font-bold text-[#063D2E]">Codes Promo Enregistrés ({coupons.length})</p>
+                    {coupons.slice(0, 6).map((cpn: any) => (
+                      <div key={cpn.id} className="flex items-center justify-between bg-[#F8F6F0] px-3 py-1.5 rounded-lg border">
+                        <span>
+                          <strong className="font-mono text-[#063D2E]">{cpn.code}</strong> ({cpn.discount_value}{cpn.discount_type === "percentage" ? "%" : " DA"}) • Utilisations: {cpn.usage_count}{cpn.usage_limit ? `/${cpn.usage_limit}` : ""}
+                        </span>
+                        {cpn.is_active ? (
+                          <button type="button" onClick={() => handleDeactivateCoupon(cpn.id, cpn.code)} className="px-2 py-0.5 rounded bg-red-50 text-red-700 font-bold">
+                            Désactiver
+                          </button>
+                        ) : (
+                          <span className="text-gray-400 font-bold">Inactif</span>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                )}
               </form>
 
               <form onSubmit={handleSaveStaticPage} className="bg-white p-6 rounded-2xl border border-[#D4AF62]/40 space-y-3">

@@ -1174,6 +1174,52 @@
         }
       }
     },
+    "/api/v1/admin/banners/{banner_id}": {
+      "delete": {
+        "summary": "Admin Delete Banner",
+        "operationId": "admin_delete_banner_api_v1_admin_banners__banner_id__delete",
+        "parameters": [
+          {
+            "required": true,
+            "schema": {
+              "title": "Banner Id",
+              "type": "integer"
+            },
+            "name": "banner_id",
+            "in": "path"
+          },
+          {
+            "required": false,
+            "schema": {
+              "title": "Authorization",
+              "type": "string"
+            },
+            "name": "authorization",
+            "in": "header"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/admin/homepage-sections/{section_key}": {
       "put": {
         "summary": "Admin Update Homepage Section",
@@ -1626,6 +1672,41 @@
       }
     },
     "/api/v1/admin/coupons": {
+      "get": {
+        "summary": "Admin List Coupons",
+        "operationId": "admin_list_coupons_api_v1_admin_coupons_get",
+        "parameters": [
+          {
+            "required": false,
+            "schema": {
+              "title": "Authorization",
+              "type": "string"
+            },
+            "name": "authorization",
+            "in": "header"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
       "post": {
         "summary": "Create Coupon",
         "operationId": "create_coupon_api_v1_admin_coupons_post",
@@ -1652,6 +1733,52 @@
         },
         "responses": {
           "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/admin/coupons/{coupon_id}": {
+      "delete": {
+        "summary": "Admin Deactivate Coupon",
+        "operationId": "admin_deactivate_coupon_api_v1_admin_coupons__coupon_id__delete",
+        "parameters": [
+          {
+            "required": true,
+            "schema": {
+              "title": "Coupon Id",
+              "type": "integer"
+            },
+            "name": "coupon_id",
+            "in": "path"
+          },
+          {
+            "required": false,
+            "schema": {
+              "title": "Authorization",
+              "type": "string"
+            },
+            "name": "authorization",
+            "in": "header"
+          }
+        ],
+        "responses": {
+          "200": {
             "description": "Successful Response",
             "content": {
               "application/json": {

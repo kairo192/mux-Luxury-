@@ -2930,6 +2930,98 @@ flushOfflineMutationQueue(async () => true).then((res) => {
         self.assertIn("setCommune(e.target.value)", sf_code)
 
 
+    # 73. Cross-Worker & CLI Persistent Database Session Revocation Verification
+    def test_73_cross_worker_and_cli_persistent_db_session_revocation(self):
+        from app.security import USER_SESSION_REVOKED_NS, reset_rate_limits
+        from scripts.emergency_reset_owner import reset_owner_credentials
+
+        reset_rate_limits()
+        pre_cli_headers = self.get_admin_headers("admin@musluxury.dz", "MusLuxury2026!")
+        self.assertEqual(self.client.get("/api/v1/admin/dashboard", headers=pre_cli_headers).status_code, 200)
+
+        # Execute CLI password reset and then clear in-memory USER_SESSION_REVOKED_NS to simulate another Uvicorn worker
+        reset_owner_credentials("admin@musluxury.dz", "MusLuxury2026!")
+        USER_SESSION_REVOKED_NS.clear()
+
+        # Even with in-memory dict cleared on Worker 2, DB-persisted session_revoked_ns:{uid} must reject old token with 401
+        r_after = self.client.get("/api/v1/admin/dashboard", headers=pre_cli_headers)
+        self.assertEqual(r_after.status_code, 401, "Old token must be rejected across all workers via DB session_revoked_ns")
+
+        # Fresh login after CLI reset must succeed and show emergency_cli_password_reset in audit logs
+        fresh_headers = self.get_admin_headers("admin@musluxury.dz", "MusLuxury2026!")
+        r_audit = self.client.get("/api/v1/admin/audit-logs?action=emergency_cli_password_reset", headers=fresh_headers)
+        self.assertEqual(r_audit.status_code, 200)
+        self.assertGreaterEqual(r_audit.json()["count"], 1)
+
+    # 74. Admin Coupon & Banner Full Lifecycle (List, Deactivate, Delete) & Backup Shell Script Execution
+    def test_74_admin_coupon_and_banner_full_lifecycle_list_deactivate_and_delete(self):
+        import subprocess
+        import tempfile
+        from pathlib import Path
+
+        headers = self.get_admin_headers()
+
+        # 1. Create, list, and deactivate a coupon
+        r_cpn = self.client.post(
+            "/api/v1/admin/coupons",
+            json={
+                "code": "HIVER2026",
+                "discount_type": "percentage",
+                "discount_value": 15,
+                "min_order_dzd": 4000,
+                "usage_limit": 10,
+            },
+            headers=headers,
+        )
+        self.assertEqual(r_cpn.status_code, 201, r_cpn.text)
+        cpn_id = r_cpn.json()["id"]
+
+        r_list_cpn = self.client.get("/api/v1/admin/coupons", headers=headers)
+        self.assertEqual(r_list_cpn.status_code, 200)
+        self.assertTrue(any(c["id"] == cpn_id for c in r_list_cpn.json()["items"]))
+
+        r_deact = self.client.delete(f"/api/v1/admin/coupons/{cpn_id}", headers=headers)
+        self.assertEqual(r_deact.status_code, 200)
+
+        # Deactivated coupon must be rejected on public validation
+        r_val = self.client.post("/api/v1/coupons/validate", json={"code": "HIVER2026", "subtotal_dzd": 10000})
+        self.assertEqual(r_val.status_code, 404)
+
+        # 2. Create and delete a promotional banner
+        r_bnr = self.client.post(
+            "/api/v1/admin/banners",
+            json={
+                "position": "promo_grid",
+                "title_fr": "Bannière Éphémère Test",
+                "cta_link": "/categories/sacs",
+                "image_url": "/assets/hero_banner_mus.jpg",
+            },
+            headers=headers,
+        )
+        self.assertEqual(r_bnr.status_code, 201, r_bnr.text)
+        bnr_id = r_bnr.json()["id"]
+
+        r_del_bnr = self.client.delete(f"/api/v1/admin/banners/{bnr_id}", headers=headers)
+        self.assertEqual(r_del_bnr.status_code, 200)
+        banners_after = self.client.get("/api/v1/admin/banners", headers=headers).json()["items"]
+        self.assertFalse(any(b["id"] == bnr_id for b in banners_after))
+
+        # 3. Execute backup_postgres_and_media.sh in isolated temp directory and verify SHA-256 checksums
+        repo_root = Path(__file__).resolve().parents[2]
+        bkp_script = repo_root / "infrastructure" / "backups" / "backup_postgres_and_media.sh"
+        with tempfile.TemporaryDirectory() as tmpdir:
+            env = os.environ.copy()
+            env["BACKUP_DIR"] = tmpdir
+            env["UPLOAD_DIR"] = str(repo_root / "backend" / "uploads")
+            env.pop("DATABASE_URL", None)
+            res = subprocess.run(["bash", str(bkp_script)], cwd=str(repo_root), env=env, capture_output=True, text=True)
+            self.assertEqual(res.returncode, 0, res.stderr)
+            sha_files = list(Path(tmpdir).glob("*.sha256"))
+            self.assertEqual(len(sha_files), 1)
+            chk = subprocess.run(["sha256sum", "-c", str(sha_files[0])], cwd=tmpdir, capture_output=True, text=True)
+            self.assertEqual(chk.returncode, 0, chk.stderr)
+
+
 if __name__ == "__main__":
     unittest.main()
 
