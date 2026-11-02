@@ -21,6 +21,7 @@ from .database import db_session
 from .seed import SUPPORTED_ATTRIBUTE_TYPES, seed_initial_data
 from .security import (
     check_rate_limit,
+    get_real_client_ip,
     create_access_token,
     decode_access_token,
     revoke_token,
@@ -532,7 +533,7 @@ def create_guest_order(
     request: Request,
     idempotency_key: Optional[str] = Header(None, alias="Idempotency-Key")
 ):
-    client_ip = request.client.host if request.client else "127.0.0.1"
+    client_ip = get_real_client_ip(request)
     check_rate_limit(f"order:{client_ip}", max_requests=15, window_seconds=60)
 
     # Anti-Retour COD: Block orders from phones on the active COD Blacklist
@@ -565,7 +566,8 @@ def create_guest_order(
 
     with db_session(commit=True) as conn:
         # Start immediate transaction to lock inventory rows safely
-        conn.execute("BEGIN IMMEDIATE")
+        if not conn.in_transaction:
+            conn.execute("BEGIN IMMEDIATE")
         cur = conn.cursor()
 
         # Check duplicate order submission
@@ -744,7 +746,7 @@ def create_guest_order(
 
 @app.post("/api/v1/admin/auth/login")
 def admin_login(payload: LoginRequest, request: Request):
-    client_ip = request.client.host if request.client else "127.0.0.1"
+    client_ip = get_real_client_ip(request)
     check_rate_limit(f"login:{client_ip}", max_requests=5, window_seconds=60)
 
     with db_session(commit=True) as conn:
@@ -1123,7 +1125,8 @@ def update_order_status(
     admin: dict = Depends(require_permission("orders:write"))
 ):
     with db_session(commit=True) as conn:
-        conn.execute("BEGIN IMMEDIATE")
+        if not conn.in_transaction:
+            conn.execute("BEGIN IMMEDIATE")
         cur = conn.cursor()
         cur.execute("SELECT * FROM orders WHERE id = ?", (order_id,))
         ord_row = cur.fetchone()
@@ -1173,6 +1176,21 @@ def update_order_status(
 
 # --- SECURE UPLOAD, REPORTS & BACKUPS ---
 
+def _resolve_writable_dir(env_key: str, local_subdir: str) -> str:
+    local_default = os.path.join(os.path.dirname(os.path.dirname(__file__)), local_subdir)
+    candidate = os.getenv(env_key, local_default)
+    try:
+        os.makedirs(candidate, exist_ok=True)
+        if os.access(candidate, os.W_OK):
+            return candidate
+    except OSError:
+        pass
+    os.makedirs(local_default, exist_ok=True)
+    return local_default
+
+UPLOAD_STORAGE_DIR = _resolve_writable_dir("UPLOAD_DIR", "uploads")
+BACKUP_STORAGE_DIR = _resolve_writable_dir("BACKUP_DIR", "backups")
+
 @app.post("/api/v1/admin/upload", status_code=201)
 async def upload_product_image(
     file: UploadFile = File(...),
@@ -1183,7 +1201,30 @@ async def upload_product_image(
     digest = hashlib.sha256(data).hexdigest()[:16]
     ext = {"image/jpeg": ".jpg", "image/png": ".png", "image/webp": ".webp"}[file.content_type]
     safe_name = f"img_{digest}{ext}"
+    dest_path = os.path.join(UPLOAD_STORAGE_DIR, safe_name)
+    with open(dest_path, "wb") as uf:
+        uf.write(data)
     return {"filename": safe_name, "url": f"/uploads/{safe_name}", "size_bytes": len(data)}
+
+@app.get("/uploads/{filename}")
+def serve_uploaded_image(filename: str):
+    if not re.match(r"^img_[a-f0-9]{16}\.(jpg|png|webp)$", filename):
+        raise HTTPException(status_code=400, detail="Invalid media filename")
+    fpath = os.path.join(UPLOAD_STORAGE_DIR, filename)
+    if not os.path.isfile(fpath):
+        raise HTTPException(status_code=404, detail="Uploaded media file not found")
+    ext = os.path.splitext(filename)[1].lower()
+    mime = {".jpg": "image/jpeg", ".png": "image/png", ".webp": "image/webp"}.get(ext, "application/octet-stream")
+    with open(fpath, "rb") as f:
+        raw = f.read()
+    return Response(
+        content=raw,
+        media_type=mime,
+        headers={
+            "Cache-Control": "public, max-age=2592000, immutable",
+            "X-Content-Type-Options": "nosniff",
+        },
+    )
 
 @app.get("/api/v1/admin/backups")
 def list_backups(admin: dict = Depends(require_permission("backups:write"))):
@@ -1191,9 +1232,6 @@ def list_backups(admin: dict = Depends(require_permission("backups:write"))):
         cur = conn.cursor()
         cur.execute("SELECT * FROM backup_records ORDER BY id DESC")
         return {"items": [dict(r) for r in cur.fetchall()]}
-
-BACKUP_STORAGE_DIR = os.path.join(os.path.dirname(os.path.dirname(__file__)), "backups")
-os.makedirs(BACKUP_STORAGE_DIR, exist_ok=True)
 
 @app.post("/api/v1/admin/backups", status_code=201)
 def trigger_manual_backup(admin: dict = Depends(require_permission("backups:write"))):
@@ -1511,7 +1549,7 @@ def request_admin_password_recovery(payload: RecoveryRequestInput, request: Requ
     Supports both international (+213...) and local Algerian (05/06/07...) phone formats,
     matching either primary `phone` or `emergency_phone`.
     """
-    client_ip = request.client.host if request.client else "127.0.0.1"
+    client_ip = get_real_client_ip(request)
     check_rate_limit(f"recovery_req:{client_ip}", max_requests=3, window_seconds=300)
 
     cfg = get_whatsapp_config()
@@ -1590,7 +1628,7 @@ def request_admin_password_recovery(payload: RecoveryRequestInput, request: Requ
 
 @app.post("/api/v1/admin/auth/recovery/verify")
 def verify_admin_password_recovery(payload: RecoveryVerifyInput, request: Request):
-    client_ip = request.client.host if request.client else "127.0.0.1"
+    client_ip = get_real_client_ip(request)
     check_rate_limit(f"recovery_verify:{client_ip}", max_requests=5, window_seconds=300)
 
     e164_phone, local_phone, _ = normalize_algerian_phone(payload.phone)
@@ -1741,7 +1779,7 @@ def track_guest_order(request: Request, reference: str = Query(...), phone: str 
     Public guest order tracking requiring BOTH order_reference and matching customer phone
     to prevent IDOR enumeration of other customers' orders.
     """
-    client_ip = request.client.host if request.client else "127.0.0.1"
+    client_ip = get_real_client_ip(request)
     check_rate_limit(f"track_order:{client_ip}", max_requests=30, window_seconds=60)
     from .whatsapp import normalize_algerian_phone as _norm_phone
     e164_p, local_p, _ = _norm_phone(phone)
@@ -1956,7 +1994,7 @@ def initialize_primary_owner(payload: OwnerInitializeInput, request: Request):
     Even if the CMS application starts on another PC, it detects system_initialized = true
     and goes straight to the normal Login & Forgot Password screen.
     """
-    client_ip = request.client.host if request.client else "127.0.0.1"
+    client_ip = get_real_client_ip(request)
     check_rate_limit(f"init_owner:{client_ip}", max_requests=3, window_seconds=300)
 
     with db_session(commit=True) as conn:
@@ -2170,7 +2208,8 @@ def admin_adjust_variant_stock(
     admin: dict = Depends(require_permission("products:write"))
 ):
     with db_session(commit=True) as conn:
-        conn.execute("BEGIN IMMEDIATE")
+        if not conn.in_transaction:
+            conn.execute("BEGIN IMMEDIATE")
         cur = conn.cursor()
         cur.execute("SELECT * FROM product_variants WHERE id = ?", (variant_id,))
         v = cur.fetchone()

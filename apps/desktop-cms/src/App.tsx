@@ -149,10 +149,13 @@ export default function App() {
       setMovements(movData.items || []);
       setHomepageSections(layData.homepage_sections || []);
       if (layData.settings) {
-        if (layData.settings.contact_phone) setStorePhoneInput(String(layData.settings.contact_phone));
-        if (layData.settings.whatsapp_phone) setStoreWhatsappInput(String(layData.settings.whatsapp_phone));
-        if (layData.settings.store_location) setStoreLocationInput(String(layData.settings.store_location));
-        if (layData.settings.free_shipping_threshold_dzd !== undefined) setFreeThresholdInput(String(layData.settings.free_shipping_threshold_dzd));
+        const s = layData.settings;
+        if (s.store_phone || s.contact_phone) setStorePhoneInput(String(s.store_phone || s.contact_phone));
+        if (s.whatsapp_contact_number || s.whatsapp_phone) setStoreWhatsappInput(String(s.whatsapp_contact_number || s.whatsapp_phone));
+        if (s.store_location) setStoreLocationInput(String(s.store_location));
+        if (s.free_delivery_threshold_dzd !== undefined || s.free_shipping_threshold_dzd !== undefined) {
+          setFreeThresholdInput(String(s.free_delivery_threshold_dzd ?? s.free_shipping_threshold_dzd));
+        }
       }
       setBanners(bnrData.items || []);
       const loadedPages = pgData.items || [];
@@ -1443,7 +1446,15 @@ export default function App() {
                 <div className="grid grid-cols-2 gap-3">
                   <div>
                     <label className="block font-bold mb-1">Slug de la page</label>
-                    <select value={pageSlug} onChange={(e) => setPageSlug(e.target.value)} className="w-full px-3 py-2 border rounded-xl bg-white font-mono">
+                    <select value={pageSlug} onChange={(e) => {
+                      const nextSlug = e.target.value;
+                      setPageSlug(nextSlug);
+                      const foundPg = staticPages.find((p: any) => p.slug === nextSlug);
+                      if (foundPg) {
+                        setPageTitleFr(foundPg.title_fr || "");
+                        setPageContentFr(foundPg.content_fr || "");
+                      }
+                    }} className="w-full px-3 py-2 border rounded-xl bg-white font-mono">
                       <option value="about">about (À propos)</option>
                       <option value="faq">faq (Questions fréquentes)</option>
                       <option value="returns">returns (Livraison &amp; Retours)</option>

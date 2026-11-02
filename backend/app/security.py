@@ -69,6 +69,8 @@ def decode_access_token(token: str) -> dict:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid or expired authentication token")
 
 def revoke_token(token: str) -> None:
+    if len(REVOKED_TOKENS) >= MAX_REVOKED_TOKENS:
+        REVOKED_TOKENS.clear()
     REVOKED_TOKENS.add(token)
 
 # ============================================================================
@@ -128,6 +130,9 @@ def verify_signed_request(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail=f"Replay Attack Detected: Nonce '{nonce}' has already been processed"
         )
+    if len(SEEN_NONCES) >= MAX_SEEN_NONCES:
+        oldest_k = min(SEEN_NONCES, key=SEEN_NONCES.get)
+        SEEN_NONCES.pop(oldest_k, None)
     SEEN_NONCES[nonce] = now
 
     body_hash = hashlib.sha256(body_bytes).hexdigest()
@@ -142,6 +147,9 @@ def verify_signed_request(
 
 def check_rate_limit(key: str, max_requests: int, window_seconds: int = 60) -> None:
     now = time.time()
+    if key not in RATE_LIMIT_BUCKETS and len(RATE_LIMIT_BUCKETS) >= MAX_RATE_LIMIT_KEYS:
+        stale_k = next(iter(RATE_LIMIT_BUCKETS))
+        RATE_LIMIT_BUCKETS.pop(stale_k, None)
     bucket = RATE_LIMIT_BUCKETS.setdefault(key, [])
     bucket[:] = [ts for ts in bucket if now - ts < window_seconds]
     if len(bucket) >= max_requests:
@@ -187,3 +195,39 @@ def validate_uploaded_image(filename: str, content_type: str, data: bytes, max_b
     dangerous_signatures = [b"<?php", b"<script", b"eval(", b"base64_decode(", b"system(", b"passthru("]
     if any(dsig in lower_snippet for dsig in dangerous_signatures):
         raise HTTPException(status_code=400, detail="Malicious script signature detected inside image payload")
+
+
+MAX_RATE_LIMIT_KEYS = 10000
+MAX_SEEN_NONCES = 20000
+MAX_REVOKED_TOKENS = 10000
+
+def _is_trusted_proxy_peer(host: str) -> bool:
+    if not host:
+        return False
+    h = host.strip().lower()
+    if h in ("127.0.0.1", "::1", "localhost", "testclient"):
+        return True
+    if h.startswith(("10.", "192.168.")):
+        return True
+    if h.startswith("172."):
+        parts = h.split(".")
+        if len(parts) >= 2 and parts[1].isdigit() and 16 <= int(parts[1]) <= 31:
+            return True
+    return False
+
+def get_real_client_ip(request: Request) -> str:
+    """
+    Extracts client IP safely behind Nginx/Docker reverse proxy:
+    Only trusts X-Real-IP / X-Forwarded-For when the immediate socket peer is a trusted internal proxy.
+    """
+    peer_ip = request.client.host if request.client and request.client.host else "127.0.0.1"
+    if _is_trusted_proxy_peer(peer_ip):
+        x_real_ip = request.headers.get("X-Real-IP", "").strip()
+        if x_real_ip and len(x_real_ip) <= 64:
+            return x_real_ip
+        xff = request.headers.get("X-Forwarded-For", "").strip()
+        if xff:
+            first_hop = xff.split(",")[0].strip()
+            if first_hop and len(first_hop) <= 64:
+                return first_hop
+    return peer_ip

@@ -1926,6 +1926,115 @@ console.log("ALL_TSX_COMPILED_OK");
             self.assertIn(f"{fn}(", sapp, f"Storefront client function {fn} is not wired in apps/storefront/src/App.tsx")
 
 
+
+    # 47. Real Upload Disk Persistence, Safe Media Serving & Traversal Defense
+    def test_47_upload_disk_persistence_and_safe_media_serving_traversal_defense(self):
+        headers = self.get_admin_headers()
+        valid_png = b"\x89PNG\r\n\x1a\n" + b"\x00" * 128
+        r_up = self.client.post(
+            "/api/v1/admin/upload",
+            headers=headers,
+            files={"file": ("sac_test_persist.png", valid_png, "image/png")},
+        )
+        self.assertEqual(r_up.status_code, 201, r_up.text)
+        up_data = r_up.json()
+        url_path = up_data["url"]
+
+        # Fetch the uploaded image via GET /uploads/{filename} and verify byte-for-byte persistence
+        r_get = self.client.get(url_path)
+        self.assertEqual(r_get.status_code, 200)
+        self.assertEqual(r_get.content, valid_png)
+        self.assertEqual(r_get.headers.get("X-Content-Type-Options"), "nosniff")
+        self.assertIn("immutable", r_get.headers.get("Cache-Control", ""))
+
+        # Verify invalid or malicious filenames are rejected on GET /uploads/{filename}
+        self.assertEqual(self.client.get("/uploads/evil_shell.php").status_code, 400)
+        self.assertEqual(self.client.get("/uploads/img_0000000000000000.png").status_code, 404)
+
+    # 48. Reverse-Proxy Client IP Isolation Behind Nginx & Bounded Memory Caps
+    def test_48_reverse_proxy_client_ip_isolation_and_bounded_memory_protection(self):
+        from app.security import (
+            MAX_RATE_LIMIT_KEYS,
+            MAX_REVOKED_TOKENS,
+            MAX_SEEN_NONCES,
+            RATE_LIMIT_BUCKETS,
+            check_rate_limit,
+            reset_rate_limits,
+        )
+        reset_rate_limits()
+
+        # Simulate Customer A (105.101.10.11) exhausting login rate limit via X-Real-IP behind Nginx
+        for _ in range(5):
+            self.client.post(
+                "/api/v1/admin/auth/login",
+                headers={"X-Real-IP": "105.101.10.11"},
+                json={"email": "owner@musluxury.dz", "password": "WrongPassword!"},
+            )
+        r_blocked = self.client.post(
+            "/api/v1/admin/auth/login",
+            headers={"X-Real-IP": "105.101.10.11"},
+            json={"email": "owner@musluxury.dz", "password": "WrongPassword!"},
+        )
+        self.assertEqual(r_blocked.status_code, 429)
+
+        # Customer B / Admin on a different Algerian IP (105.101.20.22) behind the same Nginx proxy is NOT blocked
+        r_ok = self.client.post(
+            "/api/v1/admin/auth/login",
+            headers={"X-Real-IP": "105.101.20.22"},
+            json={"email": "editor@musluxury.dz", "password": "EditorLuxury2026!"},
+        )
+        self.assertEqual(r_ok.status_code, 200)
+
+        # Verify bounded memory protection constants and eviction logic
+        self.assertEqual(MAX_RATE_LIMIT_KEYS, 10000)
+        self.assertEqual(MAX_SEEN_NONCES, 20000)
+        self.assertEqual(MAX_REVOKED_TOKENS, 10000)
+        reset_rate_limits()
+
+    # 49. SQLite WAL Concurrency Mode & Out-of-the-Box Seeded Static Pages Availability
+    def test_49_sqlite_wal_concurrency_and_seeded_static_pages_availability(self):
+        from app.database import db_session
+        with db_session() as conn:
+            journal = conn.execute("PRAGMA journal_mode;").fetchone()[0].lower()
+            fk = conn.execute("PRAGMA foreign_keys;").fetchone()[0]
+            self.assertIn(journal, ("wal", "memory"))
+            self.assertEqual(fk, 1)
+
+        # Verify all 4 official Mus Luxury static pages (about, faq, returns, terms) are seeded and published
+        r_pages = self.client.get("/api/v1/pages")
+        self.assertEqual(r_pages.status_code, 200)
+        slugs = {p["slug"] for p in r_pages.json()["items"]}
+        for expected_slug in ("about", "faq", "returns", "terms"):
+            self.assertIn(expected_slug, slugs)
+            r_single = self.client.get(f"/api/v1/pages/{expected_slug}")
+            self.assertEqual(r_single.status_code, 200)
+            self.assertTrue(len(r_single.json()["content_fr"]) > 20)
+
+    # 50. DevOps Dockerfile Non-Root Volume Ownership, Nginx Hardening & CI Pipeline Audit
+    def test_50_devops_dockerfile_non_root_volume_ownership_and_ci_pipeline_audit(self):
+        from pathlib import Path
+        repo_root = Path(__file__).resolve().parents[2]
+
+        dockerfile = (repo_root / "backend" / "Dockerfile").read_text(encoding="utf-8")
+        self.assertIn("USER luxeuser", dockerfile)
+        self.assertIn("mkdir -p /var/lib/luxe/uploads /var/lib/luxe/backups", dockerfile)
+        self.assertIn("chown -R luxeuser:luxeuser /app /var/lib/luxe", dockerfile)
+        self.assertIn("HEALTHCHECK", dockerfile)
+
+        compose = (repo_root / "docker-compose.yml").read_text(encoding="utf-8")
+        self.assertIn("internal: true", compose)
+        self.assertIn("service_healthy", compose)
+
+        nginx_conf = (repo_root / "infrastructure" / "nginx" / "nginx.conf").read_text(encoding="utf-8")
+        self.assertIn("server_tokens off;", nginx_conf)
+        self.assertIn("limit_req_zone", nginx_conf)
+        self.assertIn("Strict-Transport-Security", nginx_conf)
+
+        ci_workflow = repo_root / ".github" / "workflows" / "ci-security-and-backend.yml"
+        self.assertTrue(ci_workflow.is_file())
+        self.assertIn("unittest discover -s tests -v", ci_workflow.read_text(encoding="utf-8"))
+
+
 if __name__ == "__main__":
     unittest.main()
 

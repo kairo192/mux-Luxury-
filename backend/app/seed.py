@@ -517,3 +517,42 @@ def seed_initial_data() -> None:
             "INSERT INTO backup_records (filename, backup_type, size_bytes, sha256_checksum, status, triggered_by) VALUES (?, 'full', 248920, ?, 'verified', 1)",
             ("luxe_backup_initial_20261031.sql.gz", hashlib.sha256(b"initial_luxe_seed").hexdigest())
         )
+
+        # Seed Official Mus Luxury Static Pages (about, faq, returns, terms)
+        initial_pages = [
+            (
+                "about",
+                "La Maison Mus Luxury — Ouled Yaïch",
+                "دار موس لوكسوري — أولاد يعيش",
+                "House of Mus Luxury — Ouled Yaïch",
+                "Boutique officielle Mus Luxury située à FVX6+GCJ Mus luxury, Ouled Yaïch (Blida 09). Sélection certifiée de maroquinerie, chaussures, châles, maquillage, lunettes et montres avec livraison 69 Wilayas et paiement à la livraison (0655 53 41 54).",
+            ),
+            (
+                "faq",
+                "Questions Fréquentes (FAQ) — Mus Luxury",
+                "الأسئلة الشائعة",
+                "Frequently Asked Questions (FAQ)",
+                "Commandez directement sans créer de compte. Sélectionnez votre Wilaya (01 à 69) et le mode À Domicile ou Stop-Desk : le tarif est calculé automatiquement et le paiement s'effectue à la réception.",
+            ),
+            (
+                "returns",
+                "Livraison 69 Wilayas & Retours sous 7 Jours",
+                "التوصيل إلى 69 ولاية والإرجاع خلال 7 أيام",
+                "69-Wilaya Delivery & 7-Day Returns",
+                "Livraison rapide dans les 69 Wilayas d'Algérie (24h-48h Alger/Blida/Grandes villes, 48h-72h autres wilayas). Échange ou retour garanti sous 7 jours dans l'emballage d'origine.",
+            ),
+            (
+                "terms",
+                "Conditions Générales & Confidentialité",
+                "الشروط العامة والخصوصية",
+                "Terms & Privacy Policy",
+                "Tous les prix sont affichés en Dinar Algérien (DA). Vos coordonnées (nom, téléphone, adresse) sont utilisées exclusivement pour la confirmation téléphonique et l'expédition de votre colis.",
+            ),
+        ]
+        for p_slug, t_fr, t_ar, t_en, c_fr in initial_pages:
+            cur.execute(
+                """INSERT OR IGNORE INTO static_pages (slug, title_fr, title_ar, title_en, content_fr, content_ar, content_en, is_published)
+                   VALUES (?, ?, ?, ?, ?, ?, ?, 1)""",
+                (p_slug, t_fr, t_ar, t_en, c_fr, c_fr, c_fr),
+            )
+

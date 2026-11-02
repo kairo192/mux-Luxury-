@@ -176,7 +176,7 @@ export default function App() {
             rel="noopener noreferrer"
             className="text-xs text-[#E8D4A5] underline hidden sm:inline"
           >
-            {layout?.settings?.address_fr || "FVX6+GCJ Mus luxury, Ouled Yaïch"}
+            {layout?.settings?.store_location || layout?.settings?.address_fr || "FVX6+GCJ Mus luxury, Ouled Yaïch"}
           </a>
         </div>
         <nav className="flex gap-2 text-xs overflow-x-auto">
