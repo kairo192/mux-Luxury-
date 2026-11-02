@@ -1,4 +1,11 @@
 import { readDraft, writeDraft, clearDraft } from "./utils/draftStorage";
+import {
+  ClientNotificationItem,
+  notifyClientError,
+  notifyClientSuccess,
+  notifyClientWarning,
+  subscribeClientNotifications,
+} from "./utils/clientNotifier";
 import React, { useEffect, useState } from "react";
 import { DesktopCmsApi, restoreSessionFromOsKeychain } from "./api/adminClient";
 import { CategoryBuilderPage } from "./pages/CategoryBuilderPage";
@@ -20,6 +27,21 @@ export default function App() {
   const [user, setUser] = useState<any | null>(() => readDraft("luxe_cms_user", null));
   const [error, setError] = useState("");
   const [successMsg, setSuccessMsg] = useState("");
+  const [toastQueue, setToastQueue] = useState<ClientNotificationItem[]>([]);
+  const [activeMessageBox, setActiveMessageBox] = useState<ClientNotificationItem | null>(null);
+
+  useEffect(() => {
+    const unsub = subscribeClientNotifications((item) => {
+      setToastQueue((prev) => [item, ...prev.slice(0, 4)]);
+      if (item.showModalBox) {
+        setActiveMessageBox(item);
+      }
+      setTimeout(() => {
+        setToastQueue((prev) => prev.filter((t) => t.id !== item.id));
+      }, 5500);
+    });
+    return unsub;
+  }, []);
   const [activeTab, setActiveTab] = useState<CmsTab>(() => readDraft("luxe_cms_active_tab", "dashboard"));
 
   // First-Time Owner Initialization Fields
@@ -172,11 +194,14 @@ export default function App() {
         setProdCategoryId(catData.items[0].id);
       }
     } catch (err: any) {
-      if (err.message === "SESSION_EXPIRED") {
+      if (err?.code === "SESSION_EXPIRED" || err?.message === "SESSION_EXPIRED") {
         setUser(null);
-        setError("Session expirée. Veuillez vous reconnecter.");
+        const msg = "Par mesure de sécurité, votre session a expiré. Vos brouillons locaux sont conservés — veuillez vous reconnecter.";
+        setError(msg);
+        notifyClientWarning("Session expirée", msg);
       } else {
-        setError(err.message || "Erreur lors de la synchronisation avec le serveur");
+        const tr = notifyClientError(err, "Synchronisation avec le serveur interrompue", false);
+        setError(tr.message);
       }
     } finally {
       setLoadingWorkspace(false);
@@ -233,67 +258,101 @@ export default function App() {
   async function handleFirstTimeSetup(e: React.FormEvent) {
     e.preventDefault();
     setError("");
+    if (ownerPassword.length < 10) {
+      const msg = "Le mot de passe propriétaire doit comporter au moins 10 caractères.";
+      setError(msg);
+      notifyClientWarning("Mot de passe trop court", msg);
+      return;
+    }
     if (ownerPassword !== ownerConfirm) {
-      setError("Les deux mots de passe ne correspondent pas.");
+      const msg = "Les deux mots de passe saisis ne correspondent pas.";
+      setError(msg);
+      notifyClientWarning("Confirmation du mot de passe", msg);
       return;
     }
     try {
       const res = await DesktopCmsApi.initializeOwner({
-        full_name: ownerName,
-        email: ownerEmail,
+        full_name: ownerName.trim(),
+        email: ownerEmail.trim(),
         password: ownerPassword,
-        whatsapp_phone: whatsappPhone,
-        emergency_phone: emergencyPhone,
+        whatsapp_phone: whatsappPhone.trim(),
+        emergency_phone: emergencyPhone.trim(),
       });
       setRequiresOwnerSetup(false);
-      setSuccessMsg(
-        `Propriétaire configuré dans PostgreSQL. Code d'urgence : ${res.emergency_code_backup}. Cet écran est désormais verrouillé définitivement.`
-      );
+      const okMsg = `Propriétaire configuré dans PostgreSQL. Code d'urgence : ${res.emergency_code_backup}. Cet écran est désormais verrouillé définitivement.`;
+      setSuccessMsg(okMsg);
+      notifyClientSuccess("Initialisation Propriétaire Verrouillée", okMsg, true);
     } catch (err: any) {
-      setError(err.message || "Erreur lors de l'initialisation");
+      const tr = notifyClientError(err, "Initialisation du propriétaire refusée");
+      setError(tr.message);
     }
   }
 
   async function handleLogin(e: React.FormEvent) {
     e.preventDefault();
     setError("");
+    if (!loginEmail.trim() || !loginPassword) {
+      notifyClientWarning("Identifiants requis", "Veuillez renseigner votre adresse e-mail et votre mot de passe administrateur.");
+      return;
+    }
     try {
-      const res = await DesktopCmsApi.login(loginEmail, loginPassword);
+      const res = await DesktopCmsApi.login(loginEmail.trim(), loginPassword);
       setUser(res.user);
+      notifyClientSuccess("Connexion établie", `Bienvenue dans le CMS Mus Luxury, ${res.user.full_name}.`);
     } catch (err: any) {
-      setError(err.message || "Identifiants invalides");
+      const tr = notifyClientError(err, "Échec de connexion administrateur");
+      setError(tr.message);
     }
   }
 
   async function handleRequestRecoveryOtp() {
     setError("");
     setRecStepInfo("");
+    if (!recPhone.trim()) {
+      notifyClientWarning("Numéro requis", "Veuillez saisir votre numéro de téléphone administrateur (ex: 0655534154).");
+      return;
+    }
     try {
-      const res = await DesktopCmsApi.requestPasswordRecovery(recPhone, recChannel);
+      const res = await DesktopCmsApi.requestPasswordRecovery(recPhone.trim(), recChannel);
       if (res.test_otp) {
         setRecCode(res.test_otp);
-        setRecStepInfo(`Code OTP WhatsApp (Mode Sandbox) généré : ${res.test_otp} (valable 5 min).`);
+        const msg = `Code OTP WhatsApp (Mode Sandbox) généré : ${res.test_otp} (valable 5 min).`;
+        setRecStepInfo(msg);
+        notifyClientSuccess("Code OTP WhatsApp envoyé", msg);
       } else {
-        setRecStepInfo(res.message || "Code OTP envoyé sur votre WhatsApp administrateur vérifié.");
+        const msg = res.message || "Code OTP envoyé sur votre WhatsApp administrateur vérifié.";
+        setRecStepInfo(msg);
+        notifyClientSuccess("Code OTP WhatsApp envoyé", msg);
       }
     } catch (err: any) {
-      setError(err.message || "Impossible d'envoyer le code OTP WhatsApp. Utilisez le canal Code de Secours Hors-Ligne.");
+      const tr = notifyClientError(err, "Envoi du code OTP WhatsApp impossible");
+      setError(tr.message);
     }
   }
 
   async function handlePasswordRecoveryVerify(e: React.FormEvent) {
     e.preventDefault();
     setError("");
+    if (!recPhone.trim() || !recCode.trim() || recNewPassword.length < 10) {
+      notifyClientWarning(
+        "Données de récupération incomplètes",
+        "Veuillez saisir votre téléphone, le code de vérification et un nouveau mot de passe d'au moins 10 caractères."
+      );
+      return;
+    }
     try {
-      const res = await DesktopCmsApi.verifyPasswordRecovery(recPhone, recCode, recNewPassword);
+      const res = await DesktopCmsApi.verifyPasswordRecovery(recPhone.trim(), recCode.trim(), recNewPassword);
       setShowRecoveryModal(false);
       setRecStepInfo("");
       const extra = res.replacement_emergency_code
         ? ` Nouveau code de secours généré : ${res.replacement_emergency_code}`
         : "";
-      setSuccessMsg(`Mot de passe réinitialisé avec succès.${extra} Connectez-vous avec votre nouveau mot de passe.`);
+      const okMsg = `Mot de passe réinitialisé avec succès.${extra} Connectez-vous avec votre nouveau mot de passe.`;
+      setSuccessMsg(okMsg);
+      notifyClientSuccess("Mot de passe réinitialisé", okMsg, true);
     } catch (err: any) {
-      setError(err.message || "Code de récupération invalide ou expiré");
+      const tr = notifyClientError(err, "Vérification du code de récupération refusée");
+      setError(tr.message);
     }
   }
 
@@ -301,6 +360,14 @@ export default function App() {
     e.preventDefault();
     setError("");
     setSuccessMsg("");
+    if (!prodNameFr.trim() || !prodSku.trim()) {
+      notifyClientWarning("Champs produit requis", "Veuillez renseigner la désignation du produit (FR) et sa référence SKU unique.");
+      return;
+    }
+    if (Number(prodSellingPrice) <= 0 || Number(prodCostPrice) < 0) {
+      notifyClientWarning("Prix invalide", "Le prix de vente en DA doit être strictement positif et le coût d'achat ne peut pas être négatif.");
+      return;
+    }
     try {
       const selectedCat = categories.find((c) => c.id === Number(prodCategoryId));
       const variantAxes = (selectedCat?.attributes || []).filter((a: any) => a.is_variant_axis);
@@ -327,19 +394,22 @@ export default function App() {
           {
             sku: `${prodSku.trim()}-STD`,
             title: Object.values(defaultAttrs).join(" / ") || "Standard",
-            stock_qty: Number(prodVariantStock),
+            stock_qty: Math.max(0, Number(prodVariantStock) || 0),
             attributes: defaultAttrs,
           },
         ],
       });
-      setSuccessMsg(`Produit "${prodNameFr}" créé et synchronisé sur la boutique.`);
+      const okMsg = `Produit "${prodNameFr}" créé et synchronisé sur la boutique.`;
+      setSuccessMsg(okMsg);
+      notifyClientSuccess("Produit ajouté au catalogue", okMsg);
       setProdNameFr("");
       setProdSku("");
       setProdSlug("");
       setProdDynamicAttrs({});
       await loadAllWorkspaceData();
     } catch (err: any) {
-      setError(err.message || "Erreur lors de la création du produit");
+      const tr = notifyClientError(err, "Création du produit impossible");
+      setError(tr.message);
     }
   }
 
@@ -347,19 +417,26 @@ export default function App() {
     e.preventDefault();
     if (!editingProduct) return;
     setError("");
+    if (!editingProduct.name_fr?.trim() || Number(editingProduct.selling_price_dzd) <= 0) {
+      notifyClientWarning("Champs produit invalides", "Veuillez vérifier le nom et le prix de vente (DA) du produit.");
+      return;
+    }
     try {
       await DesktopCmsApi.updateProduct(editingProduct.id, {
-        name_fr: editingProduct.name_fr,
+        name_fr: editingProduct.name_fr.trim(),
         selling_price_dzd: Number(editingProduct.selling_price_dzd),
         purchase_cost_dzd: Number(editingProduct.purchase_cost_dzd || 0),
         status: editingProduct.status,
         expected_version: Number(editingProduct.version || 1),
       });
-      setSuccessMsg(`Produit #${editingProduct.id} mis à jour avec contrôle de concurrence optimiste.`);
+      const okMsg = `Produit #${editingProduct.id} mis à jour avec contrôle de concurrence optimiste.`;
+      setSuccessMsg(okMsg);
+      notifyClientSuccess("Fiche produit enregistrée", okMsg);
       setEditingProduct(null);
       await loadAllWorkspaceData();
     } catch (err: any) {
-      setError(err.message || "Erreur lors de la mise à jour du produit");
+      const tr = notifyClientError(err, "Conflit ou erreur lors de la mise à jour du produit");
+      setError(tr.message);
     }
   }
 
@@ -367,10 +444,13 @@ export default function App() {
     setError("");
     try {
       await DesktopCmsApi.archiveProduct(productId);
-      setSuccessMsg(`Produit #${productId} archivé en toute sécurité (historique des commandes préservé).`);
+      const okMsg = `Produit #${productId} archivé en toute sécurité (historique des commandes préservé).`;
+      setSuccessMsg(okMsg);
+      notifyClientSuccess("Produit archivé", okMsg);
       await loadAllWorkspaceData();
     } catch (err: any) {
-      setError(err.message);
+      const tr = notifyClientError(err, "Archivage du produit impossible");
+      setError(tr.message);
     }
   }
 
@@ -378,10 +458,13 @@ export default function App() {
     setError("");
     try {
       await DesktopCmsApi.adjustVariantStock(variantId, delta, "cms_manual_adjustment");
-      setSuccessMsg(`Stock de la variante #${variantId} mis à jour (${delta > 0 ? `+${delta}` : delta}).`);
+      const okMsg = `Stock de la variante #${variantId} mis à jour (${delta > 0 ? `+${delta}` : delta}).`;
+      setSuccessMsg(okMsg);
+      notifyClientSuccess("Stock mis à jour", okMsg);
       await loadAllWorkspaceData();
     } catch (err: any) {
-      setError(err.message);
+      const tr = notifyClientError(err, "Ajustement de stock refusé");
+      setError(tr.message);
     }
   }
 
@@ -389,10 +472,13 @@ export default function App() {
     setError("");
     try {
       await DesktopCmsApi.updateOrderStatus(orderId, nextStatus);
-      setSuccessMsg(`Statut de la commande #${orderId} mis à jour vers "${nextStatus}".`);
+      const okMsg = `Statut de la commande #${orderId} mis à jour vers "${nextStatus}".`;
+      setSuccessMsg(okMsg);
+      notifyClientSuccess("Statut de commande mis à jour", okMsg);
       await loadAllWorkspaceData();
     } catch (err: any) {
-      setError(err.message);
+      const tr = notifyClientError(err, "Changement de statut de commande refusé");
+      setError(tr.message);
     }
   }
 
@@ -401,32 +487,51 @@ export default function App() {
     try {
       const inv = await DesktopCmsApi.getOrderInvoice(orderId);
       setSelectedInvoice(inv);
+      notifyClientSuccess("Facture générée", `Bon de livraison / Facture de la commande #${inv.order_reference} prêt à l'impression.`);
     } catch (err: any) {
-      setError(err.message);
+      const tr = notifyClientError(err, "Ouverture de la facture impossible");
+      setError(tr.message);
     }
   }
 
-
   async function handleCheckPhoneCodRisk() {
-    if (!codCheckPhone.trim()) return;
+    if (!codCheckPhone.trim() || codCheckPhone.trim().length < 8) {
+      notifyClientWarning(
+        "Numéro de téléphone requis",
+        "Veuillez saisir un numéro de téléphone algérien valide (ex: 0550 11 22 33 ou +213...) pour analyser son historique COD."
+      );
+      return;
+    }
     setError("");
     try {
       const res = await DesktopCmsApi.checkPhoneCodRisk(codCheckPhone.trim());
       setCodCheckResult(res);
+      notifyClientSuccess(
+        "Score Anti-Retour COD calculé",
+        `Numéro ${res.phone_local} : ${res.delivered_count} livrée(s), ${res.returned_count} retour(s) (${res.return_rate_percent}% retours).`
+      );
     } catch (err: any) {
-      setError(err.message);
+      const tr = notifyClientError(err, "Vérification Anti-Retour COD impossible");
+      setError(tr.message);
     }
   }
 
   async function handleBlockCustomerPhone(phone: string, reason = "Retour abusif / Non-récupération COD") {
+    if (!phone.trim()) {
+      notifyClientWarning("Numéro manquant", "Veuillez indiquer le numéro de téléphone à bloquer sur la Liste Noire COD.");
+      return;
+    }
     setError("");
     try {
-      const res = await DesktopCmsApi.addPhoneToCodBlacklist(phone, reason, true);
+      const res = await DesktopCmsApi.addPhoneToCodBlacklist(phone.trim(), reason.trim() || "Retour abusif / Non-récupération COD", true);
       setCodCheckResult(res);
-      setSuccessMsg(`Numéro ${res.phone_local} ajouté à la Liste Noire Anti-Retour COD.`);
+      const okMsg = `Numéro ${res.phone_local} ajouté à la Liste Noire Anti-Retour COD. Ses futures commandes seront bloquées automatiquement.`;
+      setSuccessMsg(okMsg);
+      notifyClientSuccess("Numéro bloqué (Liste Noire COD)", okMsg, true);
       await loadAllWorkspaceData();
     } catch (err: any) {
-      setError(err.message);
+      const tr = notifyClientError(err, "Blocage du numéro impossible");
+      setError(tr.message);
     }
   }
 
@@ -435,10 +540,13 @@ export default function App() {
     try {
       const res = await DesktopCmsApi.removePhoneFromCodBlacklist(phone);
       setCodCheckResult(res);
-      setSuccessMsg(`Numéro ${res.phone_local} débloqué de la Liste Noire COD.`);
+      const okMsg = `Numéro ${res.phone_local} débloqué de la Liste Noire COD.`;
+      setSuccessMsg(okMsg);
+      notifyClientSuccess("Numéro débloqué", okMsg);
       await loadAllWorkspaceData();
     } catch (err: any) {
-      setError(err.message);
+      const tr = notifyClientError(err, "Déblocage du numéro impossible");
+      setError(tr.message);
     }
   }
 
@@ -453,58 +561,90 @@ export default function App() {
       a.download = "mus_luxury_orders.csv";
       a.click();
       URL.revokeObjectURL(url);
-      setSuccessMsg("Export CSV des commandes généré (mus_luxury_orders.csv).");
+      const okMsg = "Export CSV des commandes généré et téléchargé (mus_luxury_orders.csv).";
+      setSuccessMsg(okMsg);
+      notifyClientSuccess("Export CSV téléchargé", okMsg);
     } catch (err: any) {
-      setError(err.message);
+      const tr = notifyClientError(err, "Export CSV des commandes impossible");
+      setError(tr.message);
     }
   }
 
   async function handleSaveStoreSettings(e: React.FormEvent) {
     e.preventDefault();
     setError("");
+    if (!storePhoneInput.trim() || !storeLocationInput.trim()) {
+      notifyClientWarning("Paramètres incomplets", "Veuillez renseigner le téléphone et l'adresse officielle de la boutique Mus Luxury.");
+      return;
+    }
     try {
       await DesktopCmsApi.updateStoreSettings({
-        store_phone: storePhoneInput,
-        whatsapp_contact_number: storeWhatsappInput,
-        store_location: storeLocationInput,
-        free_delivery_threshold_dzd: freeThresholdInput,
+        store_phone: storePhoneInput.trim(),
+        whatsapp_contact_number: storeWhatsappInput.trim(),
+        store_location: storeLocationInput.trim(),
+        free_delivery_threshold_dzd: freeThresholdInput.trim(),
       });
-      setSuccessMsg("Paramètres de la boutique Mus Luxury enregistrés et synchronisés.");
+      const okMsg = "Paramètres de la boutique Mus Luxury enregistrés et synchronisés.";
+      setSuccessMsg(okMsg);
+      notifyClientSuccess("Paramètres boutique enregistrés", okMsg);
       await loadAllWorkspaceData();
     } catch (err: any) {
-      setError(err.message);
+      const tr = notifyClientError(err, "Enregistrement des paramètres refusé");
+      setError(tr.message);
     }
   }
 
   async function handleCreateCoupon(e: React.FormEvent) {
     e.preventDefault();
     setError("");
+    const cleanCode = couponCode.trim().toUpperCase();
+    if (cleanCode.length < 3 || Number(couponValue) <= 0) {
+      notifyClientWarning(
+        "Code promo invalide",
+        "Veuillez saisir un code promo d'au moins 3 caractères et une valeur de remise strictement positive."
+      );
+      return;
+    }
     try {
       await DesktopCmsApi.createCoupon({
-        code: couponCode.trim().toUpperCase(),
+        code: cleanCode,
         discount_type: couponType,
         discount_value: Number(couponValue),
-        min_order_dzd: Number(couponMinOrder),
+        min_order_dzd: Math.max(0, Number(couponMinOrder) || 0),
       });
-      setSuccessMsg(`Code promo "${couponCode.toUpperCase()}" créé et activé sur la boutique.`);
+      const okMsg = `Code promo "${cleanCode}" créé et activé sur la boutique.`;
+      setSuccessMsg(okMsg);
+      notifyClientSuccess("Code promotionnel activé", okMsg);
       setCouponCode("");
     } catch (err: any) {
-      setError(err.message);
+      const tr = notifyClientError(err, "Création du code promo refusée");
+      setError(tr.message);
     }
   }
 
   async function handleSaveStaticPage(e: React.FormEvent) {
     e.preventDefault();
     setError("");
+    if (pageTitleFr.trim().length < 2 || pageContentFr.trim().length < 5) {
+      notifyClientWarning(
+        "Contenu de page incomplet",
+        "Veuillez saisir un titre et un texte complet avant de publier la page statique."
+      );
+      return;
+    }
     try {
       await DesktopCmsApi.upsertStaticPage(pageSlug, {
-        title_fr: pageTitleFr,
-        content_fr: pageContentFr,
+        title_fr: pageTitleFr.trim(),
+        content_fr: pageContentFr.trim(),
         is_published: true,
       });
-      setSuccessMsg(`Page statique "/pages/${pageSlug}" enregistrée et publiée.`);
+      const okMsg = `Page statique "/pages/${pageSlug}" enregistrée et publiée.`;
+      setSuccessMsg(okMsg);
+      notifyClientSuccess("Page statique publiée", okMsg);
+      await loadAllWorkspaceData();
     } catch (err: any) {
-      setError(err.message);
+      const tr = notifyClientError(err, "Enregistrement de la page statique impossible");
+      setError(tr.message);
     }
   }
 
@@ -512,10 +652,13 @@ export default function App() {
     setError("");
     try {
       const bkp = await DesktopCmsApi.triggerBackup();
-      setSuccessMsg(`Sauvegarde créée et vérifiée : ${bkp.filename} (SHA-256: ${bkp.sha256_checksum.slice(0, 16)}...)`);
+      const okMsg = `Sauvegarde créée et vérifiée : ${bkp.filename} (SHA-256: ${bkp.sha256_checksum.slice(0, 16)}...)`;
+      setSuccessMsg(okMsg);
+      notifyClientSuccess("Sauvegarde complète créée", okMsg, true);
       await loadAllWorkspaceData();
     } catch (err: any) {
-      setError(err.message);
+      const tr = notifyClientError(err, "Échec de la création de sauvegarde");
+      setError(tr.message);
     }
   }
 
@@ -524,85 +667,144 @@ export default function App() {
     try {
       const rep = await DesktopCmsApi.verifyBackupRestore(backupId);
       setRestoreReport(rep);
-      setSuccessMsg(`Test de restauration isolée réussi pour la sauvegarde #${backupId} !`);
+      const okMsg = `Test de restauration isolée réussi pour la sauvegarde #${backupId} (${rep.restored_counts?.products || 0} produits, ${rep.restored_counts?.delivery_zones || 69} wilayas vérifiées) !`;
+      setSuccessMsg(okMsg);
+      notifyClientSuccess("Restauration isolée vérifiée", okMsg, true);
     } catch (err: any) {
-      setError(err.message);
+      const tr = notifyClientError(err, "Vérification de la sauvegarde échouée");
+      setError(tr.message);
     }
   }
-
 
   async function handleDeltaSync() {
     setError("");
     try {
       const syncRes = await DesktopCmsApi.deltaSync(0, 0);
       await loadAllWorkspaceData();
-      setSuccessMsg(`Delta Sync terminé : ${syncRes.missed_orders_count} commande(s) et ${syncRes.current_variant_stocks?.length || 0} variantes synchronisées.`);
+      const okMsg = `Delta Sync terminé : ${syncRes.missed_orders_count} commande(s) et ${syncRes.current_variant_stocks?.length || 0} variantes synchronisées.`;
+      setSuccessMsg(okMsg);
+      notifyClientSuccess("Synchronisation serveur terminée", okMsg);
     } catch (err: any) {
-      setError(err.message);
+      const tr = notifyClientError(err, "Synchronisation Delta interrompue");
+      setError(tr.message);
     }
   }
 
   async function handleCreateBrand(e: React.FormEvent) {
     e.preventDefault();
-    if (!newBrandName.trim()) return;
+    if (!newBrandName.trim()) {
+      notifyClientWarning("Nom de marque requis", "Veuillez saisir le nom de la marque avant de l'ajouter.");
+      return;
+    }
     setError("");
     try {
       const slug = newBrandName.trim().toLowerCase().replace(/[^a-z0-9]+/g, "-");
       await DesktopCmsApi.createBrand({ name: newBrandName.trim(), slug, logo_url: "/assets/mus_luxury_logo.png" });
+      const createdName = newBrandName.trim();
       setNewBrandName("");
-      setSuccessMsg(`Marque "${newBrandName}" créée.`);
+      const okMsg = `Marque "${createdName}" créée et ajoutée au catalogue.`;
+      setSuccessMsg(okMsg);
+      notifyClientSuccess("Marque ajoutée", okMsg);
       await loadAllWorkspaceData();
     } catch (err: any) {
-      setError(err.message);
+      const tr = notifyClientError(err, "Création de la marque impossible");
+      setError(tr.message);
     }
   }
 
   async function handleBulkStatus(status: "published" | "draft" | "archived") {
-    if (selectedProductIds.length === 0) return;
+    if (selectedProductIds.length === 0) {
+      notifyClientWarning(
+        "Aucun produit sélectionné",
+        "Veuillez cocher au moins un produit dans le tableau avant d'appliquer une action groupée."
+      );
+      return;
+    }
     setError("");
     try {
+      const count = selectedProductIds.length;
       await DesktopCmsApi.bulkUpdateProductStatus(selectedProductIds, status);
       setSelectedProductIds([]);
-      setSuccessMsg(`Statut "${status}" appliqué à ${selectedProductIds.length} produit(s).`);
+      const okMsg = `Statut "${status}" appliqué à ${count} produit(s).`;
+      setSuccessMsg(okMsg);
+      notifyClientSuccess("Mise à jour groupée effectuée", okMsg);
       await loadAllWorkspaceData();
     } catch (err: any) {
-      setError(err.message);
+      const tr = notifyClientError(err, "Mise à jour groupée impossible");
+      setError(tr.message);
     }
   }
 
   async function handleGenerateVariantMatrix(productId: number) {
     setError("");
+    const colors = matrixColorCsv.split(",").map((s) => s.trim()).filter(Boolean);
+    const sizes = matrixSizeCsv.split(",").map((s) => s.trim()).filter(Boolean);
+    if (colors.length === 0 || sizes.length === 0) {
+      notifyClientWarning("Axes de variantes requis", "Veuillez indiquer au moins une couleur et une taille séparées par des virgules.");
+      return;
+    }
     try {
-      const colors = matrixColorCsv.split(",").map((s) => s.trim()).filter(Boolean);
-      const sizes = matrixSizeCsv.split(",").map((s) => s.trim()).filter(Boolean);
       await DesktopCmsApi.generateVariants(productId, {
         axes: { color: colors, size: sizes },
         default_stock: 4,
       });
-      setSuccessMsg(`Matrice de variantes (${colors.length}×${sizes.length}) générée pour le produit #${productId}.`);
+      const okMsg = `Matrice de variantes (${colors.length}×${sizes.length}) générée pour le produit #${productId}.`;
+      setSuccessMsg(okMsg);
+      notifyClientSuccess("Matrice de variantes générée", okMsg);
       await loadAllWorkspaceData();
     } catch (err: any) {
-      setError(err.message);
+      const tr = notifyClientError(err, "Génération des variantes impossible");
+      setError(tr.message);
+    }
+  }
+
+  async function handleUploadLocalProductMedia(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    if (!["image/jpeg", "image/png", "image/webp"].includes(file.type)) {
+      notifyClientWarning("Format d'image non supporté", "Veuillez sélectionner une image au format JPEG (.jpg), PNG (.png) ou WEBP (.webp).");
+      return;
+    }
+    if (file.size > 5 * 1024 * 1024) {
+      notifyClientWarning("Image trop volumineuse", "La taille de l'image ne doit pas dépasser 5 Mo.");
+      return;
+    }
+    setError("");
+    try {
+      const uploaded = await DesktopCmsApi.uploadMediaFile(file);
+      setNewImageUrl(uploaded.url);
+      setBannerImageUrl(uploaded.url);
+      notifyClientSuccess("Image téléversée sur le serveur", `Fichier vérifié et enregistré : ${uploaded.url}`);
+    } catch (err: any) {
+      const tr = notifyClientError(err, "Téléversement de l'image refusé");
+      setError(tr.message);
     }
   }
 
   async function handleAddProductGalleryImage(productId: number) {
+    if (!newImageUrl.trim()) {
+      notifyClientWarning("URL d'image requise", "Veuillez téléverser une image ou saisir son chemin avant de l'ajouter à la galerie.");
+      return;
+    }
     setError("");
     try {
       const img = await DesktopCmsApi.addProductImage(productId, {
-        image_url: newImageUrl,
+        image_url: newImageUrl.trim(),
         alt_text: "Mus Luxury Gallery",
         display_order: 1,
         set_as_primary: true,
       });
       await DesktopCmsApi.reorderProductImages(productId, {
         orders: [{ image_id: img.id, display_order: 1 }],
-        primary_image_url: newImageUrl,
+        primary_image_url: newImageUrl.trim(),
       });
-      setSuccessMsg(`Image ajoutée et ordonnée pour le produit #${productId}.`);
+      const okMsg = `Image ajoutée et ordonnée pour le produit #${productId}.`;
+      setSuccessMsg(okMsg);
+      notifyClientSuccess("Galerie produit mise à jour", okMsg);
       await loadAllWorkspaceData();
     } catch (err: any) {
-      setError(err.message);
+      const tr = notifyClientError(err, "Ajout de l'image à la galerie impossible");
+      setError(tr.message);
     }
   }
 
@@ -610,10 +812,13 @@ export default function App() {
     setError("");
     try {
       await DesktopCmsApi.deleteProductImage(imageId);
-      setSuccessMsg(`Image #${imageId} supprimée de la galerie.`);
+      const okMsg = `Image #${imageId} supprimée de la galerie.`;
+      setSuccessMsg(okMsg);
+      notifyClientSuccess("Image retirée", okMsg);
       await loadAllWorkspaceData();
     } catch (err: any) {
-      setError(err.message);
+      const tr = notifyClientError(err, "Suppression de l'image impossible");
+      setError(tr.message);
     }
   }
 
@@ -626,16 +831,22 @@ export default function App() {
         display_order: sec.display_order || 1,
         config: sec.config || {},
       });
-      setSuccessMsg(`Section d'accueil "${sec.title_fr}" mise à jour.`);
+      const okMsg = `Section d'accueil "${sec.title_fr}" mise à jour.`;
+      setSuccessMsg(okMsg);
+      notifyClientSuccess("Mise en page mise à jour", okMsg);
       await loadAllWorkspaceData();
     } catch (err: any) {
-      setError(err.message);
+      const tr = notifyClientError(err, "Modification de la section d'accueil impossible");
+      setError(tr.message);
     }
   }
 
   async function handleCreateBanner(e: React.FormEvent) {
     e.preventDefault();
-    if (!bannerTitleFr.trim()) return;
+    if (!bannerTitleFr.trim()) {
+      notifyClientWarning("Titre de bannière requis", "Veuillez saisir le titre de la bannière promotionnelle avant de la publier.");
+      return;
+    }
     setError("");
     try {
       await DesktopCmsApi.createBanner({
@@ -649,10 +860,13 @@ export default function App() {
         display_order: banners.length + 1,
       });
       setBannerTitleFr("");
-      setSuccessMsg("Bannière promotionnelle créée et publiée.");
+      const okMsg = "Bannière promotionnelle créée et publiée.";
+      setSuccessMsg(okMsg);
+      notifyClientSuccess("Bannière publiée", okMsg);
       await loadAllWorkspaceData();
     } catch (err: any) {
-      setError(err.message);
+      const tr = notifyClientError(err, "Création de la bannière impossible");
+      setError(tr.message);
     }
   }
 
@@ -660,10 +874,117 @@ export default function App() {
     setError("");
     try {
       const res = await DesktopCmsApi.rotateEmergencyCode();
-      setSuccessMsg(`Nouveau Code d'Urgence Hors-Ligne généré : ${res.emergency_code} (Conservez-le en lieu sûr).`);
+      const okMsg = `Nouveau Code d'Urgence Hors-Ligne généré : ${res.emergency_code} (Conservez-le en lieu sûr).`;
+      setSuccessMsg(okMsg);
+      notifyClientSuccess("Code d'Urgence régénéré", okMsg, true);
     } catch (err: any) {
-      setError(err.message);
+      const tr = notifyClientError(err, "Rotation du code d'urgence refusée");
+      setError(tr.message);
     }
+  }
+
+  function renderClientNotificationCenter() {
+    return (
+      <>
+        {/* Floating Toast Notification Stack (Top-Right) */}
+        <div className="fixed top-4 right-4 z-50 flex flex-col gap-2.5 max-w-md w-full pointer-events-none">
+          {toastQueue.map((t) => {
+            const styleMap = {
+              success: "bg-[#02291F] text-white border-[#D4AF62]",
+              error: "bg-red-950 text-white border-red-400",
+              warning: "bg-amber-950 text-white border-amber-400",
+              info: "bg-[#063D2E] text-white border-[#D4AF62]",
+            };
+            const badgeMap = {
+              success: "✓ CONFIRMATION",
+              error: "⛔ ALERTE SÉCURITÉ / ACTION",
+              warning: "⚠️ VÉRIFICATION REQUISE",
+              info: "ℹ️ INFORMATION",
+            };
+            return (
+              <div
+                key={t.id}
+                role="status"
+                aria-live="polite"
+                className={`pointer-events-auto p-3.5 rounded-2xl border-2 shadow-2xl flex items-start justify-between gap-3 ${styleMap[t.type]}`}
+              >
+                <div className="space-y-1 text-xs">
+                  <div className="flex items-center gap-2">
+                    <span className="px-2 py-0.5 rounded-full bg-white/15 text-[#D4AF62] font-extrabold text-[10px]">
+                      {badgeMap[t.type]}
+                    </span>
+                    <span className="text-[10px] opacity-70 font-mono">{t.timestamp}</span>
+                  </div>
+                  <p className="font-bold text-sm text-[#E8D4A5]">{t.title}</p>
+                  <p className="text-xs leading-relaxed opacity-95">{t.message}</p>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setToastQueue((prev) => prev.filter((item) => item.id !== t.id))}
+                  className="text-xs font-bold px-2 py-1 rounded bg-white/10 hover:bg-white/20"
+                  aria-label="Fermer la notification"
+                >
+                  ✕
+                </button>
+              </div>
+            );
+          })}
+        </div>
+
+        {/* Modal Client Message Box Dialog (Boîte de Message Client) */}
+        {activeMessageBox && (
+          <div className="fixed inset-0 z-50 bg-black/75 backdrop-blur-sm flex items-center justify-center p-4">
+            <div
+              role="dialog"
+              aria-modal="true"
+              className="bg-white text-[#202923] rounded-2xl max-w-md w-full overflow-hidden shadow-2xl border-2 border-[#D4AF62]"
+            >
+              <div
+                className={`px-5 py-3.5 flex items-center justify-between ${
+                  activeMessageBox.type === "error"
+                    ? "bg-red-900 text-white"
+                    : activeMessageBox.type === "warning"
+                    ? "bg-amber-800 text-white"
+                    : "bg-[#063D2E] text-white"
+                }`}
+              >
+                <div className="flex items-center gap-2">
+                  <span className="text-base font-extrabold text-[#D4AF62]">
+                    {activeMessageBox.type === "error"
+                      ? "⛔ Message Système — Action interrompue"
+                      : activeMessageBox.type === "warning"
+                      ? "⚠️ Vérification des données"
+                      : "✓ Confirmation Mus Luxury CMS"}
+                  </span>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setActiveMessageBox(null)}
+                  className="w-7 h-7 rounded-full bg-black/25 text-white font-bold text-xs flex items-center justify-center"
+                >
+                  ✕
+                </button>
+              </div>
+              <div className="p-6 space-y-4 text-xs">
+                <h4 className="text-base font-serif font-bold text-[#063D2E]">{activeMessageBox.title}</h4>
+                <p className="text-sm text-gray-700 leading-relaxed bg-[#F8F6F0] p-3.5 rounded-xl border border-[#D4AF62]/30">
+                  {activeMessageBox.message}
+                </p>
+                <div className="flex justify-end pt-1">
+                  <button
+                    type="button"
+                    onClick={() => setActiveMessageBox(null)}
+                    className="px-6 py-2.5 rounded-xl bg-[#063D2E] hover:bg-[#02291F] text-[#D4AF62] font-extrabold text-xs shadow"
+                  >
+                    Compris (Fermer)
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+      </>
+    );
   }
 
   if (checkingSetup) {
@@ -673,6 +994,7 @@ export default function App() {
   if (requiresOwnerSetup) {
     return (
       <div className="min-h-screen bg-[#02291F] text-white flex items-center justify-center p-6">
+        {renderClientNotificationCenter()}
         <form onSubmit={handleFirstTimeSetup} className="max-w-lg w-full bg-[#063D2E] p-8 rounded-2xl border-2 border-[#D4AF62] space-y-4 shadow-2xl">
           <div className="text-center">
             <span className="px-3 py-1 rounded-full bg-[#D4AF62] text-[#02291F] text-[10px] font-extrabold uppercase">
@@ -728,6 +1050,7 @@ export default function App() {
   if (!user) {
     return (
       <div className="min-h-screen bg-[#02291F] text-white flex items-center justify-center p-6">
+        {renderClientNotificationCenter()}
         <div className="max-w-md w-full bg-[#063D2E] p-8 rounded-2xl border border-[#D4AF62]/40 space-y-4 shadow-2xl">
           <form onSubmit={handleLogin} className="space-y-4">
             <div className="text-center">
@@ -801,6 +1124,7 @@ export default function App() {
 
   return (
     <div className="min-h-screen bg-[#F8F6F0] text-[#202923] flex flex-col">
+      {renderClientNotificationCenter()}
       {/* Top Header */}
       <header className="bg-[#02291F] text-[#D4AF62] px-6 py-3.5 flex flex-wrap justify-between items-center gap-4 border-b border-[#D4AF62]/30">
         <div className="flex items-center gap-3">
@@ -1070,6 +1394,10 @@ export default function App() {
                   <button type="button" onClick={() => handleGenerateVariantMatrix(editingProduct.id)} className="px-4 py-2 rounded-xl bg-[#D4AF62] text-[#02291F] font-bold">
                     + Générer Matrice Variantes ({matrixColorCsv} × {matrixSizeCsv})
                   </button>
+                  <label className="px-4 py-2 rounded-xl bg-[#F8F6F0] border border-[#D4AF62] text-[#063D2E] font-bold cursor-pointer">
+                    📁 Téléverser Image PC
+                    <input type="file" accept="image/jpeg,image/png,image/webp" onChange={handleUploadLocalProductMedia} className="hidden" />
+                  </label>
                   <button type="button" onClick={() => handleAddProductGalleryImage(editingProduct.id)} className="px-4 py-2 rounded-xl bg-white border border-[#063D2E] text-[#063D2E] font-bold">
                     + Ajouter Image Galerie
                   </button>

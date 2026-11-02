@@ -1,6 +1,7 @@
 import { readDraft, writeDraft, clearDraft } from "../utils/draftStorage";
 import React, { useEffect, useState } from "react";
 import { DesktopCmsApi } from "../api/adminClient";
+import { notifyClientError, notifyClientSuccess, notifyClientWarning } from "../utils/clientNotifier";
 
 const ATTRIBUTE_TYPES = [
   "short_text",
@@ -97,7 +98,8 @@ export function CategoryBuilderPage({ onCategoryChanged }: { onCategoryChanged?:
       const res = await DesktopCmsApi.listCategories();
       setCategories(res.items || []);
     } catch (err: any) {
-      setError(err.message || "Erreur lors du chargement des catégories");
+      const tr = notifyClientError(err, "Chargement des catégories impossible", false);
+      setError(tr.message);
     } finally {
       setLoading(false);
     }
@@ -109,7 +111,20 @@ export function CategoryBuilderPage({ onCategoryChanged }: { onCategoryChanged?:
 
   function addDraftAttribute() {
     const cleanKey = newKey.trim().toLowerCase().replace(/[^a-z0-9_]/g, "_");
-    if (!cleanKey || !newLabelFr.trim()) return;
+    if (!cleanKey || !newLabelFr.trim()) {
+      notifyClientWarning(
+        "Champs d'attribut incomplets",
+        "Veuillez renseigner le code technique (ex: matiere) et le libellé en français avant d'ajouter l'attribut."
+      );
+      return;
+    }
+    if (attributes.some((a) => a.attr_key === cleanKey)) {
+      notifyClientWarning(
+        "Clé d'attribut déjà présente",
+        `L'attribut "${cleanKey}" figure déjà dans la liste de cette catégorie.`
+      );
+      return;
+    }
     setAttributes((prev) => [
       ...prev,
       {
@@ -128,6 +143,7 @@ export function CategoryBuilderPage({ onCategoryChanged }: { onCategoryChanged?:
     setNewKey("");
     setNewLabelFr("");
     setNewOptionsCsv("");
+    notifyClientSuccess("Attribut ajouté au brouillon", `L'attribut "${newLabelFr.trim()}" (${cleanKey}) a été ajouté.`);
   }
 
   function removeDraftAttribute(idx: number) {
@@ -138,6 +154,13 @@ export function CategoryBuilderPage({ onCategoryChanged }: { onCategoryChanged?:
     e.preventDefault();
     setError("");
     setStatusMsg("");
+    if (nameFr.trim().length < 2 || slug.trim().length < 2) {
+      notifyClientWarning(
+        "Informations de catégorie incomplètes",
+        "Veuillez indiquer un nom en français et un identifiant URL (slug) d'au moins 2 caractères."
+      );
+      return;
+    }
     try {
       const created = await DesktopCmsApi.createCategory({
         slug: slug.trim().toLowerCase(),
@@ -180,16 +203,24 @@ export function CategoryBuilderPage({ onCategoryChanged }: { onCategoryChanged?:
         });
       }
 
-      setStatusMsg(`Catégorie "${nameFr}" et ses ${attributes.length} attribut(s) enregistrés sur le serveur.`);
+      const okMsg = `Catégorie "${nameFr}" et ses ${attributes.length} attribut(s) enregistrés sur le serveur.`;
+      setStatusMsg(okMsg);
+      notifyClientSuccess("Catégorie créée avec succès", okMsg);
       setNameFr("");
       setNameAr("");
       setNameEn("");
       setSlug("");
       setDescriptionFr("");
+      clearDraft("luxe_cat_draft_name_fr");
+      clearDraft("luxe_cat_draft_name_ar");
+      clearDraft("luxe_cat_draft_name_en");
+      clearDraft("luxe_cat_draft_slug");
+      clearDraft("luxe_cat_draft_desc");
       await loadCategories();
       if (onCategoryChanged) onCategoryChanged();
     } catch (err: any) {
-      setError(err.message || "Erreur lors de la création de la catégorie");
+      const tr = notifyClientError(err, "Création de la catégorie impossible");
+      setError(tr.message);
     }
   }
 
@@ -197,10 +228,12 @@ export function CategoryBuilderPage({ onCategoryChanged }: { onCategoryChanged?:
     setError("");
     try {
       await DesktopCmsApi.deleteCategoryAttribute(attrId, true);
+      notifyClientSuccess("Attribut supprimé", "L'attribut a été retiré de la catégorie et le catalogue a été synchronisé.");
       await loadCategories();
       if (onCategoryChanged) onCategoryChanged();
     } catch (err: any) {
-      setError(err.message || "Impossible de supprimer l'attribut");
+      const tr = notifyClientError(err, "Suppression de l'attribut refusée");
+      setError(tr.message);
     }
   }
 
@@ -217,11 +250,14 @@ export function CategoryBuilderPage({ onCategoryChanged }: { onCategoryChanged?:
         is_active: true,
         show_on_homepage: !cat.show_on_homepage,
       });
-      setStatusMsg(`Visibilité accueil mise à jour pour "${cat.name_fr}".`);
+      const msg = `Visibilité accueil mise à jour pour "${cat.name_fr}".`;
+      setStatusMsg(msg);
+      notifyClientSuccess("Catégorie mise à jour", msg);
       await loadCategories();
       if (onCategoryChanged) onCategoryChanged();
     } catch (err: any) {
-      setError(err.message);
+      const tr = notifyClientError(err, "Mise à jour de la catégorie impossible");
+      setError(tr.message);
     }
   }
 
@@ -229,11 +265,14 @@ export function CategoryBuilderPage({ onCategoryChanged }: { onCategoryChanged?:
     setError("");
     try {
       await DesktopCmsApi.archiveCategory(catId);
-      setStatusMsg(`Catégorie "${catName}" archivée en toute sécurité.`);
+      const msg = `Catégorie "${catName}" archivée en toute sécurité.`;
+      setStatusMsg(msg);
+      notifyClientSuccess("Catégorie archivée", msg);
       await loadCategories();
       if (onCategoryChanged) onCategoryChanged();
     } catch (err: any) {
-      setError(err.message);
+      const tr = notifyClientError(err, "Archivage de la catégorie impossible");
+      setError(tr.message);
     }
   }
 

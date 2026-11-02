@@ -1,6 +1,32 @@
 const API_BASE =
   (typeof import.meta !== "undefined" && (import.meta as any).env?.VITE_API_BASE_URL) || "/api/v1";
 
+function formatPublicStorefrontError(data: any, status: number): string {
+  if (status === 422 || Array.isArray(data?.detail)) {
+    return "Veuillez vérifier les informations saisies (nom complet, numéro de téléphone algérien 05/06/07, Wilaya et adresse).";
+  }
+  const raw = typeof data?.detail === "string" ? data.detail : "";
+  if (status === 403 && raw.includes("Anti-Retour")) {
+    return raw;
+  }
+  if (status === 409) {
+    if (raw.toLowerCase().includes("stock")) {
+      return "La quantité demandée dépasse le stock actuellement disponible pour cet article.";
+    }
+    return "Cette commande vient déjà d'être enregistrée. Vérifiez son statut dans le suivi de commande.";
+  }
+  if (status === 429) {
+    return "Trop de tentatives rapprochées. Veuillez patienter quelques secondes avant de réessayer.";
+  }
+  if (status === 404) {
+    return "Aucun résultat trouvé pour cette référence ou cet article.";
+  }
+  if (status >= 500 || !raw || /sqlite|postgres|traceback|internal|exception/i.test(raw)) {
+    return "Le service est momentanément indisponible. Veuillez réessayer dans un instant ou commander via WhatsApp au 0655 53 41 54.";
+  }
+  return raw;
+}
+
 async function publicFetch(path: string, options: RequestInit = {}, timeoutMs = 15000) {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), timeoutMs);
@@ -9,11 +35,16 @@ async function publicFetch(path: string, options: RequestInit = {}, timeoutMs = 
       ...options,
       signal: options.signal || controller.signal,
     });
-    const data = await res.json();
+    const data = await res.json().catch(() => ({}));
     if (!res.ok) {
-      throw new Error(data.detail || `HTTP error ${res.status}`);
+      throw new Error(formatPublicStorefrontError(data, res.status));
     }
     return data;
+  } catch (err: any) {
+    if (err?.name === "AbortError" || /failed to fetch|networkerror/i.test(String(err?.message))) {
+      throw new Error("Connexion interrompue avec la boutique Mus Luxury. Vérifiez votre connexion Internet.");
+    }
+    throw err;
   } finally {
     clearTimeout(timer);
   }

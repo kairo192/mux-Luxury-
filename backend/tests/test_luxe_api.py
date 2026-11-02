@@ -1498,6 +1498,7 @@ const path = require("path");
 const babel = require("@babel/core");
 const files = [
   "apps/desktop-cms/src/utils/osKeychain.ts",
+  "apps/desktop-cms/src/utils/clientNotifier.ts",
   "apps/desktop-cms/src/utils/draftStorage.ts",
   "apps/desktop-cms/src/api/adminClient.ts",
   "apps/desktop-cms/src/pages/CategoryBuilderPage.tsx",
@@ -2033,6 +2034,133 @@ console.log("ALL_TSX_COMPILED_OK");
         ci_workflow = repo_root / ".github" / "workflows" / "ci-security-and-backend.yml"
         self.assertTrue(ci_workflow.is_file())
         self.assertIn("unittest discover -s tests -v", ci_workflow.read_text(encoding="utf-8"))
+
+
+
+    # 51. Client-Side Error Sanitizer, French Message Translator & Notification Bus Execution (Node.js Runtime)
+    def test_51_client_error_sanitizer_message_boxes_and_zero_raw_backend_error_leak(self):
+        import subprocess
+        from pathlib import Path
+        repo_root = Path(__file__).resolve().parents[2]
+
+        js_runner = """
+const fs = require("fs");
+const path = require("path");
+const babel = require("@babel/core");
+
+const file = path.resolve(process.cwd(), "apps/desktop-cms/src/utils/clientNotifier.ts");
+const src = fs.readFileSync(file, "utf8");
+const compiled = babel.transformSync(src, {
+  filename: file,
+  presets: [
+    ["/usr/share/nodejs/@babel/preset-env", { targets: { node: "current" }, modules: "commonjs" }],
+    ["/usr/share/nodejs/@babel/preset-typescript", { isTSX: false }],
+  ],
+}).code;
+
+const mod = { exports: {} };
+const fn = new Function("exports", "require", "module", compiled);
+fn(mod.exports, require, mod);
+
+const {
+  sanitizeAndTranslateError,
+  notifyClientError,
+  notifyClientSuccess,
+  notifyClientWarning,
+  subscribeClientNotifications,
+} = mod.exports;
+
+const captured = [];
+const unsub = subscribeClientNotifications((item) => captured.push(item));
+
+// Test 1: FastAPI 422 Pydantic validation array -> must NEVER produce "[object Object]"
+const r422 = sanitizeAndTranslateError(
+  { detail: [{ loc: ["body", "selling_price_dzd"], msg: "ensure this value is greater than 0" }] },
+  422
+);
+if (r422.message.includes("[object Object]") || !r422.message.includes("Prix de vente (DA)")) {
+  throw new Error("422 translation failed: " + JSON.stringify(r422));
+}
+
+// Test 2: 401 Login failure vs 401 Session Expired
+const rLogin401 = sanitizeAndTranslateError({ detail: "Invalid email or password" }, 401, "/admin/auth/login");
+if (rLogin401.code !== "AUTH_INVALID_CREDENTIALS" || rLogin401.message.includes("Invalid email")) {
+  throw new Error("401 login translation failed: " + JSON.stringify(rLogin401));
+}
+const rSess401 = sanitizeAndTranslateError("SESSION_EXPIRED", 401, "/admin/orders");
+if (rSess401.code !== "SESSION_EXPIRED" || rSess401.message === "SESSION_EXPIRED") {
+  throw new Error("401 session translation failed: " + JSON.stringify(rSess401));
+}
+
+// Test 3: 403 RBAC Permission Denied
+const r403 = sanitizeAndTranslateError({ detail: "Insufficient permissions: backups:write required" }, 403);
+if (r403.message.includes("Insufficient permissions") || !r403.title.includes("Accès refusé")) {
+  throw new Error("403 RBAC translation failed: " + JSON.stringify(r403));
+}
+
+// Test 4: 409 Optimistic Concurrency Version Conflict & Insufficient Stock
+const r409v = sanitizeAndTranslateError({ detail: "Synchronization conflict detected: server version is 2" }, 409);
+if (r409v.code !== "VERSION_CONFLICT" || r409v.message.includes("Synchronization conflict")) {
+  throw new Error("409 version translation failed: " + JSON.stringify(r409v));
+}
+
+// Test 5: 500 Raw SQLite / Python Traceback -> strictly stripped and sanitized
+const r500 = sanitizeAndTranslateError(new Error("sqlite3.OperationalError: database is locked Traceback (most recent call last)"), 500);
+if (/sqlite3|operationalerror|traceback|locked/i.test(r500.message)) {
+  throw new Error("500 raw backend error leaked: " + JSON.stringify(r500));
+}
+
+// Test 6: Network offline & AbortError timeout
+const rNet = sanitizeAndTranslateError(new TypeError("Failed to fetch"), 0);
+if (rNet.code !== "NETWORK_OFFLINE" || /failed to fetch/i.test(rNet.message)) {
+  throw new Error("Network error leaked: " + JSON.stringify(rNet));
+}
+
+// Test 7: Event Bus emits modal message box + toast notifications
+notifyClientError(new Error("sqlite3.IntegrityError: UNIQUE constraint failed"), "Création impossible", true);
+notifyClientWarning("Champ requis", "Veuillez saisir un SKU.");
+notifyClientSuccess("Produit créé", "Synchronisé avec succès.");
+unsub();
+
+if (captured.length !== 3 || !captured[0].showModalBox || !captured[1].showModalBox || captured[2].showModalBox) {
+  throw new Error("Notification bus modal flags unexpected: " + JSON.stringify(captured));
+}
+console.log("CLIENT_NOTIFIER_ALL_TESTS_PASSED");
+""";
+        env = os.environ.copy()
+        env["NODE_PATH"] = "/usr/share/nodejs"
+        res = subprocess.run(["node", "-e", js_runner], cwd=str(repo_root), env=env, capture_output=True, text=True)
+        self.assertEqual(res.returncode, 0, f"clientNotifier runtime test failed: {res.stderr}")
+        self.assertIn("CLIENT_NOTIFIER_ALL_TESTS_PASSED", res.stdout)
+
+    # 52. Complete A-to-Z Audit of All 8 Tabs, Zero Raw setError(err.message), and Modal Message Box Wiring
+    def test_52_complete_a_to_z_all_8_tabs_cms_handlers_and_notifications_audit(self):
+        import re as _re
+        from pathlib import Path
+        repo_root = Path(__file__).resolve().parents[2]
+
+        for rel in [
+            "apps/desktop-cms/src/App.tsx",
+            "apps/desktop-cms/src/pages/CategoryBuilderPage.tsx",
+            "apps/desktop-cms/src/pages/DeliveryWilayasPage.tsx",
+        ]:
+            content = (repo_root / rel).read_text(encoding="utf-8")
+            # Ensure zero raw setError(err.message) calls remain anywhere in Desktop CMS
+            self.assertNotIn("setError(err.message", content, f"Raw backend error assignment found in {rel}")
+            self.assertIn("notifyClientError", content, f"Missing notifyClientError in {rel}")
+            self.assertIn("notifyClientSuccess", content, f"Missing notifyClientSuccess in {rel}")
+            self.assertIn("notifyClientWarning", content, f"Missing notifyClientWarning in {rel}")
+
+            # Verify every async function in the UI component has a catch block (or delegates to a try/catch)
+            for m in _re.finditer(r"async function (\w+)\([^)]*\)\s*\{([\s\S]*?)\n  \}", content):
+                fn_name, fn_body = m.group(1), m.group(2)
+                self.assertIn("catch", fn_body, f"Async handler {fn_name} in {rel} is missing a catch block")
+
+        app_tsx = (repo_root / "apps" / "desktop-cms" / "src" / "App.tsx").read_text(encoding="utf-8")
+        self.assertIn("renderClientNotificationCenter", app_tsx)
+        self.assertIn("role=\"dialog\"", app_tsx)
+        self.assertIn("aria-modal=\"true\"", app_tsx)
+        self.assertIn("Compris (Fermer)", app_tsx)
 
 
 if __name__ == "__main__":

@@ -1,4 +1,5 @@
 import { keychainSetSecret, keychainGetSecret, keychainDeleteSecret, getOsKeychainStatus } from "../utils/osKeychain";
+import { ClientSafeApiError, sanitizeAndTranslateError } from "../utils/clientNotifier";
 // ============================================================================
 // TAURI 2 DESKTOP CMS — SHARED AUTHENTICATED HTTPS API CLIENT
 // Features:
@@ -72,8 +73,9 @@ async function adminFetch(path: string, options: RequestInit = {}, timeoutMs = d
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), timeoutMs);
 
+  const isFormData = typeof FormData !== "undefined" && options.body instanceof FormData;
   const headers: Record<string, string> = {
-    "Content-Type": "application/json",
+    ...(isFormData ? {} : { "Content-Type": "application/json" }),
     ...((options.headers as Record<string, string>) || {}),
   };
   const activeToken = getAccessToken();
@@ -87,17 +89,44 @@ async function adminFetch(path: string, options: RequestInit = {}, timeoutMs = d
       headers,
       signal: options.signal || controller.signal,
     });
-    if (res.status === 401) {
-      setAccessToken(null);
-      throw new Error("SESSION_EXPIRED");
-    }
     const contentType = res.headers.get("content-type") || "";
-    const data = contentType.includes("application/json") ? await res.json() : await res.text();
+    const data = contentType.includes("application/json") ? await res.json().catch(() => ({})) : await res.text().catch(() => "");
+
+    if (res.status === 401) {
+      const isAuthEndpoint = path.includes("/admin/auth/login") || path.includes("/admin/auth/recovery");
+      if (!isAuthEndpoint) {
+        setAccessToken(null);
+      }
+      const tr401 = sanitizeAndTranslateError(data, 401, path, "Authentification requise");
+      throw new ClientSafeApiError({
+        status: 401,
+        title: tr401.title,
+        userMessage: tr401.message,
+        code: isAuthEndpoint ? tr401.code : "SESSION_EXPIRED",
+      });
+    }
+
     if (!res.ok) {
-      const detail = typeof data === "object" && data !== null && "detail" in data ? (data as any).detail : String(data);
-      throw new Error(detail || `Erreur serveur HTTP ${res.status}`);
+      const tr = sanitizeAndTranslateError(data, res.status, path, "Opération refusée");
+      throw new ClientSafeApiError({
+        status: res.status,
+        title: tr.title,
+        userMessage: tr.message,
+        code: tr.code,
+      });
     }
     return data;
+  } catch (err: any) {
+    if (err instanceof ClientSafeApiError) {
+      throw err;
+    }
+    const trNet = sanitizeAndTranslateError(err, 0, path, "Erreur de communication");
+    throw new ClientSafeApiError({
+      status: trNet.status,
+      title: trNet.title,
+      userMessage: trNet.message,
+      code: trNet.code,
+    });
   } finally {
     clearTimeout(timer);
   }
@@ -263,6 +292,11 @@ export const DesktopCmsApi = {
 
   // Product Image Gallery Management & Static Pages
   checkHealth: () => adminFetch("/health"),
+  uploadMediaFile: (file: File) => {
+    const fd = new FormData();
+    fd.append("file", file);
+    return adminFetch("/admin/upload", { method: "POST", body: fd });
+  },
   addProductImage: (productId: number, payload: unknown) =>
     adminFetch(`/admin/products/${productId}/images`, { method: "POST", body: JSON.stringify(payload) }),
   reorderProductImages: (productId: number, payload: unknown) =>
