@@ -12,6 +12,10 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+      - name: Install Node.js & Babel AST Toolchain for TSX Verification Tests
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y nodejs node-babel7
       - name: Set up Python 3.11
         uses: actions/setup-python@v5
         with:
@@ -27,14 +31,20 @@ jobs:
           python3 -m unittest discover -s tests -v
 
   storefront-check:
-    name: React + TypeScript Storefront Check
+    name: React + TypeScript Storefront & Desktop CMS Bundle Check
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
           node-version: "20"
-      - name: Verify Storefront Structure
+      - name: Build Public Storefront (Vite + TypeScript)
+        working-directory: ./apps/storefront
         run: |
-          test -f apps/storefront/package.json
-          test -f apps/desktop-cms/src-tauri/tauri.conf.json
+          npm install
+          npm run build
+      - name: Build Desktop CMS Frontend Bundle (Vite + TypeScript)
+        working-directory: ./apps/desktop-cms
+        run: |
+          npm install
+          npm run build

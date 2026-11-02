@@ -18,7 +18,7 @@ export interface WilayaZone {
 
 export function DeliveryWilayasPage() {
   const [zones, setZones] = useState<WilayaZone[]>(() => readDraft("luxe_wilayas_cache", []));
-  const [dirtyCodes, setDirtyCodes] = useState<Record<string, boolean>>({});
+  const [dirtyCodes, setDirtyCodes] = useState<Record<string, boolean>>(() => readDraft("luxe_wilayas_dirty", {}));
   const [search, setSearch] = useState(() => readDraft("luxe_wilayas_search", ""));
 
   useEffect(() => {
@@ -37,9 +37,10 @@ export function DeliveryWilayasPage() {
             return serverZones;
           }
           // Preserve any unsaved local edits in dirty rows!
+          const savedDirty = readDraft<Record<string, boolean>>("luxe_wilayas_dirty", dirtyCodes);
           const merged = serverZones.map((sz) => {
             const localRow = prev.find((p) => p.wilaya_code === sz.wilaya_code);
-            return localRow && dirtyCodes[sz.wilaya_code] ? localRow : sz;
+            return localRow && savedDirty[sz.wilaya_code] ? localRow : sz;
           });
           writeDraft("luxe_wilayas_cache", merged);
           return merged;
@@ -74,7 +75,12 @@ export function DeliveryWilayasPage() {
       });
       const msg = `Tarifs de la Wilaya ${z.wilaya_code} - ${z.wilaya_name_fr} enregistrés (Domicile: ${homeFee} DA | Stop-Desk: ${deskFee} DA).`;
       setBannerMsg(msg);
-      setDirtyCodes((prev) => ({ ...prev, [z.wilaya_code]: false }));
+      setDirtyCodes((prev) => {
+        const nextD = { ...prev, [z.wilaya_code]: false };
+        writeDraft("luxe_wilayas_dirty", nextD);
+        return nextD;
+      });
+      writeDraft("luxe_wilayas_cache", zones);
       notifyClientSuccess(`Wilaya ${z.wilaya_code} mise à jour`, msg);
     } catch (err: any) {
       notifyClientError(err, `Échec de sauvegarde de la Wilaya ${z.wilaya_code}`);
@@ -110,6 +116,8 @@ export function DeliveryWilayasPage() {
       const msg = "Les 69 Wilayas ont été enregistrées et synchronisées en lot avec succès.";
       setBannerMsg(msg);
       setDirtyCodes({});
+      writeDraft("luxe_wilayas_dirty", {});
+      writeDraft("luxe_wilayas_cache", zones);
       notifyClientSuccess("Synchronisation 69 Wilayas réussie", msg);
     } catch (err: any) {
       notifyClientError(err, "Échec de la sauvegarde groupée des 69 Wilayas");
@@ -119,20 +127,32 @@ export function DeliveryWilayasPage() {
   }
 
   function updateLocalRate(code: string, method: "home" | "stop_desk", field: string, value: any) {
-    setDirtyCodes((prev) => ({ ...prev, [code]: true }));
-    setZones((prev) =>
-      prev.map((z) =>
+    setDirtyCodes((prev) => {
+      const nextD = { ...prev, [code]: true };
+      writeDraft("luxe_wilayas_dirty", nextD);
+      return nextD;
+    });
+    setZones((prev) => {
+      const nextZones = prev.map((z) =>
         z.wilaya_code === code
           ? {
               ...z,
-              rates: {
-                ...z.rates,
-                [method]: { ...z.rates[method], [field]: value },
-              },
+              rates:
+                field === "estimated_days"
+                  ? {
+                      home: { ...z.rates.home, estimated_days: value },
+                      stop_desk: { ...z.rates.stop_desk, estimated_days: value },
+                    }
+                  : {
+                      ...z.rates,
+                      [method]: { ...z.rates[method], [field]: value },
+                    },
             }
           : z
-      )
-    );
+      );
+      writeDraft("luxe_wilayas_cache", nextZones);
+      return nextZones;
+    });
   }
 
   const filtered = zones.filter(

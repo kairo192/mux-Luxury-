@@ -3022,6 +3022,31 @@ flushOfflineMutationQueue(async () => true).then((res) => {
             self.assertEqual(chk.returncode, 0, chk.stderr)
 
 
+    # 75. Wilaya Dirty Draft Persistence, Two-Step Category Attribute Deletion & GitHub Actions Babel Audit
+    def test_75_wilaya_draft_cache_category_two_step_attribute_delete_and_ci_babel_audit(self):
+        from pathlib import Path
+        repo_root = Path(__file__).resolve().parents[2]
+
+        # 1. Verify DeliveryWilayasPage persists dirtyCodes and updates luxe_wilayas_cache on updateLocalRate
+        dw_code = (repo_root / "apps" / "desktop-cms" / "src" / "pages" / "DeliveryWilayasPage.tsx").read_text(encoding="utf-8")
+        self.assertIn("luxe_wilayas_dirty", dw_code)
+        self.assertIn("writeDraft(\"luxe_wilayas_cache\", nextZones)", dw_code)
+
+        # 2. Verify CategoryBuilderPage persists luxe_cat_draft_attrs and performs 2-step deleteCategoryAttribute(attrId, false) -> 409 -> true
+        cb_code = (repo_root / "apps" / "desktop-cms" / "src" / "pages" / "CategoryBuilderPage.tsx").read_text(encoding="utf-8")
+        self.assertIn("luxe_cat_draft_attrs", cb_code)
+        self.assertIn("deleteCategoryAttribute(attrId, false)", cb_code)
+        self.assertIn("err?.status === 409", cb_code)
+        self.assertIn("deleteCategoryAttribute(attrId, true)", cb_code)
+
+        # 3. Verify both CI workflows install node-babel7 and run frontend bundle builds
+        ci_yml = (repo_root / ".github" / "workflows" / "ci.yml").read_text(encoding="utf-8")
+        ci_sec_yml = (repo_root / ".github" / "workflows" / "ci-security-and-backend.yml").read_text(encoding="utf-8")
+        self.assertIn("node-babel7", ci_yml)
+        self.assertIn("node-babel7", ci_sec_yml)
+        self.assertIn("npm run build", ci_yml)
+
+
 if __name__ == "__main__":
     unittest.main()
 

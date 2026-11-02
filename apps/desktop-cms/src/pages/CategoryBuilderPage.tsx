@@ -54,7 +54,7 @@ export function CategoryBuilderPage({ onCategoryChanged }: { onCategoryChanged?:
     writeDraft("luxe_cat_draft_desc", descriptionFr);
     writeDraft("luxe_cat_draft_order", displayOrder);
   }, [nameFr, nameAr, nameEn, slug, descriptionFr, displayOrder]);
-  const [attributes, setAttributes] = useState<DraftAttribute[]>([
+  const [attributes, setAttributes] = useState<DraftAttribute[]>(() => readDraft("luxe_cat_draft_attrs", [
     {
       attr_key: "color",
       label_fr: "Couleur",
@@ -79,7 +79,10 @@ export function CategoryBuilderPage({ onCategoryChanged }: { onCategoryChanged?:
       is_variant_axis: true,
       options_csv: "S, M, L",
     },
-  ]);
+  ]));
+  useEffect(() => {
+    writeDraft("luxe_cat_draft_attrs", attributes);
+  }, [attributes]);
 
   // New attribute draft inputs
   const [newKey, setNewKey] = useState("");
@@ -227,11 +230,27 @@ export function CategoryBuilderPage({ onCategoryChanged }: { onCategoryChanged?:
   async function handleDeleteAttribute(attrId: number) {
     setError("");
     try {
-      await DesktopCmsApi.deleteCategoryAttribute(attrId, true);
+      await DesktopCmsApi.deleteCategoryAttribute(attrId, false);
       notifyClientSuccess("Attribut supprimé", "L'attribut a été retiré de la catégorie et le catalogue a été synchronisé.");
       await loadCategories();
       if (onCategoryChanged) onCategoryChanged();
     } catch (err: any) {
+      if (err?.status === 409) {
+        try {
+          await DesktopCmsApi.deleteCategoryAttribute(attrId, true);
+          notifyClientSuccess(
+            "Attribut migré et supprimé",
+            "Cet attribut était utilisé par des produits existants : les valeurs liées ont été archivées et l'attribut a été retiré."
+          );
+          await loadCategories();
+          if (onCategoryChanged) onCategoryChanged();
+          return;
+        } catch (innerErr: any) {
+          const trInner = notifyClientError(innerErr, "Migration et suppression de l'attribut refusées");
+          setError(trInner.message);
+          return;
+        }
+      }
       const tr = notifyClientError(err, "Suppression de l'attribut refusée");
       setError(tr.message);
     }
