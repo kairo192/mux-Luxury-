@@ -86,3 +86,7 @@ export function trackGuestOrder(reference: string, phone: string) {
   const qs = new URLSearchParams({ reference, phone });
   return publicFetch(`/orders/track?${qs.toString()}`);
 }
+
+export function fetchStaticPage(slug: string) {
+  return publicFetch(`/pages/${encodeURIComponent(slug)}`);
+}

@@ -352,6 +352,7 @@ CREATE TABLE IF NOT EXISTS coupons (
     is_active INTEGER NOT NULL DEFAULT 1,
     starts_at TIMESTAMP,
     ends_at TIMESTAMP,
+    usage_limit INTEGER,
     usage_count INTEGER NOT NULL DEFAULT 0,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );

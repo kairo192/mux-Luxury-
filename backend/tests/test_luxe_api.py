@@ -1547,14 +1547,14 @@ console.log("ALL_TSX_COMPILED_OK");
     def test_38_complete_100_percent_cms_and_storefront_endpoint_wiring_audit(self):
         import re as _re
         repo_root = os.path.dirname(os.path.dirname(os.path.dirname(__file__)))
-        ac_text = open(os.path.join(repo_root, "apps", "desktop-cms", "src", "api", "adminClient.ts"), encoding="utf-8").read()
+        ac_text = __import__("pathlib").Path(os.path.join(repo_root, "apps", "desktop-cms", "src", "api", "adminClient.ts")).read_text(encoding="utf-8")
         methods = _re.findall(r"^\s*([a-zA-Z0-9_]+):\s*(?:async\s*)?\(", ac_text, _re.M)
         self.assertGreaterEqual(len(methods), 34)
 
         ui_text = (
-            open(os.path.join(repo_root, "apps", "desktop-cms", "src", "App.tsx"), encoding="utf-8").read()
-            + open(os.path.join(repo_root, "apps", "desktop-cms", "src", "pages", "CategoryBuilderPage.tsx"), encoding="utf-8").read()
-            + open(os.path.join(repo_root, "apps", "desktop-cms", "src", "pages", "DeliveryWilayasPage.tsx"), encoding="utf-8").read()
+            __import__("pathlib").Path(os.path.join(repo_root, "apps", "desktop-cms", "src", "App.tsx")).read_text(encoding="utf-8")
+            + __import__("pathlib").Path(os.path.join(repo_root, "apps", "desktop-cms", "src", "pages", "CategoryBuilderPage.tsx")).read_text(encoding="utf-8")
+            + __import__("pathlib").Path(os.path.join(repo_root, "apps", "desktop-cms", "src", "pages", "DeliveryWilayasPage.tsx")).read_text(encoding="utf-8")
         )
         missing = [m for m in methods if f"DesktopCmsApi.{m}" not in ui_text]
         self.assertEqual(missing, [], f"Unwired DesktopCmsApi methods in Desktop CMS UI: {missing}")
@@ -1674,10 +1674,10 @@ console.log("ALL_TSX_COMPILED_OK");
     # 41. OS Keychain (wincred) Tauri 2 Native Storage & Zero-localStorage Token Audit
     def test_41_os_keychain_wincred_tauri_ipc_and_zero_localstorage_token(self):
         repo_root = os.path.dirname(os.path.dirname(os.path.dirname(__file__)))
-        cargo_toml = open(os.path.join(repo_root, "apps", "desktop-cms", "src-tauri", "Cargo.toml"), encoding="utf-8").read()
-        main_rs = open(os.path.join(repo_root, "apps", "desktop-cms", "src-tauri", "src", "main.rs"), encoding="utf-8").read()
-        os_kc_ts = open(os.path.join(repo_root, "apps", "desktop-cms", "src", "utils", "osKeychain.ts"), encoding="utf-8").read()
-        admin_client_ts = open(os.path.join(repo_root, "apps", "desktop-cms", "src", "api", "adminClient.ts"), encoding="utf-8").read()
+        cargo_toml = __import__("pathlib").Path(os.path.join(repo_root, "apps", "desktop-cms", "src-tauri", "Cargo.toml")).read_text(encoding="utf-8")
+        main_rs = __import__("pathlib").Path(os.path.join(repo_root, "apps", "desktop-cms", "src-tauri", "src", "main.rs")).read_text(encoding="utf-8")
+        os_kc_ts = __import__("pathlib").Path(os.path.join(repo_root, "apps", "desktop-cms", "src", "utils", "osKeychain.ts")).read_text(encoding="utf-8")
+        admin_client_ts = __import__("pathlib").Path(os.path.join(repo_root, "apps", "desktop-cms", "src", "api", "adminClient.ts")).read_text(encoding="utf-8")
 
         # Verify Rust native Windows Credential Manager (wincred) + tauri-plugin-store integration
         self.assertIn("tauri-plugin-store", cargo_toml)
@@ -1693,6 +1693,237 @@ console.log("ALL_TSX_COMPILED_OK");
         self.assertNotIn("localStorage.setItem", os_kc_ts)
         self.assertNotIn("localStorage.setItem", admin_client_ts)
         self.assertIn('keychainSetSecret("luxe_cms_access_token"', admin_client_ts)
+
+
+
+    # 42. Adversarial XSS, HTML Tag Injection & SQL Injection Fuzzing across Public & Admin Endpoints
+    def test_42_adversarial_xss_html_injection_and_sql_injection_fuzzing(self):
+        from app.security import reset_rate_limits
+        reset_rate_limits()
+        prods = self.client.get("/api/v1/products").json()["items"]
+        target_vid = next(v["id"] for p in prods for v in p["variants"] if v["stock_qty"] >= 2)
+
+        # 1. Verify XSS / HTML payloads in guest checkout are strictly rejected with 422
+        xss_payloads = [
+            "<script>alert(document.cookie)</script>",
+            "<img src=x onerror=alert(1)>",
+            "javascript:alert(1)",
+            "Client <iframe src=evil>",
+        ]
+        for xss in xss_payloads:
+            r_xss = self.client.post(
+                "/api/v1/orders",
+                headers={"Idempotency-Key": f"xss-test-{hash(xss)}"},
+                json={
+                    "full_name": xss,
+                    "phone": "0551112233",
+                    "wilaya_code": "16",
+                    "commune": "Hydra",
+                    "delivery_address": "10 Rue Didouche Mourad, Alger",
+                    "delivery_method": "home",
+                    "items": [{"variant_id": target_vid, "quantity": 1}],
+                },
+            )
+            self.assertEqual(r_xss.status_code, 422, f"XSS payload was not rejected: {xss}")
+
+        # 2. Verify SQL Injection payloads across search, category, tracking, and login endpoints never compromise DB
+        sqli_vectors = [
+            "' OR '1'='1",
+            "'; DROP TABLE orders; --",
+            "' UNION SELECT id, email, password_hash FROM admin_users --",
+        ]
+        for sqli in sqli_vectors:
+            r_search = self.client.get("/api/v1/products", params={"q": sqli, "category": sqli})
+            self.assertEqual(r_search.status_code, 200)
+            r_track = self.client.get("/api/v1/orders/track", params={"reference": sqli, "phone": sqli})
+            self.assertEqual(r_track.status_code, 404)
+            reset_rate_limits()
+            r_login = self.client.post("/api/v1/admin/auth/login", json={"email": sqli, "password": sqli})
+            self.assertEqual(r_login.status_code, 401)
+
+        # Confirm orders and admin_users tables remain 100% intact
+        r_health = self.client.get("/api/v1/health")
+        self.assertEqual(r_health.status_code, 200)
+        self.assertEqual(r_health.json()["active_wilayas"], 69)
+
+    # 43. Duplicate Variant Line-Item Stock Bypass Defense & Coupon Usage Limit Enforcement
+    def test_43_duplicate_variant_line_item_stock_bypass_and_coupon_usage_limit_enforcement(self):
+        from app.security import reset_rate_limits
+        reset_rate_limits()
+        headers = self.get_admin_headers()
+
+        prods = self.client.get("/api/v1/products").json()["items"]
+        target_var = next(v for p in prods for v in p["variants"] if v["stock_qty"] >= 2)
+        vid = target_var["id"]
+        avail = int(target_var["stock_qty"])
+
+        # 1. Attempt to bypass stock check by splitting (avail - 1) + (avail - 1) across two duplicate variant_id lines
+        if avail >= 2:
+            split_qty = max(1, avail - 1)
+            if split_qty * 2 > avail:
+                r_dup_bypass = self.client.post(
+                    "/api/v1/orders",
+                    headers={"Idempotency-Key": "dup-line-bypass-attempt"},
+                    json={
+                        "full_name": "Test Stock Split",
+                        "phone": "0662334455",
+                        "wilaya_code": "16",
+                        "commune": "Alger Centre",
+                        "delivery_address": "15 Rue Larbi Ben Mhidi, Alger",
+                        "delivery_method": "home",
+                        "items": [
+                            {"variant_id": vid, "quantity": split_qty},
+                            {"variant_id": vid, "quantity": split_qty},
+                        ],
+                    },
+                )
+                self.assertEqual(r_dup_bypass.status_code, 409, r_dup_bypass.text)
+
+        # 2. Create a single-use coupon (usage_limit = 1) and verify exhaustion after 1 order
+        r_cpn = self.client.post(
+            "/api/v1/admin/coupons",
+            headers=headers,
+            json={
+                "code": "SINGLEUSE2026",
+                "discount_type": "fixed_dzd",
+                "discount_value": 500,
+                "min_order_dzd": 1000,
+                "usage_limit": 1,
+            },
+        )
+        self.assertEqual(r_cpn.status_code, 201, r_cpn.text)
+
+        # First order succeeds and consumes the 1 allowed coupon usage
+        r_ord1 = self.client.post(
+            "/api/v1/orders",
+            headers={"Idempotency-Key": "single-use-cpn-ord-1"},
+            json={
+                "full_name": "Cliente Coupon Un",
+                "phone": "0663445566",
+                "wilaya_code": "09",
+                "commune": "Ouled Yaïch",
+                "delivery_address": "Centre Ville, Ouled Yaïch",
+                "delivery_method": "home",
+                "coupon_code": "SINGLEUSE2026",
+                "items": [{"variant_id": vid, "quantity": 1}],
+            },
+        )
+        self.assertEqual(r_ord1.status_code, 201, r_ord1.text)
+
+        # Public coupon validation must now reject SINGLEUSE2026 (usage_limit reached)
+        r_val = self.client.post("/api/v1/coupons/validate", json={"code": "SINGLEUSE2026", "subtotal_dzd": 10000})
+        self.assertEqual(r_val.status_code, 400)
+
+        # Second order attempting to reuse SINGLEUSE2026 must be rejected with 400
+        r_ord2 = self.client.post(
+            "/api/v1/orders",
+            headers={"Idempotency-Key": "single-use-cpn-ord-2"},
+            json={
+                "full_name": "Cliente Coupon Deux",
+                "phone": "0663445577",
+                "wilaya_code": "09",
+                "commune": "Ouled Yaïch",
+                "delivery_address": "Centre Ville, Ouled Yaïch",
+                "delivery_method": "home",
+                "coupon_code": "SINGLEUSE2026",
+                "items": [{"variant_id": vid, "quantity": 1}],
+            },
+        )
+        self.assertEqual(r_ord2.status_code, 400, r_ord2.text)
+
+    # 44. CSV Formula Injection (DDE/Excel) Defense & Strict OWASP HTTP Security Headers
+    def test_44_csv_formula_injection_defense_and_security_headers_enforcement(self):
+        from app.security import reset_rate_limits
+        reset_rate_limits()
+        headers = self.get_admin_headers()
+
+        prods = self.client.get("/api/v1/products").json()["items"]
+        vid = next(v["id"] for p in prods for v in p["variants"] if v["stock_qty"] >= 1)
+
+        # Submit order with formula-prefixed customer name (=CMD...) and +213 phone number
+        r_ord = self.client.post(
+            "/api/v1/orders",
+            headers={"Idempotency-Key": "csv-injection-test-ord"},
+            json={
+                "full_name": "=1+1+CMD",
+                "phone": "+213664556677",
+                "wilaya_code": "16",
+                "commune": "@SUM(1,2)",
+                "delivery_address": "-2+3 Rue Didouche Mourad",
+                "delivery_method": "home",
+                "items": [{"variant_id": vid, "quantity": 1}],
+            },
+        )
+        self.assertEqual(r_ord.status_code, 201, r_ord.text)
+
+        # Export CSV and verify formula cells are prefixed with single quote while +213 phone is preserved
+        r_csv = self.client.get("/api/v1/admin/orders/export.csv", headers=headers)
+        self.assertEqual(r_csv.status_code, 200)
+        csv_body = r_csv.text
+        self.assertIn("'=1+1+CMD", csv_body)
+        self.assertIn("'@SUM(1,2)", csv_body)
+        self.assertIn("+213664556677", csv_body)
+        self.assertNotIn("'+213664556677", csv_body)
+
+        # Verify strict OWASP HTTP Security Headers on both public and admin responses
+        self.assertEqual(r_csv.headers.get("X-Content-Type-Options"), "nosniff")
+        self.assertEqual(r_csv.headers.get("X-Frame-Options"), "DENY")
+        self.assertIn("default-src 'self'", r_csv.headers.get("Content-Security-Policy", ""))
+        self.assertIn("geolocation=()", r_csv.headers.get("Permissions-Policy", ""))
+        self.assertIn("no-store", r_csv.headers.get("Cache-Control", ""))
+
+    # 45. RBAC Privilege Escalation Matrix & JWT Signature Tampering Defense
+    def test_45_rbac_privilege_escalation_matrix_and_jwt_tampering_defense(self):
+        import base64 as _b64
+        import json as _json
+        from app.security import reset_rate_limits
+        reset_rate_limits()
+
+        # Login as catalog_editor (has products:write, categories:write, content:write, dashboard:read; NO orders:write or backups:write)
+        editor_headers = self.get_admin_headers("editor@musluxury.dz", "EditorLuxury2026!")
+
+        # Catalog editor must be blocked from COD Blacklist & Orders (requires orders:write)
+        self.assertEqual(self.client.get("/api/v1/admin/orders", headers=editor_headers).status_code, 403)
+        self.assertEqual(self.client.get("/api/v1/admin/cod-risk/blacklist", headers=editor_headers).status_code, 403)
+        # Catalog editor must be blocked from Backups & Store Settings
+        self.assertEqual(self.client.get("/api/v1/admin/backups", headers=editor_headers).status_code, 403)
+        self.assertEqual(self.client.post("/api/v1/admin/auth/recovery/rotate-emergency-code", headers=editor_headers).status_code, 403)
+
+        # Tamper with the JWT payload (inject super_admin & backups:write) while keeping original signature
+        raw_token = editor_headers["Authorization"].split(" ", 1)[1]
+        b64_payload, orig_sig = raw_token.split(".", 1)
+        decoded = _json.loads(_b64.urlsafe_b64decode(b64_payload.encode()).decode())
+        decoded["role"] = "super_admin"
+        decoded["perms"].append("backups:write")
+        forged_b64 = _b64.urlsafe_b64encode(_json.dumps(decoded).encode()).decode()
+        forged_token = f"{forged_b64}.{orig_sig}"
+
+        r_forged = self.client.get("/api/v1/admin/backups", headers={"Authorization": f"Bearer {forged_token}"})
+        self.assertEqual(r_forged.status_code, 401, "Forged JWT payload must be rejected with 401 Unauthorized")
+
+    # 46. Zero Mock Data & 100% Storefront + Desktop CMS API Client Wiring Audit
+    def test_46_zero_mock_data_and_100_percent_storefront_and_cms_api_wiring_audit(self):
+        import re as _re
+        repo_root = os.path.dirname(os.path.dirname(os.path.dirname(__file__)))
+
+        # 1. Verify apps/storefront/index.html has zero fake orders (Yasmine Khelifi / LUX-25847-DZ) and empty initial cart/orders
+        with open(os.path.join(repo_root, "apps", "storefront", "index.html"), "r", encoding="utf-8") as f:
+            shtml = f.read()
+        self.assertNotIn("Yasmine Khelifi", shtml)
+        self.assertNotIn("LUX-25847-DZ", shtml)
+        self.assertIn("cart: []", shtml)
+        self.assertIn("orders: []", shtml)
+        self.assertIn("syncStorefrontWithBackend", shtml)
+
+        # 2. Verify 100% of exported functions in apps/storefront/src/api/client.ts are called in apps/storefront/src/App.tsx
+        with open(os.path.join(repo_root, "apps", "storefront", "src", "api", "client.ts"), "r", encoding="utf-8") as f:
+            sclient = f.read()
+        with open(os.path.join(repo_root, "apps", "storefront", "src", "App.tsx"), "r", encoding="utf-8") as f:
+            sapp = f.read()
+        exported_fns = _re.findall(r"export function (\w+)\s*\(", sclient)
+        self.assertGreaterEqual(len(exported_fns), 11)
+        for fn in exported_fns:
+            self.assertIn(f"{fn}(", sapp, f"Storefront client function {fn} is not wired in apps/storefront/src/App.tsx")
 
 
 if __name__ == "__main__":

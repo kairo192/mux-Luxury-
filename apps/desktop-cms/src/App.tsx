@@ -148,8 +148,20 @@ export default function App() {
       setCustomers(custData.items || []);
       setMovements(movData.items || []);
       setHomepageSections(layData.homepage_sections || []);
+      if (layData.settings) {
+        if (layData.settings.contact_phone) setStorePhoneInput(String(layData.settings.contact_phone));
+        if (layData.settings.whatsapp_phone) setStoreWhatsappInput(String(layData.settings.whatsapp_phone));
+        if (layData.settings.store_location) setStoreLocationInput(String(layData.settings.store_location));
+        if (layData.settings.free_shipping_threshold_dzd !== undefined) setFreeThresholdInput(String(layData.settings.free_shipping_threshold_dzd));
+      }
       setBanners(bnrData.items || []);
-      setStaticPages(pgData.items || []);
+      const loadedPages = pgData.items || [];
+      setStaticPages(loadedPages);
+      const currentPg = loadedPages.find((p: any) => p.slug === pageSlug) || loadedPages[0];
+      if (currentPg) {
+        setPageTitleFr(currentPg.title_fr || "");
+        setPageContentFr(currentPg.content_fr || "");
+      }
       setBackups(bkpData.items || []);
       setRecoveryStatus(recData);
       setHealthStatus(hltData);

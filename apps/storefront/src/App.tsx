@@ -1,15 +1,22 @@
 import React, { useEffect, useState } from "react";
 import {
+  fetchStoreLayout,
   fetchCategories,
+  fetchCategoryBySlug,
   fetchProducts,
   fetchProductBySlug,
   fetchDeliveryZones,
   calculateDeliveryTotal,
+  validateCouponCode,
   submitGuestOrder,
+  trackGuestOrder,
+  fetchStaticPage,
 } from "./api/client";
 
 export default function App() {
+  const [layout, setLayout] = useState<any | null>(null);
   const [categories, setCategories] = useState<any[]>([]);
+  const [activeCategoryDetail, setActiveCategoryDetail] = useState<any | null>(null);
   const [products, setProducts] = useState<any[]>([]);
   const [wilayas, setWilayas] = useState<any[]>([]);
   const [activeCategory, setActiveCategory] = useState<string>("");
@@ -20,6 +27,8 @@ export default function App() {
   const [selectedWilaya, setSelectedWilaya] = useState("09");
   const [deliveryMethod, setDeliveryMethod] = useState<"home" | "stop_desk">("home");
   const [calcPreview, setCalcPreview] = useState<any | null>(null);
+  const [couponInput, setCouponInput] = useState("");
+  const [appliedCoupon, setAppliedCoupon] = useState<any | null>(null);
   const [customerName, setCustomerName] = useState("");
   const [customerPhone, setCustomerPhone] = useState("");
   const [commune, setCommune] = useState("Ouled Yaïch");
@@ -27,13 +36,25 @@ export default function App() {
   const [orderConfirmed, setOrderConfirmed] = useState<any | null>(null);
   const [errorMsg, setErrorMsg] = useState("");
 
+  // Order Tracking & Static Pages State
+  const [trackRef, setTrackRef] = useState("");
+  const [trackPhone, setTrackPhone] = useState("");
+  const [trackedOrder, setTrackedOrder] = useState<any | null>(null);
+  const [activeStaticPage, setActiveStaticPage] = useState<any | null>(null);
+
   useEffect(() => {
+    fetchStoreLayout().then((res) => setLayout(res)).catch(() => null);
     fetchCategories().then((res) => setCategories(res.items || []));
     fetchDeliveryZones().then((res) => setWilayas(res.items || []));
   }, []);
 
   useEffect(() => {
     fetchProducts({ category: activeCategory }).then((res) => setProducts(res.items || []));
+    if (activeCategory) {
+      fetchCategoryBySlug(activeCategory).then((cat) => setActiveCategoryDetail(cat)).catch(() => setActiveCategoryDetail(null));
+    } else {
+      setActiveCategoryDetail(null);
+    }
   }, [activeCategory]);
 
   const subtotal = cart.reduce(
@@ -43,7 +64,7 @@ export default function App() {
 
   useEffect(() => {
     if (selectedWilaya) {
-      calculateDeliveryTotal(selectedWilaya, deliveryMethod, subtotal)
+      calculateDeliveryTotal(selectedWilaya, deliveryMethod, subtotal, appliedCoupon?.code)
         .then((res) => {
           setCalcPreview(res);
           if (res.communes?.length && !res.communes.includes(commune)) {
@@ -52,7 +73,7 @@ export default function App() {
         })
         .catch(() => {});
     }
-  }, [selectedWilaya, deliveryMethod, subtotal]);
+  }, [selectedWilaya, deliveryMethod, subtotal, appliedCoupon]);
 
   async function openProductDetails(slug: string) {
     const fullProd = await fetchProductBySlug(slug);
@@ -82,6 +103,42 @@ export default function App() {
     setSelectedProduct(null);
   }
 
+  async function handleApplyCoupon() {
+    setErrorMsg("");
+    if (!couponInput.trim()) {
+      setAppliedCoupon(null);
+      return;
+    }
+    try {
+      const cpn = await validateCouponCode(couponInput.trim(), subtotal);
+      setAppliedCoupon(cpn);
+    } catch (err: any) {
+      setAppliedCoupon(null);
+      setErrorMsg(err.message || "Code promo invalide");
+    }
+  }
+
+  async function handleTrackOrder(e: React.FormEvent) {
+    e.preventDefault();
+    setErrorMsg("");
+    try {
+      const ord = await trackGuestOrder(trackRef.trim(), trackPhone.trim());
+      setTrackedOrder(ord);
+    } catch (err: any) {
+      setTrackedOrder(null);
+      setErrorMsg(err.message || "Commande introuvable");
+    }
+  }
+
+  async function handleOpenStaticPage(slug: string) {
+    try {
+      const pg = await fetchStaticPage(slug);
+      setActiveStaticPage(pg);
+    } catch {
+      setActiveStaticPage(null);
+    }
+  }
+
   async function handleCheckout(e: React.FormEvent) {
     e.preventDefault();
     setErrorMsg("");
@@ -95,12 +152,14 @@ export default function App() {
           commune,
           delivery_address: address,
           delivery_method: deliveryMethod,
+          coupon_code: appliedCoupon?.code || undefined,
           items: cart.map((c) => ({ variant_id: c.variant.id, quantity: c.quantity })),
         },
         idemKey
       );
       setOrderConfirmed(res);
       setCart([]);
+      setAppliedCoupon(null);
     } catch (err: any) {
       setErrorMsg(err.message || "Erreur lors de la validation de la commande");
     }
@@ -117,7 +176,7 @@ export default function App() {
             rel="noopener noreferrer"
             className="text-xs text-[#E8D4A5] underline hidden sm:inline"
           >
-            FVX6+GCJ Mus luxury, Ouled Yaïch
+            {layout?.settings?.address_fr || "FVX6+GCJ Mus luxury, Ouled Yaïch"}
           </a>
         </div>
         <nav className="flex gap-2 text-xs overflow-x-auto">
@@ -129,8 +188,17 @@ export default function App() {
               {c.name_fr}
             </button>
           ))}
+          <button onClick={() => handleOpenStaticPage("about")} className="px-3.5 py-1.5 rounded-full hover:bg-[#02291F] text-[#D4AF62]">
+            La Maison
+          </button>
         </nav>
       </header>
+
+      {activeCategoryDetail && (
+        <div className="max-w-7xl mx-auto px-6 pt-4 text-xs text-[#063D2E] font-semibold">
+          Collection : {activeCategoryDetail.name_fr} ({activeCategoryDetail.attributes?.length || 0} attributs dynamiques)
+        </div>
+      )}
 
       <main className="max-w-7xl mx-auto p-4 sm:p-6 grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4 items-stretch flex-1">
         {products.map((p) => (
@@ -165,6 +233,12 @@ export default function App() {
               </select>
             </div>
             <input value={address} onChange={(e) => setAddress(e.target.value)} required placeholder="Adresse de livraison" className="w-full px-3 py-2 border rounded-xl" />
+            <div className="flex gap-2">
+              <input value={couponInput} onChange={(e) => setCouponInput(e.target.value)} placeholder="Code promo" className="flex-1 px-3 py-2 border rounded-xl font-mono uppercase" />
+              <button type="button" onClick={handleApplyCoupon} className="px-4 py-2 rounded-xl bg-[#063D2E] text-[#D4AF62] font-bold">
+                Appliquer
+              </button>
+            </div>
             <div className="p-3 rounded-xl bg-[#F8F6F0] font-extrabold text-sm text-[#063D2E]">
               Total (Articles + Livraison {selectedWilaya}) : {calcPreview?.total_dzd ?? subtotal} DA
             </div>
@@ -175,9 +249,35 @@ export default function App() {
         </section>
       )}
 
+      <section className="max-w-3xl mx-auto w-full px-6 pb-6 text-xs">
+        <form onSubmit={handleTrackOrder} className="bg-white p-4 rounded-2xl border border-[#D4AF62]/30 flex flex-wrap gap-2 items-center">
+          <span className="font-bold text-[#063D2E]">Suivi de commande :</span>
+          <input value={trackRef} onChange={(e) => setTrackRef(e.target.value)} placeholder="Réf (ex: LUX-12345)" className="px-3 py-1.5 border rounded-xl font-mono uppercase" />
+          <input value={trackPhone} onChange={(e) => setTrackPhone(e.target.value)} placeholder="0655 53 41 54" className="px-3 py-1.5 border rounded-xl font-mono" />
+          <button type="submit" className="px-4 py-1.5 rounded-xl bg-[#063D2E] text-[#D4AF62] font-bold">Suivre</button>
+          {trackedOrder && (
+            <span className="font-bold text-emerald-800 ml-2">
+              #{trackedOrder.order_reference} — Statut : {trackedOrder.status} ({trackedOrder.total_dzd} DA)
+            </span>
+          )}
+        </form>
+      </section>
+
       {orderConfirmed && (
         <div className="max-w-xl mx-auto p-6 bg-emerald-50 border border-emerald-300 rounded-2xl my-4 text-xs">
           <p className="font-bold text-emerald-900">Commande confirmée : #{orderConfirmed.order_reference} — Total : {orderConfirmed.total_dzd} DA</p>
+        </div>
+      )}
+
+      {activeStaticPage && (
+        <div className="fixed inset-0 bg-black/70 flex items-center justify-center p-4 z-50">
+          <div className="bg-white rounded-2xl max-w-xl w-full p-6 space-y-3 text-xs">
+            <div className="flex justify-between items-center">
+              <h3 className="text-lg font-serif font-bold text-[#063D2E]">{activeStaticPage.title_fr}</h3>
+              <button onClick={() => setActiveStaticPage(null)} className="font-bold">✕</button>
+            </div>
+            <p className="leading-relaxed">{activeStaticPage.content_fr}</p>
+          </div>
         </div>
       )}
 

@@ -51,6 +51,10 @@ async def add_security_headers(request: Request, call_next):
     response.headers["X-Frame-Options"] = "DENY"
     response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
     response.headers["X-XSS-Protection"] = "1; mode=block"
+    response.headers["Permissions-Policy"] = "geolocation=(), microphone=(), camera=()"
+    response.headers["Content-Security-Policy"] = "default-src 'self'; frame-ancestors 'none'; base-uri 'self'"
+    if request.url.path.startswith("/api/v1/admin"):
+        response.headers["Cache-Control"] = "no-store, no-cache, must-revalidate, private"
     return response
 
 @app.on_event("startup")
@@ -205,6 +209,17 @@ class GuestOrderCreate(BaseModel):
         if not re.match(r"^(\+213|0)(5|6|7)[0-9]{8}$", cleaned):
             raise ValueError("Invalid Algerian mobile phone number (must start with 05, 06, 07 or +213)")
         return cleaned
+
+    @validator("full_name", "commune", "delivery_address", "customer_notes", pre=True, always=True)
+    def reject_xss_and_html_tags(cls, v):
+        if v is None:
+            return ""
+        s = str(v).strip()
+        if re.search(r"(<\s*/?\s*(script|iframe|svg|img|object|embed|link|style|meta)|javascript\s*:|on\w+\s*=)", s, re.IGNORECASE):
+            raise ValueError("HTML or script injection characters are not permitted")
+        if "<" in s or ">" in s:
+            raise ValueError("Angle brackets (< >) are not permitted in order contact fields")
+        return s
 
 class OrderStatusUpdate(BaseModel):
     status: str = Field(..., regex=r"^(new|pending_confirmation|confirmed|preparing|ready_for_shipment|shipped|delivered|cancelled|returned)$")
@@ -577,10 +592,19 @@ def create_guest_order(
             raise HTTPException(status_code=400, detail=f"Delivery method '{payload.delivery_method}' is not available for {zone['wilaya_name_fr']}")
         delivery_fee_dzd = int(rate["fee_dzd"])
 
-        # 2. Verify Variants, Stock & Calculate True Server-Side Subtotal
+        # 2. Consolidate duplicate variant_ids, Verify Variants & Stock, and Calculate True Server-Side Subtotal
+        consolidated_items: List[OrderItemInput] = []
+        merged_qty_by_vid: Dict[int, int] = {}
+        for raw_item in payload.items:
+            merged_qty_by_vid[raw_item.variant_id] = merged_qty_by_vid.get(raw_item.variant_id, 0) + int(raw_item.quantity)
+        for vid, total_q in merged_qty_by_vid.items():
+            if total_q > 50:
+                raise HTTPException(status_code=422, detail=f"Maximum quantity per variant is 50 (requested {total_q})")
+            consolidated_items.append(OrderItemInput(variant_id=vid, quantity=total_q))
+
         subtotal_dzd = 0
         resolved_lines = []
-        for item in payload.items:
+        for item in consolidated_items:
             cur.execute(
                 """SELECT pv.*, p.name_fr AS product_name, p.selling_price_dzd, p.status AS product_status
                    FROM product_variants pv
@@ -610,6 +634,8 @@ def create_guest_order(
             cpn = cur.fetchone()
             if not cpn:
                 raise HTTPException(status_code=400, detail="Invalid or inactive coupon code")
+            if dict(cpn).get("usage_limit") is not None and int(cpn["usage_count"]) >= int(dict(cpn)["usage_limit"]):
+                raise HTTPException(status_code=400, detail=f"Coupon '{cpn['code']}' has reached its maximum usage limit")
             if subtotal_dzd < int(cpn["min_order_dzd"]):
                 raise HTTPException(
                     status_code=400,
@@ -1448,6 +1474,7 @@ class CouponCreateInput(BaseModel):
     discount_value: int = Field(..., gt=0)
     min_order_dzd: int = Field(0, ge=0)
     max_discount_dzd: Optional[int] = None
+    usage_limit: Optional[int] = Field(None, ge=1)
 
 from .whatsapp import (
     normalize_algerian_phone,
@@ -1709,17 +1736,21 @@ async def receive_whatsapp_webhook(request: Request):
 # ============================================================================
 
 @app.get("/api/v1/orders/track")
-def track_guest_order(reference: str = Query(...), phone: str = Query(...)):
+def track_guest_order(request: Request, reference: str = Query(...), phone: str = Query(...)):
     """
     Public guest order tracking requiring BOTH order_reference and matching customer phone
     to prevent IDOR enumeration of other customers' orders.
     """
+    client_ip = request.client.host if request.client else "127.0.0.1"
+    check_rate_limit(f"track_order:{client_ip}", max_requests=30, window_seconds=60)
+    from .whatsapp import normalize_algerian_phone as _norm_phone
+    e164_p, local_p, _ = _norm_phone(phone)
     cleaned_phone = re.sub(r"[\s\-\.]", "", phone)
     with db_session() as conn:
         cur = conn.cursor()
         cur.execute(
-            "SELECT * FROM orders WHERE order_reference = ? AND customer_phone = ?",
-            (reference.strip().upper(), cleaned_phone)
+            "SELECT * FROM orders WHERE order_reference = ? AND customer_phone IN (?, ?, ?)",
+            (reference.strip().upper(), cleaned_phone, local_p, e164_p)
         )
         ord_row = cur.fetchone()
         if not ord_row:
@@ -1822,9 +1853,9 @@ def create_coupon(
     with db_session(commit=True) as conn:
         cur = conn.cursor()
         cur.execute(
-            """INSERT INTO coupons (code, discount_type, discount_value, min_order_dzd, max_discount_dzd, is_active)
-               VALUES (?, ?, ?, ?, ?, 1)""",
-            (payload.code.upper(), payload.discount_type, payload.discount_value, payload.min_order_dzd, payload.max_discount_dzd)
+            """INSERT INTO coupons (code, discount_type, discount_value, min_order_dzd, max_discount_dzd, usage_limit, is_active)
+               VALUES (?, ?, ?, ?, ?, ?, 1)""",
+            (payload.code.upper(), payload.discount_type, payload.discount_value, payload.min_order_dzd, payload.max_discount_dzd, payload.usage_limit)
         )
         cid = cur.lastrowid
         log_audit(conn, int(admin["sub"]), "create_coupon", "coupon", str(cid), {"code": payload.code.upper()})
@@ -2073,6 +2104,8 @@ def validate_public_coupon(payload: CouponValidateRequest):
         cpn = cur.fetchone()
         if not cpn:
             raise HTTPException(status_code=404, detail="Code promo invalide ou expiré")
+        if dict(cpn).get("usage_limit") is not None and int(cpn["usage_count"]) >= int(dict(cpn)["usage_limit"]):
+            raise HTTPException(status_code=400, detail="Ce code promo a atteint sa limite d'utilisation")
         if payload.subtotal_dzd < int(cpn["min_order_dzd"]):
             raise HTTPException(
                 status_code=400,
@@ -2504,11 +2537,20 @@ def admin_export_orders_csv(admin: dict = Depends(require_permission("orders:wri
             "commune", "delivery_method", "subtotal_dzd", "delivery_fee_dzd",
             "total_dzd", "created_at"
         ])
+        def _safe_csv_cell(val: Any) -> Any:
+            if not isinstance(val, str):
+                return val
+            stripped = val.lstrip()
+            # Prevent CSV Formula Injection in Excel/Calc while preserving +213 phone numbers
+            if stripped.startswith(("=", "-", "@", "\t", "\r")) or (stripped.startswith("+") and not re.match(r"^\+213\d+$", stripped)):
+                return f"'{val}"
+            return val
+
         for r in cur.fetchall():
             writer.writerow([
-                r["id"], r["order_reference"], r["status"], r["payment_method"],
-                r["customer_name"], r["customer_phone"], r["wilaya_code"], r["wilaya_name"],
-                r["commune"], r["delivery_method"], r["subtotal_dzd"], r["delivery_fee_dzd"],
+                r["id"], _safe_csv_cell(r["order_reference"]), _safe_csv_cell(r["status"]), _safe_csv_cell(r["payment_method"]),
+                _safe_csv_cell(r["customer_name"]), _safe_csv_cell(r["customer_phone"]), _safe_csv_cell(r["wilaya_code"]), _safe_csv_cell(r["wilaya_name"]),
+                _safe_csv_cell(r["commune"]), _safe_csv_cell(r["delivery_method"]), r["subtotal_dzd"], r["delivery_fee_dzd"],
                 r["total_dzd"], r["created_at"]
             ])
         return Response(

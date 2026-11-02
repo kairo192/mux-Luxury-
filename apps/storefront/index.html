@@ -742,11 +742,11 @@
         <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
           <div>
             <label class="block font-bold mb-1">N° de commande *</label>
-            <input type="text" id="track-order-ref" value="LUX-25847-DZ" placeholder="LUX-25847-DZ" class="w-full px-3 py-2.5 rounded-xl border border-gray-300 font-mono uppercase focus:outline-none focus:border-emerald-deep" />
+            <input type="text" id="track-order-ref" value="" placeholder="Ex: LUX-12345-ABCD" class="w-full px-3 py-2.5 rounded-xl border border-gray-300 font-mono uppercase focus:outline-none focus:border-emerald-deep" />
           </div>
           <div>
             <label class="block font-bold mb-1">Téléphone *</label>
-            <input type="tel" id="track-order-phone" value="0655534154" placeholder="0655534154" class="w-full px-3 py-2.5 rounded-xl border border-gray-300 font-mono focus:outline-none focus:border-emerald-deep" />
+            <input type="tel" id="track-order-phone" value="" placeholder="0655 53 41 54" class="w-full px-3 py-2.5 rounded-xl border border-gray-300 font-mono focus:outline-none focus:border-emerald-deep" />
           </div>
         </div>
         <button type="button" onclick="lookupGuestOrderStatus()" class="w-full py-3 rounded-xl bg-emerald-deep hover:bg-emerald-forest text-gold-reflective font-bold text-xs transition">
@@ -1428,35 +1428,13 @@
       onlyFavorites: false,
       sortBy: "newest",
       dynamicFilterSelections: {},
-      favorites: new Set([1, 6]),
-      cart: [
-        { variantId: 1001, productId: 1, quantity: 1 }
-      ],
+      favorites: new Set(),
+      cart: [],
       appliedCoupon: null,
       lastConfirmedOrder: null,
       categories: JSON.parse(JSON.stringify(CATEGORIES)),
       products: JSON.parse(JSON.stringify(PRODUCTS)),
-      orders: [
-        {
-          id: 501,
-          reference: "LUX-25847-DZ",
-          customer_name: "Yasmine Khelifi",
-          customer_phone: "0655534154",
-          wilaya_code: "09",
-          wilaya_name: "Blida",
-          commune: "Ouled Yaïch",
-          address: "FVX6+GCJ Mus luxury, Ouled Yaïch, Blida",
-          delivery_method: "home",
-          subtotal_dzd: 17000,
-          delivery_fee_dzd: 400,
-          total_dzd: 17400,
-          status: "Confirmée — En préparation",
-          items: [
-            { product_name: "Sac à main élégant Émeraude", variant_title: "Vert Émeraude / Standard", quantity: 1 },
-            { product_name: "Sac à main Chanel style", variant_title: "Bordeaux / L", quantity: 1 }
-          ]
-        }
-      ],
+      orders: [],
       activePdpProductId: null,
       activePdpVariantId: null,
       activePdpQty: 1,
@@ -3000,8 +2978,91 @@
         .join("");
     }
 
+    async function syncStorefrontWithBackend() {
+      try {
+        const [catRes, prodRes, wilRes] = await Promise.all([
+          fetch("/api/v1/categories").then((r) => (r.ok ? r.json() : null)).catch(() => null),
+          fetch("/api/v1/products?page_size=50").then((r) => (r.ok ? r.json() : null)).catch(() => null),
+          fetch("/api/v1/delivery-zones").then((r) => (r.ok ? r.json() : null)).catch(() => null),
+        ]);
+        if (catRes && Array.isArray(catRes.items) && catRes.items.length > 0) {
+          state.categories = catRes.items.map((c) => ({
+            id: c.id,
+            slug: c.slug,
+            name_fr: c.name_fr,
+            name_ar: c.name_ar || c.name_fr,
+            name_en: c.name_en || c.name_fr,
+            description_fr: c.description_fr || "",
+            image: c.image_url || ASSET_MAP.cat_sacs,
+            attributes: (c.attributes || []).map((a) => ({
+              key: a.attr_key,
+              label_fr: a.label_fr,
+              label_ar: a.label_ar || a.label_fr,
+              label_en: a.label_en || a.label_fr,
+              type: a.input_type,
+              variant: Boolean(a.is_variant_axis),
+              filterable: Boolean(a.is_filterable),
+              options: (a.options || []).map((o) => o.value),
+            })),
+          }));
+        }
+        if (prodRes && Array.isArray(prodRes.items) && prodRes.items.length > 0) {
+          state.products = prodRes.items.map((p) => ({
+            id: p.id,
+            slug: p.slug,
+            category_id: p.category_id,
+            category_slug: p.category_slug,
+            sku: p.sku,
+            badge: p.is_new_arrival ? "Nouveau" : p.is_featured ? "Populaire" : null,
+            name_fr: p.name_fr,
+            name_ar: p.name_ar || p.name_fr,
+            name_en: p.name_en || p.name_fr,
+            brand: p.brand_name || "MUS LUXURY",
+            rating: "4.9",
+            reviews: p.sales_count || 10,
+            description_fr: p.description_fr || "",
+            image: p.main_image_url || ASSET_MAP.sac_chanel,
+            gallery: [p.main_image_url || ASSET_MAP.sac_chanel],
+            selling_price_dzd: p.selling_price_dzd,
+            previous_price_dzd: p.previous_price_dzd,
+            discount_percent: p.discount_percent || 0,
+            sales_count: p.sales_count || 0,
+            attributes: p.attributes || {},
+            swatches: ["#063D2E", "#181818", "#D4AF62"],
+            variants: (p.variants || []).map((v) => ({
+              id: v.id,
+              sku: v.sku,
+              title: v.title,
+              stock: v.stock_qty,
+              price: v.effective_price_dzd || p.selling_price_dzd,
+              attrs: v.attributes || {},
+              img: v.image_url || p.main_image_url || ASSET_MAP.sac_chanel,
+            })),
+          }));
+        }
+        if (wilRes && Array.isArray(wilRes.items) && wilRes.items.length > 0) {
+          WILAYAS.splice(
+            0,
+            WILAYAS.length,
+            ...wilRes.items.map((w) => ({
+              code: w.wilaya_code,
+              name_fr: w.wilaya_name_fr,
+              name_ar: w.wilaya_name_ar || "",
+              communes: w.communes && w.communes.length ? w.communes : [w.wilaya_name_fr],
+              home_fee: w.rates?.home?.fee_dzd ?? 600,
+              desk_fee: w.rates?.stop_desk?.fee_dzd ?? 400,
+            }))
+          );
+        }
+        renderStorefront();
+      } catch (_e) {
+        renderStorefront();
+      }
+    }
+
     window.addEventListener("DOMContentLoaded", () => {
       renderStorefront();
+      syncStorefrontWithBackend();
     });
   </script>
 </body>
