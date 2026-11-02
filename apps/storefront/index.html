@@ -849,6 +849,24 @@
     </span>
   </a>
 
+  <!-- STOREFRONT LUXURY CUSTOMER MESSAGE BOX MODAL -->
+  <div id="store-message-box-modal" class="hidden fixed inset-0 z-50 bg-black/75 backdrop-blur-sm flex items-center justify-center p-4">
+    <div role="dialog" aria-modal="true" class="bg-white rounded-2xl max-w-md w-full overflow-hidden shadow-2xl border-2 border-gold-reflective">
+      <div id="store-msgbox-header" class="bg-emerald-deep text-white px-5 py-3.5 flex items-center justify-between border-b border-gold-reflective/30">
+        <span id="store-msgbox-badge" class="font-luxury text-base font-bold text-gold-reflective">Maison Mus Luxury — Information</span>
+        <button type="button" onclick="closeStoreMessageBox()" class="w-7 h-7 rounded-full bg-emerald-forest text-gold-light hover:text-white flex items-center justify-center text-xs font-bold" aria-label="Fermer">✕</button>
+      </div>
+      <div class="p-6 space-y-4 text-xs">
+        <h4 id="store-msgbox-title" class="font-luxury text-lg font-bold text-emerald-deep">Notification Client</h4>
+        <p id="store-msgbox-body" class="text-xs sm:text-sm text-charcoal leading-relaxed bg-cream p-3.5 rounded-xl border border-gold-reflective/35"></p>
+        <div class="flex items-center justify-end gap-2 pt-1">
+          <a href="https://wa.me/213655534154" target="_blank" rel="noopener noreferrer" class="px-3.5 py-2 rounded-xl bg-emerald-50 text-emerald-900 border border-emerald-300 font-bold text-xs">WhatsApp 0655 53 41 54</a>
+          <button type="button" onclick="closeStoreMessageBox()" class="px-5 py-2 rounded-xl gold-cta text-emerald-forest font-extrabold text-xs shadow">Compris</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
   <!-- TOAST NOTIFICATION BANNER -->
   <div id="toast-container" class="fixed bottom-16 md:bottom-5 right-4 z-50 space-y-2 pointer-events-none"></div>
 
@@ -1464,7 +1482,66 @@
       return attr.label_fr;
     }
 
-    function showToast(msg, type = "success") {
+    function escapeHtml(val) {
+      return String(val ?? "")
+        .replace(/&/g, "&amp;")
+        .replace(/</g, "&lt;")
+        .replace(/>/g, "&gt;")
+        .replace(/"/g, "&quot;")
+        .replace(/'/g, "&#39;");
+    }
+
+    function openStoreMessageBox(title, message, type = "info") {
+      const modal = document.getElementById("store-message-box-modal");
+      const header = document.getElementById("store-msgbox-header");
+      const badge = document.getElementById("store-msgbox-badge");
+      const titleEl = document.getElementById("store-msgbox-title");
+      const bodyEl = document.getElementById("store-msgbox-body");
+      if (!modal || !titleEl || !bodyEl) return;
+      if (header && badge) {
+        if (type === "error") {
+          header.className = "bg-red-900 text-white px-5 py-3.5 flex items-center justify-between border-b border-red-400/40";
+          badge.textContent = "⛔ Vérification Requise — Mus Luxury";
+        } else {
+          header.className = "bg-emerald-deep text-white px-5 py-3.5 flex items-center justify-between border-b border-gold-reflective/30";
+          badge.textContent = "✨ Maison Mus Luxury — Conciergerie";
+        }
+      }
+      titleEl.textContent = title;
+      bodyEl.textContent = message;
+      modal.classList.remove("hidden");
+    }
+
+    function closeStoreMessageBox() {
+      const modal = document.getElementById("store-message-box-modal");
+      if (modal) modal.classList.add("hidden");
+    }
+
+    function openWhatsAppCartConcierge() {
+      if (!state.cart || state.cart.length === 0) {
+        showToast("Votre panier est vide", "error");
+        return;
+      }
+      const wObj = WILAYAS.find((w) => w.code === state.checkoutWilaya) || WILAYAS[15] || WILAYAS[0];
+      const fee = state.checkoutMethod === "stop_desk" ? wObj.desk_fee : wObj.home_fee;
+      const subtotal = computeCartSubtotal();
+      const discount = computeCouponDiscount(subtotal);
+      const total = subtotal - discount + fee;
+      const lines = state.cart.map((item) => {
+        const prod = state.products.find((p) => p.id === item.productId);
+        const variant = prod ? prod.variants.find((v) => v.id === item.variantId) : null;
+        return `• ${item.quantity}x ${prod ? prodName(prod) : "Article"} (${variant ? variant.title : "Standard"})`;
+      });
+      const text = [
+        "Bonjour Mus Luxury (Ouled Yaïch), je souhaite commander :",
+        ...lines,
+        `Wilaya : ${wObj.code} - ${wObj.name_fr} (${state.checkoutMethod === "stop_desk" ? "Stop-Desk" : "Livraison à Domicile"})`,
+        `Total avec livraison : ${formatDZD(total)} (Paiement à la livraison)`,
+      ].join("\n");
+      window.open(`https://wa.me/213655534154?text=${encodeURIComponent(text)}`, "_blank", "noopener,noreferrer");
+    }
+
+    function showToast(msg, type = "success", showModalOnErr = false) {
       const container = document.getElementById("toast-container");
       const el = document.createElement("div");
       const bg = type === "error" ? "bg-red-800 border-red-400" : "bg-emerald-deep border-gold-reflective";
@@ -1472,11 +1549,14 @@
       const iconSvg = type === "error"
         ? `<svg class="w-4 h-4 text-red-200 flex-shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"></circle><line x1="12" y1="8" x2="12" y2="12"></line><line x1="12" y1="16" x2="12.01" y2="16"></line></svg>`
         : `<svg class="w-4 h-4 text-gold-reflective flex-shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><polyline points="20 6 9 17 4 12"></polyline></svg>`;
-      el.innerHTML = `${iconSvg}<span>${msg}</span>`;
+      el.innerHTML = `${iconSvg}<span>${escapeHtml(msg)}</span>`;
       container.appendChild(el);
+      if (type === "error" && showModalOnErr) {
+        openStoreMessageBox("Information sur votre commande", String(msg), "error");
+      }
       setTimeout(() => {
         el.remove();
-      }, 3200);
+      }, 3600);
     }
 
     function toggleMobileSearch() {
@@ -2718,7 +2798,27 @@
         })
         .join("");
 
+      const freeShipThreshold = 25000;
+      const remainingForFree = Math.max(0, freeShipThreshold - subtotal);
+      const freeShipPct = Math.min(100, Math.round((subtotal / freeShipThreshold) * 100));
+
       container.innerHTML = `
+        <div class="p-3.5 rounded-xl bg-emerald-deep text-white border border-gold-reflective/40 space-y-2 shadow-sm">
+          <div class="flex items-center justify-between text-[11px]">
+            <span class="font-semibold text-gold-light">
+              ${
+                remainingForFree === 0
+                  ? "✨ Livraison Prioritaire Offerte débloquée (Commande ≥ 25 000 DA)"
+                  : `Plus que <strong class="text-gold-reflective">${formatDZD(remainingForFree)}</strong> pour la Livraison Gratuite (69 Wilayas)`
+              }
+            </span>
+            <span class="font-mono font-bold text-gold-reflective">${freeShipPct}%</span>
+          </div>
+          <div class="w-full h-2 rounded-full bg-emerald-forest overflow-hidden border border-gold-reflective/25">
+            <div class="h-full gold-cta transition-all duration-500" style="width: ${freeShipPct}%"></div>
+          </div>
+        </div>
+
         <div class="space-y-2.5">
           <h4 class="font-bold text-xs uppercase tracking-wider text-emerald-deep">Articles (${state.cart.length})</h4>
           ${itemsHtml}
@@ -2833,8 +2933,11 @@
             </div>
           </div>
 
-          <button type="button" onclick="submitGuestCheckoutOrder()" class="w-full py-3.5 rounded-xl bg-emerald-deep hover:bg-emerald-forest text-white font-bold text-sm shadow-lg transition">
-            Passer la commande
+          <button type="button" onclick="submitGuestCheckoutOrder()" class="w-full py-3.5 rounded-xl gold-cta text-emerald-forest font-extrabold text-sm shadow-lg transition uppercase tracking-wider">
+            Confirmer la commande (Paiement à la livraison)
+          </button>
+          <button type="button" onclick="openWhatsAppCartConcierge()" class="w-full py-2.5 rounded-xl bg-emerald-50 hover:bg-emerald-100 text-emerald-900 border border-emerald-300 font-bold text-xs flex items-center justify-center gap-2 transition">
+            <span>💬 Commander en 1 clic via Conciergerie WhatsApp (0655 53 41 54)</span>
           </button>
         </div>
       `;
@@ -2884,15 +2987,41 @@
         resEl.innerHTML = `<div class="p-3.5 rounded-xl bg-red-50 border border-red-200 text-red-700 font-semibold">Aucune commande trouvée pour ce numéro et ce téléphone.</div>`;
         return;
       }
+      const stLower = String(found.status || "").toLowerCase();
+      const stepIdx = stLower.includes("delivered") || stLower.includes("livr")
+        ? 4
+        : stLower.includes("shipped") || stLower.includes("expéd")
+        ? 3
+        : stLower.includes("confirmed") || stLower.includes("preparing") || stLower.includes("confirm")
+        ? 2
+        : 1;
+      const steps = ["1. Reçue", "2. Confirmée", "3. Expédiée", "4. Livrée"];
+      const timelineHtml = steps
+        .map((label, idx) => {
+          const active = idx + 1 <= stepIdx;
+          return `<div class="flex-1 text-center py-1.5 px-1 rounded-lg border text-[10px] font-bold ${
+            active
+              ? "bg-emerald-deep text-gold-reflective border-gold-reflective"
+              : "bg-white text-gray-400 border-gray-200"
+          }">${label}</div>`;
+        })
+        .join("");
+
       resEl.innerHTML = `
-        <div class="p-4 rounded-xl bg-cream border border-gold-reflective/40 space-y-1.5">
+        <div class="p-4 rounded-xl bg-cream border border-gold-reflective/40 space-y-3">
           <div class="flex items-center justify-between">
-            <span class="font-mono font-extrabold text-emerald-deep">#${found.reference}</span>
-            <span class="px-2.5 py-0.5 rounded-full bg-emerald-deep text-gold-reflective font-bold text-[11px]">${found.status}</span>
+            <span class="font-mono font-extrabold text-emerald-deep text-sm">#${escapeHtml(found.reference)}</span>
+            <span class="px-2.5 py-0.5 rounded-full bg-emerald-deep text-gold-reflective font-bold text-[11px]">${escapeHtml(found.status)}</span>
           </div>
-          <p><strong>Client :</strong> ${found.customer_name} (${found.wilaya_code} - ${found.wilaya_name}, ${found.commune})</p>
-          <p><strong>Articles :</strong> ${found.items.map((i) => `${i.quantity}× ${i.product_name}`).join(", ")}</p>
-          <p class="font-extrabold text-emerald-deep pt-1 border-t border-gold-reflective/25">Total à la livraison : ${formatDZD(found.total_dzd)}</p>
+          <div class="flex items-center gap-1.5">${timelineHtml}</div>
+          <div class="space-y-1 text-xs">
+            <p><strong>Client :</strong> ${escapeHtml(found.customer_name)} (${escapeHtml(found.wilaya_code)} - ${escapeHtml(found.wilaya_name)}, ${escapeHtml(found.commune)})</p>
+            <p><strong>Articles :</strong> ${found.items.map((i) => `${Number(i.quantity) || 1}× ${escapeHtml(i.product_name)}`).join(", ")}</p>
+          </div>
+          <div class="flex items-center justify-between pt-2 border-t border-gold-reflective/25">
+            <span class="font-extrabold text-emerald-deep">Total COD : ${formatDZD(found.total_dzd)}</span>
+            <a href="https://wa.me/213655534154?text=${encodeURIComponent(`Bonjour Mus Luxury, suivi commande #${found.reference}`)}" target="_blank" rel="noopener noreferrer" class="px-3 py-1 rounded-lg bg-emerald-deep text-gold-reflective font-bold text-[11px]">Support WhatsApp</a>
+          </div>
         </div>
       `;
     }

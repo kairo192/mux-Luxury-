@@ -2312,6 +2312,34 @@ console.log("CLIENT_NOTIFIER_ALL_TESTS_PASSED");
         self.assertEqual(cur.lastrowid, 777)
 
 
+
+    # 57. Storefront Luxury UI/UX, Customer Message Box, Free Shipping Progress, WhatsApp Concierge & DOM XSS Escaping Audit
+    def test_57_storefront_ui_ux_communication_and_dom_xss_escaping_audit(self):
+        from pathlib import Path
+        repo_root = Path(__file__).resolve().parents[2]
+
+        shtml = (repo_root / "apps" / "storefront" / "index.html").read_text(encoding="utf-8")
+        sapp = (repo_root / "apps" / "storefront" / "src" / "App.tsx").read_text(encoding="utf-8")
+
+        # 1. Verify Storefront Customer Message Box Modal & DOM XSS Escaping in index.html
+        self.assertIn("id=\"store-message-box-modal\"", shtml)
+        self.assertIn("function escapeHtml(val)", shtml)
+        self.assertIn("function openStoreMessageBox(", shtml)
+        self.assertIn("function openWhatsAppCartConcierge()", shtml)
+        self.assertIn("escapeHtml(msg)", shtml)
+        self.assertIn("escapeHtml(found.reference)", shtml)
+        self.assertIn("escapeHtml(found.customer_name)", shtml)
+
+        # 2. Verify Free Shipping Progress Bar (25 000 DA) & 4-Step Order Tracking Timeline in both index.html and App.tsx
+        self.assertIn("Livraison Prioritaire Offerte débloquée", shtml)
+        self.assertIn("Livraison Prioritaire Offerte débloquée", sapp)
+        self.assertIn("1. Reçue", shtml)
+        self.assertIn("4. Livrée", shtml)
+        self.assertIn("1. Reçue", sapp)
+        self.assertIn("4. Livrée (COD)", sapp)
+        self.assertIn("customerNotice", sapp)
+
+
 if __name__ == "__main__":
     unittest.main()
 
