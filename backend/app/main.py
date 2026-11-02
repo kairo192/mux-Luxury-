@@ -445,6 +445,72 @@ def get_public_product(slug: str):
             raise HTTPException(status_code=404, detail="Product not found")
         return serialize_product(conn, dict(row), include_private=False)
 
+def compute_customer_cod_risk(conn, raw_phone: str) -> dict:
+    """
+    Anti-Retour COD Scoring Engine:
+    Calculates delivered vs returned/cancelled ratios for an Algerian customer phone number
+    and checks `customer_phone_blacklist` to flag repeat non-pickup buyers before order confirmation.
+    """
+    from .whatsapp import normalize_algerian_phone as _norm_phone
+    e164_p, local_p, _ = _norm_phone(raw_phone)
+    cur = conn.cursor()
+    cur.execute(
+        """SELECT
+               COUNT(*) AS total_orders,
+               COALESCE(SUM(CASE WHEN status = 'delivered' THEN 1 ELSE 0 END), 0) AS delivered_count,
+               COALESCE(SUM(CASE WHEN status = 'returned' THEN 1 ELSE 0 END), 0) AS returned_count,
+               COALESCE(SUM(CASE WHEN status = 'cancelled' THEN 1 ELSE 0 END), 0) AS cancelled_count
+           FROM orders
+           WHERE customer_phone IN (?, ?, ?)""",
+        (raw_phone, e164_p, local_p)
+    )
+    stats = cur.fetchone()
+    total_ord = int(stats["total_orders"] or 0)
+    deliv = int(stats["delivered_count"] or 0)
+    ret = int(stats["returned_count"] or 0)
+    canc = int(stats["cancelled_count"] or 0)
+
+    denom = deliv + ret
+    return_rate_pct = round((ret / denom) * 100, 1) if denom > 0 else (100.0 if ret > 0 else 0.0)
+
+    cur.execute(
+        "SELECT * FROM customer_phone_blacklist WHERE (phone_e164 = ? OR phone_local = ?) AND is_blocked = 1",
+        (e164_p, local_p)
+    )
+    bl = cur.fetchone()
+    is_blacklisted = bool(bl)
+    blacklist_reason = bl["reason"] if bl else None
+
+    if is_blacklisted:
+        risk_level = "blacklisted"
+        badge_fr = f"⛔ NUMÉRO BLOQUÉ (Liste Noire COD : {blacklist_reason})"
+    elif ret >= 2 or (ret >= 1 and return_rate_pct >= 50.0):
+        risk_level = "high_risk"
+        badge_fr = f"⚠️ RISQUE RETOUR ÉLEVÉ ({ret} retour(s) / {deliv} livré(s) • {return_rate_pct}% retours)"
+    elif ret == 1 or canc >= 2:
+        risk_level = "medium_risk"
+        badge_fr = f"⚡ Vigilance COD ({ret} retour, {canc} annulée(s), {deliv} livrée(s))"
+    elif deliv >= 2 and ret == 0:
+        risk_level = "trusted"
+        badge_fr = f"✓ Client Fiable Vérifié ({deliv} livrée(s) • 0% retour)"
+    else:
+        risk_level = "normal"
+        badge_fr = f"Client COD ({deliv} livrée(s) / {ret} retour)"
+
+    return {
+        "phone_e164": e164_p,
+        "phone_local": local_p,
+        "total_orders": total_ord,
+        "delivered_count": deliv,
+        "returned_count": ret,
+        "cancelled_count": canc,
+        "return_rate_percent": return_rate_pct,
+        "is_blacklisted": is_blacklisted,
+        "blacklist_reason": blacklist_reason,
+        "risk_level": risk_level,
+        "warning_badge_fr": badge_fr,
+    }
+
 @app.post("/api/v1/orders", status_code=201)
 def create_guest_order(
     payload: GuestOrderCreate,
@@ -453,6 +519,22 @@ def create_guest_order(
 ):
     client_ip = request.client.host if request.client else "127.0.0.1"
     check_rate_limit(f"order:{client_ip}", max_requests=15, window_seconds=60)
+
+    # Anti-Retour COD: Block orders from phones on the active COD Blacklist
+    from .whatsapp import normalize_algerian_phone as _norm_phone
+    e164_chk, local_chk, _ = _norm_phone(payload.phone)
+    with db_session() as chk_conn:
+        chk_cur = chk_conn.cursor()
+        chk_cur.execute(
+            "SELECT * FROM customer_phone_blacklist WHERE (phone_e164 = ? OR phone_local = ?) AND is_blocked = 1",
+            (e164_chk, local_chk)
+        )
+        bl_row = chk_cur.fetchone()
+        if bl_row:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail=f"Commande refusée (Protection Anti-Retour COD) : Ce numéro ({local_chk}) est bloqué suite à des retours répétés ({bl_row['reason']}). Contactez la boutique sur WhatsApp au 0655534154."
+            )
 
     if not payload.items:
         raise HTTPException(status_code=400, detail="Order must contain at least one item")
@@ -1004,6 +1086,7 @@ def list_admin_orders(
             od = dict(r)
             cur.execute("SELECT * FROM order_items WHERE order_id = ?", (od["id"],))
             od["items"] = [dict(it) for it in cur.fetchall()]
+            od["cod_risk"] = compute_customer_cod_risk(conn, od["customer_phone"])
             orders.append(od)
         return {"items": orders}
 
@@ -2623,3 +2706,77 @@ def admin_upsert_static_page(
         log_audit(conn, int(admin["sub"]), "upsert_static_page", "static_page", clean_slug, {"is_published": payload.is_published})
         cur.execute("SELECT * FROM static_pages WHERE slug = ?", (clean_slug,))
         return dict(cur.fetchone())
+
+
+# ============================================================================
+# ANTI-RETOUR COD: PHONE RETURN-RATE SCORING & BLACKLIST MANAGEMENT
+# ============================================================================
+
+class CodBlacklistInput(BaseModel):
+    phone: str = Field(..., min_length=8, max_length=30)
+    reason: str = Field("Retour abusif / Non-récupération COD", min_length=3, max_length=250)
+    is_blocked: bool = True
+
+@app.get("/api/v1/admin/cod-risk/check")
+def admin_check_phone_cod_risk(
+    phone: str = Query(..., min_length=8),
+    admin: dict = Depends(require_permission("orders:write"))
+):
+    with db_session() as conn:
+        return compute_customer_cod_risk(conn, phone)
+
+@app.get("/api/v1/admin/cod-risk/blacklist")
+def admin_list_cod_blacklist(
+    admin: dict = Depends(require_permission("orders:write"))
+):
+    with db_session() as conn:
+        cur = conn.cursor()
+        cur.execute("SELECT * FROM customer_phone_blacklist WHERE is_blocked = 1 ORDER BY id DESC")
+        items = []
+        for r in cur.fetchall():
+            row = dict(r)
+            row["cod_risk"] = compute_customer_cod_risk(conn, row["phone_e164"])
+            items.append(row)
+        return {"items": items}
+
+@app.post("/api/v1/admin/cod-risk/blacklist")
+def admin_upsert_cod_blacklist(
+    payload: CodBlacklistInput,
+    admin: dict = Depends(require_permission("orders:write"))
+):
+    e164_p, local_p, _ = normalize_algerian_phone(payload.phone)
+    if not re.match(r"^\+213(5|6|7)[0-9]{8}$", e164_p):
+        raise HTTPException(status_code=400, detail="Format de numéro algérien invalide (05/06/07 ou +213)")
+    with db_session(commit=True) as conn:
+        cur = conn.cursor()
+        cur.execute(
+            """INSERT INTO customer_phone_blacklist (phone_e164, phone_local, reason, is_blocked, blocked_by, updated_at)
+               VALUES (?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+               ON CONFLICT(phone_e164) DO UPDATE SET
+                   reason = excluded.reason,
+                   is_blocked = excluded.is_blocked,
+                   blocked_by = excluded.blocked_by,
+                   updated_at = CURRENT_TIMESTAMP""",
+            (e164_p, local_p, payload.reason.strip(), 1 if payload.is_blocked else 0, int(admin["sub"]))
+        )
+        log_audit(conn, int(admin["sub"]), "upsert_cod_blacklist", "customer_phone_blacklist", e164_p, {
+            "phone_local": local_p,
+            "reason": payload.reason.strip(),
+            "is_blocked": payload.is_blocked,
+        })
+        return compute_customer_cod_risk(conn, e164_p)
+
+@app.delete("/api/v1/admin/cod-risk/blacklist/{phone}")
+def admin_remove_cod_blacklist(
+    phone: str,
+    admin: dict = Depends(require_permission("orders:write"))
+):
+    e164_p, local_p, _ = normalize_algerian_phone(phone)
+    with db_session(commit=True) as conn:
+        cur = conn.cursor()
+        cur.execute(
+            "UPDATE customer_phone_blacklist SET is_blocked = 0, updated_at = CURRENT_TIMESTAMP WHERE phone_e164 = ? OR phone_local = ?",
+            (e164_p, local_p)
+        )
+        log_audit(conn, int(admin["sub"]), "remove_cod_blacklist", "customer_phone_blacklist", e164_p, {})
+        return compute_customer_cod_risk(conn, e164_p)

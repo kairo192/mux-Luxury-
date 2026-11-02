@@ -1,6 +1,6 @@
 import { readDraft, writeDraft, clearDraft } from "./utils/draftStorage";
 import React, { useEffect, useState } from "react";
-import { DesktopCmsApi } from "./api/adminClient";
+import { DesktopCmsApi, restoreSessionFromOsKeychain } from "./api/adminClient";
 import { CategoryBuilderPage } from "./pages/CategoryBuilderPage";
 import { DeliveryWilayasPage } from "./pages/DeliveryWilayasPage";
 
@@ -66,6 +66,11 @@ export default function App() {
   const [bannerTitleFr, setBannerTitleFr] = useState("");
   const [bannerImageUrl, setBannerImageUrl] = useState("/assets/hero_banner_mus.jpg");
   const [orderSearch, setOrderSearch] = useState("");
+  const [codBlacklist, setCodBlacklist] = useState<any[]>([]);
+  const [codCheckPhone, setCodCheckPhone] = useState("");
+  const [codBlacklistReason, setCodBlacklistReason] = useState("Retour abusif / Non-récupération COD");
+  const [codCheckResult, setCodCheckResult] = useState<any | null>(null);
+  const [keychainStatus, setKeychainStatus] = useState<any | null>(null);
 
   // Product Search, Creation, Edit & Variant Matrix State
   const [prodSearch, setProdSearch] = useState(() => readDraft("luxe_cms_prod_search", ""));
@@ -97,6 +102,7 @@ export default function App() {
   const [pageContentFr, setPageContentFr] = useState("Boutique officielle Mus Luxury à Ouled Yaïch (Blida 09). Livraison rapide 69 Wilayas avec paiement à la livraison.");
 
   useEffect(() => {
+    restoreSessionFromOsKeychain().catch(() => null);
     DesktopCmsApi.getSetupStatus()
       .then((status) => {
         setRequiresOwnerSetup(Boolean(status.requires_owner_setup));
@@ -113,7 +119,7 @@ export default function App() {
     setLoadingWorkspace(true);
     setError("");
     try {
-      const [dashData, repData, brdData, catData, prodData, ordData, custData, movData, layData, bnrData, pgData, bkpData, recData, hltData] = await Promise.all([
+      const [dashData, repData, brdData, catData, prodData, ordData, custData, movData, layData, bnrData, pgData, bkpData, recData, hltData, blData, kcStatus] = await Promise.all([
         DesktopCmsApi.getDashboard(),
         DesktopCmsApi.getReports().catch(() => null),
         DesktopCmsApi.listBrands().catch(() => ({ items: [] })),
@@ -128,7 +134,11 @@ export default function App() {
         DesktopCmsApi.listBackups(),
         DesktopCmsApi.getRecoveryStatus().catch(() => null),
         DesktopCmsApi.checkHealth().catch(() => ({ status: "ok" })),
+        DesktopCmsApi.listCodBlacklist().catch(() => ({ items: [] })),
+        DesktopCmsApi.getKeychainStatus().catch(() => null),
       ]);
+      setCodBlacklist(blData.items || []);
+      setKeychainStatus(kcStatus);
       setDashboard(dashData);
       setReports(repData);
       setBrands(brdData.items || []);
@@ -376,6 +386,42 @@ export default function App() {
     try {
       const inv = await DesktopCmsApi.getOrderInvoice(orderId);
       setSelectedInvoice(inv);
+    } catch (err: any) {
+      setError(err.message);
+    }
+  }
+
+
+  async function handleCheckPhoneCodRisk() {
+    if (!codCheckPhone.trim()) return;
+    setError("");
+    try {
+      const res = await DesktopCmsApi.checkPhoneCodRisk(codCheckPhone.trim());
+      setCodCheckResult(res);
+    } catch (err: any) {
+      setError(err.message);
+    }
+  }
+
+  async function handleBlockCustomerPhone(phone: string, reason = "Retour abusif / Non-récupération COD") {
+    setError("");
+    try {
+      const res = await DesktopCmsApi.addPhoneToCodBlacklist(phone, reason, true);
+      setCodCheckResult(res);
+      setSuccessMsg(`Numéro ${res.phone_local} ajouté à la Liste Noire Anti-Retour COD.`);
+      await loadAllWorkspaceData();
+    } catch (err: any) {
+      setError(err.message);
+    }
+  }
+
+  async function handleUnblockCustomerPhone(phone: string) {
+    setError("");
+    try {
+      const res = await DesktopCmsApi.removePhoneFromCodBlacklist(phone);
+      setCodCheckResult(res);
+      setSuccessMsg(`Numéro ${res.phone_local} débloqué de la Liste Noire COD.`);
+      await loadAllWorkspaceData();
     } catch (err: any) {
       setError(err.message);
     }
@@ -1170,37 +1216,136 @@ export default function App() {
               </div>
             </div>
             <div className="space-y-3">
-              {orders.map((o) => (
-                <div key={o.id} className="p-4 rounded-xl border border-gray-200 flex flex-wrap items-center justify-between gap-4">
-                  <div className="space-y-1">
-                    <div className="font-mono font-extrabold text-[#063D2E]">#{o.order_reference} • {o.customer_name} ({o.customer_phone})</div>
-                    <div className="text-gray-600">
-                      Destination: <strong>{o.wilaya_code} - {o.wilaya_name}</strong> ({o.commune}) • Mode: <strong>{o.delivery_method}</strong>
+              {orders.map((o) => {
+                const risk = o.cod_risk || {};
+                const badgeClass =
+                  risk.risk_level === "blacklisted" || risk.risk_level === "high_risk"
+                    ? "bg-red-100 text-red-900 border-red-300"
+                    : risk.risk_level === "medium_risk"
+                    ? "bg-amber-100 text-amber-900 border-amber-300"
+                    : "bg-emerald-50 text-emerald-900 border-emerald-200";
+                return (
+                  <div key={o.id} className="p-4 rounded-xl border border-gray-200 flex flex-wrap items-center justify-between gap-4">
+                    <div className="space-y-1">
+                      <div className="flex flex-wrap items-center gap-2">
+                        <span className="font-mono font-extrabold text-[#063D2E]">#{o.order_reference} • {o.customer_name} ({o.customer_phone})</span>
+                        {risk.warning_badge_fr && (
+                          <span className={`px-2.5 py-0.5 rounded-full border text-[11px] font-extrabold ${badgeClass}`}>
+                            {risk.warning_badge_fr}
+                          </span>
+                        )}
+                      </div>
+                      <div className="text-gray-600">
+                        Destination: <strong>{o.wilaya_code} - {o.wilaya_name}</strong> ({o.commune}) • Mode: <strong>{o.delivery_method}</strong>
+                      </div>
+                      <div className="font-bold text-[#063D2E]">
+                        Sous-total: {o.subtotal_dzd} DA + Livraison: {o.delivery_fee_dzd} DA = Total COD: {o.total_dzd} DA
+                      </div>
                     </div>
-                    <div className="font-bold text-[#063D2E]">
-                      Sous-total: {o.subtotal_dzd} DA + Livraison: {o.delivery_fee_dzd} DA = Total COD: {o.total_dzd} DA
+                    <div className="flex flex-wrap items-center gap-2">
+                      <select
+                        value={o.status}
+                        onChange={(e) => handleOrderStatusChange(o.id, e.target.value)}
+                        className="px-3 py-1.5 rounded-lg border font-bold bg-[#F8F6F0]"
+                      >
+                        {["new", "pending_confirmation", "confirmed", "preparing", "ready_for_shipment", "shipped", "delivered", "cancelled", "returned"].map((st) => (
+                          <option key={st} value={st}>{st}</option>
+                        ))}
+                      </select>
+                      <button
+                        type="button"
+                        onClick={() => handleOpenInvoice(o.id)}
+                        className="px-3 py-1.5 rounded-lg bg-[#063D2E] text-[#D4AF62] font-bold"
+                      >
+                        Facture / Bon de livraison
+                      </button>
+                      {risk.is_blacklisted ? (
+                        <button
+                          type="button"
+                          onClick={() => handleUnblockCustomerPhone(o.customer_phone)}
+                          className="px-3 py-1.5 rounded-lg bg-emerald-700 text-white font-bold"
+                        >
+                          ✓ Débloquer Numéro
+                        </button>
+                      ) : (
+                        <button
+                          type="button"
+                          onClick={() => handleBlockCustomerPhone(o.customer_phone, "Retours COD répétés / Non-récupération")}
+                          className="px-3 py-1.5 rounded-lg bg-red-50 text-red-800 border border-red-200 font-bold"
+                        >
+                          🚫 Bloquer Numéro (Anti-Retour)
+                        </button>
+                      )}
                     </div>
                   </div>
-                  <div className="flex flex-wrap items-center gap-2">
-                    <select
-                      value={o.status}
-                      onChange={(e) => handleOrderStatusChange(o.id, e.target.value)}
-                      className="px-3 py-1.5 rounded-lg border font-bold bg-[#F8F6F0]"
-                    >
-                      {["new", "pending_confirmation", "confirmed", "preparing", "ready_for_shipment", "shipped", "delivered", "cancelled", "returned"].map((st) => (
-                        <option key={st} value={st}>{st}</option>
-                      ))}
-                    </select>
-                    <button
-                      type="button"
-                      onClick={() => handleOpenInvoice(o.id)}
-                      className="px-3 py-1.5 rounded-lg bg-[#063D2E] text-[#D4AF62] font-bold"
-                    >
-                      Facture / Bon de livraison
-                    </button>
+                );
+              })}
+            </div>
+
+            {/* Anti-Retour COD & Phone Blacklist Control Panel */}
+            <div className="p-5 rounded-2xl bg-[#F8F6F0] border border-[#D4AF62]/40 space-y-3">
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <div>
+                  <h4 className="font-serif font-bold text-base text-[#063D2E]">Protection Anti-Retour COD &amp; Liste Noire Téléphones ({codBlacklist.length} bloqué(s))</h4>
+                  <p className="text-gray-500">Vérifiez le taux de livraison/retour d'un numéro ou bloquez les clients à retours abusifs avant expédition.</p>
+                </div>
+              </div>
+              <div className="flex flex-wrap items-center gap-2">
+                <input
+                  value={codCheckPhone}
+                  onChange={(e) => setCodCheckPhone(e.target.value)}
+                  placeholder="Téléphone client (ex: 0550998877)"
+                  className="px-3 py-2 border rounded-xl bg-white font-mono w-56"
+                />
+                <input
+                  value={codBlacklistReason}
+                  onChange={(e) => setCodBlacklistReason(e.target.value)}
+                  placeholder="Motif de blocage COD..."
+                  className="px-3 py-2 border rounded-xl bg-white flex-1"
+                />
+                <button
+                  type="button"
+                  onClick={handleCheckPhoneCodRisk}
+                  className="px-3.5 py-2 rounded-xl bg-[#063D2E] text-[#E8D4A5] font-bold"
+                >
+                  Vérifier Score COD
+                </button>
+                <button
+                  type="button"
+                  onClick={() => handleBlockCustomerPhone(codCheckPhone, codBlacklistReason)}
+                  className="px-3.5 py-2 rounded-xl bg-red-700 text-white font-bold"
+                >
+                  + Bloquer ce Numéro
+                </button>
+              </div>
+              {codCheckResult && (
+                <div className="p-3 rounded-xl bg-white border flex flex-wrap items-center justify-between gap-2">
+                  <div>
+                    <strong className="font-mono text-[#063D2E]">{codCheckResult.phone_local} ({codCheckResult.phone_e164})</strong> — {codCheckResult.warning_badge_fr}
+                  </div>
+                  <div className="font-mono">
+                    Commandes: <strong>{codCheckResult.total_orders}</strong> • Livrées: <strong>{codCheckResult.delivered_count}</strong> • Retours: <strong>{codCheckResult.returned_count}</strong> ({codCheckResult.return_rate_percent}%)
                   </div>
                 </div>
-              ))}
+              )}
+              {codBlacklist.length > 0 && (
+                <div className="space-y-1.5 pt-1">
+                  {codBlacklist.map((bl) => (
+                    <div key={bl.phone_e164} className="p-2.5 rounded-xl bg-red-50 border border-red-200 flex flex-wrap items-center justify-between gap-2">
+                      <div>
+                        <span className="font-mono font-bold text-red-900">⛔ {bl.phone_local} ({bl.phone_e164})</span> — <span className="text-red-800">{bl.reason}</span>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => handleUnblockCustomerPhone(bl.phone_e164)}
+                        className="px-2.5 py-1 rounded bg-white text-emerald-900 border font-bold"
+                      >
+                        Débloquer
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              )}
             </div>
 
             {selectedInvoice && (
@@ -1315,6 +1460,17 @@ export default function App() {
         {/* TAB 8: BACKUPS, WHATSAPP RECOVERY STATUS & ISOLATED RESTORE VERIFICATION (KEEP-ALIVE) */}
         <div className={activeTab === "backups" ? "block" : "hidden"}>
           <div className="space-y-6 text-xs">
+            <div className="bg-white p-6 rounded-2xl border border-[#D4AF62]/40 flex flex-wrap items-center justify-between gap-4">
+              <div>
+                <h3 className="text-base font-serif font-bold text-[#063D2E]">Coffre-Fort OS Keychain — Windows Credential Manager (wincred)</h3>
+                <p className="text-gray-500">
+                  Fournisseur actif : <strong>{keychainStatus?.provider || "Windows Credential Manager (wincred) / Tauri 2 Secure Keychain"}</strong> • Service : <strong className="font-mono">{keychainStatus?.service || "dz.musluxury.cms.wincred"}</strong>
+                </p>
+              </div>
+              <span className="px-3 py-1.5 rounded-xl bg-emerald-50 border border-emerald-200 text-emerald-900 font-extrabold">
+                ✓ Zéro Jeton dans localStorage (Protection wincred active)
+              </span>
+            </div>
             <div className="bg-white p-6 rounded-2xl border border-[#D4AF62]/40 flex flex-wrap items-center justify-between gap-4">
               <div>
                 <h3 className="text-base font-serif font-bold text-[#063D2E]">Récupération WhatsApp Cloud API &amp; Code d'Urgence Hors-Ligne</h3>

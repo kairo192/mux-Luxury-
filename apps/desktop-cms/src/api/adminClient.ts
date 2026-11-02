@@ -1,3 +1,4 @@
+import { keychainSetSecret, keychainGetSecret, keychainDeleteSecret, getOsKeychainStatus } from "../utils/osKeychain";
 // ============================================================================
 // TAURI 2 DESKTOP CMS — SHARED AUTHENTICATED HTTPS API CLIENT
 // Features:
@@ -25,26 +26,23 @@ export function getApiBaseUrl(): string {
 
 export function setAccessToken(token: string | null) {
   accessToken = token;
-  try {
-    if (typeof localStorage !== "undefined") {
-      if (token) localStorage.setItem("luxe_cms_access_token", token);
-      else localStorage.removeItem("luxe_cms_access_token");
-    }
-  } catch {
-    // Ignore sandbox storage restrictions
+  if (token) {
+    void keychainSetSecret("luxe_cms_access_token", token);
+  } else {
+    void keychainDeleteSecret("luxe_cms_access_token");
   }
 }
 
 export function getAccessToken(): string | null {
-  if (accessToken) return accessToken;
-  try {
-    if (typeof localStorage !== "undefined") {
-      accessToken = localStorage.getItem("luxe_cms_access_token");
-    }
-  } catch {
-    // Ignore
-  }
   return accessToken;
+}
+
+export async function restoreSessionFromOsKeychain(): Promise<string | null> {
+  const token = await keychainGetSecret("luxe_cms_access_token");
+  if (token) {
+    accessToken = token;
+  }
+  return token;
 }
 
 export async function computeSha256Hex(message: string): Promise<string> {
@@ -216,6 +214,21 @@ export const DesktopCmsApi = {
   exportOrdersCsv: () => adminFetch("/admin/orders/export.csv"),
   listCustomers: () => adminFetch("/admin/customers"),
   getReports: () => adminFetch("/admin/reports"),
+
+  // Anti-Retour COD (Customer Phone Return-Rate Scoring & Blacklist)
+  checkPhoneCodRisk: (phone: string) =>
+    adminFetch(`/admin/cod-risk/check?phone=${encodeURIComponent(phone)}`),
+  listCodBlacklist: () => adminFetch("/admin/cod-risk/blacklist"),
+  addPhoneToCodBlacklist: (phone: string, reason: string, is_blocked = true) =>
+    adminFetch("/admin/cod-risk/blacklist", {
+      method: "POST",
+      body: JSON.stringify({ phone, reason, is_blocked }),
+    }),
+  removePhoneFromCodBlacklist: (phone: string) =>
+    adminFetch(`/admin/cod-risk/blacklist/${encodeURIComponent(phone)}`, {
+      method: "DELETE",
+    }),
+  getKeychainStatus: () => getOsKeychainStatus(),
 
   // 69-Wilaya Delivery Tariffs (Home & Stop-Desk)
   getDeliveryZones: () => adminFetch("/delivery-zones"),

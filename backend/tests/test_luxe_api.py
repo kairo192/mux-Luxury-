@@ -1497,6 +1497,8 @@ const fs = require("fs");
 const path = require("path");
 const babel = require("@babel/core");
 const files = [
+  "apps/desktop-cms/src/utils/osKeychain.ts",
+  "apps/desktop-cms/src/utils/draftStorage.ts",
   "apps/desktop-cms/src/api/adminClient.ts",
   "apps/desktop-cms/src/pages/CategoryBuilderPage.tsx",
   "apps/desktop-cms/src/pages/DeliveryWilayasPage.tsx",
@@ -1583,8 +1585,118 @@ console.log("ALL_TSX_COMPILED_OK");
         self.assertIn("dirtyCodes", wil_tsx)
 
 
+    # 40. Anti-Retour COD: Customer Phone Return-Rate Scoring, Warning Badges & Blacklist Enforcement
+    def test_40_anti_retour_cod_return_rate_scoring_and_phone_blacklist(self):
+        reset_rate_limits()
+        prods = self.client.get("/api/v1/products").json()["items"]
+        vid = next(v["id"] for p in prods for v in p["variants"] if v["stock_qty"] >= 2)
+        risky_phone = "0550998877"
+
+        # Submit 2 orders from risky_phone and transition both to 'returned'
+        for idx in (1, 2):
+            r_ord = self.client.post(
+                "/api/v1/orders",
+                headers={"Idempotency-Key": f"risky-cod-order-{idx}"},
+                json={
+                    "full_name": "Client Retour Répété",
+                    "phone": risky_phone,
+                    "wilaya_code": "09",
+                    "commune": "Ouled Yaïch",
+                    "delivery_address": "Rue Test, Ouled Yaïch",
+                    "delivery_method": "home",
+                    "items": [{"variant_id": vid, "quantity": 1}],
+                },
+            )
+            self.assertEqual(r_ord.status_code, 201, r_ord.text)
+            oid = r_ord.json()["order_id"]
+            for st in ("confirmed", "preparing", "ready_for_shipment", "shipped", "returned"):
+                r_st = self.client.patch(
+                    f"/api/v1/admin/orders/{oid}",
+                    headers=self.super_headers,
+                    json={"status": st, "internal_notes": f"Transition to {st}"},
+                )
+                self.assertEqual(r_st.status_code, 200, r_st.text)
+
+        # Check COD risk score for 0550998877 -> must be high_risk with 2 returns (100% return rate)
+        r_check = self.client.get(
+            "/api/v1/admin/cod-risk/check",
+            params={"phone": "0550 99 88 77"},
+            headers=self.super_headers,
+        )
+        self.assertEqual(r_check.status_code, 200, r_check.text)
+        risk_data = r_check.json()
+        self.assertEqual(risk_data["returned_count"], 2)
+        self.assertEqual(risk_data["return_rate_percent"], 100.0)
+        self.assertEqual(risk_data["risk_level"], "high_risk")
+        self.assertIn("RISQUE RETOUR ÉLEVÉ", risk_data["warning_badge_fr"])
+
+        # Verify GET /api/v1/admin/orders embeds cod_risk on every order
+        r_orders = self.client.get("/api/v1/admin/orders", headers=self.super_headers)
+        self.assertEqual(r_orders.status_code, 200)
+        matching_ord = next(o for o in r_orders.json()["items"] if o["customer_phone"] == risky_phone)
+        self.assertEqual(matching_ord["cod_risk"]["risk_level"], "high_risk")
+
+        # Add 0550998877 to COD Blacklist
+        r_bl = self.client.post(
+            "/api/v1/admin/cod-risk/blacklist",
+            headers=self.super_headers,
+            json={"phone": "+213 550 99 88 77", "reason": "2 colis non récupérés consécutifs", "is_blocked": True},
+        )
+        self.assertEqual(r_bl.status_code, 200, r_bl.text)
+        self.assertTrue(r_bl.json()["is_blacklisted"])
+        self.assertEqual(r_bl.json()["risk_level"], "blacklisted")
+
+        # Verify blacklisted phone is blocked from placing new COD orders (HTTP 403)
+        r_blocked_ord = self.client.post(
+            "/api/v1/orders",
+            headers={"Idempotency-Key": "risky-cod-order-blocked"},
+            json={
+                "full_name": "Client Bloqué",
+                "phone": "0550998877",
+                "wilaya_code": "09",
+                "commune": "Ouled Yaïch",
+                "delivery_address": "Rue Test, Ouled Yaïch",
+                "delivery_method": "home",
+                "items": [{"variant_id": vid, "quantity": 1}],
+            },
+        )
+        self.assertEqual(r_blocked_ord.status_code, 403, r_blocked_ord.text)
+
+        # Unblock phone and verify is_blacklisted becomes False
+        r_unblock = self.client.delete(
+            "/api/v1/admin/cod-risk/blacklist/0550998877",
+            headers=self.super_headers,
+        )
+        self.assertEqual(r_unblock.status_code, 200, r_unblock.text)
+        self.assertFalse(r_unblock.json()["is_blacklisted"])
+
+    # 41. OS Keychain (wincred) Tauri 2 Native Storage & Zero-localStorage Token Audit
+    def test_41_os_keychain_wincred_tauri_ipc_and_zero_localstorage_token(self):
+        repo_root = os.path.dirname(os.path.dirname(os.path.dirname(__file__)))
+        cargo_toml = open(os.path.join(repo_root, "apps", "desktop-cms", "src-tauri", "Cargo.toml"), encoding="utf-8").read()
+        main_rs = open(os.path.join(repo_root, "apps", "desktop-cms", "src-tauri", "src", "main.rs"), encoding="utf-8").read()
+        os_kc_ts = open(os.path.join(repo_root, "apps", "desktop-cms", "src", "utils", "osKeychain.ts"), encoding="utf-8").read()
+        admin_client_ts = open(os.path.join(repo_root, "apps", "desktop-cms", "src", "api", "adminClient.ts"), encoding="utf-8").read()
+
+        # Verify Rust native Windows Credential Manager (wincred) + tauri-plugin-store integration
+        self.assertIn("tauri-plugin-store", cargo_toml)
+        self.assertIn("windows-native", cargo_toml)
+        self.assertIn("fn keychain_set_secret", main_rs)
+        self.assertIn("fn keychain_get_secret", main_rs)
+        self.assertIn("fn keychain_delete_secret", main_rs)
+        self.assertIn("dz.musluxury.cms.wincred", main_rs)
+
+        # Verify frontend uses osKeychain IPC and NEVER writes access token to localStorage
+        self.assertIn("keychainSetSecret", os_kc_ts)
+        self.assertIn("keychainGetSecret", os_kc_ts)
+        self.assertNotIn("localStorage.setItem", os_kc_ts)
+        self.assertNotIn("localStorage.setItem", admin_client_ts)
+        self.assertIn('keychainSetSecret("luxe_cms_access_token"', admin_client_ts)
+
+
 if __name__ == "__main__":
     unittest.main()
+
 
 
 

@@ -355,3 +355,18 @@ CREATE TABLE IF NOT EXISTS coupons (
     usage_count INTEGER NOT NULL DEFAULT 0,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
+
+
+-- 25. Anti-Retour COD: Customer Phone Blacklist & Return-Rate Protection
+CREATE TABLE IF NOT EXISTS customer_phone_blacklist (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    phone_e164 TEXT NOT NULL UNIQUE,
+    phone_local TEXT NOT NULL,
+    reason TEXT NOT NULL DEFAULT 'Retour abusif / Non-récupération COD',
+    is_blocked INTEGER NOT NULL DEFAULT 1,
+    blocked_by INTEGER REFERENCES admin_users(id) ON DELETE SET NULL,
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+CREATE INDEX IF NOT EXISTS idx_phone_blacklist_e164 ON customer_phone_blacklist(phone_e164);
+CREATE INDEX IF NOT EXISTS idx_phone_blacklist_local ON customer_phone_blacklist(phone_local);
