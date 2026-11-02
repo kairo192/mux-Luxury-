@@ -2655,6 +2655,84 @@ flushOfflineMutationQueue(async () => true).then((res) => {
         self.assertIn("HEALTHCHECK", sf_docker)
 
 
+    # 67. Variant Matrix SKU Collision Disambiguation (Same 4-Char Prefix Options)
+    def test_67_variant_matrix_sku_collision_disambiguation(self):
+        headers = self.get_admin_headers()
+        # Generate variants where two color options share the same 4-character prefix ("Noir Intense" & "Noir Mat" -> "NOIR")
+        r_gen = self.client.post(
+            "/api/v1/admin/products/1/generate-variants",
+            json={
+                "axes": {
+                    "color": ["Noir Intense", "Noir Mat"],
+                    "size": ["M"],
+                },
+                "default_stock": 7,
+            },
+            headers=headers,
+        )
+        self.assertEqual(r_gen.status_code, 201, r_gen.text)
+        data = r_gen.json()
+        self.assertEqual(len(data["created"]), 2)
+        skus = [v["sku"] for v in data["created"]]
+        self.assertEqual(len(set(skus)), 2, f"Expected unique disambiguated SKUs, got {skus}")
+
+    # 68. Duplicate Product/Coupon 409 Conflict Guard & Delivery Calculator Coupon Usage-Limit Parity
+    def test_68_duplicate_product_coupon_409_and_preview_coupon_limit_parity(self):
+        headers = self.get_admin_headers()
+
+        # 1. Duplicate product SKU or slug must return clean 409 Conflict instead of 500 IntegrityError
+        existing_prod = self.client.get("/api/v1/products").json()["items"][0]
+        r_dup_prod = self.client.post(
+            "/api/v1/admin/products",
+            json={
+                "category_id": 1,
+                "slug": existing_prod["slug"],
+                "sku": existing_prod["sku"],
+                "name_fr": "Duplicate Product Test",
+                "selling_price_dzd": 48500,
+                "status": "draft",
+                "dynamic_attributes": {},
+                "variants": [],
+            },
+            headers=headers,
+        )
+        self.assertEqual(r_dup_prod.status_code, 409, r_dup_prod.text)
+
+        # 2. Create a single-use coupon (usage_limit=1), verify duplicate coupon code returns 409
+        r_cpn = self.client.post(
+            "/api/v1/admin/coupons",
+            json={
+                "code": "ONCE2026",
+                "discount_type": "fixed_dzd",
+                "discount_value": 1000,
+                "min_order_dzd": 5000,
+                "usage_limit": 1,
+            },
+            headers=headers,
+        )
+        self.assertEqual(r_cpn.status_code, 201, r_cpn.text)
+
+        r_dup_cpn = self.client.post(
+            "/api/v1/admin/coupons",
+            json={
+                "code": "ONCE2026",
+                "discount_type": "fixed_dzd",
+                "discount_value": 1000,
+                "min_order_dzd": 5000,
+                "usage_limit": 1,
+            },
+            headers=headers,
+        )
+        self.assertEqual(r_dup_cpn.status_code, 409, r_dup_cpn.text)
+
+        # 3. Before redemption, delivery calculator applies ONCE2026 (1000 DA discount)
+        r_calc_before = self.client.get(
+            "/api/v1/delivery-zones/calculate?wilaya_code=16&delivery_method=home&subtotal_dzd=10000&coupon_code=ONCE2026"
+        )
+        self.assertEqual(r_calc_before.status_code, 200)
+        self.assertEqual(r_calc_before.json()["discount_dzd"], 1000)
+
+
 if __name__ == "__main__":
     unittest.main()
 

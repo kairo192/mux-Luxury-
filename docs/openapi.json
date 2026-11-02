@@ -143,6 +143,7 @@
             "required": false,
             "schema": {
               "title": "Min Price",
+              "minimum": 0.0,
               "type": "integer"
             },
             "name": "min_price",
@@ -152,6 +153,7 @@
             "required": false,
             "schema": {
               "title": "Max Price",
+              "minimum": 0.0,
               "type": "integer"
             },
             "name": "max_price",
@@ -1295,7 +1297,7 @@
     "/api/v1/admin/auth/recovery/request": {
       "post": {
         "summary": "Request Admin Password Recovery",
-        "description": "Initiates administrator password recovery via the official WhatsApp Business Cloud API\nor validates readiness for Offline Emergency Code verification.\nStrict Rule (Section 6): If WhatsApp API credentials are not configured on the server,\nexplicitly report 503 Service Unavailable — never silently simulate message delivery.\nSupports both international (+213...) and local Algerian (05/06/07...) phone formats,\nmatching either primary `phone` or `emergency_phone`.",
+        "description": "Initiates administrator password recovery via the official WhatsApp Business Cloud API\nor validates readiness for Offline Emergency Code verification.\nStrict Rule (Section 6): If WhatsApp API credentials are not configured on the server,\nexplicitly report 503 Service Unavailable \u2014 never silently simulate message delivery.\nSupports both international (+213...) and local Algerian (05/06/07...) phone formats,\nmatching either primary `phone` or `emergency_phone`.",
         "operationId": "request_admin_password_recovery_api_v1_admin_auth_recovery_request_post",
         "requestBody": {
           "content": {
@@ -3213,7 +3215,7 @@
           "cta_text_fr": {
             "title": "Cta Text Fr",
             "type": "string",
-            "default": "Découvrir"
+            "default": "D\u00e9couvrir"
           },
           "cta_link": {
             "title": "Cta Link",
@@ -3582,7 +3584,7 @@
             "maxLength": 250,
             "minLength": 3,
             "type": "string",
-            "default": "Retour abusif / Non-récupération COD"
+            "default": "Retour abusif / Non-r\u00e9cup\u00e9ration COD"
           },
           "is_blocked": {
             "title": "Is Blocked",

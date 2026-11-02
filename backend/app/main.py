@@ -1045,6 +1045,21 @@ def create_dynamic_product(
                     detail=f"Missing required category attributes for '{cat['name_fr']}': {', '.join(missing)}"
                 )
 
+        cur.execute("SELECT id, slug, sku FROM products WHERE slug = ? OR sku = ?", (payload.slug, payload.sku))
+        existing_prod = cur.fetchone()
+        if existing_prod:
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail=f"Product with slug '{payload.slug}' or SKU '{payload.sku}' already exists"
+            )
+        for v in payload.variants:
+            cur.execute("SELECT id FROM product_variants WHERE sku = ?", (v.sku,))
+            if cur.fetchone():
+                raise HTTPException(
+                    status_code=status.HTTP_409_CONFLICT,
+                    detail=f"Variant SKU '{v.sku}' already exists"
+                )
+
         cur.execute(
             """INSERT INTO products
                (category_id, brand_id, slug, sku, barcode, name_fr, name_ar, name_en,
@@ -1129,6 +1144,10 @@ def generate_product_variants_matrix(
 
             suffix = "-".join(re.sub(r"[^A-Z0-9]", "", str(v).upper())[:4] for v in combo)
             v_sku = f"{prod['sku']}-{suffix}"
+            cur.execute("SELECT id FROM product_variants WHERE sku = ?", (v_sku,))
+            if cur.fetchone():
+                disambig = hashlib.sha256(sig.encode("utf-8")).hexdigest()[:4].upper()
+                v_sku = f"{v_sku}-{disambig}"
             v_title = " / ".join(str(v) for v in combo)
             cur.execute(
                 """INSERT INTO product_variants
@@ -1332,7 +1351,12 @@ def verify_backup_restoration_isolated(
         if not bkp:
             raise HTTPException(status_code=404, detail="Backup record not found")
 
-        fpath = os.path.join(BACKUP_STORAGE_DIR, bkp["filename"])
+        raw_fname = str(bkp["filename"] or "")
+        if not raw_fname or os.path.basename(raw_fname) != raw_fname:
+            raise HTTPException(status_code=400, detail="Invalid backup filename")
+        fpath = os.path.abspath(os.path.join(BACKUP_STORAGE_DIR, raw_fname))
+        if not fpath.startswith(os.path.abspath(BACKUP_STORAGE_DIR) + os.sep):
+            raise HTTPException(status_code=400, detail="Backup path traversal blocked")
         if not os.path.isfile(fpath):
             raise HTTPException(status_code=404, detail="Backup file missing from storage directory")
 
@@ -1951,6 +1975,10 @@ def create_coupon(
 ):
     with db_session(commit=True) as conn:
         cur = conn.cursor()
+        code_upper = payload.code.strip().upper()
+        cur.execute("SELECT id FROM coupons WHERE UPPER(code) = ?", (code_upper,))
+        if cur.fetchone():
+            raise HTTPException(status_code=409, detail=f"Coupon code '{code_upper}' already exists")
         cur.execute(
             """INSERT INTO coupons (code, discount_type, discount_value, min_order_dzd, max_discount_dzd, usage_limit, is_active)
                VALUES (?, ?, ?, ?, ?, ?, 1)""",
@@ -2351,7 +2379,8 @@ def calculate_delivery_and_order_preview(
         if coupon_code:
             cur.execute("SELECT * FROM coupons WHERE UPPER(code) = ? AND is_active = 1", (coupon_code.strip().upper(),))
             cpn = cur.fetchone()
-            if cpn and subtotal_dzd >= int(cpn["min_order_dzd"]):
+            cpn_limit_ok = cpn and (dict(cpn).get("usage_limit") is None or int(cpn["usage_count"]) < int(dict(cpn)["usage_limit"]))
+            if cpn and cpn_limit_ok and subtotal_dzd >= int(cpn["min_order_dzd"]):
                 if cpn["discount_type"] == "percentage":
                     discount_dzd = (subtotal_dzd * int(cpn["discount_value"])) // 100
                     if cpn["max_discount_dzd"] is not None:
