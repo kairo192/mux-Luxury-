@@ -1588,6 +1588,7 @@ console.log("ALL_TSX_COMPILED_OK");
     # 40. Anti-Retour COD: Customer Phone Return-Rate Scoring, Warning Badges & Blacklist Enforcement
     def test_40_anti_retour_cod_return_rate_scoring_and_phone_blacklist(self):
         reset_rate_limits()
+        hdrs = self.get_admin_headers()
         prods = self.client.get("/api/v1/products").json()["items"]
         vid = next(v["id"] for p in prods for v in p["variants"] if v["stock_qty"] >= 2)
         risky_phone = "0550998877"
@@ -1612,7 +1613,7 @@ console.log("ALL_TSX_COMPILED_OK");
             for st in ("confirmed", "preparing", "ready_for_shipment", "shipped", "returned"):
                 r_st = self.client.patch(
                     f"/api/v1/admin/orders/{oid}",
-                    headers=self.super_headers,
+                    headers=hdrs,
                     json={"status": st, "internal_notes": f"Transition to {st}"},
                 )
                 self.assertEqual(r_st.status_code, 200, r_st.text)
@@ -1621,7 +1622,7 @@ console.log("ALL_TSX_COMPILED_OK");
         r_check = self.client.get(
             "/api/v1/admin/cod-risk/check",
             params={"phone": "0550 99 88 77"},
-            headers=self.super_headers,
+            headers=hdrs,
         )
         self.assertEqual(r_check.status_code, 200, r_check.text)
         risk_data = r_check.json()
@@ -1631,7 +1632,7 @@ console.log("ALL_TSX_COMPILED_OK");
         self.assertIn("RISQUE RETOUR ÉLEVÉ", risk_data["warning_badge_fr"])
 
         # Verify GET /api/v1/admin/orders embeds cod_risk on every order
-        r_orders = self.client.get("/api/v1/admin/orders", headers=self.super_headers)
+        r_orders = self.client.get("/api/v1/admin/orders", headers=hdrs)
         self.assertEqual(r_orders.status_code, 200)
         matching_ord = next(o for o in r_orders.json()["items"] if o["customer_phone"] == risky_phone)
         self.assertEqual(matching_ord["cod_risk"]["risk_level"], "high_risk")
@@ -1639,7 +1640,7 @@ console.log("ALL_TSX_COMPILED_OK");
         # Add 0550998877 to COD Blacklist
         r_bl = self.client.post(
             "/api/v1/admin/cod-risk/blacklist",
-            headers=self.super_headers,
+            headers=hdrs,
             json={"phone": "+213 550 99 88 77", "reason": "2 colis non récupérés consécutifs", "is_blocked": True},
         )
         self.assertEqual(r_bl.status_code, 200, r_bl.text)
@@ -1665,7 +1666,7 @@ console.log("ALL_TSX_COMPILED_OK");
         # Unblock phone and verify is_blacklisted becomes False
         r_unblock = self.client.delete(
             "/api/v1/admin/cod-risk/blacklist/0550998877",
-            headers=self.super_headers,
+            headers=hdrs,
         )
         self.assertEqual(r_unblock.status_code, 200, r_unblock.text)
         self.assertFalse(r_unblock.json()["is_blacklisted"])
