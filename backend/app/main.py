@@ -350,6 +350,18 @@ def serialize_product(conn, row: dict, include_private: bool = False) -> dict:
 # PUBLIC STOREFRONT ENDPOINTS (/api/v1/*)
 # ============================================================================
 
+_INTERNAL_SETTING_KEYS = {"system_initialized"}
+
+def _is_protected_setting_key(key: str) -> bool:
+    k = (key or "").strip().lower()
+    return k in _INTERNAL_SETTING_KEYS or k.startswith("system_") or k.startswith("internal_")
+
+def _ensure_safe_url_or_text(val: str, field_name: str = "value") -> str:
+    s = str(val or "").strip()
+    if re.search(r"(<\s*/?\s*(script|iframe|svg|object|embed)|javascript\s*:|vbscript\s*:|data\s*:\s*text/html|on\w+\s*=)", s, re.IGNORECASE):
+        raise HTTPException(status_code=422, detail=f"Dangerous script or URI scheme blocked in {field_name}")
+    return s
+
 @app.get("/api/v1/store/settings")
 def get_store_settings():
     with db_session() as conn:
@@ -357,6 +369,8 @@ def get_store_settings():
         cur.execute("SELECT setting_key, setting_value FROM store_settings")
         out = {}
         for r in cur.fetchall():
+            if _is_protected_setting_key(r["setting_key"]):
+                continue
             val = r["setting_value"]
             try:
                 out[r["setting_key"]] = json.loads(val)
@@ -419,7 +433,7 @@ def list_public_products(
 ):
     with db_session() as conn:
         cur = conn.cursor()
-        where = ["p.status = 'published'", "p.deleted_at IS NULL"]
+        where = ["p.status = 'published'", "p.deleted_at IS NULL", "c.is_active = 1", "c.deleted_at IS NULL"]
         params: List[Any] = []
         if category:
             where.append("c.slug = ?")
@@ -480,7 +494,13 @@ def list_public_products(
 def get_public_product(slug: str):
     with db_session() as conn:
         cur = conn.cursor()
-        cur.execute("SELECT * FROM products WHERE slug = ? AND status = 'published' AND deleted_at IS NULL", (slug,))
+        cur.execute(
+            """SELECT p.* FROM products p
+               JOIN categories c ON c.id = p.category_id
+               WHERE p.slug = ? AND p.status = 'published' AND p.deleted_at IS NULL
+                 AND c.is_active = 1 AND c.deleted_at IS NULL""",
+            (slug,)
+        )
         row = cur.fetchone()
         if not row:
             raise HTTPException(status_code=404, detail="Product not found")
@@ -1232,6 +1252,10 @@ def update_order_status(
                 new_q = prev_q + int(item["quantity"])
                 cur.execute("UPDATE product_variants SET stock_qty = ? WHERE id = ?", (new_q, item["variant_id"]))
                 cur.execute(
+                    "UPDATE products SET sales_count = CASE WHEN sales_count >= ? THEN sales_count - ? ELSE 0 END WHERE id = ?",
+                    (int(item["quantity"]), int(item["quantity"]), item["product_id"])
+                )
+                cur.execute(
                     """INSERT INTO inventory_movements
                        (variant_id, order_id, admin_user_id, change_qty, previous_qty, new_qty, reason)
                        VALUES (?, ?, ?, ?, ?, ?, ?)""",
@@ -1444,6 +1468,8 @@ def get_public_storefront_layout():
         cur.execute("SELECT setting_key, setting_value FROM store_settings")
         settings = {}
         for r in cur.fetchall():
+            if _is_protected_setting_key(r["setting_key"]):
+                continue
             try:
                 settings[r["setting_key"]] = json.loads(r["setting_value"])
             except Exception:
@@ -1481,6 +1507,9 @@ def admin_create_banner(
     payload: BannerCreateUpdate,
     admin: dict = Depends(require_permission("content:write"))
 ):
+    _ensure_safe_url_or_text(payload.title_fr, "title_fr")
+    _ensure_safe_url_or_text(payload.cta_link or "", "cta_link")
+    _ensure_safe_url_or_text(payload.image_url or "", "image_url")
     with db_session(commit=True) as conn:
         cur = conn.cursor()
         cur.execute(
@@ -1536,6 +1565,13 @@ def admin_update_store_settings(
     payload: StoreSettingsUpdate,
     admin: dict = Depends(require_permission("settings:write"))
 ):
+    for k, v in payload.settings.items():
+        if _is_protected_setting_key(k):
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail=f"Protected system setting '{k}' cannot be modified via store settings API"
+            )
+        _ensure_safe_url_or_text(json.dumps(v, ensure_ascii=False) if isinstance(v, (dict, list)) else str(v), k)
     with db_session(commit=True) as conn:
         cur = conn.cursor()
         for k, v in payload.settings.items():
@@ -1830,8 +1866,10 @@ async def receive_whatsapp_webhook(request: Request):
     """
     raw_body = await request.body()
     sig_header = request.headers.get("X-Hub-Signature-256")
-    if sig_header and not verify_whatsapp_webhook_signature(raw_body, sig_header):
-        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid X-Hub-Signature-256 webhook signature")
+    cfg = get_whatsapp_config()
+    has_live_secret = bool(cfg["app_secret"] and not cfg["app_secret"].startswith("replace_with_"))
+    if (sig_header or has_live_secret) and not verify_whatsapp_webhook_signature(raw_body, sig_header):
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid or missing X-Hub-Signature-256 webhook signature")
     try:
         payload = json.loads(raw_body.decode("utf-8") or "{}")
     except Exception:
@@ -1907,6 +1945,13 @@ def update_product_with_conflict_detection(
                 status_code=status.HTTP_409_CONFLICT,
                 detail=f"Synchronization conflict detected: server version is {current_version}, but client sent version {payload.expected_version}. Reload latest server data before saving."
             )
+        if payload.sku and payload.sku != prod["sku"]:
+            cur.execute("SELECT id FROM products WHERE sku = ? AND id != ?", (payload.sku, product_id))
+            if cur.fetchone():
+                raise HTTPException(
+                    status_code=status.HTTP_409_CONFLICT,
+                    detail=f"Product SKU '{payload.sku}' is already used by another product"
+                )
         new_version = current_version + 1
         cur.execute(
             """UPDATE products
@@ -1929,7 +1974,7 @@ def update_product_with_conflict_detection(
                    seo_description = COALESCE(?, seo_description),
                    version = ?,
                    updated_at = CURRENT_TIMESTAMP
-               WHERE id = ?""",
+               WHERE id = ? AND version = ?""",
             (
                 payload.name_fr,
                 payload.selling_price_dzd,
@@ -1950,6 +1995,7 @@ def update_product_with_conflict_detection(
                 payload.seo_description,
                 new_version,
                 product_id,
+                current_version,
             )
         )
         if payload.dynamic_attributes is not None:

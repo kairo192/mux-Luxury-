@@ -11,6 +11,19 @@ from typing import Optional, Tuple
 from . import config  # Ensures .env is loaded
 
 
+def _resolve_outbox_dir() -> str:
+    local_default = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "backups")
+    candidate = os.getenv("BACKUP_DIR", local_default)
+    try:
+        os.makedirs(candidate, exist_ok=True)
+        if os.access(candidate, os.W_OK):
+            return candidate
+    except OSError:
+        pass
+    os.makedirs(local_default, exist_ok=True)
+    return local_default
+
+
 def normalize_algerian_phone(raw_phone: str) -> Tuple[str, str, str]:
     """
     Normalizes any Algerian mobile or landline number into three canonical formats:
@@ -125,8 +138,7 @@ def dispatch_whatsapp_recovery_otp(to_phone: str, otp_code: str, expires_minutes
 
     if cfg["sandbox_mode"] or cfg["test_capture"]:
         msg_id = f"wamid.LUXE_SANDBOX_{int(time.time())}_{hashlib.sha256(e164.encode()).hexdigest()[:8]}"
-        outbox_dir = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "backups")
-        os.makedirs(outbox_dir, exist_ok=True)
+        outbox_dir = _resolve_outbox_dir()
         outbox_file = os.path.join(outbox_dir, "whatsapp_outbox.jsonl")
         log_entry = {
             "timestamp": int(time.time()),
@@ -284,8 +296,7 @@ def dispatch_customer_whatsapp_order_update(
     cfg = get_whatsapp_config()
     msg_id = f"wamid.ORDER_{template_type.upper()}_{int(time.time())}_{hashlib.sha256(msg_info['recipient_e164'].encode()).hexdigest()[:8]}"
 
-    outbox_dir = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "backups")
-    os.makedirs(outbox_dir, exist_ok=True)
+    outbox_dir = _resolve_outbox_dir()
     outbox_file = os.path.join(outbox_dir, "whatsapp_outbox.jsonl")
 
     log_entry = {
@@ -314,7 +325,7 @@ def dispatch_customer_whatsapp_order_update(
 
 
 def list_recent_whatsapp_outbox(limit: int = 30) -> list:
-    outbox_dir = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "backups")
+    outbox_dir = _resolve_outbox_dir()
     outbox_file = os.path.join(outbox_dir, "whatsapp_outbox.jsonl")
     if not os.path.isfile(outbox_file):
         return []

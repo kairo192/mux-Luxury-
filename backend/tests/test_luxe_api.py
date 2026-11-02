@@ -2733,6 +2733,116 @@ flushOfflineMutationQueue(async () => true).then((res) => {
         self.assertEqual(r_calc_before.json()["discount_dzd"], 1000)
 
 
+    # 69. Protected System Settings Tamper Defense & Stored URI/Script Injection Blocking
+    def test_69_protected_system_settings_and_banner_uri_injection_defense(self):
+        headers = self.get_admin_headers()
+
+        # 1. Public store settings & layout must never leak internal system_initialized flag
+        pub_settings = self.client.get("/api/v1/store/settings").json()
+        self.assertNotIn("system_initialized", pub_settings)
+        pub_layout = self.client.get("/api/v1/store/layout").json()
+        self.assertNotIn("system_initialized", pub_layout["settings"])
+
+        # 2. Attempting to overwrite system_initialized via PUT /api/v1/admin/settings must return 403 Forbidden
+        r_tamper = self.client.put(
+            "/api/v1/admin/settings",
+            json={"settings": {"system_initialized": "false"}},
+            headers=headers,
+        )
+        self.assertEqual(r_tamper.status_code, 403, r_tamper.text)
+
+        # 3. Attempting to inject javascript: URI or <script> into settings or banners must return 422
+        r_xss_set = self.client.put(
+            "/api/v1/admin/settings",
+            json={"settings": {"announcement_bar_fr": "<script>alert(1)</script>"}},
+            headers=headers,
+        )
+        self.assertEqual(r_xss_set.status_code, 422, r_xss_set.text)
+
+        r_xss_ban = self.client.post(
+            "/api/v1/admin/banners",
+            json={
+                "position": "hero",
+                "title_fr": "Collection Hiver",
+                "cta_link": "javascript:alert(document.cookie)",
+                "image_url": "/assets/hero_banner_mus.jpg",
+            },
+            headers=headers,
+        )
+        self.assertEqual(r_xss_ban.status_code, 422, r_xss_ban.text)
+
+    # 70. Archived Category Product Filtering, Product Update Duplicate SKU Guard & Webhook Missing-Header Defense
+    def test_70_archived_category_product_visibility_and_whatsapp_webhook_signature_enforcement(self):
+        import os as _os
+        headers = self.get_admin_headers()
+
+        # 1. When WHATSAPP_APP_SECRET is configured, omitting X-Hub-Signature-256 on POST /api/v1/webhooks/whatsapp must return 401
+        old_secret = _os.environ.get("WHATSAPP_APP_SECRET")
+        _os.environ["WHATSAPP_APP_SECRET"] = "live_meta_secret_2026"
+        try:
+            r_no_sig = self.client.post("/api/v1/webhooks/whatsapp", json={"entry": []})
+            self.assertEqual(r_no_sig.status_code, 401, "Webhook without signature header must be rejected when app secret is set")
+        finally:
+            if old_secret is None:
+                _os.environ.pop("WHATSAPP_APP_SECRET", None)
+            else:
+                _os.environ["WHATSAPP_APP_SECRET"] = old_secret
+
+        # 2. Updating product 1 SKU to collide with product 2 SKU must return 409 Conflict
+        all_prods = self.client.get("/api/v1/admin/products", headers=headers).json()["items"]
+        self.assertGreaterEqual(len(all_prods), 2)
+        p1, p2 = all_prods[0], all_prods[1]
+        r_sku_collide = self.client.put(
+            f"/api/v1/admin/products/{p1['id']}",
+            json={
+                "name_fr": p1["name_fr"],
+                "selling_price_dzd": p1["selling_price_dzd"],
+                "expected_version": p1["version"],
+                "sku": p2["sku"],
+            },
+            headers=headers,
+        )
+        self.assertEqual(r_sku_collide.status_code, 409, r_sku_collide.text)
+
+        # 3. Create a temporary category & published product, archive the category, and verify product is hidden from public catalog
+        r_cat = self.client.post(
+            "/api/v1/admin/categories",
+            json={
+                "slug": "cat-archive-vis-test",
+                "name_fr": "Catégorie Test Visibilité",
+                "name_ar": "فئة اختبار",
+                "name_en": "Visibility Test Category",
+            },
+            headers=headers,
+        )
+        self.assertEqual(r_cat.status_code, 201, r_cat.text)
+        cid = r_cat.json()["id"]
+
+        r_prod = self.client.post(
+            "/api/v1/admin/products",
+            json={
+                "category_id": cid,
+                "slug": "prod-in-archived-cat-test",
+                "sku": "MUS-ARCHCAT-001",
+                "name_fr": "Produit Test Catégorie Archivée",
+                "selling_price_dzd": 15000,
+                "status": "published",
+                "dynamic_attributes": {},
+                "variants": [{"sku": "MUS-ARCHCAT-001-STD", "title": "Standard", "stock_qty": 4, "attributes": {}}],
+            },
+            headers=headers,
+        )
+        self.assertEqual(r_prod.status_code, 201, r_prod.text)
+
+        # Before archiving category, product is visible on public catalog
+        self.assertEqual(self.client.get("/api/v1/products/prod-in-archived-cat-test").status_code, 200)
+
+        # Archive category -> product must no longer be served on public catalog
+        r_arch = self.client.delete(f"/api/v1/admin/categories/{cid}", headers=headers)
+        self.assertEqual(r_arch.status_code, 200)
+        self.assertEqual(self.client.get("/api/v1/products/prod-in-archived-cat-test").status_code, 404)
+
+
 if __name__ == "__main__":
     unittest.main()
 
