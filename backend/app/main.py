@@ -56,12 +56,23 @@ app.add_middleware(
     allow_origins=ALLOWED_CORS_ORIGINS,
     allow_credentials=True,
     allow_methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
-    allow_headers=["Authorization", "Content-Type", "X-CSRF-Token", "Idempotency-Key", "X-Luxe-Signature", "X-Luxe-Timestamp", "X-Luxe-Nonce"],
+    allow_headers=["Authorization", "Content-Type", "X-CSRF-Token", "Idempotency-Key", "X-Request-ID", "X-Luxe-Signature", "X-Luxe-Timestamp", "X-Luxe-Nonce"],
+    expose_headers=["X-Request-ID", "X-Response-Time-Ms"],
 )
 
 @app.middleware("http")
 async def add_security_headers(request: Request, call_next):
+    start_ns = time.perf_counter_ns()
+    incoming_req_id = (request.headers.get("X-Request-ID") or "").strip()
+    if incoming_req_id and re.match(r"^[a-zA-Z0-9_\-]{6,64}$", incoming_req_id):
+        req_id = incoming_req_id
+    else:
+        req_id = f"req_{secrets.token_hex(6)}"
+
     response: Response = await call_next(request)
+    elapsed_ms = (time.perf_counter_ns() - start_ns) / 1_000_000.0
+    response.headers["X-Request-ID"] = req_id
+    response.headers["X-Response-Time-Ms"] = f"{elapsed_ms:.2f}"
     response.headers["X-Content-Type-Options"] = "nosniff"
     response.headers["X-Frame-Options"] = "DENY"
     response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
@@ -750,6 +761,32 @@ def create_guest_order(
             "discount_dzd": discount_dzd,
             "delivery_fee_dzd": delivery_fee_dzd,
             "total_dzd": total_dzd,
+            "whatsapp_confirmation_url": build_customer_order_whatsapp_message(
+                {
+                    "order_reference": order_ref,
+                    "customer_name": payload.full_name,
+                    "customer_phone": payload.phone,
+                    "wilaya_code": payload.wilaya_code,
+                    "wilaya_name": zone["wilaya_name_fr"],
+                    "commune": payload.commune,
+                    "delivery_method": payload.delivery_method,
+                    "total_dzd": total_dzd,
+                },
+                "confirmation_call",
+            )["wa_me_boutique_url"],
+            "customer_whatsapp_url": build_customer_order_whatsapp_message(
+                {
+                    "order_reference": order_ref,
+                    "customer_name": payload.full_name,
+                    "customer_phone": payload.phone,
+                    "wilaya_code": payload.wilaya_code,
+                    "wilaya_name": zone["wilaya_name_fr"],
+                    "commune": payload.commune,
+                    "delivery_method": payload.delivery_method,
+                    "total_dzd": total_dzd,
+                },
+                "confirmation_call",
+            )["wa_me_customer_url"],
             "items": out_items,
             "message_fr": "Votre commande a été enregistrée avec succès. Paiement à la livraison (Cash on Delivery)."
         }
@@ -1129,6 +1166,12 @@ def list_admin_orders(
             cur.execute("SELECT * FROM order_items WHERE order_id = ?", (od["id"],))
             od["items"] = [dict(it) for it in cur.fetchall()]
             od["cod_risk"] = compute_customer_cod_risk(conn, od["customer_phone"])
+            od["whatsapp_actions"] = {
+                "confirmation_call_url": build_customer_order_whatsapp_message(od, "confirmation_call")["wa_me_customer_url"],
+                "shipped_notice_url": build_customer_order_whatsapp_message(od, "shipped_notice")["wa_me_customer_url"],
+                "no_answer_followup_url": build_customer_order_whatsapp_message(od, "no_answer_followup")["wa_me_customer_url"],
+                "delivery_arrived_url": build_customer_order_whatsapp_message(od, "delivery_arrived")["wa_me_customer_url"],
+            }
             orders.append(od)
         return {"items": orders}
 
@@ -1529,6 +1572,9 @@ class CouponCreateInput(BaseModel):
     usage_limit: Optional[int] = Field(None, ge=1)
 
 from .whatsapp import (
+    build_customer_order_whatsapp_message,
+    dispatch_customer_whatsapp_order_update,
+    list_recent_whatsapp_outbox,
     normalize_algerian_phone,
     get_whatsapp_config,
     dispatch_whatsapp_recovery_otp,
@@ -2875,3 +2921,64 @@ def admin_remove_cod_blacklist(
         )
         log_audit(conn, int(admin["sub"]), "remove_cod_blacklist", "customer_phone_blacklist", e164_p, {})
         return compute_customer_cod_risk(conn, e164_p)
+
+
+# ============================================================================
+# CUSTOMER & ADMIN WHATSAPP COMMUNICATION ENGINE & NETWORKING OUTBOX
+# ============================================================================
+
+class OrderWhatsappNotifyInput(BaseModel):
+    template_type: str = Field("confirmation_call", regex=r"^(confirmation_call|shipped_notice|no_answer_followup|delivery_arrived)$")
+    custom_message: Optional[str] = Field(None, max_length=1000)
+
+
+@app.post("/api/v1/admin/orders/{order_id}/notify-whatsapp")
+def admin_notify_order_customer_whatsapp(
+    order_id: int,
+    payload: OrderWhatsappNotifyInput,
+    admin: dict = Depends(require_permission("orders:write")),
+):
+    with db_session(commit=True) as conn:
+        cur = conn.cursor()
+        cur.execute("SELECT * FROM orders WHERE id = ?", (order_id,))
+        ord_row = cur.fetchone()
+        if not ord_row:
+            raise HTTPException(status_code=404, detail="Order not found")
+        od = dict(ord_row)
+        receipt = dispatch_customer_whatsapp_order_update(
+            od,
+            template_type=payload.template_type,
+            custom_message=payload.custom_message,
+        )
+        log_audit(
+            conn,
+            int(admin["sub"]),
+            "notify_customer_whatsapp",
+            "order",
+            str(order_id),
+            {
+                "order_reference": od["order_reference"],
+                "template_type": payload.template_type,
+                "recipient_e164": receipt["recipient_e164"],
+                "message_id": receipt["message_id"],
+            },
+        )
+        return receipt
+
+
+@app.get("/api/v1/admin/communications/outbox")
+def admin_list_communications_outbox(
+    limit: int = Query(30, ge=1, le=100),
+    admin: dict = Depends(require_permission("orders:write")),
+):
+    cfg = get_whatsapp_config()
+    items = list_recent_whatsapp_outbox(limit=limit)
+    return {
+        "items": items,
+        "count": len(items),
+        "whatsapp_configured": cfg["is_configured"],
+        "sandbox_mode": cfg["sandbox_mode"],
+        "boutique_whatsapp_e164": "+213655534154",
+        "boutique_whatsapp_local": "0655534154",
+    }
+

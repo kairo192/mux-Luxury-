@@ -6,6 +6,11 @@ import {
   notifyClientWarning,
   subscribeClientNotifications,
 } from "./utils/clientNotifier";
+import {
+  NetworkTelemetryState,
+  getNetworkTelemetry,
+  subscribeNetworkTelemetry,
+} from "./utils/networkQueue";
 import React, { useEffect, useState } from "react";
 import { DesktopCmsApi, restoreSessionFromOsKeychain } from "./api/adminClient";
 import { CategoryBuilderPage } from "./pages/CategoryBuilderPage";
@@ -93,6 +98,13 @@ export default function App() {
   const [codBlacklistReason, setCodBlacklistReason] = useState("Retour abusif / Non-récupération COD");
   const [codCheckResult, setCodCheckResult] = useState<any | null>(null);
   const [keychainStatus, setKeychainStatus] = useState<any | null>(null);
+  const [waOutbox, setWaOutbox] = useState<any[]>([]);
+  const [netTelemetry, setNetTelemetry] = useState<NetworkTelemetryState>(() => getNetworkTelemetry());
+
+  useEffect(() => {
+    const unsubNet = subscribeNetworkTelemetry((st) => setNetTelemetry(st));
+    return unsubNet;
+  }, []);
 
   // Product Search, Creation, Edit & Variant Matrix State
   const [prodSearch, setProdSearch] = useState(() => readDraft("luxe_cms_prod_search", ""));
@@ -141,7 +153,7 @@ export default function App() {
     setLoadingWorkspace(true);
     setError("");
     try {
-      const [dashData, repData, brdData, catData, prodData, ordData, custData, movData, layData, bnrData, pgData, bkpData, recData, hltData, blData, kcStatus] = await Promise.all([
+      const [dashData, repData, brdData, catData, prodData, ordData, custData, movData, layData, bnrData, pgData, bkpData, recData, hltData, blData, kcStatus, outboxData] = await Promise.all([
         DesktopCmsApi.getDashboard(),
         DesktopCmsApi.getReports().catch(() => null),
         DesktopCmsApi.listBrands().catch(() => ({ items: [] })),
@@ -158,9 +170,11 @@ export default function App() {
         DesktopCmsApi.checkHealth().catch(() => ({ status: "ok" })),
         DesktopCmsApi.listCodBlacklist().catch(() => ({ items: [] })),
         DesktopCmsApi.getKeychainStatus().catch(() => null),
+        DesktopCmsApi.listCommunicationsOutbox().catch(() => ({ items: [] })),
       ]);
       setCodBlacklist(blData.items || []);
       setKeychainStatus(kcStatus);
+      setWaOutbox(outboxData.items || []);
       setDashboard(dashData);
       setReports(repData);
       setBrands(brdData.items || []);
@@ -546,6 +560,23 @@ export default function App() {
       await loadAllWorkspaceData();
     } catch (err: any) {
       const tr = notifyClientError(err, "Déblocage du numéro impossible");
+      setError(tr.message);
+    }
+  }
+
+  async function handleNotifyOrderCustomerWhatsapp(
+    orderId: number,
+    templateType: "confirmation_call" | "shipped_notice" | "no_answer_followup" | "delivery_arrived" = "confirmation_call"
+  ) {
+    setError("");
+    try {
+      const receipt = await DesktopCmsApi.notifyOrderCustomerWhatsapp(orderId, templateType);
+      const okMsg = `Notification WhatsApp (${templateType}) transmise à ${receipt.recipient_local} : "${receipt.message_text.slice(0, 90)}..."`;
+      setSuccessMsg(okMsg);
+      notifyClientSuccess("Notification WhatsApp Client Envoyée", okMsg);
+      await loadAllWorkspaceData();
+    } catch (err: any) {
+      const tr = notifyClientError(err, "Envoi de la notification WhatsApp impossible");
       setError(tr.message);
     }
   }
@@ -1134,6 +1165,18 @@ export default function App() {
           </span>
         </div>
         <div className="flex items-center gap-3 text-xs">
+          <span
+            className={`px-3 py-1 rounded-full font-mono text-[11px] font-bold border ${
+              netTelemetry.online
+                ? "bg-emerald-950 text-emerald-300 border-emerald-500/40"
+                : "bg-red-950 text-red-200 border-red-400"
+            }`}
+            title={`Dernier ID requête : ${netTelemetry.lastRequestId} • Tentatives auto : ${netTelemetry.retryCount}`}
+          >
+            {netTelemetry.online
+              ? `🟢 Réseau Actif • ${netTelemetry.latencyMs} ms • Sync ${netTelemetry.lastSyncAt}`
+              : "🔴 Hors-Ligne — Reconnexion auto active"}
+          </span>
           <button
             type="button"
             onClick={handleDeltaSync}
@@ -1602,6 +1645,22 @@ export default function App() {
                       >
                         Facture / Bon de livraison
                       </button>
+                      <button
+                        type="button"
+                        onClick={() => handleNotifyOrderCustomerWhatsapp(o.id, "confirmation_call")}
+                        className="px-3 py-1.5 rounded-lg bg-emerald-700 hover:bg-emerald-800 text-white font-bold"
+                        title="Envoyer la demande de confirmation WhatsApp au client"
+                      >
+                        💬 WhatsApp Confirmer
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => handleNotifyOrderCustomerWhatsapp(o.id, "shipped_notice")}
+                        className="px-3 py-1.5 rounded-lg bg-[#F8F6F0] border border-[#063D2E] text-[#063D2E] font-bold"
+                        title="Notifier le client de l'expédition du colis"
+                      >
+                        🚚 Avis Expédition
+                      </button>
                       {risk.is_blacklisted ? (
                         <button
                           type="button"
@@ -1690,6 +1749,37 @@ export default function App() {
                 </div>
               )}
             </div>
+
+            {waOutbox.length > 0 && (
+              <div className="bg-white p-5 rounded-2xl border border-[#D4AF62]/40 shadow-sm space-y-2 text-xs">
+                <h4 className="font-serif font-bold text-[#063D2E] text-sm">
+                  📡 Journal des Communications WhatsApp Client ({waOutbox.length} dernier(s) message(s))
+                </h4>
+                <div className="space-y-1.5 max-h-40 overflow-y-auto">
+                  {waOutbox.slice(0, 6).map((m: any, idx: number) => (
+                    <div key={m.message_id || idx} className="p-2.5 rounded-xl bg-[#F8F6F0] border border-[#D4AF62]/30 flex flex-wrap items-center justify-between gap-2">
+                      <div>
+                        <span className="font-mono font-bold text-[#063D2E] mr-2">{m.recipient_local || m.recipient_e164}</span>
+                        <span className="px-2 py-0.5 rounded bg-[#063D2E] text-[#D4AF62] text-[10px] font-bold mr-2">
+                          {m.template_type || m.channel || "OTP"}
+                        </span>
+                        <span className="text-gray-700">{m.message_text ? m.message_text.slice(0, 95) + "..." : `Message ID: ${m.message_id}`}</span>
+                      </div>
+                      {m.wa_me_customer_url && (
+                        <a
+                          href={m.wa_me_customer_url}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="px-2.5 py-1 rounded-lg bg-emerald-700 text-white font-bold text-[10px]"
+                        >
+                          Ouvrir WhatsApp Web ↗
+                        </a>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
 
             {selectedInvoice && (
               <div className="p-5 rounded-2xl bg-[#F8F6F0] border-2 border-[#D4AF62] space-y-2">

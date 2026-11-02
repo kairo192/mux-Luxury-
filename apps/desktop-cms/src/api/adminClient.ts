@@ -1,5 +1,6 @@
 import { keychainSetSecret, keychainGetSecret, keychainDeleteSecret, getOsKeychainStatus } from "../utils/osKeychain";
 import { ClientSafeApiError, sanitizeAndTranslateError } from "../utils/clientNotifier";
+import { recordNetworkSample } from "../utils/networkQueue";
 // ============================================================================
 // TAURI 2 DESKTOP CMS — SHARED AUTHENTICATED HTTPS API CLIENT
 // Features:
@@ -81,12 +82,13 @@ export async function computeHmacSha256Hex(keyString: string, message: string): 
 }
 
 async function adminFetch(path: string, options: RequestInit = {}, timeoutMs = defaultTimeoutMs) {
-  const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), timeoutMs);
-
+  const method = (options.method || "GET").toUpperCase();
   const isFormData = typeof FormData !== "undefined" && options.body instanceof FormData;
+  const reqId = `cms_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 7)}`;
+
   const headers: Record<string, string> = {
     ...(isFormData ? {} : { "Content-Type": "application/json" }),
+    "X-Request-ID": reqId,
     ...((options.headers as Record<string, string>) || {}),
   };
   const activeToken = getAccessToken();
@@ -94,52 +96,76 @@ async function adminFetch(path: string, options: RequestInit = {}, timeoutMs = d
     headers["Authorization"] = `Bearer ${activeToken}`;
   }
 
-  try {
-    const res = await fetch(`${apiBaseUrl}${path}`, {
-      ...options,
-      headers,
-      signal: options.signal || controller.signal,
-    });
-    const contentType = res.headers.get("content-type") || "";
-    const data = contentType.includes("application/json") ? await res.json().catch(() => ({})) : await res.text().catch(() => "");
+  const canRetry = method === "GET" || Boolean(headers["Idempotency-Key"]);
+  const maxAttempts = canRetry ? 3 : 1;
 
-    if (res.status === 401) {
-      const isAuthEndpoint = path.includes("/admin/auth/login") || path.includes("/admin/auth/recovery");
-      if (!isAuthEndpoint) {
-        setAccessToken(null);
+  for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), timeoutMs);
+    const startMs = Date.now();
+
+    try {
+      const res = await fetch(`${apiBaseUrl}${path}`, {
+        ...options,
+        headers,
+        signal: options.signal || controller.signal,
+      });
+      const rttMs = Date.now() - startMs;
+      const serverReqId = res.headers.get("x-request-id") || reqId;
+      recordNetworkSample({ online: true, latencyMs: rttMs, requestId: serverReqId, retried: attempt > 1 });
+
+      if ([502, 503, 504].includes(res.status) && attempt < maxAttempts) {
+        await new Promise((r) => setTimeout(r, attempt * 250));
+        continue;
       }
-      const tr401 = sanitizeAndTranslateError(data, 401, path, "Authentification requise");
-      throw new ClientSafeApiError({
-        status: 401,
-        title: tr401.title,
-        userMessage: tr401.message,
-        code: isAuthEndpoint ? tr401.code : "SESSION_EXPIRED",
-      });
-    }
 
-    if (!res.ok) {
-      const tr = sanitizeAndTranslateError(data, res.status, path, "Opération refusée");
+      const contentType = res.headers.get("content-type") || "";
+      const data = contentType.includes("application/json") ? await res.json().catch(() => ({})) : await res.text().catch(() => "");
+
+      if (res.status === 401) {
+        const isAuthEndpoint = path.includes("/admin/auth/login") || path.includes("/admin/auth/recovery");
+        if (!isAuthEndpoint) {
+          setAccessToken(null);
+        }
+        const tr401 = sanitizeAndTranslateError(data, 401, path, "Authentification requise");
+        throw new ClientSafeApiError({
+          status: 401,
+          title: tr401.title,
+          userMessage: tr401.message,
+          code: isAuthEndpoint ? tr401.code : "SESSION_EXPIRED",
+        });
+      }
+
+      if (!res.ok) {
+        const tr = sanitizeAndTranslateError(data, res.status, path, "Opération refusée");
+        throw new ClientSafeApiError({
+          status: res.status,
+          title: tr.title,
+          userMessage: tr.message,
+          code: tr.code,
+        });
+      }
+      return data;
+    } catch (err: any) {
+      if (err instanceof ClientSafeApiError) {
+        throw err;
+      }
+      if (attempt < maxAttempts) {
+        recordNetworkSample({ online: true, retried: true });
+        await new Promise((r) => setTimeout(r, attempt * 250));
+        continue;
+      }
+      recordNetworkSample({ online: false, requestId: reqId });
+      const trNet = sanitizeAndTranslateError(err, 0, path, "Erreur de communication");
       throw new ClientSafeApiError({
-        status: res.status,
-        title: tr.title,
-        userMessage: tr.message,
-        code: tr.code,
+        status: trNet.status,
+        title: trNet.title,
+        userMessage: trNet.message,
+        code: trNet.code,
       });
+    } finally {
+      clearTimeout(timer);
     }
-    return data;
-  } catch (err: any) {
-    if (err instanceof ClientSafeApiError) {
-      throw err;
-    }
-    const trNet = sanitizeAndTranslateError(err, 0, path, "Erreur de communication");
-    throw new ClientSafeApiError({
-      status: trNet.status,
-      title: trNet.title,
-      userMessage: trNet.message,
-      code: trNet.code,
-    });
-  } finally {
-    clearTimeout(timer);
   }
 }
 
@@ -268,6 +294,17 @@ export const DesktopCmsApi = {
     adminFetch(`/admin/cod-risk/blacklist/${encodeURIComponent(phone)}`, {
       method: "DELETE",
     }),
+  notifyOrderCustomerWhatsapp: (
+    orderId: number,
+    template_type: "confirmation_call" | "shipped_notice" | "no_answer_followup" | "delivery_arrived" = "confirmation_call",
+    custom_message?: string
+  ) =>
+    adminFetch(`/admin/orders/${orderId}/notify-whatsapp`, {
+      method: "POST",
+      body: JSON.stringify({ template_type, custom_message }),
+    }),
+  listCommunicationsOutbox: (limit = 30) =>
+    adminFetch(`/admin/communications/outbox?limit=${limit}`),
   getKeychainStatus: () => getOsKeychainStatus(),
 
   // 69-Wilaya Delivery Tariffs (Home & Stop-Desk)

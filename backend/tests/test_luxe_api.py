@@ -1499,6 +1499,7 @@ const babel = require("@babel/core");
 const files = [
   "apps/desktop-cms/src/utils/osKeychain.ts",
   "apps/desktop-cms/src/utils/clientNotifier.ts",
+  "apps/desktop-cms/src/utils/networkQueue.ts",
   "apps/desktop-cms/src/utils/draftStorage.ts",
   "apps/desktop-cms/src/api/adminClient.ts",
   "apps/desktop-cms/src/pages/CategoryBuilderPage.tsx",
@@ -2338,6 +2339,141 @@ console.log("CLIENT_NOTIFIER_ALL_TESTS_PASSED");
         self.assertIn("1. Reçue", sapp)
         self.assertIn("4. Livrée (COD)", sapp)
         self.assertIn("customerNotice", sapp)
+
+
+
+    # 58. Network Request Correlation (X-Request-ID) & Server Latency Telemetry (X-Response-Time-Ms)
+    def test_58_network_correlation_headers_and_latency_telemetry_verification(self):
+        # 1. Echoes valid custom X-Request-ID and measures X-Response-Time-Ms
+        r_custom = self.client.get("/api/v1/health", headers={"X-Request-ID": "cms_req_algeria_2026"})
+        self.assertEqual(r_custom.status_code, 200)
+        self.assertEqual(r_custom.headers.get("X-Request-ID"), "cms_req_algeria_2026")
+        latency_ms = float(r_custom.headers.get("X-Response-Time-Ms", "-1"))
+        self.assertGreaterEqual(latency_ms, 0.0)
+
+        # 2. Generates safe req_<hex> when X-Request-ID is omitted or contains invalid characters
+        r_auto = self.client.get("/api/v1/store/settings", headers={"X-Request-ID": "bad id with spaces!<>"})
+        self.assertEqual(r_auto.status_code, 200)
+        self.assertTrue(r_auto.headers.get("X-Request-ID", "").startswith("req_"))
+
+    # 59. Customer & Admin WhatsApp Order Communication Templates, Deep Links & Outbox Audit
+    def test_59_whatsapp_order_communication_templates_outbox_and_deep_links(self):
+        from app.security import reset_rate_limits
+        reset_rate_limits()
+        headers = self.get_admin_headers()
+
+        prods = self.client.get("/api/v1/products").json()["items"]
+        vid = next(v["id"] for p in prods for v in p["variants"] if v["stock_qty"] >= 1)
+
+        # 1. Create guest order and verify whatsapp_confirmation_url & customer_whatsapp_url in response
+        r_ord = self.client.post(
+            "/api/v1/orders",
+            headers={"Idempotency-Key": "wa-comm-test-order-59"},
+            json={
+                "full_name": "Meriem Benali",
+                "phone": "0554123456",
+                "wilaya_code": "16",
+                "commune": "Hydra",
+                "delivery_address": "18 Rue Djenane El Malik, Hydra",
+                "delivery_method": "home",
+                "items": [{"variant_id": vid, "quantity": 1}],
+            },
+        )
+        self.assertEqual(r_ord.status_code, 201, r_ord.text)
+        ord_data = r_ord.json()
+        order_id = ord_data["order_id"]
+        self.assertIn("https://wa.me/213655534154?text=", ord_data["whatsapp_confirmation_url"])
+        self.assertIn("https://wa.me/213554123456?text=", ord_data["customer_whatsapp_url"])
+
+        # 2. Verify GET /api/v1/admin/orders attaches whatsapp_actions to each order
+        r_list = self.client.get("/api/v1/admin/orders", headers=headers)
+        self.assertEqual(r_list.status_code, 200)
+        matched_ord = next(o for o in r_list.json()["items"] if o["id"] == order_id)
+        self.assertIn("confirmation_call_url", matched_ord["whatsapp_actions"])
+        self.assertIn("shipped_notice_url", matched_ord["whatsapp_actions"])
+
+        # 3. Dispatch all 4 WhatsApp customer communication templates and verify outbox history
+        for tpl in ("confirmation_call", "shipped_notice", "no_answer_followup", "delivery_arrived"):
+            r_notif = self.client.post(
+                f"/api/v1/admin/orders/{order_id}/notify-whatsapp",
+                headers=headers,
+                json={"template_type": tpl},
+            )
+            self.assertEqual(r_notif.status_code, 200, r_notif.text)
+            notif_data = r_notif.json()
+            self.assertTrue(notif_data["delivered"])
+            self.assertEqual(notif_data["recipient_e164"], "+213554123456")
+            self.assertIn("https://wa.me/213554123456?text=", notif_data["wa_me_customer_url"])
+
+        r_outbox = self.client.get("/api/v1/admin/communications/outbox", headers=headers)
+        self.assertEqual(r_outbox.status_code, 200)
+        outbox_data = r_outbox.json()
+        self.assertGreaterEqual(outbox_data["count"], 4)
+        self.assertEqual(outbox_data["boutique_whatsapp_local"], "0655534154")
+
+    # 60. Network Telemetry Bus, Offline Mutation Queue & Exponential Backoff Retry Execution (Node.js Runtime)
+    def test_60_network_queue_telemetry_and_exponential_backoff_retry_audit(self):
+        import subprocess
+        from pathlib import Path
+        repo_root = Path(__file__).resolve().parents[2]
+
+        js_runner = """
+const fs = require("fs");
+const path = require("path");
+const babel = require("@babel/core");
+
+const file = path.resolve(process.cwd(), "apps/desktop-cms/src/utils/networkQueue.ts");
+const src = fs.readFileSync(file, "utf8");
+const compiled = babel.transformSync(src, {
+  filename: file,
+  presets: [
+    ["/usr/share/nodejs/@babel/preset-env", { targets: { node: "current" }, modules: "commonjs" }],
+    ["/usr/share/nodejs/@babel/preset-typescript", { isTSX: false }],
+  ],
+}).code;
+
+const store = {};
+global.sessionStorage = {
+  getItem: (k) => store[k] || null,
+  setItem: (k, v) => { store[k] = String(v); },
+};
+
+const mod = { exports: {} };
+const fn = new Function("exports", "require", "module", compiled);
+fn(mod.exports, require, mod);
+
+const {
+  subscribeNetworkTelemetry,
+  recordNetworkSample,
+  enqueueOfflineMutation,
+  flushOfflineMutationQueue,
+} = mod.exports;
+
+let latest = null;
+const unsub = subscribeNetworkTelemetry((st) => { latest = st; });
+recordNetworkSample({ online: true, latencyMs: 18, requestId: "req_test_60", retried: true });
+if (!latest || latest.latencyMs !== 18 || latest.lastRequestId !== "req_test_60" || latest.retryCount !== 1) {
+  throw new Error("Telemetry update failed: " + JSON.stringify(latest));
+}
+
+enqueueOfflineMutation({ path: "/admin/orders/1", method: "PATCH", body: "{}", description: "Update status" });
+if (latest.queuedCount !== 1) {
+  throw new Error("Offline queue count mismatch: " + JSON.stringify(latest));
+}
+
+flushOfflineMutationQueue(async () => true).then((res) => {
+  if (res.replayed !== 1 || res.remaining !== 0 || latest.queuedCount !== 0) {
+    throw new Error("Queue flush failed: " + JSON.stringify(res));
+  }
+  unsub();
+  console.log("NETWORK_QUEUE_ALL_TESTS_PASSED");
+});
+""";
+        env = os.environ.copy()
+        env["NODE_PATH"] = "/usr/share/nodejs"
+        res = subprocess.run(["node", "-e", js_runner], cwd=str(repo_root), env=env, capture_output=True, text=True)
+        self.assertEqual(res.returncode, 0, f"networkQueue test failed: {res.stderr}")
+        self.assertIn("NETWORK_QUEUE_ALL_TESTS_PASSED", res.stdout)
 
 
 if __name__ == "__main__":

@@ -28,25 +28,46 @@ function formatPublicStorefrontError(data: any, status: number): string {
 }
 
 async function publicFetch(path: string, options: RequestInit = {}, timeoutMs = 15000) {
-  const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), timeoutMs);
-  try {
-    const res = await fetch(`${API_BASE}${path}`, {
-      ...options,
-      signal: options.signal || controller.signal,
-    });
-    const data = await res.json().catch(() => ({}));
-    if (!res.ok) {
-      throw new Error(formatPublicStorefrontError(data, res.status));
+  const method = (options.method || "GET").toUpperCase();
+  const reqId = `sf_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 7)}`;
+  const headers: Record<string, string> = {
+    "X-Request-ID": reqId,
+    ...((options.headers as Record<string, string>) || {}),
+  };
+  const canRetry = method === "GET" || Boolean(headers["Idempotency-Key"]);
+  const maxAttempts = canRetry ? 3 : 1;
+
+  for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), timeoutMs);
+    try {
+      const res = await fetch(`${API_BASE}${path}`, {
+        ...options,
+        headers,
+        signal: options.signal || controller.signal,
+      });
+      if ([502, 503, 504].includes(res.status) && attempt < maxAttempts) {
+        await new Promise((r) => setTimeout(r, attempt * 200));
+        continue;
+      }
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        throw new Error(formatPublicStorefrontError(data, res.status));
+      }
+      return data;
+    } catch (err: any) {
+      const isTransient = err?.name === "AbortError" || /failed to fetch|networkerror/i.test(String(err?.message));
+      if (isTransient && attempt < maxAttempts) {
+        await new Promise((r) => setTimeout(r, attempt * 200));
+        continue;
+      }
+      if (isTransient) {
+        throw new Error("Connexion interrompue avec la boutique Mus Luxury. Vérifiez votre connexion Internet ou commandez sur WhatsApp au 0655 53 41 54.");
+      }
+      throw err;
+    } finally {
+      clearTimeout(timer);
     }
-    return data;
-  } catch (err: any) {
-    if (err?.name === "AbortError" || /failed to fetch|networkerror/i.test(String(err?.message))) {
-      throw new Error("Connexion interrompue avec la boutique Mus Luxury. Vérifiez votre connexion Internet.");
-    }
-    throw err;
-  } finally {
-    clearTimeout(timer);
   }
 }
 
