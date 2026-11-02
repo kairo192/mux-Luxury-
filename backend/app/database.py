@@ -104,9 +104,39 @@ class PostgresCompatConnection:
             cur.execute(sql_script)
 
     def iterdump(self):
-        with open(PG_SCHEMA_PATH, "r", encoding="utf-8") as f:
+        with open(SCHEMA_PATH, "r", encoding="utf-8") as f:
             for line in f:
                 yield line.rstrip("\n")
+        dump_tables = [
+            "roles", "permissions", "role_permissions", "admin_users",
+            "brands", "categories", "category_attributes", "category_attribute_options",
+            "products", "product_images", "product_attribute_values", "product_variants",
+            "variant_attribute_values", "delivery_zones", "delivery_rates",
+            "customers", "orders", "order_items", "inventory_movements",
+            "homepage_sections", "banners", "static_pages", "store_settings",
+            "coupons", "customer_phone_blacklist"
+        ]
+        def _sql_literal(v: Any) -> str:
+            if v is None:
+                return "NULL"
+            if isinstance(v, bool):
+                return "1" if v else "0"
+            if isinstance(v, (int, float)):
+                return str(v)
+            s = str(v).replace("'", "''")
+            return f"'{s}'"
+        cur = self.cursor()
+        for tbl in dump_tables:
+            try:
+                cur.execute(f"SELECT * FROM {tbl}")
+                rows = cur.fetchall()
+                for r in rows:
+                    rd = dict(r)
+                    cols = ", ".join(rd.keys())
+                    vals = ", ".join(_sql_literal(rd[k]) for k in rd.keys())
+                    yield f"INSERT OR IGNORE INTO {tbl} ({cols}) VALUES ({vals});"
+            except Exception:
+                continue
 
     def commit(self):
         self._conn.commit()

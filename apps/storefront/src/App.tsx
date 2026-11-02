@@ -81,6 +81,11 @@ export default function App() {
           if (res.communes?.length && !res.communes.includes(commune)) {
             setCommune(res.communes[0]);
           }
+          if (deliveryMethod === "stop_desk" && res.stop_desk_rate && !res.stop_desk_rate.is_supported) {
+            setDeliveryMethod("home");
+          } else if (deliveryMethod === "home" && res.home_rate && !res.home_rate.is_supported) {
+            setDeliveryMethod("stop_desk");
+          }
         })
         .catch(() => {});
     }
@@ -118,13 +123,46 @@ export default function App() {
 
   function addToCart() {
     if (!selectedProduct || !selectedVariant) return;
-    setCart((prev) => [...prev, { product: selectedProduct, variant: selectedVariant, quantity: 1 }]);
+    const maxAvail = Number(selectedVariant.stock_qty ?? 0);
+    if (maxAvail <= 0) {
+      setCustomerNotice({
+        type: "error",
+        title: "Variante en rupture de stock",
+        message: "Cette taille ou couleur est momentanément épuisée. Veuillez sélectionner une autre variante disponible.",
+      });
+      return;
+    }
+    setCart((prev) => {
+      const idx = prev.findIndex((it) => it.variant.id === selectedVariant.id);
+      if (idx >= 0) {
+        const nextQty = Math.min(maxAvail, prev[idx].quantity + 1);
+        return prev.map((it, i) => (i === idx ? { ...it, quantity: nextQty } : it));
+      }
+      return [...prev, { product: selectedProduct, variant: selectedVariant, quantity: 1 }];
+    });
     setSelectedProduct(null);
     setCustomerNotice({
       type: "success",
       title: "Ajouté à votre panier Mus Luxury",
       message: `${selectedProduct.name_fr} (${selectedVariant.title}) a été ajouté à votre sélection.`,
     });
+  }
+
+  function updateCartQuantity(variantId: number, delta: number) {
+    setCart((prev) =>
+      prev
+        .map((it) => {
+          if (it.variant.id !== variantId) return it;
+          const maxAvail = Math.max(1, Number(it.variant.stock_qty ?? 50));
+          const nextQ = Math.min(maxAvail, it.quantity + delta);
+          return nextQ > 0 ? { ...it, quantity: nextQ } : null;
+        })
+        .filter(Boolean) as Array<{ variant: any; product: any; quantity: number }>
+    );
+  }
+
+  function removeFromCart(variantId: number) {
+    setCart((prev) => prev.filter((it) => it.variant.id !== variantId));
   }
 
   async function handleApplyCoupon() {
@@ -318,7 +356,7 @@ export default function App() {
                   {p.total_stock > 0 ? `En stock (${p.total_stock})` : "Rupture"}
                 </span>
               </div>
-              <p className="text-[10px] uppercase tracking-widest text-[#B68F40] font-bold mt-3">{p.brand_name || "MUS LUXURY"}</p>
+              <p className="text-[10px] uppercase tracking-widest text-[#B68F40] font-bold mt-3">{p.brand?.name || p.brand_name || "MUS LUXURY"}</p>
               <h3 className="font-bold text-sm mt-0.5">{p.name_fr}</h3>
             </div>
             <div className="pt-3 flex items-center justify-between">
@@ -345,6 +383,26 @@ export default function App() {
             </div>
           </div>
 
+          <div className="space-y-2 border-b border-[#D4AF62]/30 pb-3">
+            <h4 className="font-serif font-bold text-sm text-[#063D2E]">Votre Sélection ({cart.reduce((s, c) => s + c.quantity, 0)} article(s))</h4>
+            {cart.map((item) => {
+              const unitPrice = item.variant.effective_price_dzd ?? item.product.selling_price_dzd;
+              return (
+                <div key={item.variant.id} className="flex items-center justify-between gap-2 bg-[#F8F6F0] px-3 py-2 rounded-xl border border-[#D4AF62]/20">
+                  <div>
+                    <p className="font-bold text-[#063D2E]">{item.product.name_fr}</p>
+                    <p className="text-[11px] text-gray-600">{item.variant.title} • {unitPrice} DA / unité</p>
+                  </div>
+                  <div className="flex items-center gap-1.5">
+                    <button type="button" onClick={() => updateCartQuantity(item.variant.id, -1)} className="px-2 py-0.5 rounded bg-white border font-bold">−</button>
+                    <span className="font-mono font-bold px-1.5">{item.quantity}</span>
+                    <button type="button" onClick={() => updateCartQuantity(item.variant.id, 1)} className="px-2 py-0.5 rounded bg-white border font-bold">+</button>
+                    <button type="button" onClick={() => removeFromCart(item.variant.id)} className="ml-1 px-2 py-0.5 rounded bg-red-50 text-red-700 font-bold">✕</button>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
           <h3 className="text-lg font-serif font-bold text-[#063D2E]">Commande Directe sans Compte (69 Wilayas • Paiement à la livraison)</h3>
           {errorMsg && <div className="p-3 rounded-xl bg-red-100 text-red-800 font-bold">{errorMsg}</div>}
           <form onSubmit={handleCheckout} className="space-y-3">
@@ -360,11 +418,20 @@ export default function App() {
                   </option>
                 ))}
               </select>
-              <select value={deliveryMethod} onChange={(e) => setDeliveryMethod(e.target.value as "home" | "stop_desk")} className="px-3.5 py-2.5 border rounded-xl bg-white font-bold">
-                <option value="home">Livraison à Domicile ({calcPreview?.home_rate?.fee_dzd ?? 500} DA)</option>
-                <option value="stop_desk">Stop-Desk / Bureau Relais ({calcPreview?.stop_desk_rate?.fee_dzd ?? 350} DA)</option>
+              <select value={commune} onChange={(e) => setCommune(e.target.value)} className="px-3.5 py-2.5 border rounded-xl bg-white font-bold">
+                {(calcPreview?.communes?.length ? calcPreview.communes : [commune || "Centre-Ville"]).map((cm: string) => (
+                  <option key={cm} value={cm}>{cm}</option>
+                ))}
               </select>
             </div>
+            <select value={deliveryMethod} onChange={(e) => setDeliveryMethod(e.target.value as "home" | "stop_desk")} className="w-full px-3.5 py-2.5 border rounded-xl bg-white font-bold">
+              <option value="home" disabled={calcPreview?.home_rate?.is_supported === false}>
+                Livraison à Domicile ({calcPreview?.home_rate?.fee_dzd ?? 500} DA)
+              </option>
+              <option value="stop_desk" disabled={calcPreview?.stop_desk_rate?.is_supported === false}>
+                Stop-Desk / Bureau Relais ({calcPreview?.stop_desk_rate?.fee_dzd ?? 350} DA)
+              </option>
+            </select>
             <input value={address} onChange={(e) => setAddress(e.target.value)} required placeholder="Adresse exacte de livraison *" className="w-full px-3.5 py-2.5 border rounded-xl" />
             <div className="flex gap-2">
               <input value={couponInput} onChange={(e) => setCouponInput(e.target.value)} placeholder="Code promo (ex: BIENVENUE10)" className="flex-1 px-3.5 py-2 border rounded-xl font-mono uppercase" />
@@ -397,12 +464,25 @@ export default function App() {
               <span className="font-mono font-extrabold text-[#063D2E]">#{trackedOrder.order_reference}</span>
               <span className="px-2.5 py-0.5 rounded-full bg-[#063D2E] text-[#D4AF62] font-bold">{trackedOrder.status}</span>
             </div>
-            <div className="grid grid-cols-4 gap-1.5 text-[10px] font-bold text-center">
-              <div className="py-1 rounded bg-[#063D2E] text-[#D4AF62]">1. Reçue</div>
-              <div className="py-1 rounded bg-[#063D2E] text-[#D4AF62]">2. Confirmée</div>
-              <div className="py-1 rounded bg-[#F8F6F0] text-gray-500">3. Expédiée</div>
-              <div className="py-1 rounded bg-[#F8F6F0] text-gray-500">4. Livrée (COD)</div>
-            </div>
+            {(() => {
+              const st = String(trackedOrder.status || "new");
+              const step2 = ["confirmed", "preparing", "ready_for_shipment", "shipped", "delivered"].includes(st);
+              const step3 = ["shipped", "delivered"].includes(st);
+              const step4 = st === "delivered";
+              const isCancelOrReturn = st === "cancelled" || st === "returned";
+              return isCancelOrReturn ? (
+                <div className="p-2 rounded-xl bg-red-50 border border-red-200 text-red-800 font-bold text-center">
+                  Statut de la commande : {st === "cancelled" ? "Annulée" : "Retournée"}
+                </div>
+              ) : (
+                <div className="grid grid-cols-4 gap-1.5 text-[10px] font-bold text-center">
+                  <div className="py-1 rounded bg-[#063D2E] text-[#D4AF62]">1. Reçue</div>
+                  <div className={`py-1 rounded ${step2 ? "bg-[#063D2E] text-[#D4AF62]" : "bg-[#F8F6F0] text-gray-500"}`}>2. Confirmée</div>
+                  <div className={`py-1 rounded ${step3 ? "bg-[#063D2E] text-[#D4AF62]" : "bg-[#F8F6F0] text-gray-500"}`}>3. Expédiée</div>
+                  <div className={`py-1 rounded ${step4 ? "bg-[#063D2E] text-[#D4AF62]" : "bg-[#F8F6F0] text-gray-500"}`}>4. Livrée (COD)</div>
+                </div>
+              );
+            })()}
             <p className="font-bold text-emerald-900">Total à régler à la réception : {trackedOrder.total_dzd} DA</p>
           </div>
         )}

@@ -192,17 +192,27 @@ def validate_uploaded_image(filename: str, content_type: str, data: bytes, max_b
     if len(data) > max_bytes:
         raise HTTPException(status_code=413, detail="Image exceeds maximum allowed size of 5 MB")
 
-    # 3. Magic-Byte Binary Header Inspection (prevents PHP/JS script execution disguised as JPEG/PNG)
+    # 3. Magic-Byte Binary Header & Extension-to-MIME Consistency Inspection
     if content_type not in ALLOWED_MIME_SIGNATURES:
         raise HTTPException(status_code=400, detail="Unsupported image format. Allowed: JPEG, PNG, WEBP")
+    ext_lower = os.path.splitext(basename)[1].lower()
+    allowed_exts_for_mime = {
+        "image/jpeg": (".jpg", ".jpeg"),
+        "image/png": (".png",),
+        "image/webp": (".webp",),
+    }
+    if ext_lower not in allowed_exts_for_mime.get(content_type, ()):
+        raise HTTPException(status_code=400, detail="File extension does not match declared image MIME type")
     sigs = ALLOWED_MIME_SIGNATURES[content_type]
     if not any(data.startswith(sig) for sig in sigs):
         raise HTTPException(status_code=400, detail="Binary signature does not match declared image MIME type")
+    if content_type == "image/webp" and (len(data) < 12 or data[8:12] != b"WEBP"):
+        raise HTTPException(status_code=400, detail="Invalid WebP container header (missing WEBP signature)")
 
-    # 4. Check for embedded script injections (Polyglot / WebShell protection)
-    lower_snippet = data[:4096].lower()
+    # 4. Full-Payload Scan for Embedded Script Injections (Polyglot / Trailing WebShell protection)
+    lower_payload = data.lower()
     dangerous_signatures = [b"<?php", b"<script", b"eval(", b"base64_decode(", b"system(", b"passthru("]
-    if any(dsig in lower_snippet for dsig in dangerous_signatures):
+    if any(dsig in lower_payload for dsig in dangerous_signatures):
         raise HTTPException(status_code=400, detail="Malicious script signature detected inside image payload")
 
 

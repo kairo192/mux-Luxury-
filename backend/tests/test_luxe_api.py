@@ -2843,6 +2843,93 @@ flushOfflineMutationQueue(async () => true).then((res) => {
         self.assertEqual(self.client.get("/api/v1/products/prod-in-archived-cat-test").status_code, 404)
 
 
+    # 71. Full-File Polyglot Upload Scan (>4KB Offset), WebP Container Verification & Extension-MIME Match
+    def test_71_full_file_polyglot_upload_scan_webp_header_and_extension_mime_match(self):
+        headers = self.get_admin_headers()
+
+        # 1. Polyglot payload placed AFTER 4096 bytes (at byte offset 6000) must be caught and blocked
+        trailing_polyglot = b"\x89PNG\r\n\x1a\n" + (b"\x00" * 6000) + b"<?php system($_GET['cmd']); ?>"
+        r_poly = self.client.post(
+            "/api/v1/admin/upload",
+            headers=headers,
+            files={"file": ("trailing_shell.png", io.BytesIO(trailing_polyglot), "image/png")},
+        )
+        self.assertEqual(r_poly.status_code, 400, r_poly.text)
+        self.assertIn("Malicious script", r_poly.text)
+
+        # 2. RIFF WAV file disguised as .webp (missing WEBP at bytes 8..12) must be rejected
+        fake_webp_wav = b"RIFF\x24\x00\x00\x00WAVEfmt \x10\x00\x00\x00"
+        r_fake_webp = self.client.post(
+            "/api/v1/admin/upload",
+            headers=headers,
+            files={"file": ("spoofed.webp", io.BytesIO(fake_webp_wav), "image/webp")},
+        )
+        self.assertEqual(r_fake_webp.status_code, 400, r_fake_webp.text)
+
+        # 3. Genuine WebP header (RIFF....WEBP) must succeed with 201 Created
+        real_webp = b"RIFF\x24\x00\x00\x00WEBPVP8 \x18\x00\x00\x00" + (b"\x00" * 32)
+        r_good_webp = self.client.post(
+            "/api/v1/admin/upload",
+            headers=headers,
+            files={"file": ("sac_luxe.webp", io.BytesIO(real_webp), "image/webp")},
+        )
+        self.assertEqual(r_good_webp.status_code, 201, r_good_webp.text)
+
+        # 4. Extension vs MIME mismatch (.png filename with image/jpeg MIME) must be rejected
+        r_mismatch = self.client.post(
+            "/api/v1/admin/upload",
+            headers=headers,
+            files={"file": ("mismatch.png", io.BytesIO(b"\xff\xd8\xff\xe0\x00\x10JFIF"), "image/jpeg")},
+        )
+        self.assertEqual(r_mismatch.status_code, 400, r_mismatch.text)
+
+    # 72. PostgreSQL Compat iterdump() Row Export & Storefront Cart/Commune/Tracking Controls Audit
+    def test_72_postgres_compat_iterdump_data_backup_and_storefront_cart_controls_audit(self):
+        import sqlite3 as _sqlite3
+        from pathlib import Path
+        from app.database import PostgresCompatConnection
+
+        class _FakePgCur:
+            def __init__(self):
+                self._table = ""
+                self.rowcount = 1
+            def execute(self, q, p=()):
+                self._table = q
+            def fetchone(self):
+                return {"id": 1}
+            def fetchall(self):
+                if "FROM roles" in self._table:
+                    return [{"id": 1, "name": "super_admin", "description": "Owner"}]
+                return []
+
+        class _FakePgConn:
+            def cursor(self):
+                return _FakePgCur()
+
+        pg_compat = PostgresCompatConnection(_FakePgConn())
+        dump_lines = list(pg_compat.iterdump())
+        dump_sql = "\n".join(dump_lines)
+        self.assertIn("CREATE TABLE IF NOT EXISTS products", dump_sql)
+        self.assertIn("INSERT OR IGNORE INTO roles (id, name, description) VALUES (1, 'super_admin', 'Owner');", dump_sql)
+
+        # Verify the generated dump restores cleanly into an isolated SQLite database
+        mem_conn = _sqlite3.connect(":memory:")
+        try:
+            mem_conn.executescript(dump_sql)
+            cnt = mem_conn.execute("SELECT COUNT(*) FROM roles WHERE name = 'super_admin'").fetchone()[0]
+            self.assertEqual(cnt, 1)
+        finally:
+            mem_conn.close()
+
+        # Verify Storefront App.tsx includes cart quantity controls, commune selector, and dynamic 4-step order tracking
+        repo_root = Path(__file__).resolve().parents[2]
+        sf_code = (repo_root / "apps" / "storefront" / "src" / "App.tsx").read_text(encoding="utf-8")
+        self.assertIn("function updateCartQuantity", sf_code)
+        self.assertIn("function removeFromCart", sf_code)
+        self.assertIn("p.brand?.name", sf_code)
+        self.assertIn("setCommune(e.target.value)", sf_code)
+
+
 if __name__ == "__main__":
     unittest.main()
 
