@@ -25,9 +25,25 @@ export function getApiBaseUrl(): string {
 
 export function setAccessToken(token: string | null) {
   accessToken = token;
+  try {
+    if (typeof localStorage !== "undefined") {
+      if (token) localStorage.setItem("luxe_cms_access_token", token);
+      else localStorage.removeItem("luxe_cms_access_token");
+    }
+  } catch {
+    // Ignore sandbox storage restrictions
+  }
 }
 
 export function getAccessToken(): string | null {
+  if (accessToken) return accessToken;
+  try {
+    if (typeof localStorage !== "undefined") {
+      accessToken = localStorage.getItem("luxe_cms_access_token");
+    }
+  } catch {
+    // Ignore
+  }
   return accessToken;
 }
 
@@ -62,8 +78,9 @@ async function adminFetch(path: string, options: RequestInit = {}, timeoutMs = d
     "Content-Type": "application/json",
     ...((options.headers as Record<string, string>) || {}),
   };
-  if (accessToken) {
-    headers["Authorization"] = `Bearer ${accessToken}`;
+  const activeToken = getAccessToken();
+  if (activeToken) {
+    headers["Authorization"] = `Bearer ${activeToken}`;
   }
 
   try {
@@ -73,7 +90,7 @@ async function adminFetch(path: string, options: RequestInit = {}, timeoutMs = d
       signal: options.signal || controller.signal,
     });
     if (res.status === 401) {
-      accessToken = null;
+      setAccessToken(null);
       throw new Error("SESSION_EXPIRED");
     }
     const contentType = res.headers.get("content-type") || "";

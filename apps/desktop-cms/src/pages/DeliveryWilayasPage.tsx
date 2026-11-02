@@ -1,3 +1,4 @@
+import { readDraft, writeDraft } from "../utils/draftStorage";
 import React, { useEffect, useState } from "react";
 import { DesktopCmsApi } from "../api/adminClient";
 
@@ -15,13 +16,33 @@ export interface WilayaZone {
 }
 
 export function DeliveryWilayasPage() {
-  const [zones, setZones] = useState<WilayaZone[]>([]);
-  const [search, setSearch] = useState("");
+  const [zones, setZones] = useState<WilayaZone[]>(() => readDraft("luxe_wilayas_cache", []));
+  const [dirtyCodes, setDirtyCodes] = useState<Record<string, boolean>>({});
+  const [search, setSearch] = useState(() => readDraft("luxe_wilayas_search", ""));
+
+  useEffect(() => {
+    writeDraft("luxe_wilayas_search", search);
+  }, [search]);
   const [savingCode, setSavingCode] = useState<string | null>(null);
   const [bannerMsg, setBannerMsg] = useState<string>("");
 
   useEffect(() => {
-    DesktopCmsApi.getDeliveryZones().then((res: any) => setZones(res.items || []));
+    DesktopCmsApi.getDeliveryZones().then((res: any) => {
+      const serverZones: WilayaZone[] = res.items || [];
+      setZones((prev) => {
+        if (prev.length === 0) {
+          writeDraft("luxe_wilayas_cache", serverZones);
+          return serverZones;
+        }
+        // Preserve any unsaved local edits in dirty rows!
+        const merged = serverZones.map((sz) => {
+          const localRow = prev.find((p) => p.wilaya_code === sz.wilaya_code);
+          return localRow && dirtyCodes[sz.wilaya_code] ? localRow : sz;
+        });
+        writeDraft("luxe_wilayas_cache", merged);
+        return merged;
+      });
+    });
   }, []);
 
   async function handleSaveZone(z: WilayaZone) {
@@ -64,6 +85,7 @@ export function DeliveryWilayasPage() {
   }
 
   function updateLocalRate(code: string, method: "home" | "stop_desk", field: string, value: any) {
+    setDirtyCodes((prev) => ({ ...prev, [code]: true }));
     setZones((prev) =>
       prev.map((z) =>
         z.wilaya_code === code

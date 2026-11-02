@@ -1,3 +1,4 @@
+import { readDraft, writeDraft, clearDraft } from "./utils/draftStorage";
 import React, { useEffect, useState } from "react";
 import { DesktopCmsApi } from "./api/adminClient";
 import { CategoryBuilderPage } from "./pages/CategoryBuilderPage";
@@ -16,10 +17,10 @@ type CmsTab =
 export default function App() {
   const [checkingSetup, setCheckingSetup] = useState(true);
   const [requiresOwnerSetup, setRequiresOwnerSetup] = useState(false);
-  const [user, setUser] = useState<any | null>(null);
+  const [user, setUser] = useState<any | null>(() => readDraft("luxe_cms_user", null));
   const [error, setError] = useState("");
   const [successMsg, setSuccessMsg] = useState("");
-  const [activeTab, setActiveTab] = useState<CmsTab>("dashboard");
+  const [activeTab, setActiveTab] = useState<CmsTab>(() => readDraft("luxe_cms_active_tab", "dashboard"));
 
   // First-Time Owner Initialization Fields
   const [ownerName, setOwnerName] = useState("");
@@ -67,16 +68,16 @@ export default function App() {
   const [orderSearch, setOrderSearch] = useState("");
 
   // Product Search, Creation, Edit & Variant Matrix State
-  const [prodSearch, setProdSearch] = useState("");
-  const [prodCategoryId, setProdCategoryId] = useState<number>(1);
-  const [prodNameFr, setProdNameFr] = useState("");
-  const [prodSku, setProdSku] = useState("");
-  const [prodSlug, setProdSlug] = useState("");
-  const [prodSellingPrice, setProdSellingPrice] = useState(4500);
-  const [prodCostPrice, setProdCostPrice] = useState(2600);
-  const [prodStatus, setProdStatus] = useState<"published" | "draft">("published");
-  const [prodDynamicAttrs, setProdDynamicAttrs] = useState<Record<string, string>>({});
-  const [prodVariantStock, setProdVariantStock] = useState(5);
+  const [prodSearch, setProdSearch] = useState(() => readDraft("luxe_cms_prod_search", ""));
+  const [prodCategoryId, setProdCategoryId] = useState<number>(() => readDraft("luxe_cms_prod_cat_id", 1));
+  const [prodNameFr, setProdNameFr] = useState(() => readDraft("luxe_cms_prod_name_fr", ""));
+  const [prodSku, setProdSku] = useState(() => readDraft("luxe_cms_prod_sku", ""));
+  const [prodSlug, setProdSlug] = useState(() => readDraft("luxe_cms_prod_slug", ""));
+  const [prodSellingPrice, setProdSellingPrice] = useState(() => readDraft("luxe_cms_prod_price", 4500));
+  const [prodCostPrice, setProdCostPrice] = useState(() => readDraft("luxe_cms_prod_cost", 2600));
+  const [prodStatus, setProdStatus] = useState<"published" | "draft">(() => readDraft("luxe_cms_prod_status", "published"));
+  const [prodDynamicAttrs, setProdDynamicAttrs] = useState<Record<string, string>>(() => readDraft("luxe_cms_prod_dyn_attrs", {}));
+  const [prodVariantStock, setProdVariantStock] = useState(() => readDraft("luxe_cms_prod_stock", 5));
   const [editingProduct, setEditingProduct] = useState<any | null>(null);
 
   // Order Filter State
@@ -158,10 +159,51 @@ export default function App() {
   }
 
   useEffect(() => {
+    writeDraft("luxe_cms_user", user);
+  }, [user]);
+
+  useEffect(() => {
+    writeDraft("luxe_cms_active_tab", activeTab);
+  }, [activeTab]);
+
+  useEffect(() => {
+    writeDraft("luxe_cms_prod_search", prodSearch);
+    writeDraft("luxe_cms_prod_cat_id", prodCategoryId);
+    writeDraft("luxe_cms_prod_name_fr", prodNameFr);
+    writeDraft("luxe_cms_prod_sku", prodSku);
+    writeDraft("luxe_cms_prod_slug", prodSlug);
+    writeDraft("luxe_cms_prod_price", prodSellingPrice);
+    writeDraft("luxe_cms_prod_cost", prodCostPrice);
+    writeDraft("luxe_cms_prod_status", prodStatus);
+    writeDraft("luxe_cms_prod_dyn_attrs", prodDynamicAttrs);
+    writeDraft("luxe_cms_prod_stock", prodVariantStock);
+  }, [prodSearch, prodCategoryId, prodNameFr, prodSku, prodSlug, prodSellingPrice, prodCostPrice, prodStatus, prodDynamicAttrs, prodVariantStock]);
+
+  useEffect(() => {
+    const tabOrder: CmsTab[] = ["dashboard", "products", "categories", "inventory", "orders", "delivery_wilayas", "content", "backups"];
+    function onKeyDown(e: KeyboardEvent) {
+      if (e.altKey && e.key >= "1" && e.key <= "8") {
+        e.preventDefault();
+        setActiveTab(tabOrder[Number(e.key) - 1]);
+      }
+    }
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, []);
+
+  useEffect(() => {
     if (user) {
       loadAllWorkspaceData();
     }
-  }, [user, orderStatusFilter]);
+  }, [user]);
+
+  useEffect(() => {
+    if (user) {
+      DesktopCmsApi.listOrders(orderStatusFilter || undefined)
+        .then((ordData) => setOrders(ordData.items || []))
+        .catch(() => {});
+    }
+  }, [orderStatusFilter]);
 
   async function handleFirstTimeSetup(e: React.FormEvent) {
     e.preventDefault();
@@ -762,8 +804,8 @@ export default function App() {
       <main className="max-w-7xl w-full mx-auto p-6 flex-1 space-y-6">
         {loadingWorkspace && <div className="text-xs text-gray-500">Synchronisation des données en cours...</div>}
 
-        {/* TAB 1: DASHBOARD */}
-        {activeTab === "dashboard" && dashboard && (
+        {/* TAB 1: DASHBOARD (KEEP-ALIVE) */}
+        <div className={activeTab === "dashboard" ? "block" : "hidden"}>{dashboard && (
           <div className="space-y-6">
             <div className="grid grid-cols-2 md:grid-cols-6 gap-4 text-xs">
               <div className="bg-white p-4 rounded-2xl border border-[#D4AF62]/40">
@@ -838,8 +880,10 @@ export default function App() {
           </div>
         )}
 
-        {/* TAB 2: PRODUCTS & DYNAMIC CATEGORY ATTRIBUTES */}
-        {activeTab === "products" && (
+        )}</div>
+
+        {/* TAB 2: PRODUCTS & DYNAMIC CATEGORY ATTRIBUTES (KEEP-ALIVE) */}
+        <div className={activeTab === "products" ? "block" : "hidden"}>
           <div className="space-y-6">
             <form onSubmit={handleCreateProduct} className="bg-white p-6 rounded-2xl border border-[#D4AF62]/40 space-y-4 text-xs">
               <h2 className="text-lg font-serif font-bold text-[#063D2E]">+ Créer un produit (Formulaire adaptatif selon la catégorie)</h2>
@@ -1039,11 +1083,13 @@ export default function App() {
           </div>
         )}
 
-        {/* TAB 3: DYNAMIC CATEGORIES & ATTRIBUTES */}
-        {activeTab === "categories" && <CategoryBuilderPage onCategoryChanged={loadAllWorkspaceData} />}
+        </div>
 
-        {/* TAB 4: INVENTORY & MOVEMENTS */}
-        {activeTab === "inventory" && (
+        {/* TAB 3: DYNAMIC CATEGORIES & ATTRIBUTES (KEEP-ALIVE — NEVER UNMOUNTS) */}
+        <div className={activeTab === "categories" ? "block" : "hidden"}><CategoryBuilderPage onCategoryChanged={loadAllWorkspaceData} /></div>
+
+        {/* TAB 4: INVENTORY & MOVEMENTS (KEEP-ALIVE) */}
+        <div className={activeTab === "inventory" ? "block" : "hidden"}>
           <div className="space-y-6 text-xs">
             <div className="bg-white p-6 rounded-2xl border border-[#D4AF62]/40 space-y-3">
               <h3 className="text-base font-serif font-bold text-[#063D2E]">Gestion des Stocks par Variante</h3>
@@ -1096,8 +1142,10 @@ export default function App() {
           </div>
         )}
 
-        {/* TAB 5: ORDERS & INVOICES */}
-        {activeTab === "orders" && (
+        </div>
+
+        {/* TAB 5: ORDERS & INVOICES (KEEP-ALIVE) */}
+        <div className={activeTab === "orders" ? "block" : "hidden"}>
           <div className="bg-white p-6 rounded-2xl border border-[#D4AF62]/40 space-y-4 text-xs">
             <div className="flex flex-wrap items-center justify-between gap-3">
               <h3 className="text-base font-serif font-bold text-[#063D2E]">Commandes Clients ({orders.length})</h3>
@@ -1171,11 +1219,13 @@ export default function App() {
           </div>
         )}
 
-        {/* TAB 6: 69 WILAYAS DELIVERY TARIFFS */}
-        {activeTab === "delivery_wilayas" && <DeliveryWilayasPage />}
+        </div>
 
-        {/* TAB 7: STORE CONTENT, COUPONS, STATIC PAGES & REAL SOCIAL/LOCATION SETTINGS */}
-        {activeTab === "content" && (
+        {/* TAB 6: 69 WILAYAS DELIVERY TARIFFS (KEEP-ALIVE — NEVER UNMOUNTS) */}
+        <div className={activeTab === "delivery_wilayas" ? "block" : "hidden"}><DeliveryWilayasPage /></div>
+
+        {/* TAB 7: STORE CONTENT, COUPONS, STATIC PAGES & REAL SOCIAL/LOCATION SETTINGS (KEEP-ALIVE) */}
+        <div className={activeTab === "content" ? "block" : "hidden"}>
           <div className="space-y-6 text-xs">
             <form onSubmit={handleSaveStoreSettings} className="bg-white p-6 rounded-2xl border border-[#D4AF62]/40 space-y-4">
               <h3 className="text-base font-serif font-bold text-[#063D2E]">Coordonnées Officielles &amp; Paramètres Boutique (Ouled Yaïch — Blida 09)</h3>
@@ -1260,8 +1310,10 @@ export default function App() {
           </div>
         )}
 
-        {/* TAB 8: BACKUPS, WHATSAPP RECOVERY STATUS & ISOLATED RESTORE VERIFICATION */}
-        {activeTab === "backups" && (
+        </div>
+
+        {/* TAB 8: BACKUPS, WHATSAPP RECOVERY STATUS & ISOLATED RESTORE VERIFICATION (KEEP-ALIVE) */}
+        <div className={activeTab === "backups" ? "block" : "hidden"}>
           <div className="space-y-6 text-xs">
             <div className="bg-white p-6 rounded-2xl border border-[#D4AF62]/40 flex flex-wrap items-center justify-between gap-4">
               <div>
@@ -1322,7 +1374,7 @@ export default function App() {
               </div>
             </div>
           </div>
-        )}
+        </div>
       </main>
     </div>
   );

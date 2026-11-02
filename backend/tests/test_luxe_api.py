@@ -1558,8 +1558,34 @@ console.log("ALL_TSX_COMPILED_OK");
         self.assertEqual(missing, [], f"Unwired DesktopCmsApi methods in Desktop CMS UI: {missing}")
 
 
+    # 39. Pro Desktop CMS Keep-Alive Tab Switching & Persistent Draft State Verification
+    def test_39_pro_desktop_cms_keep_alive_tabs_and_persistent_draft_state(self):
+        repo_root = os.path.dirname(os.path.dirname(os.path.dirname(__file__)))
+        draft_util = os.path.join(repo_root, "apps", "desktop-cms", "src", "utils", "draftStorage.ts")
+        self.assertTrue(os.path.isfile(draft_util), "draftStorage.ts must exist")
+
+        with open(os.path.join(repo_root, "apps", "desktop-cms", "src", "App.tsx"), encoding="utf-8") as f:
+            app_tsx = f.read()
+        with open(os.path.join(repo_root, "apps", "desktop-cms", "src", "pages", "CategoryBuilderPage.tsx"), encoding="utf-8") as f:
+            cat_tsx = f.read()
+        with open(os.path.join(repo_root, "apps", "desktop-cms", "src", "pages", "DeliveryWilayasPage.tsx"), encoding="utf-8") as f:
+            wil_tsx = f.read()
+
+        # Verify all 8 tabs use Keep-Alive containers (activeTab === "..." ? "block" : "hidden") and never unmount
+        for tab_id in ["dashboard", "products", "categories", "inventory", "orders", "delivery_wilayas", "content", "backups"]:
+            self.assertIn(f'activeTab === "{tab_id}" ? "block" : "hidden"', app_tsx, f"Tab {tab_id} must use Keep-Alive container")
+            self.assertNotIn(f'activeTab === "{tab_id}" &&', app_tsx, f"Tab {tab_id} must not conditionally unmount")
+
+        # Verify persistent draft storage and dirty-row protection are active across App, CategoryBuilderPage, and DeliveryWilayasPage
+        self.assertIn("readDraft(", app_tsx)
+        self.assertIn("writeDraft(", app_tsx)
+        self.assertIn("readDraft(", cat_tsx)
+        self.assertIn("dirtyCodes", wil_tsx)
+
+
 if __name__ == "__main__":
     unittest.main()
+
 
 
 

@@ -1,3 +1,4 @@
+import { readDraft, writeDraft, clearDraft } from "../utils/draftStorage";
 import React, { useEffect, useState } from "react";
 import { DesktopCmsApi } from "../api/adminClient";
 
@@ -37,12 +38,21 @@ export function CategoryBuilderPage({ onCategoryChanged }: { onCategoryChanged?:
   const [error, setError] = useState("");
   const [statusMsg, setStatusMsg] = useState("");
 
-  const [nameFr, setNameFr] = useState("");
-  const [nameAr, setNameAr] = useState("");
-  const [nameEn, setNameEn] = useState("");
-  const [slug, setSlug] = useState("");
-  const [descriptionFr, setDescriptionFr] = useState("");
-  const [displayOrder, setDisplayOrder] = useState(10);
+  const [nameFr, setNameFr] = useState(() => readDraft("luxe_cat_draft_name_fr", ""));
+  const [nameAr, setNameAr] = useState(() => readDraft("luxe_cat_draft_name_ar", ""));
+  const [nameEn, setNameEn] = useState(() => readDraft("luxe_cat_draft_name_en", ""));
+  const [slug, setSlug] = useState(() => readDraft("luxe_cat_draft_slug", ""));
+  const [descriptionFr, setDescriptionFr] = useState(() => readDraft("luxe_cat_draft_desc", ""));
+  const [displayOrder, setDisplayOrder] = useState(() => readDraft("luxe_cat_draft_order", 10));
+
+  useEffect(() => {
+    writeDraft("luxe_cat_draft_name_fr", nameFr);
+    writeDraft("luxe_cat_draft_name_ar", nameAr);
+    writeDraft("luxe_cat_draft_name_en", nameEn);
+    writeDraft("luxe_cat_draft_slug", slug);
+    writeDraft("luxe_cat_draft_desc", descriptionFr);
+    writeDraft("luxe_cat_draft_order", displayOrder);
+  }, [nameFr, nameAr, nameEn, slug, descriptionFr, displayOrder]);
   const [attributes, setAttributes] = useState<DraftAttribute[]>([
     {
       attr_key: "color",
