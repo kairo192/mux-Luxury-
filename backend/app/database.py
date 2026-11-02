@@ -68,7 +68,8 @@ class PostgresCompatCursor:
 
     def execute(self, sql: str, params: Iterable[Any] = ()):
         pg_sql, has_returning = translate_sql_for_postgres(sql)
-        self._cur.execute(pg_sql, tuple(params))
+        norm_params = tuple(int(p) if isinstance(p, bool) else p for p in params)
+        self._cur.execute(pg_sql, norm_params)
         self.rowcount = self._cur.rowcount
         if has_returning:
             row = self._cur.fetchone()

@@ -2592,6 +2592,69 @@ flushOfflineMutationQueue(async () => true).then((res) => {
         self.assertIn("/api/v1/ready", openapi_data["paths"])
 
 
+
+    # 65. PostgreSQL 16 Boolean-to-Integer Parameter Normalization & Negative Price Query Guard
+    def test_65_postgres_boolean_to_integer_binding_and_negative_price_filter_guard(self):
+        from app.database import PostgresCompatConnection
+
+        class _RecCur:
+            def __init__(self):
+                self.params = ()
+                self.rowcount = 1
+            def execute(self, q, p=()):
+                self.params = p
+            def fetchone(self):
+                return {"id": 99}
+
+        class _RecConn:
+            def __init__(self):
+                self.cur = _RecCur()
+            def cursor(self):
+                return self.cur
+
+        rc = _RecConn()
+        compat = PostgresCompatConnection(rc)
+        compat.cursor().execute(
+            "INSERT INTO categories (slug, name_fr, is_active, show_on_homepage) VALUES (?, ?, ?, ?)",
+            ("montres-luxe", "Montres", True, False),
+        )
+        # Verify True -> 1 (int) and False -> 0 (int), not bool, preventing psycopg DatatypeMismatch on INTEGER columns
+        self.assertEqual(rc.cur.params, ("montres-luxe", "Montres", 1, 0))
+        self.assertIs(type(rc.cur.params[2]), int)
+        self.assertIs(type(rc.cur.params[3]), int)
+
+        # Verify negative min_price / max_price query parameters are rejected with 422
+        self.assertEqual(self.client.get("/api/v1/products?min_price=-100").status_code, 422)
+        self.assertEqual(self.client.get("/api/v1/products?max_price=-50").status_code, 422)
+
+    # 66. Nginx First-Boot TLS Bootstrap, Storefront PostCSS/Dockerfile & Deployment Script Audit
+    def test_66_nginx_first_boot_tls_bootstrap_and_storefront_dockerfile_audit(self):
+        import subprocess
+        from pathlib import Path
+        repo_root = Path(__file__).resolve().parents[2]
+
+        # 1. Verify deploy_algeria_vps.sh syntax and automatic TLS bootstrap in ./infrastructure/nginx/ssl/
+        deploy_script = repo_root / "infrastructure" / "scripts" / "deploy_algeria_vps.sh"
+        res = subprocess.run(["bash", "-n", str(deploy_script)], capture_output=True, text=True)
+        self.assertEqual(res.returncode, 0, res.stderr)
+        deploy_txt = deploy_script.read_text(encoding="utf-8")
+        self.assertIn("./infrastructure/nginx/ssl/fullchain.pem", deploy_txt)
+        self.assertIn("openssl req -x509", deploy_txt)
+
+        # 2. Verify nginx.conf uses /etc/nginx/ssl/fullchain.pem and exposes HTTP health/ready probes
+        ng_txt = (repo_root / "infrastructure" / "nginx" / "nginx.conf").read_text(encoding="utf-8")
+        self.assertIn("/etc/nginx/ssl/fullchain.pem", ng_txt)
+        self.assertIn("location = /api/v1/health", ng_txt)
+        self.assertIn("location = /api/v1/ready", ng_txt)
+
+        # 3. Verify Storefront PostCSS, Tailwind CSS entrypoint, and Dockerfile HEALTHCHECK
+        self.assertTrue((repo_root / "apps" / "storefront" / "postcss.config.js").is_file())
+        self.assertTrue((repo_root / "apps" / "storefront" / "src" / "index.css").is_file())
+        sf_docker = (repo_root / "apps" / "storefront" / "Dockerfile").read_text(encoding="utf-8")
+        self.assertIn("npx tsc --noEmit", sf_docker)
+        self.assertIn("HEALTHCHECK", sf_docker)
+
+
 if __name__ == "__main__":
     unittest.main()
 

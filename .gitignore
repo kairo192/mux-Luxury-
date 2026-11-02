@@ -84,3 +84,4 @@ Thumbs.db
 *.swp
 *.swo
 backend/uploads/
+infrastructure/nginx/ssl/*.pem
