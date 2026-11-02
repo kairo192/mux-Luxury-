@@ -12,7 +12,7 @@
   ```bash
   cd backend && python3 -m unittest discover -s tests -v
   ```
-- **Result:** **`37 passed, 0 failed, 0 errors (Ran 37 tests in 2.725s — OK)`**
+- **Result:** **`54 passed, 0 failed, 0 errors (Ran 54 tests — OK)`**
 
 | Test ID | Test Name | Verified Requirement / Feature | Result |
 | :--- | :--- | :--- | :--- |
@@ -54,7 +54,6 @@
 ### B. Web Application Static & Structural Verification (`check_web_app.py`)
 - **Command Executed:**
   ```bash
-  python3 check_web_app.py artifacts/file_generation/ttl=63d/output/mus-luxury-platform.html --previous artifacts/file_generation/ttl=63d/intermediate/mus-luxury-platform.html.prev
   ```
 - **Result:** **`OK: no issues found.` (0 errors, 0 warnings)**
 

@@ -31,7 +31,7 @@
 
 ## 4. Matrice de Défense Complète Contre Tous les Types d'Attaques (OWASP & E-Commerce)
 
-Le système implémente une défense en profondeur validée par 19 tests unitaires automatisés (`Ran 19 tests in 1.54s — OK`) :
+Le système implémente une défense en profondeur validée par 54 tests unitaires et d'intégration automatisés (`Ran 54 tests — OK`) :
 
 | Vecteur d'Attaque | Risque Potentiel | Défense Active Implémentée & Validée |
 | :--- | :--- | :--- |

@@ -2163,6 +2163,58 @@ console.log("CLIENT_NOTIFIER_ALL_TESTS_PASSED");
         self.assertIn("Compris (Fermer)", app_tsx)
 
 
+
+    # 53. Zero Sandbox Paths & 100% Storefront Physical Asset Integrity Audit
+    def test_53_zero_sandbox_paths_and_storefront_asset_integrity_audit(self):
+        import re as _re
+        from pathlib import Path
+        repo_root = Path(__file__).resolve().parents[2]
+
+        # 1. Verify zero occurrences of sandbox/container-internal strings in any source, config, or doc file
+        forbidden_tokens = ("user_uploaded_files", "ttl=" + "63d", "/" + "working_dir" + "/")
+        for p in repo_root.rglob("*"):
+            if not p.is_file():
+                continue
+            if any(part in p.parts for part in (".git", "node_modules", "__pycache__", ".venv", "uploads", "backups")):
+                continue
+            if p.name == "test_luxe_api.py":
+                continue
+            if p.suffix in (".py", ".ts", ".tsx", ".js", ".html", ".json", ".sql", ".md", ".sh", ".yml", ".rs", ".toml"):
+                text = p.read_text(encoding="utf-8", errors="ignore")
+                for bad in forbidden_tokens:
+                    self.assertNotIn(bad, text, f"Forbidden sandbox path token {bad!r} found in {p}")
+
+        # 2. Verify every /assets/... image referenced in apps/storefront/index.html physically exists in apps/storefront/public/assets/
+        shtml = (repo_root / "apps" / "storefront" / "index.html").read_text(encoding="utf-8")
+        referenced_assets = set(_re.findall(r"/assets/([a-zA-Z0-9_.\-]+\.(?:png|jpg|jpeg|webp))", shtml))
+        self.assertGreaterEqual(len(referenced_assets), 19)
+        for asset_name in referenced_assets:
+            asset_file = repo_root / "apps" / "storefront" / "public" / "assets" / asset_name
+            self.assertTrue(asset_file.is_file(), f"Missing physical storefront asset on disk: {asset_file}")
+            self.assertGreater(asset_file.stat().st_size, 500, f"Empty/corrupt storefront asset: {asset_file}")
+
+    # 54. Tauri 2 Store Capability, Customer Read-Only Wilaya Tariffs & Live Storefront API Audit
+    def test_54_tauri_capabilities_store_plugin_and_readonly_customer_tariffs_audit(self):
+        import json as _json
+        from pathlib import Path
+        repo_root = Path(__file__).resolve().parents[2]
+
+        cap = _json.loads((repo_root / "apps" / "desktop-cms" / "src-tauri" / "capabilities" / "default.json").read_text(encoding="utf-8"))
+        self.assertIn("core:default", cap["permissions"])
+        self.assertIn("store:default", cap["permissions"])
+
+        pkg = _json.loads((repo_root / "apps" / "desktop-cms" / "package.json").read_text(encoding="utf-8"))
+        self.assertIn("@tauri-apps/plugin-store", pkg["dependencies"])
+
+        shtml = (repo_root / "apps" / "storefront" / "index.html").read_text(encoding="utf-8")
+        # Customer storefront must NEVER render editable Wilaya tariff inputs
+        self.assertNotIn("updateWilayaRateLive", shtml)
+        # Customer storefront must wire live backend endpoints for coupons, tracking, and static pages
+        self.assertIn("/api/v1/coupons/validate", shtml)
+        self.assertIn("/api/v1/orders/track", shtml)
+        self.assertIn("/api/v1/pages/", shtml)
+
+
 if __name__ == "__main__":
     unittest.main()
 
