@@ -145,6 +145,18 @@ async function adminFetch(path: string, options: RequestInit = {}, timeoutMs = d
           code: tr.code,
         });
       }
+
+      // Realtime synchronization: Notify public storefront of changes immediately
+      if (["POST", "PUT", "PATCH", "DELETE"].includes(method)) {
+        try {
+          if (typeof window !== "undefined") {
+            const bc = new BroadcastChannel("mus_luxury_realtime");
+            bc.postMessage({ type: "CATALOG_UPDATED", path, timestamp: Date.now() });
+            window.dispatchEvent(new CustomEvent("mus_luxury_catalog_updated", { detail: { path } }));
+          }
+        } catch (_) {}
+      }
+
       return data;
     } catch (err: any) {
       if (err instanceof ClientSafeApiError) {
@@ -229,6 +241,8 @@ export const DesktopCmsApi = {
     adminFetch(`/admin/categories/${categoryId}`, { method: "PUT", body: JSON.stringify(payload) }),
   archiveCategory: (categoryId: number) =>
     adminFetch(`/admin/categories/${categoryId}`, { method: "DELETE" }),
+  deleteCategory: (categoryId: number, hard = false) =>
+    adminFetch(`/admin/categories/${categoryId}?hard_delete=${hard}`, { method: "DELETE" }),
   addCategoryAttribute: (payload: unknown) =>
     adminFetch("/admin/category-attributes", { method: "POST", body: JSON.stringify(payload) }),
   deleteCategoryAttribute: (attrId: number, forceMigrate = false) =>
@@ -253,6 +267,8 @@ export const DesktopCmsApi = {
     adminFetch(`/admin/products/${productId}`, { method: "PUT", body: JSON.stringify(payload) }),
   archiveProduct: (productId: number) =>
     adminFetch(`/admin/products/${productId}`, { method: "DELETE" }),
+  deleteProduct: (productId: number, hard = false, force = false) =>
+    adminFetch(`/admin/products/${productId}?hard_delete=${hard}&force=${force}`, { method: "DELETE" }),
   bulkUpdateProductStatus: (productIds: number[], status: "draft" | "published" | "archived") =>
     adminFetch("/admin/products/bulk-status", {
       method: "POST",
@@ -372,4 +388,42 @@ export const DesktopCmsApi = {
   triggerBackup: () => adminFetch("/admin/backups", { method: "POST" }),
   verifyBackupRestore: (backupId: number) =>
     adminFetch(`/admin/backups/${backupId}/verify-restore`, { method: "POST" }),
+
+  // ERP: Suppliers & Purchasing
+  listSuppliers: () => adminFetch("/admin/suppliers"),
+  createSupplier: (payload: unknown) =>
+    adminFetch("/admin/suppliers", { method: "POST", body: JSON.stringify(payload) }),
+  updateSupplier: (supplierId: number, payload: unknown) =>
+    adminFetch(`/admin/suppliers/${supplierId}`, { method: "PUT", body: JSON.stringify(payload) }),
+  deleteSupplier: (supplierId: number) =>
+    adminFetch(`/admin/suppliers/${supplierId}`, { method: "DELETE" }),
+
+  listPurchases: () => adminFetch("/admin/purchases"),
+  createPurchaseOrder: (payload: unknown) =>
+    adminFetch("/admin/purchases", { method: "POST", body: JSON.stringify(payload) }),
+  receivePurchaseOrder: (poId: number) =>
+    adminFetch(`/admin/purchases/${poId}/receive`, { method: "POST" }),
+  payPurchaseOrder: (poId: number, paymentMethod = "cash") =>
+    adminFetch(`/admin/purchases/${poId}/pay?payment_method=${paymentMethod}`, { method: "POST" }),
+
+  // ERP: Operating Expenses
+  listExpenses: (category?: string) =>
+    adminFetch(`/admin/expenses${category ? `?category=${category}` : ""}`),
+  createExpense: (payload: unknown) =>
+    adminFetch("/admin/expenses", { method: "POST", body: JSON.stringify(payload) }),
+  deleteExpense: (expenseId: number) =>
+    adminFetch(`/admin/expenses/${expenseId}`, { method: "DELETE" }),
+
+  // ERP: Treasury & Cash Register
+  getTreasurySummary: () => adminFetch("/admin/treasury/summary"),
+  listCashMovements: (limit = 50) =>
+    adminFetch(`/admin/treasury/movements?limit=${limit}`),
+  recordCashMovement: (payload: unknown) =>
+    adminFetch("/admin/treasury/movements", { method: "POST", body: JSON.stringify(payload) }),
+
+  // ERP: Accounting Ledger & Financial Profit Analytics
+  getPnlStatement: () => adminFetch("/admin/accounting/pnl"),
+  getProductsProfitability: () => adminFetch("/admin/accounting/products-profitability"),
+  getAccountingLedger: (limit = 100) =>
+    adminFetch(`/admin/accounting/ledger?limit=${limit}`),
 };

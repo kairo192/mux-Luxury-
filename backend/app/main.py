@@ -2694,10 +2694,15 @@ def admin_list_products(
 @app.delete("/api/v1/admin/products/{product_id}")
 def admin_safe_delete_or_archive_product(
     product_id: int,
+    hard_delete: bool = Query(False),
+    force: bool = Query(False),
     admin: dict = Depends(require_permission("products:write"))
 ):
     """
-    Safely archives/deletes a product without destroying historical order records (Section 3.2).
+    Safely archives or permanently deletes a product without destroying historical order records.
+    If hard_delete=True and the product has never been ordered, it is permanently deleted from database.
+    If historical orders exist and force=False, it is safely archived to preserve customer invoices.
+    If hard_delete=True and force=True, historical test order attachments are purged and product is deleted.
     """
     with db_session(commit=True) as conn:
         cur = conn.cursor()
@@ -2706,9 +2711,63 @@ def admin_safe_delete_or_archive_product(
         if not prod:
             raise HTTPException(status_code=404, detail="Product not found")
 
-        cur.execute("SELECT COUNT(*) AS cnt FROM order_items WHERE product_id = ?", (product_id,))
+        cur.execute(
+            "SELECT COUNT(*) AS cnt FROM order_items WHERE product_id = ? OR variant_id IN (SELECT id FROM product_variants WHERE product_id = ?)",
+            (product_id, product_id)
+        )
         order_refs = cur.fetchone()["cnt"]
 
+        if hard_delete:
+            if order_refs > 0 and not force:
+                # Historical orders exist: preserve accounting & invoice immutability unless forced
+                cur.execute(
+                    "UPDATE products SET status = 'archived', deleted_at = CURRENT_TIMESTAMP, updated_at = CURRENT_TIMESTAMP WHERE id = ?",
+                    (product_id,)
+                )
+                cur.execute("UPDATE product_variants SET is_active = 0 WHERE product_id = ?", (product_id,))
+                log_audit(conn, int(admin["sub"]), "archive_product", "product", str(product_id), {
+                    "sku": prod["sku"],
+                    "historical_order_items_preserved": order_refs,
+                    "reason": "Hard delete converted to archive to protect orders"
+                })
+                return {
+                    "archived": True,
+                    "deleted": False,
+                    "has_orders": True,
+                    "product_id": product_id,
+                    "status": "archived",
+                    "historical_order_items_preserved": order_refs,
+                    "message": f"Ce produit a {order_refs} commande(s) rattachée(s) : archivé pour protéger la comptabilité. Utilisez l'option 'Forcer' pour le retirer définitivement."
+                }
+
+            if force and order_refs > 0:
+                cur.execute("DELETE FROM order_items WHERE product_id = ? OR variant_id IN (SELECT id FROM product_variants WHERE product_id = ?)", (product_id, product_id))
+                cur.execute("DELETE FROM orders WHERE id NOT IN (SELECT DISTINCT order_id FROM order_items)")
+
+            # Hard delete: permanently remove product and all dependent data
+            cur.execute("DELETE FROM purchase_order_items WHERE product_id = ? OR variant_id IN (SELECT id FROM product_variants WHERE product_id = ?)", (product_id, product_id))
+            cur.execute("DELETE FROM inventory_movements WHERE variant_id IN (SELECT id FROM product_variants WHERE product_id = ?)", (product_id,))
+            cur.execute("DELETE FROM variant_attribute_values WHERE variant_id IN (SELECT id FROM product_variants WHERE product_id = ?)", (product_id,))
+            cur.execute("DELETE FROM product_variants WHERE product_id = ?", (product_id,))
+            cur.execute("DELETE FROM product_images WHERE product_id = ?", (product_id,))
+            cur.execute("DELETE FROM product_attribute_values WHERE product_id = ?", (product_id,))
+            cur.execute("DELETE FROM products WHERE id = ?", (product_id,))
+
+            log_audit(conn, int(admin["sub"]), "delete_product", "product", str(product_id), {
+                "sku": prod["sku"],
+                "name_fr": prod["name_fr"],
+                "forced": force
+            })
+            return {
+                "deleted": True,
+                "archived": False,
+                "product_id": product_id,
+                "status": "deleted",
+                "historical_order_items_preserved": 0,
+                "message": f"Produit \"{prod['name_fr']}\" supprimé définitivement du catalogue et de la base."
+            }
+
+        # Soft archive (default)
         cur.execute(
             "UPDATE products SET status = 'archived', deleted_at = CURRENT_TIMESTAMP, updated_at = CURRENT_TIMESTAMP WHERE id = ?",
             (product_id,)
@@ -2720,9 +2779,11 @@ def admin_safe_delete_or_archive_product(
         })
         return {
             "archived": True,
+            "deleted": False,
             "product_id": product_id,
             "status": "archived",
-            "historical_order_items_preserved": order_refs
+            "historical_order_items_preserved": order_refs,
+            "message": f"Produit \"{prod['name_fr']}\" archivé avec succès."
         }
 
 @app.post("/api/v1/admin/products/bulk-status")
@@ -2807,6 +2868,7 @@ def admin_update_category(
 @app.delete("/api/v1/admin/categories/{category_id}")
 def admin_archive_category(
     category_id: int,
+    hard_delete: bool = Query(False),
     admin: dict = Depends(require_permission("categories:write"))
 ):
     with db_session(commit=True) as conn:
@@ -2815,12 +2877,28 @@ def admin_archive_category(
         cat = cur.fetchone()
         if not cat:
             raise HTTPException(status_code=404, detail="Category not found")
-        cur.execute(
-            "UPDATE categories SET is_active = 0, deleted_at = CURRENT_TIMESTAMP WHERE id = ?",
-            (category_id,)
-        )
-        log_audit(conn, int(admin["sub"]), "archive_category", "category", str(category_id), {"slug": cat["slug"]})
-        return {"archived": True, "category_id": category_id}
+
+        cur.execute("SELECT COUNT(*) AS cnt FROM products WHERE category_id = ? AND deleted_at IS NULL", (category_id,))
+        prods_count = cur.fetchone()["cnt"]
+
+        if hard_delete:
+            if prods_count > 0:
+                raise HTTPException(
+                    status_code=400,
+                    detail=f"Impossible de supprimer définitivement : {prods_count} produit(s) sont encore rattachés à cette catégorie. Veuillez d'abord réassigner ou archiver ces produits."
+                )
+            cur.execute("DELETE FROM category_attribute_options WHERE attribute_id IN (SELECT id FROM category_attributes WHERE category_id = ?)", (category_id,))
+            cur.execute("DELETE FROM category_attributes WHERE category_id = ?", (category_id,))
+            cur.execute("DELETE FROM categories WHERE id = ?", (category_id,))
+            log_audit(conn, int(admin["sub"]), "delete_category_permanent", "category", str(category_id), {"slug": cat["slug"]})
+            return {"deleted": True, "category_id": category_id}
+        else:
+            cur.execute(
+                "UPDATE categories SET is_active = 0, deleted_at = CURRENT_TIMESTAMP WHERE id = ?",
+                (category_id,)
+            )
+            log_audit(conn, int(admin["sub"]), "archive_category", "category", str(category_id), {"slug": cat["slug"]})
+            return {"archived": True, "category_id": category_id}
 
 @app.get("/api/v1/admin/inventory/movements")
 def admin_list_inventory_movements(
@@ -2943,6 +3021,7 @@ class StaticPageUpsertInput(BaseModel):
     content_en: Optional[str] = ""
     is_published: bool = True
 
+@app.get("/health")
 @app.get("/api/v1/health")
 def api_healthcheck():
     try:
@@ -3268,4 +3347,790 @@ def admin_list_audit_logs(
                 d["details"] = {}
             items.append(d)
         return {"items": items, "count": len(items)}
+# ============================================================================
+# ERP MODULES: PURCHASING, SUPPLIERS, EXPENSES, TREASURY & ACCOUNTING LEDGER
+# ============================================================================
+
+class SupplierCreateInput(BaseModel):
+    name: str = Field(..., min_length=2, max_length=150)
+    company_name: Optional[str] = None
+    contact_person: Optional[str] = None
+    phone: Optional[str] = None
+    email: Optional[str] = None
+    address: Optional[str] = None
+    tax_id: Optional[str] = None
+    notes: Optional[str] = None
+
+class SupplierUpdateInput(BaseModel):
+    name: Optional[str] = None
+    company_name: Optional[str] = None
+    contact_person: Optional[str] = None
+    phone: Optional[str] = None
+    email: Optional[str] = None
+    address: Optional[str] = None
+    tax_id: Optional[str] = None
+    notes: Optional[str] = None
+    is_active: Optional[bool] = None
+
+class PurchaseOrderItemInput(BaseModel):
+    product_id: int
+    variant_id: Optional[int] = None
+    quantity: int = Field(..., gt=0)
+    unit_cost_dzd: int = Field(..., ge=0)
+
+class PurchaseOrderCreateInput(BaseModel):
+    supplier_id: int
+    shipping_dzd: int = Field(0, ge=0)
+    tax_dzd: int = Field(0, ge=0)
+    expected_date: Optional[str] = None
+    notes: Optional[str] = None
+    items: List[PurchaseOrderItemInput]
+
+class ExpenseCreateInput(BaseModel):
+    description: str = Field(..., min_length=2, max_length=255)
+    category: str = Field(..., min_length=2, max_length=64)
+    amount_dzd: int = Field(..., gt=0)
+    expense_date: Optional[str] = None
+    payment_method: str = Field("cash", regex=r"^(cash|bank_transfer|check|card)$")
+    recipient: Optional[str] = None
+    receipt_reference: Optional[str] = None
+    payment_status: str = Field("paid", regex=r"^(paid|pending)$")
+    notes: Optional[str] = None
+
+class CashMovementCreateInput(BaseModel):
+    account_type: str = Field("cash_box", regex=r"^(cash_box|bank_account)$")
+    movement_type: str = Field(..., regex=r"^(inflow|outflow|deposit|withdrawal)$")
+    amount_dzd: int = Field(..., gt=0)
+    description: str = Field(..., min_length=3, max_length=255)
+    source_reference: Optional[str] = None
+
+
+# --- SUPPLIER ENDPOINTS ---
+
+@app.get("/api/v1/admin/suppliers")
+def admin_list_suppliers(admin: dict = Depends(require_permission("dashboard:read"))):
+    with db_session() as conn:
+        cur = conn.cursor()
+        cur.execute("SELECT * FROM suppliers ORDER BY id DESC")
+        return {"items": [dict(r) for r in cur.fetchall()]}
+
+@app.post("/api/v1/admin/suppliers", status_code=201)
+def admin_create_supplier(
+    payload: SupplierCreateInput,
+    admin: dict = Depends(require_permission("products:write"))
+):
+    with db_session(commit=True) as conn:
+        cur = conn.cursor()
+        cur.execute(
+            """INSERT INTO suppliers (name, company_name, contact_person, phone, email, address, tax_id, notes, balance_dzd, is_active)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, 0, 1)""",
+            (
+                payload.name.strip(),
+                (payload.company_name or "").strip() or None,
+                (payload.contact_person or "").strip() or None,
+                (payload.phone or "").strip() or None,
+                (payload.email or "").strip().lower() or None,
+                (payload.address or "").strip() or None,
+                (payload.tax_id or "").strip() or None,
+                (payload.notes or "").strip() or None,
+            )
+        )
+        sup_id = cur.lastrowid
+        log_audit(conn, int(admin["sub"]), "create_supplier", "supplier", str(sup_id), {"name": payload.name})
+        cur.execute("SELECT * FROM suppliers WHERE id = ?", (sup_id,))
+        return dict(cur.fetchone())
+
+@app.put("/api/v1/admin/suppliers/{supplier_id}")
+def admin_update_supplier(
+    supplier_id: int,
+    payload: SupplierUpdateInput,
+    admin: dict = Depends(require_permission("products:write"))
+):
+    with db_session(commit=True) as conn:
+        cur = conn.cursor()
+        cur.execute("SELECT * FROM suppliers WHERE id = ?", (supplier_id,))
+        sup = cur.fetchone()
+        if not sup:
+            raise HTTPException(status_code=404, detail="Fournisseur introuvable")
+        cur.execute(
+            """UPDATE suppliers
+               SET name = COALESCE(?, name),
+                   company_name = COALESCE(?, company_name),
+                   contact_person = COALESCE(?, contact_person),
+                   phone = COALESCE(?, phone),
+                   email = COALESCE(?, email),
+                   address = COALESCE(?, address),
+                   tax_id = COALESCE(?, tax_id),
+                   notes = COALESCE(?, notes),
+                   is_active = COALESCE(?, is_active),
+                   updated_at = CURRENT_TIMESTAMP
+               WHERE id = ?""",
+            (
+                payload.name.strip() if payload.name else None,
+                payload.company_name.strip() if payload.company_name else None,
+                payload.contact_person.strip() if payload.contact_person else None,
+                payload.phone.strip() if payload.phone else None,
+                payload.email.strip().lower() if payload.email else None,
+                payload.address.strip() if payload.address else None,
+                payload.tax_id.strip() if payload.tax_id else None,
+                payload.notes.strip() if payload.notes else None,
+                (1 if payload.is_active else 0) if payload.is_active is not None else None,
+                supplier_id,
+            )
+        )
+        cur.execute("SELECT * FROM suppliers WHERE id = ?", (supplier_id,))
+        return dict(cur.fetchone())
+
+@app.delete("/api/v1/admin/suppliers/{supplier_id}")
+def admin_delete_supplier(
+    supplier_id: int,
+    admin: dict = Depends(require_permission("products:write"))
+):
+    with db_session(commit=True) as conn:
+        cur = conn.cursor()
+        cur.execute("SELECT * FROM suppliers WHERE id = ?", (supplier_id,))
+        if not cur.fetchone():
+            raise HTTPException(status_code=404, detail="Fournisseur introuvable")
+        cur.execute("SELECT COUNT(*) AS cnt FROM purchase_orders WHERE supplier_id = ?", (supplier_id,))
+        if cur.fetchone()["cnt"] > 0:
+            cur.execute("UPDATE suppliers SET is_active = 0, updated_at = CURRENT_TIMESTAMP WHERE id = ?", (supplier_id,))
+            return {"archived": True, "message": "Fournisseur archivé car des bons de commande y sont rattachés"}
+        cur.execute("DELETE FROM suppliers WHERE id = ?", (supplier_id,))
+        return {"deleted": True, "supplier_id": supplier_id}
+
+
+# --- PURCHASING & PURCHASE ORDERS ENDPOINTS ---
+
+@app.get("/api/v1/admin/purchases")
+def admin_list_purchases(admin: dict = Depends(require_permission("dashboard:read"))):
+    with db_session() as conn:
+        cur = conn.cursor()
+        cur.execute(
+            """SELECT po.*, s.name AS supplier_name, s.phone AS supplier_phone, s.company_name AS supplier_company
+               FROM purchase_orders po
+               JOIN suppliers s ON s.id = po.supplier_id
+               ORDER BY po.id DESC"""
+        )
+        pos = []
+        for r in cur.fetchall():
+            d = dict(r)
+            cur.execute("SELECT * FROM purchase_order_items WHERE purchase_order_id = ?", (d["id"],))
+            d["items"] = [dict(it) for it in cur.fetchall()]
+            pos.append(d)
+        return {"items": pos}
+
+@app.post("/api/v1/admin/purchases", status_code=201)
+def admin_create_purchase_order(
+    payload: PurchaseOrderCreateInput,
+    admin: dict = Depends(require_permission("products:write"))
+):
+    if not payload.items:
+        raise HTTPException(status_code=400, detail="Au moins un article d'approvisionnement est requis")
+
+    with db_session(commit=True) as conn:
+        cur = conn.cursor()
+        cur.execute("SELECT * FROM suppliers WHERE id = ? AND is_active = 1", (payload.supplier_id,))
+        sup = cur.fetchone()
+        if not sup:
+            raise HTTPException(status_code=404, detail="Fournisseur introuvable ou inactif")
+
+        # Generate unique reference e.g. ACH-2026-0001
+        ref = f"ACH-{int(time.time())}-{secrets.token_hex(2).upper()}"
+        subtotal = 0
+        enriched_items = []
+        for it in payload.items:
+            cur.execute("SELECT * FROM products WHERE id = ?", (it.product_id,))
+            p = cur.fetchone()
+            if not p:
+                raise HTTPException(status_code=400, detail=f"Produit ID {it.product_id} introuvable")
+            variant_title = "Standard"
+            sku = p["sku"]
+            if it.variant_id:
+                cur.execute("SELECT * FROM product_variants WHERE id = ?", (it.variant_id,))
+                v = cur.fetchone()
+                if v:
+                    variant_title = v["title"]
+                    sku = v["sku"]
+            line_tot = it.quantity * it.unit_cost_dzd
+            subtotal += line_tot
+            enriched_items.append({
+                "product_id": it.product_id,
+                "variant_id": it.variant_id,
+                "product_name": p["name_fr"],
+                "variant_title": variant_title,
+                "sku": sku,
+                "quantity_ordered": it.quantity,
+                "unit_cost_dzd": it.unit_cost_dzd,
+                "line_total_dzd": line_tot,
+            })
+
+        total_cost = subtotal + payload.shipping_dzd + payload.tax_dzd
+        cur.execute(
+            """INSERT INTO purchase_orders (supplier_id, reference, status, subtotal_dzd, shipping_dzd, tax_dzd, total_cost_dzd, payment_status, paid_amount_dzd, expected_date, notes, created_by)
+               VALUES (?, ?, 'ordered', ?, ?, ?, ?, 'unpaid', 0, ?, ?, ?)""",
+            (
+                payload.supplier_id,
+                ref,
+                subtotal,
+                payload.shipping_dzd,
+                payload.tax_dzd,
+                total_cost,
+                payload.expected_date,
+                payload.notes,
+                int(admin["sub"]),
+            )
+        )
+        po_id = cur.lastrowid
+
+        for e_it in enriched_items:
+            cur.execute(
+                """INSERT INTO purchase_order_items (purchase_order_id, product_id, variant_id, product_name, variant_title, sku, quantity_ordered, quantity_received, unit_cost_dzd, line_total_dzd)
+                   VALUES (?, ?, ?, ?, ?, ?, ?, 0, ?, ?)""",
+                (
+                    po_id,
+                    e_it["product_id"],
+                    e_it["variant_id"],
+                    e_it["product_name"],
+                    e_it["variant_title"],
+                    e_it["sku"],
+                    e_it["quantity_ordered"],
+                    e_it["unit_cost_dzd"],
+                    e_it["line_total_dzd"],
+                )
+            )
+
+        log_audit(conn, int(admin["sub"]), "create_purchase_order", "purchase_order", str(po_id), {
+            "reference": ref,
+            "total_cost_dzd": total_cost,
+            "supplier_id": payload.supplier_id
+        })
+        cur.execute("SELECT * FROM purchase_orders WHERE id = ?", (po_id,))
+        result = dict(cur.fetchone())
+        result["items"] = enriched_items
+        return result
+
+@app.post("/api/v1/admin/purchases/{po_id}/receive")
+def admin_receive_purchase_order(
+    po_id: int,
+    admin: dict = Depends(require_permission("products:write"))
+):
+    """
+    Records arrival of purchased goods:
+    1. Increments variant inventory.
+    2. Logs inventory movement.
+    3. Recomputes Weighted Average Cost (PMP) for products.
+    4. Updates supplier balance liability.
+    5. Posts balanced double-entry accounting ledger: Debit 3000 (Stock) / Credit 4010 (Fournisseurs).
+    """
+    with db_session(commit=True) as conn:
+        cur = conn.cursor()
+        cur.execute("SELECT * FROM purchase_orders WHERE id = ?", (po_id,))
+        po = cur.fetchone()
+        if not po:
+            raise HTTPException(status_code=404, detail="Bon de commande introuvable")
+        if po["status"] == "received":
+            raise HTTPException(status_code=400, detail="Ce bon de commande a déjà été réceptionné en stock")
+
+        cur.execute("SELECT * FROM purchase_order_items WHERE purchase_order_id = ?", (po_id,))
+        items = [dict(it) for it in cur.fetchall()]
+
+        today_str = datetime.now().strftime("%Y-%m-%d")
+        for it in items:
+            v_id = it["variant_id"]
+            if not v_id:
+                cur.execute("SELECT id, stock_qty FROM product_variants WHERE product_id = ? LIMIT 1", (it["product_id"],))
+                v_row = cur.fetchone()
+                v_id = v_row["id"] if v_row else None
+            else:
+                cur.execute("SELECT id, stock_qty FROM product_variants WHERE id = ?", (v_id,))
+                v_row = cur.fetchone()
+
+            if v_row:
+                old_stock = int(v_row["stock_qty"])
+                new_stock = old_stock + it["quantity_ordered"]
+                cur.execute("UPDATE product_variants SET stock_qty = ? WHERE id = ?", (new_stock, v_row["id"]))
+                cur.execute(
+                    """INSERT INTO inventory_movements (variant_id, admin_user_id, change_qty, previous_qty, new_qty, reason)
+                       VALUES (?, ?, ?, ?, ?, ?)""",
+                    (v_row["id"], int(admin["sub"]), it["quantity_ordered"], old_stock, new_stock, f"Réception fournisseur {po['reference']}")
+                )
+
+            # Update Product Cost using Weighted Average Cost (PMP)
+            cur.execute("SELECT purchase_cost_dzd FROM products WHERE id = ?", (it["product_id"],))
+            p_cost_row = cur.fetchone()
+            curr_cost = int(p_cost_row["purchase_cost_dzd"]) if p_cost_row and p_cost_row["purchase_cost_dzd"] else it["unit_cost_dzd"]
+            cur.execute("SELECT COALESCE(SUM(stock_qty), 0) AS total_stk FROM product_variants WHERE product_id = ?", (it["product_id"],))
+            total_stk = int(cur.fetchone()["total_stk"])
+            # Weighted average formula
+            if total_stk > 0:
+                weighted_unit_cost = int(((total_stk - it["quantity_ordered"]) * curr_cost + it["quantity_ordered"] * it["unit_cost_dzd"]) / total_stk)
+            else:
+                weighted_unit_cost = it["unit_cost_dzd"]
+            cur.execute("UPDATE products SET purchase_cost_dzd = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?", (weighted_unit_cost, it["product_id"]))
+            cur.execute("UPDATE purchase_order_items SET quantity_received = quantity_ordered WHERE id = ?", (it["id"],))
+
+        # Update purchase order status
+        cur.execute("UPDATE purchase_orders SET status = 'received', received_at = CURRENT_TIMESTAMP, updated_at = CURRENT_TIMESTAMP WHERE id = ?", (po_id,))
+        # Update supplier debt
+        cur.execute("UPDATE suppliers SET balance_dzd = balance_dzd + ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?", (po["total_cost_dzd"], po["supplier_id"]))
+
+        # Double-entry ledger: Debit Stock 3000 / Credit Fournisseurs 4010
+        cur.execute(
+            """INSERT INTO accounting_ledger (entry_number, journal_code, entry_date, account_code, account_name, label, debit_dzd, credit_dzd, source_document)
+               VALUES (?, 'ACH', ?, '3000', 'Stocks de Marchandises', ?, ?, 0, ?)""",
+            (f"ENTRY-{po['reference']}-D", today_str, f"Achats réceptionnés {po['reference']}", po["total_cost_dzd"], po["reference"])
+        )
+        cur.execute(
+            """INSERT INTO accounting_ledger (entry_number, journal_code, entry_date, account_code, account_name, label, debit_dzd, credit_dzd, source_document)
+               VALUES (?, 'ACH', ?, '4010', 'Dettes Fournisseurs', ?, 0, ?, ?)""",
+            (f"ENTRY-{po['reference']}-C", today_str, f"Facture fournisseur {po['reference']}", po["total_cost_dzd"], po["reference"])
+        )
+
+        log_audit(conn, int(admin["sub"]), "receive_purchase_order", "purchase_order", str(po_id), {
+            "reference": po["reference"],
+            "total_cost_dzd": po["total_cost_dzd"]
+        })
+        return {"received": True, "purchase_order_id": po_id, "status": "received"}
+
+@app.post("/api/v1/admin/purchases/{po_id}/pay")
+def admin_pay_purchase_order(
+    po_id: int,
+    payment_method: str = Query("cash", regex=r"^(cash|bank_transfer|check)$"),
+    admin: dict = Depends(require_permission("products:write"))
+):
+    with db_session(commit=True) as conn:
+        cur = conn.cursor()
+        cur.execute("SELECT * FROM purchase_orders WHERE id = ?", (po_id,))
+        po = cur.fetchone()
+        if not po:
+            raise HTTPException(status_code=404, detail="Bon de commande introuvable")
+        if po["payment_status"] == "paid":
+            raise HTTPException(status_code=400, detail="Ce bon de commande est déjà payé")
+
+        pay_amount = int(po["total_cost_dzd"]) - int(po["paid_amount_dzd"])
+        cur.execute(
+            "UPDATE purchase_orders SET payment_status = 'paid', paid_amount_dzd = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?",
+            (po["total_cost_dzd"], po_id)
+        )
+        cur.execute(
+            "UPDATE suppliers SET balance_dzd = balance_dzd - ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?",
+            (pay_amount, po["supplier_id"])
+        )
+
+        # Cash Movement (Outflow)
+        acc_type = "bank_account" if payment_method == "bank_transfer" else "cash_box"
+        cur.execute(
+            """INSERT INTO cash_movements (account_type, movement_type, amount_dzd, source_type, source_reference, description, recorded_by)
+               VALUES (?, 'outflow', ?, 'purchase_payment', ?, ?, ?)""",
+            (acc_type, pay_amount, po["reference"], f"Paiement fournisseur ({po['reference']})", int(admin["sub"]))
+        )
+
+        # Double-entry ledger: Debit 4010 (Fournisseurs) / Credit 5300 (Caisse) or 5120 (Banque)
+        today_str = datetime.now().strftime("%Y-%m-%d")
+        credit_acc = "5120" if payment_method == "bank_transfer" else "5300"
+        credit_name = "Banque" if payment_method == "bank_transfer" else "Caisse Boutique"
+        cur.execute(
+            """INSERT INTO accounting_ledger (entry_number, journal_code, entry_date, account_code, account_name, label, debit_dzd, credit_dzd, source_document)
+               VALUES (?, 'CAI', ?, '4010', 'Dettes Fournisseurs', ?, ?, 0, ?)""",
+            (f"PAY-{po['reference']}-D", today_str, f"Règlement fournisseur {po['reference']}", pay_amount, po["reference"])
+        )
+        cur.execute(
+            """INSERT INTO accounting_ledger (entry_number, journal_code, entry_date, account_code, account_name, label, debit_dzd, credit_dzd, source_document)
+               VALUES (?, 'CAI', ?, ?, ?, ?, 0, ?, ?)""",
+            (f"PAY-{po['reference']}-C", today_str, credit_acc, credit_name, f"Règlement fournisseur {po['reference']}", pay_amount, po["reference"])
+        )
+
+        return {"paid": True, "purchase_order_id": po_id, "paid_amount_dzd": pay_amount}
+
+
+# --- OPERATING EXPENSES (DÉPENSES & FRAIS GÉNÉRAUX) ---
+
+@app.get("/api/v1/admin/expenses")
+def admin_list_expenses(
+    category: Optional[str] = None,
+    admin: dict = Depends(require_permission("dashboard:read"))
+):
+    with db_session() as conn:
+        cur = conn.cursor()
+        if category:
+            cur.execute("SELECT * FROM expenses WHERE category = ? ORDER BY expense_date DESC, id DESC", (category,))
+        else:
+            cur.execute("SELECT * FROM expenses ORDER BY expense_date DESC, id DESC")
+        return {"items": [dict(r) for r in cur.fetchall()]}
+
+@app.post("/api/v1/admin/expenses", status_code=201)
+def admin_create_expense(
+    payload: ExpenseCreateInput,
+    admin: dict = Depends(require_permission("settings:write"))
+):
+    with db_session(commit=True) as conn:
+        cur = conn.cursor()
+        exp_date = payload.expense_date or datetime.now().strftime("%Y-%m-%d")
+        cur.execute(
+            """INSERT INTO expenses (description, category, amount_dzd, expense_date, payment_method, recipient, receipt_reference, payment_status, notes, created_by)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+            (
+                payload.description.strip(),
+                payload.category.strip(),
+                payload.amount_dzd,
+                exp_date,
+                payload.payment_method,
+                (payload.recipient or "").strip() or None,
+                (payload.receipt_reference or "").strip() or None,
+                payload.payment_status,
+                (payload.notes or "").strip() or None,
+                int(admin["sub"]),
+            )
+        )
+        exp_id = cur.lastrowid
+
+        # If paid, immediately register cash outflow and ledger entry
+        if payload.payment_status == "paid":
+            acc_type = "bank_account" if payload.payment_method == "bank_transfer" else "cash_box"
+            cur.execute(
+                """INSERT INTO cash_movements (account_type, movement_type, amount_dzd, source_type, source_reference, description, recorded_by)
+                   VALUES (?, 'outflow', ?, 'expense_payment', ?, ?, ?)""",
+                (acc_type, payload.amount_dzd, f"EXP-{exp_id}", f"Dépense: {payload.description}", int(admin["sub"]))
+            )
+
+            # Balanced Ledger: Debit 6100 (Charges d'exploitation) / Credit 5300 (Caisse)
+            credit_acc = "5120" if payload.payment_method == "bank_transfer" else "5300"
+            credit_name = "Banque" if payload.payment_method == "bank_transfer" else "Caisse Boutique"
+            cur.execute(
+                """INSERT INTO accounting_ledger (entry_number, journal_code, entry_date, account_code, account_name, label, debit_dzd, credit_dzd, source_document)
+                   VALUES (?, 'OD', ?, '6100', 'Charges et Dépenses d''Exploitation', ?, ?, 0, ?)""",
+                (f"EXP-{exp_id}-D", exp_date, payload.description, payload.amount_dzd, f"EXP-{exp_id}")
+            )
+            cur.execute(
+                """INSERT INTO accounting_ledger (entry_number, journal_code, entry_date, account_code, account_name, label, debit_dzd, credit_dzd, source_document)
+               VALUES (?, 'OD', ?, ?, ?, ?, 0, ?, ?)""",
+                (f"EXP-{exp_id}-C", exp_date, credit_acc, credit_name, payload.description, payload.amount_dzd, f"EXP-{exp_id}")
+            )
+
+        log_audit(conn, int(admin["sub"]), "create_expense", "expense", str(exp_id), {
+            "description": payload.description,
+            "amount_dzd": payload.amount_dzd,
+            "category": payload.category
+        })
+        cur.execute("SELECT * FROM expenses WHERE id = ?", (exp_id,))
+        return dict(cur.fetchone())
+
+@app.delete("/api/v1/admin/expenses/{expense_id}")
+def admin_delete_expense(
+    expense_id: int,
+    admin: dict = Depends(require_permission("settings:write"))
+):
+    with db_session(commit=True) as conn:
+        cur = conn.cursor()
+        cur.execute("SELECT * FROM expenses WHERE id = ?", (expense_id,))
+        exp = cur.fetchone()
+        if not exp:
+            raise HTTPException(status_code=404, detail="Dépense introuvable")
+        cur.execute("DELETE FROM expenses WHERE id = ?", (expense_id,))
+        log_audit(conn, int(admin["sub"]), "delete_expense", "expense", str(expense_id), {"description": exp["description"]})
+        return {"deleted": True, "expense_id": expense_id}
+
+
+# --- CASH REGISTER & TREASURY (CAISSE & TRÉSORERIE) ---
+
+@app.get("/api/v1/admin/treasury/summary")
+def admin_get_treasury_summary(admin: dict = Depends(require_permission("dashboard:read"))):
+    with db_session() as conn:
+        cur = conn.cursor()
+        # Inflows & Outflows for Cash Box
+        cur.execute("SELECT COALESCE(SUM(amount_dzd), 0) AS s FROM cash_movements WHERE account_type = 'cash_box' AND movement_type IN ('inflow', 'deposit')")
+        cash_in = int(cur.fetchone()["s"])
+        cur.execute("SELECT COALESCE(SUM(amount_dzd), 0) AS s FROM cash_movements WHERE account_type = 'cash_box' AND movement_type IN ('outflow', 'withdrawal')")
+        cash_out = int(cur.fetchone()["s"])
+        cash_balance = cash_in - cash_out
+
+        # Inflows & Outflows for Bank
+        cur.execute("SELECT COALESCE(SUM(amount_dzd), 0) AS s FROM cash_movements WHERE account_type = 'bank_account' AND movement_type IN ('inflow', 'deposit')")
+        bank_in = int(cur.fetchone()["s"])
+        cur.execute("SELECT COALESCE(SUM(amount_dzd), 0) AS s FROM cash_movements WHERE account_type = 'bank_account' AND movement_type IN ('outflow', 'withdrawal')")
+        bank_out = int(cur.fetchone()["s"])
+        bank_balance = bank_in - bank_out
+
+        # Pending COD Receivables (Orders Shipped / In Prep not yet marked Delivered)
+        cur.execute("SELECT COALESCE(SUM(total_dzd), 0) AS s FROM orders WHERE status IN ('shipped', 'in_preparation', 'confirmed')")
+        pending_cod = int(cur.fetchone()["s"])
+
+        # Total Delivered Orders Cash Collected
+        cur.execute("SELECT COALESCE(SUM(total_dzd), 0) AS s FROM orders WHERE status = 'delivered'")
+        collected_orders_dzd = int(cur.fetchone()["s"])
+
+        # Total Supplier Debts
+        cur.execute("SELECT COALESCE(SUM(balance_dzd), 0) AS s FROM suppliers")
+        supplier_debts = int(cur.fetchone()["s"])
+
+        # Inventory Value at Purchase Cost
+        cur.execute(
+            """SELECT COALESCE(SUM(pv.stock_qty * COALESCE(p.purchase_cost_dzd, 0)), 0) AS s
+               FROM product_variants pv
+               JOIN products p ON p.id = pv.product_id
+               WHERE p.deleted_at IS NULL"""
+        )
+        inventory_valuation = int(cur.fetchone()["s"])
+
+        return {
+            "cash_balance_dzd": cash_balance,
+            "bank_balance_dzd": bank_balance,
+            "total_liquid_treasury_dzd": cash_balance + bank_balance,
+            "total_liquidity_dzd": cash_balance + bank_balance,
+            "pending_cod_receivables_dzd": pending_cod,
+            "pending_cod_collections_dzd": pending_cod,
+            "collected_orders_total_dzd": collected_orders_dzd,
+            "supplier_debts_dzd": supplier_debts,
+            "inventory_valuation_dzd": inventory_valuation,
+        }
+
+@app.get("/api/v1/admin/treasury/movements")
+def admin_list_cash_movements(
+    limit: int = Query(50, ge=1, le=200),
+    admin: dict = Depends(require_permission("dashboard:read"))
+):
+    with db_session() as conn:
+        cur = conn.cursor()
+        cur.execute("SELECT * FROM cash_movements ORDER BY id ASC")
+        rows = [dict(r) for r in cur.fetchall()]
+        cash_bal = 0
+        bank_bal = 0
+        for m in rows:
+            amt = int(m.get("amount_dzd") or 0)
+            if m.get("movement_type") == "outflow":
+                amt = -amt
+            if m.get("account_type") == "bank_account":
+                bank_bal += amt
+                m["balance_after_dzd"] = bank_bal
+            else:
+                cash_bal += amt
+                m["balance_after_dzd"] = cash_bal
+        rows.reverse()
+        return {"items": rows[:limit]}
+
+@app.post("/api/v1/admin/treasury/movements", status_code=201)
+def admin_record_cash_movement(
+    payload: CashMovementCreateInput,
+    admin: dict = Depends(require_permission("settings:write"))
+):
+    with db_session(commit=True) as conn:
+        cur = conn.cursor()
+        cur.execute(
+            """INSERT INTO cash_movements (account_type, movement_type, amount_dzd, source_type, source_reference, description, recorded_by)
+               VALUES (?, ?, ?, 'manual_adjustment', ?, ?, ?)""",
+            (
+                payload.account_type,
+                payload.movement_type,
+                payload.amount_dzd,
+                payload.source_reference,
+                payload.description.strip(),
+                int(admin["sub"]),
+            )
+        )
+        mov_id = cur.lastrowid
+        return {"created": True, "movement_id": mov_id}
+
+
+# --- COMPTABILITÉ & CALCUL DES BÉNÉFICES (P&L, MARGINS & LEDGER) ---
+
+@app.get("/api/v1/admin/accounting/pnl")
+def admin_get_pnl_statement(admin: dict = Depends(require_permission("dashboard:read"))):
+    """
+    Authoritative Financial Statement (Compte de Résultat & Analyse des Marges):
+    1. Chiffre d'Affaires Brut (Sales Revenue).
+    2. Frais de port collectés.
+    3. Coût d'Achat des Marchandises Vendues (COGS).
+    4. Marge Brute Réalisée (Gross Profit = Ventes - Coût Achat).
+    5. Taux de Marge Brute (%).
+    6. Dépenses d'Exploitation (Loyer, Salaires, Pub, Packaging).
+    7. Résultat Net d'Exploitation (Net Profit = Marge Brute - Dépenses).
+    8. Taux de Marge Nette (%).
+    """
+    with db_session() as conn:
+        cur = conn.cursor()
+        # All orders non-cancelled
+        cur.execute(
+            """SELECT COUNT(*) AS count,
+                      COALESCE(SUM(subtotal_dzd), 0) AS subtotal_dzd,
+                      COALESCE(SUM(delivery_fee_dzd), 0) AS delivery_fee_dzd,
+                      COALESCE(SUM(total_dzd), 0) AS total_dzd
+               FROM orders
+               WHERE status != 'cancelled'"""
+        )
+        ord_stats = dict(cur.fetchone())
+
+        # Delivered (Collected) Orders
+        cur.execute(
+            """SELECT COUNT(*) AS count,
+                      COALESCE(SUM(subtotal_dzd), 0) AS subtotal_dzd,
+                      COALESCE(SUM(total_dzd), 0) AS total_dzd
+               FROM orders
+               WHERE status = 'delivered'"""
+        )
+        deliv_stats = dict(cur.fetchone())
+
+        # Cost of Goods Sold (COGS) for all active orders
+        cur.execute(
+            """SELECT COALESCE(SUM(oi.quantity * COALESCE(p.purchase_cost_dzd, 0)), 0) AS cogs_total
+               FROM order_items oi
+               JOIN orders o ON o.id = oi.order_id
+               JOIN products p ON p.id = oi.product_id
+               WHERE o.status != 'cancelled'"""
+        )
+        cogs_all = int(cur.fetchone()["cogs_total"])
+
+        # Cost of Goods Sold (COGS) for delivered orders only
+        cur.execute(
+            """SELECT COALESCE(SUM(oi.quantity * COALESCE(p.purchase_cost_dzd, 0)), 0) AS cogs_deliv
+               FROM order_items oi
+               JOIN orders o ON o.id = oi.order_id
+               JOIN products p ON p.id = oi.product_id
+               WHERE o.status = 'delivered'"""
+        )
+        cogs_delivered = int(cur.fetchone()["cogs_deliv"])
+
+        # Total Operating Expenses
+        cur.execute("SELECT COALESCE(SUM(amount_dzd), 0) AS s FROM expenses WHERE payment_status = 'paid'")
+        total_expenses = int(cur.fetchone()["s"])
+
+        # Expenses by category breakdown
+        cur.execute("SELECT category, COALESCE(SUM(amount_dzd), 0) AS total_dzd, COUNT(*) AS count FROM expenses GROUP BY category")
+        expenses_by_cat = [dict(r) for r in cur.fetchall()]
+
+        # Financial Calculations (in DZD integers)
+        subtotal = int(ord_stats["subtotal_dzd"])
+        gross_profit_all = subtotal - cogs_all
+        gross_margin_pct_all = round((gross_profit_all / subtotal * 100), 1) if subtotal > 0 else 0.0
+
+        subtotal_deliv = int(deliv_stats["subtotal_dzd"])
+        gross_profit_delivered = subtotal_deliv - cogs_delivered
+        gross_margin_pct_deliv = round((gross_profit_delivered / subtotal_deliv * 100), 1) if subtotal_deliv > 0 else 0.0
+
+        net_profit_all = gross_profit_all - total_expenses
+        net_margin_pct_all = round((net_profit_all / subtotal * 100), 1) if subtotal > 0 else 0.0
+
+        net_profit_delivered = gross_profit_delivered - total_expenses
+
+        # Count total units sold across non-cancelled orders
+        cur.execute(
+            """SELECT COALESCE(SUM(oi.quantity), 0) AS total_units
+               FROM order_items oi
+               JOIN orders o ON o.id = oi.order_id
+               WHERE o.status != 'cancelled'"""
+        )
+        total_units_sold = int(cur.fetchone()["total_units"])
+
+        # Current total inventory valuation
+        cur.execute(
+            """SELECT COALESCE(SUM(pv.stock_qty * COALESCE(p.purchase_cost_dzd, 0)), 0) AS total_val
+               FROM product_variants pv
+               JOIN products p ON p.id = pv.product_id"""
+        )
+        inv_val = int(cur.fetchone()["total_val"])
+
+        return {
+            "gross_revenue_dzd": subtotal,
+            "delivery_revenue_dzd": int(ord_stats["delivery_fee_dzd"]),
+            "total_revenue_dzd": int(ord_stats["total_dzd"]),
+            "cogs_dzd": cogs_all,
+            "gross_profit_dzd": gross_profit_all,
+            "gross_margin_percent": gross_margin_pct_all,
+            "operating_expenses_dzd": total_expenses,
+            "net_operating_profit_dzd": net_profit_all,
+            "net_margin_percent": net_margin_pct_all,
+            "orders_count": int(ord_stats["count"]),
+            "units_sold": total_units_sold,
+            "inventory_valuation_dzd": inv_val,
+            "revenue": {
+                "total_sales_dzd": int(ord_stats["total_dzd"]),
+                "subtotal_merchandise_dzd": subtotal,
+                "delivery_fees_dzd": int(ord_stats["delivery_fee_dzd"]),
+                "orders_count": int(ord_stats["count"]),
+                "delivered_sales_dzd": int(deliv_stats["total_dzd"]),
+                "delivered_subtotal_dzd": subtotal_deliv,
+                "delivered_orders_count": int(deliv_stats["count"]),
+            },
+            "cogs": {
+                "cogs_all_orders_dzd": cogs_all,
+                "cogs_delivered_orders_dzd": cogs_delivered,
+            },
+            "margins": {
+                "gross_profit_all_dzd": gross_profit_all,
+                "gross_margin_pct_all": gross_margin_pct_all,
+                "gross_profit_delivered_dzd": gross_profit_delivered,
+                "gross_margin_pct_delivered": gross_margin_pct_deliv,
+            },
+            "operating_expenses": {
+                "total_expenses_dzd": total_expenses,
+                "breakdown_by_category": expenses_by_cat,
+            },
+            "net_results": {
+                "net_profit_all_dzd": net_profit_all,
+                "net_margin_pct_all": net_margin_pct_all,
+                "net_profit_delivered_dzd": net_profit_delivered,
+            }
+        }
+
+@app.get("/api/v1/admin/accounting/products-profitability")
+def admin_get_products_profitability(
+    include_archived: bool = Query(True),
+    admin: dict = Depends(require_permission("dashboard:read"))
+):
+    """
+    Returns unit margins, markups, total sales and total profits generated by each product.
+    """
+    with db_session() as conn:
+        cur = conn.cursor()
+        where_clause = "" if include_archived else "WHERE p.deleted_at IS NULL"
+        cur.execute(
+            f"""SELECT p.id, p.sku, p.name_fr, p.selling_price_dzd,
+                      COALESCE(p.purchase_cost_dzd, 0) AS purchase_cost_dzd,
+                      p.status,
+                      COALESCE(SUM(oi.quantity), 0) AS units_sold,
+                      COALESCE(SUM(oi.line_total_dzd), 0) AS total_revenue_dzd
+               FROM products p
+               LEFT JOIN order_items oi ON oi.product_id = p.id
+               {where_clause}
+               GROUP BY p.id
+               ORDER BY total_revenue_dzd DESC, p.id ASC"""
+        )
+        items = []
+        for r in cur.fetchall():
+            d = dict(r)
+            sell = int(d["selling_price_dzd"])
+            cost = int(d["purchase_cost_dzd"])
+            unit_profit = sell - cost
+            gross_margin_pct = round((unit_profit / sell * 100), 1) if sell > 0 else 0.0
+            markup_pct = round((unit_profit / cost * 100), 1) if cost > 0 else 0.0
+            total_cost_sold = cost * int(d["units_sold"])
+            total_profit = int(d["total_revenue_dzd"]) - total_cost_sold
+            d["unit_profit_dzd"] = unit_profit
+            d["gross_margin_pct"] = gross_margin_pct
+            d["markup_pct"] = markup_pct
+            d["total_cost_sold_dzd"] = total_cost_sold
+            d["total_profit_dzd"] = total_profit
+            items.append(d)
+        return {"items": items}
+
+@app.get("/api/v1/admin/accounting/ledger")
+def admin_list_accounting_ledger(
+    limit: int = Query(100, ge=1, le=500),
+    admin: dict = Depends(require_permission("dashboard:read"))
+):
+    with db_session() as conn:
+        cur = conn.cursor()
+        cur.execute("SELECT * FROM accounting_ledger ORDER BY entry_date DESC, id DESC LIMIT ?", (limit,))
+        rows = [dict(r) for r in cur.fetchall()]
+        cur.execute("SELECT COALESCE(SUM(debit_dzd), 0) AS deb, COALESCE(SUM(credit_dzd), 0) AS cred FROM accounting_ledger")
+        sums = cur.fetchone()
+        return {
+            "items": rows,
+            "entries": rows,
+            "total_debit_dzd": int(sums["deb"]),
+            "total_debits_dzd": int(sums["deb"]),
+            "total_credit_dzd": int(sums["cred"]),
+            "total_credits_dzd": int(sums["cred"]),
+            "is_balanced": int(sums["deb"]) == int(sums["cred"]),
+            "entries_count": len(rows),
+        }
 

@@ -12,16 +12,49 @@ import {
   subscribeNetworkTelemetry,
 } from "./utils/networkQueue";
 import React, { useEffect, useState } from "react";
+import {
+  LayoutDashboard,
+  ShoppingBag,
+  Tags,
+  PackageCheck,
+  Boxes,
+  FileText,
+  Receipt,
+  Landmark,
+  TrendingUp,
+  Truck,
+  Palette,
+  ShieldCheck,
+  Plus,
+  RefreshCw,
+  ArrowUpRight,
+  AlertTriangle,
+  AlertCircle,
+  CheckCircle2,
+  DollarSign,
+  Download,
+  Clock,
+  Sparkles,
+} from "lucide-react";
+import { RevenueTrendChart, OrderStatusDistributionChart, InventoryHealthWidget } from "./components/CmsCharts";
 import { DesktopCmsApi, restoreSessionFromOsKeychain } from "./api/adminClient";
 import { CategoryBuilderPage } from "./pages/CategoryBuilderPage";
 import { DeliveryWilayasPage } from "./pages/DeliveryWilayasPage";
+import { PurchasesPage } from "./pages/PurchasesPage";
+import { ExpensesPage } from "./pages/ExpensesPage";
+import { TreasuryPage } from "./pages/TreasuryPage";
+import { AccountingPage } from "./pages/AccountingPage";
 
 type CmsTab =
   | "dashboard"
   | "products"
   | "categories"
+  | "purchases"
   | "inventory"
   | "orders"
+  | "expenses"
+  | "treasury"
+  | "accounting"
   | "delivery_wilayas"
   | "content"
   | "backups";
@@ -61,7 +94,7 @@ export default function App() {
   const [loginEmail, setLoginEmail] = useState("");
   const [loginPassword, setLoginPassword] = useState("");
   const [showRecoveryModal, setShowRecoveryModal] = useState(false);
-  const [recPhone, setRecPhone] = useState("0655534154");
+  const [recPhone, setRecPhone] = useState("");
   const [recChannel, setRecChannel] = useState<"whatsapp_cloud_api" | "offline_emergency">("whatsapp_cloud_api");
   const [recCode, setRecCode] = useState("");
   const [recNewPassword, setRecNewPassword] = useState("");
@@ -121,13 +154,17 @@ export default function App() {
   const [prodDynamicAttrs, setProdDynamicAttrs] = useState<Record<string, string>>(() => readDraft("luxe_cms_prod_dyn_attrs", {}));
   const [prodVariantStock, setProdVariantStock] = useState(() => readDraft("luxe_cms_prod_stock", 5));
   const [editingProduct, setEditingProduct] = useState<any | null>(null);
+  const [productToDelete, setProductToDelete] = useState<any | null>(null);
+  const [forceDeleteProduct, setForceDeleteProduct] = useState(false);
+  const [productFilterTab, setProductFilterTab] = useState<"all" | "published" | "draft" | "archived">("all");
+  const [deletingProduct, setDeletingProduct] = useState(false);
 
   // Order Filter State
   const [orderStatusFilter, setOrderStatusFilter] = useState("");
 
   // Store Settings, Coupon & Static Page State (Tab 7)
-  const [storePhoneInput, setStorePhoneInput] = useState("0655534154");
-  const [storeWhatsappInput, setStoreWhatsappInput] = useState("+213655534154");
+  const [storePhoneInput, setStorePhoneInput] = useState("");
+  const [storeWhatsappInput, setStoreWhatsappInput] = useState("");
   const [storeLocationInput, setStoreLocationInput] = useState("FVX6+GCJ Mus luxury, Ouled Yaïch");
   const [freeThresholdInput, setFreeThresholdInput] = useState("25000");
   const [couponCode, setCouponCode] = useState("");
@@ -309,7 +346,7 @@ export default function App() {
       if (res?.user) {
         setUser(res.user);
       }
-      const okMsg = `Propriétaire configuré dans PostgreSQL. Code d'urgence : ${res.emergency_code_backup}. Cet écran est désormais verrouillé définitivement.`;
+      const okMsg = `Accès propriétaire configuré avec succès. Code de secours sécurisé : ${res.emergency_code_backup}. Vos accès sont désormais verrouillés.`;
       setSuccessMsg(okMsg);
       notifyClientSuccess("Initialisation Propriétaire Verrouillée", okMsg, true);
     } catch (err: any) {
@@ -339,7 +376,7 @@ export default function App() {
     setError("");
     setRecStepInfo("");
     if (!recPhone.trim()) {
-      notifyClientWarning("Numéro requis", "Veuillez saisir votre numéro de téléphone administrateur (ex: 0655534154).");
+      notifyClientWarning("Numéro requis", "Veuillez saisir votre numéro de téléphone administrateur (ex: 05XX / 06XX / 07XX...).");
       return;
     }
     try {
@@ -485,6 +522,50 @@ export default function App() {
       await loadAllWorkspaceData();
     } catch (err: any) {
       const tr = notifyClientError(err, "Archivage du produit impossible");
+      setError(tr.message);
+    }
+  }
+
+  async function handleConfirmDeleteProduct(hard: boolean) {
+    if (!productToDelete) return;
+    setDeletingProduct(true);
+    setError("");
+    try {
+      const res = await DesktopCmsApi.deleteProduct(productToDelete.id, hard, hard && forceDeleteProduct);
+      if (res?.archived && !res?.deleted && hard) {
+        const warnMsg = res.message || "Ce produit possède des commandes rattachées et a été archivé au lieu d'être supprimé.";
+        setError(warnMsg);
+        notifyClientError(warnMsg, "Produit archivé (commandes existantes)");
+      } else {
+        const okMsg =
+          res?.message ||
+          (hard
+            ? `Produit "${productToDelete.name_fr}" supprimé définitivement du catalogue et de la base de données.`
+            : `Produit "${productToDelete.name_fr}" archivé en toute sécurité.`);
+        setSuccessMsg(okMsg);
+        notifyClientSuccess(hard ? "Produit supprimé" : "Produit archivé", okMsg);
+        setProductToDelete(null);
+        setForceDeleteProduct(false);
+      }
+      await loadAllWorkspaceData();
+    } catch (err: any) {
+      const tr = notifyClientError(err, "Suppression du produit impossible");
+      setError(tr.message);
+    } finally {
+      setDeletingProduct(false);
+    }
+  }
+
+  async function handleRestoreProduct(productId: number) {
+    setError("");
+    try {
+      await DesktopCmsApi.bulkUpdateProductStatus([productId], "published");
+      const okMsg = `Produit #${productId} réactivé et remis en vente sur la boutique en ligne.`;
+      setSuccessMsg(okMsg);
+      notifyClientSuccess("Produit réactivé", okMsg);
+      await loadAllWorkspaceData();
+    } catch (err: any) {
+      const tr = notifyClientError(err, "Réactivation du produit impossible");
       setError(tr.message);
     }
   }
@@ -1068,33 +1149,177 @@ export default function App() {
     );
   }
 
+  function renderDeleteProductModal() {
+    if (!productToDelete) return null;
+    return (
+      <div className="fixed inset-0 z-50 bg-black/75 backdrop-blur-sm flex items-center justify-center p-4">
+        <div
+          role="dialog"
+          aria-modal="true"
+          className="bg-white text-[#202923] rounded-2xl max-w-lg w-full overflow-hidden shadow-2xl border-2 border-[#D4AF62]"
+        >
+          <div className="px-6 py-4 bg-[#063D2E] text-white flex items-center justify-between border-b border-[#D4AF62]/40">
+            <div className="flex items-center gap-2">
+              <span className="text-xl">⚠️</span>
+              <div>
+                <h3 className="text-base font-serif font-bold text-[#D4AF62]">
+                  Suppression / Archivage du Produit
+                </h3>
+                <p className="text-[11px] text-[#E8D4A5]">Gestion du catalogue — Maison Mus Luxury</p>
+              </div>
+            </div>
+            <button
+              type="button"
+              onClick={() => { setProductToDelete(null); setForceDeleteProduct(false); setError(""); }}
+              disabled={deletingProduct}
+              className="w-8 h-8 rounded-full bg-white/10 hover:bg-white/20 text-white font-bold flex items-center justify-center"
+            >
+              ✕
+            </button>
+          </div>
+
+          <div className="p-6 space-y-5 text-xs">
+            {error && (
+              <div className="p-3 bg-red-100 border border-red-300 text-red-800 rounded-xl text-xs font-semibold">
+                ⚠️ {error}
+              </div>
+            )}
+            {/* Product info banner */}
+            <div className="p-4 rounded-xl bg-[#F8F6F0] border border-[#D4AF62]/30 flex items-center gap-4">
+              <div className="w-16 h-16 rounded-xl bg-[#063D2E]/10 border border-[#D4AF62]/40 flex items-center justify-center overflow-hidden shrink-0">
+                {productToDelete.main_image_url || productToDelete.image_url ? (
+                  <img
+                    src={productToDelete.main_image_url || productToDelete.image_url}
+                    alt=""
+                    className="w-full h-full object-cover"
+                  />
+                ) : (
+                  <span className="text-2xl">👜</span>
+                )}
+              </div>
+              <div className="space-y-1">
+                <span className="px-2 py-0.5 rounded-full bg-[#063D2E] text-[#D4AF62] text-[10px] font-mono font-bold">
+                  SKU: {productToDelete.sku}
+                </span>
+                <h4 className="text-base font-serif font-bold text-[#063D2E]">{productToDelete.name_fr}</h4>
+                <div className="text-[11px] text-gray-600 flex gap-3 font-mono">
+                  <span>
+                    Prix de vente: <strong>{Number(productToDelete.selling_price_dzd || 0).toLocaleString()} DA</strong>
+                  </span>
+                  <span>
+                    Stock: <strong>{productToDelete.total_stock ?? 0} unités</strong>
+                  </span>
+                  <span>
+                    Statut: <strong>{productToDelete.status === "archived" ? "Archivé (hors vitrine)" : productToDelete.status}</strong>
+                  </span>
+                </div>
+              </div>
+            </div>
+
+            <p className="text-gray-700 leading-relaxed font-semibold">
+              Veuillez sélectionner l'action à exécuter pour cet article :
+            </p>
+
+            {/* Action buttons */}
+            <div className="space-y-3">
+              {/* Permanent Hard Delete */}
+              <div className="p-3.5 rounded-xl border border-red-200 bg-red-50/70 space-y-2">
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                  <div>
+                    <strong className="text-red-900 block font-bold text-xs">
+                      Option 1 : Suppression Définitive de la Base
+                    </strong>
+                    <span className="text-[11px] text-red-700 leading-relaxed block mt-0.5">
+                      Supprime intégralement la fiche, ses variantes et images de la base de données.
+                    </span>
+                    <label className="flex items-center gap-2 mt-2 pt-2 border-t border-red-200 text-red-900 cursor-pointer font-bold text-[11px]">
+                      <input
+                        type="checkbox"
+                        checked={forceDeleteProduct}
+                        onChange={(e) => setForceDeleteProduct(e.target.checked)}
+                        className="rounded text-red-600 w-4 h-4"
+                      />
+                      <span>Forcer la suppression définitive (efface également les commandes tests rattachées)</span>
+                    </label>
+                  </div>
+                  <button
+                    type="button"
+                    disabled={deletingProduct}
+                    onClick={() => handleConfirmDeleteProduct(true)}
+                    className="px-4 py-2.5 rounded-xl bg-red-700 hover:bg-red-800 disabled:opacity-50 text-white font-extrabold whitespace-nowrap shadow-sm shrink-0"
+                  >
+                    {deletingProduct ? "Suppression..." : "🗑️ Supprimer Définitivement"}
+                  </button>
+                </div>
+              </div>
+
+              {/* Safe Soft Archive */}
+              <div className="p-3.5 rounded-xl border border-amber-200 bg-amber-50/70 space-y-2">
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                  <div>
+                    <strong className="text-amber-900 block font-bold text-xs">
+                      Option 2 : Archivage Sécurisé (Recommandé)
+                    </strong>
+                    <span className="text-[11px] text-amber-800 leading-relaxed block mt-0.5">
+                      Masque le produit de la vitrine tout en préservant l'intégrité des factures et de la comptabilité. Vous pouvez le réactiver à tout moment.
+                    </span>
+                  </div>
+                  <button
+                    type="button"
+                    disabled={deletingProduct}
+                    onClick={() => handleConfirmDeleteProduct(false)}
+                    className="px-4 py-2.5 rounded-xl bg-amber-600 hover:bg-amber-700 disabled:opacity-50 text-white font-extrabold whitespace-nowrap shadow-sm shrink-0"
+                  >
+                    {deletingProduct ? "Archivage..." : "📦 Archiver la Pièce"}
+                  </button>
+                </div>
+              </div>
+            </div>
+
+            <div className="flex justify-end pt-2 border-t border-gray-100">
+              <button
+                type="button"
+                disabled={deletingProduct}
+                onClick={() => { setProductToDelete(null); setForceDeleteProduct(false); setError(""); }}
+                className="px-5 py-2 rounded-xl bg-gray-100 hover:bg-gray-200 text-gray-700 font-bold"
+              >
+                Annuler
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
   if (checkingSetup) {
-    return <div className="p-10 text-center text-white bg-[#02291F] min-h-screen">Vérification de l'état d'initialisation PostgreSQL...</div>;
+    return <div className="p-10 text-center text-white bg-[#02291F] min-h-screen">Initialisation sécurisée de la session administrateur...</div>;
   }
 
   if (requiresOwnerSetup) {
     return (
       <div className="min-h-screen bg-[#02291F] text-white flex items-center justify-center p-6">
         {renderClientNotificationCenter()}
+      {renderDeleteProductModal()}
         <form onSubmit={handleFirstTimeSetup} className="max-w-lg w-full bg-[#063D2E] p-8 rounded-2xl border-2 border-[#D4AF62] space-y-4 shadow-2xl">
           <div className="text-center">
             <span className="px-3 py-1 rounded-full bg-[#D4AF62] text-[#02291F] text-[10px] font-extrabold uppercase">
-              ★ Première Ouverture — Setup Unique ★
+              ★ Première Ouverture — Configuration Initiale ★
             </span>
-            <h1 className="text-2xl font-serif text-white font-bold mt-2">Configuration Initiale du Propriétaire</h1>
+            <h1 className="text-2xl font-serif text-white font-bold mt-2">Accès Propriétaire &amp; Direction</h1>
             <p className="text-xs text-[#E8D4A5] mt-1">
-              Configurez vos accès et vos 2 numéros de secours. Après enregistrement dans la base de données, <strong>cet écran ne s'affichera plus jamais, même depuis un autre PC</strong>.
+              Configurez vos accès et vos numéros de secours. Après enregistrement sécurisé, vos accès seront verrouillés.
             </p>
           </div>
           {error && <div className="p-3 rounded bg-red-900/90 text-xs text-red-100">{error}</div>}
           <div className="grid grid-cols-2 gap-3 text-xs">
             <div>
               <label className="block font-bold mb-1">Nom Complet</label>
-              <input value={ownerName} onChange={(e) => setOwnerName(e.target.value)} required placeholder="Mustapha Harbit" className="w-full px-3 py-2 rounded bg-[#02291F] border border-[#D4AF62]/40" />
+              <input value={ownerName} onChange={(e) => setOwnerName(e.target.value)} required placeholder="Nom et Prénom" className="w-full px-3 py-2 rounded bg-[#02291F] border border-[#D4AF62]/40" />
             </div>
             <div>
               <label className="block font-bold mb-1">Email / Identifiant</label>
-              <input type="email" value={ownerEmail} onChange={(e) => setOwnerEmail(e.target.value)} required placeholder="admin@musluxury.dz" className="w-full px-3 py-2 rounded bg-[#02291F] border border-[#D4AF62]/40" />
+              <input type="email" value={ownerEmail} onChange={(e) => setOwnerEmail(e.target.value)} required placeholder="administrateur@domaine.dz" className="w-full px-3 py-2 rounded bg-[#02291F] border border-[#D4AF62]/40" />
             </div>
           </div>
           <div className="grid grid-cols-2 gap-3 text-xs">
@@ -1108,20 +1333,20 @@ export default function App() {
             </div>
           </div>
           <div className="p-3 rounded-xl bg-[#02291F]/80 border border-[#D4AF62]/30 space-y-2 text-xs">
-            <p className="font-bold text-[#D4AF62]">Récupération &amp; Urgence (WhatsApp) :</p>
+            <p className="font-bold text-[#D4AF62]">Numéros de contact &amp; vérification de sécurité :</p>
             <div className="grid grid-cols-2 gap-2">
               <div>
                 <label className="block text-[11px] mb-0.5">1. WhatsApp Récupération</label>
-                <input value={whatsappPhone} onChange={(e) => setWhatsappPhone(e.target.value)} required placeholder="0655 53 41 54" className="w-full px-2.5 py-1.5 rounded bg-[#063D2E] border border-[#D4AF62]/40 font-mono text-xs" />
+                <input value={whatsappPhone} onChange={(e) => setWhatsappPhone(e.target.value)} required placeholder="06XX XX XX XX" className="w-full px-2.5 py-1.5 rounded bg-[#063D2E] border border-[#D4AF62]/40 font-mono text-xs" />
               </div>
               <div>
                 <label className="block text-[11px] mb-0.5">2. Numéro Secours / Urgence</label>
-                <input value={emergencyPhone} onChange={(e) => setEmergencyPhone(e.target.value)} required placeholder="+213 550 00 00 01" className="w-full px-2.5 py-1.5 rounded bg-[#063D2E] border border-[#D4AF62]/40 font-mono text-xs" />
+                <input value={emergencyPhone} onChange={(e) => setEmergencyPhone(e.target.value)} required placeholder="+213 5XX XX XX XX" className="w-full px-2.5 py-1.5 rounded bg-[#063D2E] border border-[#D4AF62]/40 font-mono text-xs" />
               </div>
             </div>
           </div>
-          <button type="submit" className="w-full py-3 rounded-xl bg-[#D4AF62] text-[#02291F] font-extrabold text-sm shadow-xl">
-            Enregistrer dans PostgreSQL &amp; Verrouiller le Setup
+          <button type="submit" className="w-full py-3 rounded-xl bg-[#D4AF62] text-[#02291F] font-extrabold text-sm shadow-xl hover:brightness-105 transition">
+            Enregistrer et Sécuriser l'Accès Administrateur
           </button>
         </form>
       </div>
@@ -1132,61 +1357,62 @@ export default function App() {
     return (
       <div className="min-h-screen bg-[#02291F] text-white flex items-center justify-center p-6">
         {renderClientNotificationCenter()}
+      {renderDeleteProductModal()}
         <div className="max-w-md w-full bg-[#063D2E] p-8 rounded-2xl border border-[#D4AF62]/40 space-y-4 shadow-2xl">
           <form onSubmit={handleLogin} className="space-y-4">
             <div className="text-center">
               <h1 className="text-2xl font-serif text-[#D4AF62] font-bold">Mus Luxury — Desktop CMS</h1>
-              <p className="text-xs text-[#E8D4A5] mt-1">Connexion Administrateur Sécurisée (Tauri 2 • Ouled Yaïch 09)</p>
+              <p className="text-xs text-[#E8D4A5] mt-1">Connexion Administrateur Sécurisée — Maison Mus Luxury</p>
             </div>
             {successMsg && <div className="p-3 rounded bg-emerald-800 text-xs text-white">{successMsg}</div>}
             {error && <div className="p-3 rounded bg-red-900/90 text-xs text-red-100">{error}</div>}
             <div>
               <label className="block text-xs font-bold mb-1">Email / Identifiant</label>
-              <input type="email" value={loginEmail} onChange={(e) => setLoginEmail(e.target.value)} required placeholder="admin@musluxury.dz" className="w-full px-3 py-2 rounded bg-[#02291F] border border-[#D4AF62]/40 text-sm" />
+              <input type="email" value={loginEmail} onChange={(e) => setLoginEmail(e.target.value)} required placeholder="administrateur@domaine.dz" className="w-full px-3 py-2 rounded bg-[#02291F] border border-[#D4AF62]/40 text-sm" />
             </div>
             <div>
               <label className="block text-xs font-bold mb-1">Mot de passe</label>
               <input type="password" value={loginPassword} onChange={(e) => setLoginPassword(e.target.value)} required className="w-full px-3 py-2 rounded bg-[#02291F] border border-[#D4AF62]/40 text-sm" />
             </div>
             <div className="text-right">
-              <button type="button" onClick={() => setShowRecoveryModal(!showRecoveryModal)} className="text-xs text-[#D4AF62] underline">
-                Mot de passe oublié ? (Récupération WhatsApp / Code Secours)
+              <button type="button" onClick={() => setShowRecoveryModal(!showRecoveryModal)} className="text-xs text-[#D4AF62] underline hover:text-[#E8D4A5] transition">
+                Mot de passe oublié ? (Récupération sécurisée)
               </button>
             </div>
-            <button type="submit" className="w-full py-3 rounded-xl bg-[#D4AF62] text-[#02291F] font-extrabold text-sm">
+            <button type="submit" className="w-full py-3 rounded-xl bg-[#D4AF62] text-[#02291F] font-extrabold text-sm hover:brightness-105 transition shadow">
               Se connecter au CMS Desktop
             </button>
           </form>
 
           {showRecoveryModal && (
             <form onSubmit={handlePasswordRecoveryVerify} className="pt-4 border-t border-[#D4AF62]/30 space-y-3 text-xs">
-              <h3 className="font-bold text-[#D4AF62]">Récupération Administrateur (WhatsApp Cloud API / Code Secours)</h3>
+              <h3 className="font-bold text-[#D4AF62]">Récupération du Compte Administrateur</h3>
               {recStepInfo && <div className="p-2.5 rounded bg-emerald-900/90 border border-emerald-400/40 text-emerald-100">{recStepInfo}</div>}
               <div>
-                <label className="block text-[11px] mb-1 text-[#E8D4A5]">Canal de récupération</label>
+                <label className="block text-[11px] mb-1 text-[#E8D4A5]">Canal de vérification</label>
                 <select
                   value={recChannel}
                   onChange={(e) => setRecChannel(e.target.value as "whatsapp_cloud_api" | "offline_emergency")}
                   className="w-full px-3 py-2 rounded bg-[#02291F] border border-[#D4AF62]/40 text-white"
                 >
-                  <option value="whatsapp_cloud_api">WhatsApp Business Cloud API (OTP 6 chiffres)</option>
-                  <option value="offline_emergency">Code de Secours Hors-Ligne (Urgence Propriétaire)</option>
+                  <option value="whatsapp_cloud_api">Code de vérification par WhatsApp (6 chiffres)</option>
+                  <option value="offline_emergency">Code de Secours Administrateur</option>
                 </select>
               </div>
               <div className="flex gap-2">
-                <input value={recPhone} onChange={(e) => setRecPhone(e.target.value)} placeholder="Téléphone (0655534154 ou +213...)" required className="flex-1 px-3 py-2 rounded bg-[#02291F] border border-[#D4AF62]/40 font-mono" />
+                <input value={recPhone} onChange={(e) => setRecPhone(e.target.value)} placeholder="Numéro de téléphone (ex: 0655...)" required className="flex-1 px-3 py-2 rounded bg-[#02291F] border border-[#D4AF62]/40 font-mono" />
                 <button
                   type="button"
                   onClick={handleRequestRecoveryOtp}
-                  className="px-3 py-2 rounded bg-[#D4AF62] text-[#02291F] font-extrabold whitespace-nowrap"
+                  className="px-3 py-2 rounded bg-[#D4AF62] text-[#02291F] font-extrabold whitespace-nowrap hover:brightness-105 transition"
                 >
-                  1. Envoyer OTP WhatsApp
+                  1. Envoyer le Code
                 </button>
               </div>
-              <input value={recCode} onChange={(e) => setRecCode(e.target.value)} placeholder="Code OTP 6 chiffres ou LUXE-EMERGENCY-2026-RECOVERY" required className="w-full px-3 py-2 rounded bg-[#02291F] border border-[#D4AF62]/40 font-mono" />
+              <input value={recCode} onChange={(e) => setRecCode(e.target.value)} placeholder="Code de validation à 6 chiffres ou code de secours" required className="w-full px-3 py-2 rounded bg-[#02291F] border border-[#D4AF62]/40 font-mono" />
               <input type="password" value={recNewPassword} onChange={(e) => setRecNewPassword(e.target.value)} placeholder="Nouveau mot de passe (≥ 10 caractères)" required className="w-full px-3 py-2 rounded bg-[#02291F] border border-[#D4AF62]/40" />
-              <button type="submit" className="w-full py-2.5 rounded-xl bg-emerald-700 text-white font-bold">
-                2. Vérifier le code &amp; Réinitialiser le mot de passe
+              <button type="submit" className="w-full py-2.5 rounded-xl bg-emerald-700 hover:bg-emerald-800 text-white font-bold transition">
+                2. Valider le code &amp; Réinitialiser le mot de passe
               </button>
             </form>
           )}
@@ -1196,51 +1422,82 @@ export default function App() {
   }
 
   const activeCategoryObj = categories.find((c) => c.id === Number(prodCategoryId)) || categories[0];
-  const filteredProducts = products.filter(
-    (p) =>
+  const productCounts = {
+    all: products.length,
+    published: products.filter((p) => p.status === "published").length,
+    draft: products.filter((p) => p.status === "draft").length,
+    archived: products.filter((p) => p.status === "archived").length,
+  };
+
+  const filteredProducts = products.filter((p) => {
+    const matchesSearch =
       !prodSearch ||
-      p.name_fr.toLowerCase().includes(prodSearch.toLowerCase()) ||
-      p.sku.toLowerCase().includes(prodSearch.toLowerCase())
-  );
+      (p?.name_fr && p.name_fr.toLowerCase().includes(prodSearch.toLowerCase())) ||
+      (p?.sku && p.sku.toLowerCase().includes(prodSearch.toLowerCase()));
+    if (!matchesSearch) return false;
+    if (productFilterTab === "all") return true;
+    return p.status === productFilterTab;
+  });
 
   return (
     <div className="min-h-screen bg-[#F8F6F0] text-[#202923] flex flex-col">
       {renderClientNotificationCenter()}
+      {renderDeleteProductModal()}
       {/* Top Header */}
-      <header className="bg-[#02291F] text-[#D4AF62] px-6 py-3.5 flex flex-wrap justify-between items-center gap-4 border-b border-[#D4AF62]/30">
-        <div className="flex items-center gap-3">
-          <span className="font-serif font-bold text-lg text-white">Mus Luxury — Desktop CMS</span>
-          <span className="px-2.5 py-0.5 rounded-full bg-[#063D2E] border border-[#D4AF62]/40 text-xs">
-            {user.full_name} ({user.role})
-          </span>
+      <header className="bg-gradient-to-r from-[#011C15] via-[#063D2E] to-[#02291F] text-[#D4AF62] px-6 py-3.5 flex flex-wrap justify-between items-center gap-4 border-b border-[#D4AF62]/30 shadow-md">
+        <div className="flex items-center gap-3.5">
+          <div className="w-10 h-10 rounded-2xl bg-gradient-to-br from-[#D4AF62] via-[#E8D4A5] to-[#C59E50] p-0.5 shadow-luxe-gold flex items-center justify-center shrink-0">
+            <div className="w-full h-full rounded-[14px] bg-[#02291F] flex items-center justify-center">
+              <span className="font-serif font-black text-sm text-[#D4AF62] tracking-wider">ML</span>
+            </div>
+          </div>
+          <div>
+            <div className="flex items-center gap-2">
+              <span className="font-serif font-bold text-lg text-white tracking-wide">MAISON MUS LUXURY</span>
+              <span className="px-2.5 py-0.5 rounded-full bg-white/10 backdrop-blur-md border border-[#D4AF62]/40 text-[#E8D4A5] text-[10px] font-bold">
+                CMS v2.6 • Haute Couture
+              </span>
+            </div>
+            <p className="text-[11px] text-[#E8D4A5]/80">
+              {user?.full_name || "Direction Générale"} • {user?.role === "super_admin" ? "Direction Générale" : "Gérant Boutique"}
+            </p>
+          </div>
         </div>
+
         <div className="flex items-center gap-3 text-xs">
-          <span
-            className={`px-3 py-1 rounded-full font-mono text-[11px] font-bold border ${
+          <div
+            className={`flex items-center gap-2 px-3 py-1.5 rounded-full text-[11px] font-bold border transition-all ${
               netTelemetry.online
-                ? "bg-emerald-950 text-emerald-300 border-emerald-500/40"
-                : "bg-red-950 text-red-200 border-red-400"
+                ? "bg-emerald-950/80 text-emerald-300 border-emerald-500/40 shadow-sm"
+                : "bg-red-950/80 text-red-200 border-red-400"
             }`}
-            title={`Dernier ID requête : ${netTelemetry.lastRequestId} • Tentatives auto : ${netTelemetry.retryCount}`}
           >
-            {netTelemetry.online
-              ? `🟢 Réseau Actif • ${netTelemetry.latencyMs} ms • Sync ${netTelemetry.lastSyncAt}`
-              : "🔴 Hors-Ligne — Reconnexion auto active"}
-          </span>
+            <span className="relative flex h-2 w-2">
+              {netTelemetry.online && (
+                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
+              )}
+              <span className={`relative inline-flex rounded-full h-2 w-2 ${netTelemetry.online ? "bg-emerald-500" : "bg-red-500"}`}></span>
+            </span>
+            <span>{netTelemetry.online ? "Système Connecté • En Ligne" : "Hors-Ligne • Reconnexion..."}</span>
+          </div>
+
           <button
             type="button"
             onClick={handleDeltaSync}
-            className="px-3 py-1.5 rounded-lg bg-[#063D2E] text-[#E8D4A5] border border-[#D4AF62]/40 font-bold"
+            className="flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl bg-white/10 hover:bg-white/20 text-[#E8D4A5] border border-[#D4AF62]/40 font-bold transition shadow-sm active:scale-95"
+            title="Synchroniser les données avec le serveur central"
           >
-            ↻ Synchroniser avec le serveur
+            <span>↻</span>
+            <span>Actualiser</span>
           </button>
+
           <button
             type="button"
             onClick={() => {
               DesktopCmsApi.logout();
               setUser(null);
             }}
-            className="px-3 py-1.5 rounded-lg bg-red-900/80 text-white font-bold"
+            className="px-3.5 py-1.5 rounded-xl bg-red-900/80 hover:bg-red-800 text-white font-bold transition shadow-sm active:scale-95"
           >
             Déconnexion
           </button>
@@ -1248,28 +1505,39 @@ export default function App() {
       </header>
 
       {/* Navigation Tabs */}
-      <nav className="bg-[#063D2E] text-[#E8D4A5] px-6 py-2 flex flex-wrap gap-2 text-xs font-bold border-b border-[#D4AF62]/30">
+      <nav className="bg-[#063D2E] text-[#E8D4A5] px-6 py-2.5 flex flex-wrap gap-1.5 text-xs font-bold border-b border-[#D4AF62]/30 shadow-inner">
         {[
-          { id: "dashboard", label: "1. Tableau de Bord" },
-          { id: "products", label: "2. Produits & Variantes" },
-          { id: "categories", label: "3. Catégories & Attributs (14 types)" },
-          { id: "inventory", label: "4. Stocks & Mouvements" },
-          { id: "orders", label: "5. Commandes & Factures" },
-          { id: "delivery_wilayas", label: "6. Livraison 69 Wilayas (Domicile / Stop-Desk)" },
-          { id: "content", label: "7. Boutique, Coupons & Pages (Ouled Yaïch)" },
-          { id: "backups", label: "8. Sauvegardes & Sécurité" },
-        ].map((t) => (
-          <button
-            key={t.id}
-            type="button"
-            onClick={() => setActiveTab(t.id as CmsTab)}
-            className={`px-3.5 py-2 rounded-xl transition ${
-              activeTab === t.id ? "bg-[#D4AF62] text-[#02291F] font-extrabold" : "hover:bg-[#02291F]"
-            }`}
-          >
-            {t.label}
-          </button>
-        ))}
+          { id: "dashboard", label: "1. Tableau de Bord", icon: LayoutDashboard },
+          { id: "products", label: "2. Produits & Prix", icon: ShoppingBag },
+          { id: "categories", label: "3. Catégories & Attributs", icon: Tags },
+          { id: "purchases", label: "4. Achats & Fournisseurs", icon: PackageCheck },
+          { id: "inventory", label: "5. Stocks & Mouvements", icon: Boxes },
+          { id: "orders", label: "6. Commandes & Ventes", icon: FileText },
+          { id: "expenses", label: "7. Dépenses & Charges", icon: Receipt },
+          { id: "treasury", label: "8. Caisse & Trésorerie", icon: Landmark },
+          { id: "accounting", label: "9. Comptabilité & Marges", icon: TrendingUp },
+          { id: "delivery_wilayas", label: "10. Livraison 69 Wilayas", icon: Truck },
+          { id: "content", label: "11. Boutique & Vitrine", icon: Palette },
+          { id: "backups", label: "12. Sauvegardes & Sécurité", icon: ShieldCheck },
+        ].map((t) => {
+          const Icon = t.icon;
+          const isActive = activeTab === t.id;
+          return (
+            <button
+              key={t.id}
+              type="button"
+              onClick={() => setActiveTab(t.id as CmsTab)}
+              className={`group flex items-center gap-2 px-3.5 py-2 rounded-xl transition-all duration-200 ${
+                isActive
+                  ? "bg-gradient-to-r from-[#D4AF62] to-[#E8D4A5] text-[#02291F] font-extrabold shadow-luxe-gold scale-[1.02]"
+                  : "hover:bg-white/10 text-[#E8D4A5] hover:text-white"
+              }`}
+            >
+              <Icon className={`w-4 h-4 shrink-0 transition-transform ${isActive ? "text-[#02291F]" : "text-[#D4AF62] group-hover:scale-110"}`} />
+              <span>{t.label}</span>
+            </button>
+          );
+        })}
       </nav>
 
       {/* Global Status / Error Banner */}
@@ -1285,74 +1553,271 @@ export default function App() {
         {/* TAB 1: DASHBOARD (KEEP-ALIVE) */}
         <div className={activeTab === "dashboard" ? "block" : "hidden"}>{dashboard && (
           <div className="space-y-6">
-            <div className="grid grid-cols-2 md:grid-cols-6 gap-4 text-xs">
-              <div className="bg-white p-4 rounded-2xl border border-[#D4AF62]/40">
-                <span className="text-gray-500">Chiffre d'affaires</span>
-                <p className="text-xl font-extrabold text-[#063D2E] mt-1">{dashboard.total_revenue_dzd} DA</p>
-              </div>
-              <div className="bg-white p-4 rounded-2xl border border-[#D4AF62]/40">
-                <span className="text-gray-500">Total Commandes</span>
-                <p className="text-xl font-extrabold text-[#063D2E] mt-1">{dashboard.total_orders}</p>
-              </div>
-              <div className="bg-white p-4 rounded-2xl border border-[#D4AF62]/40">
-                <span className="text-gray-500">Produits Actifs</span>
-                <p className="text-xl font-extrabold text-[#063D2E] mt-1">{dashboard.total_active_products ?? dashboard.published_products}</p>
-              </div>
-              <div className="bg-white p-4 rounded-2xl border border-[#D4AF62]/40">
-                <span className="text-gray-500">Catégories Actives</span>
-                <p className="text-xl font-extrabold text-[#063D2E] mt-1">{dashboard.total_categories}</p>
-              </div>
-              <div className="bg-white p-4 rounded-2xl border border-amber-300">
-                <span className="text-amber-800">Stock Faible (≤ 3)</span>
-                <p className="text-xl font-extrabold text-amber-700 mt-1">{dashboard.low_stock_variants}</p>
-              </div>
-              <div className="bg-white p-4 rounded-2xl border border-red-300">
-                <span className="text-red-800">Rupture de Stock (0)</span>
-                <p className="text-xl font-extrabold text-red-700 mt-1">{dashboard.out_of_stock_variants}</p>
-              </div>
-            </div>
-
-            {/* Orders by Status Breakdown */}
-            <div className="bg-white p-5 rounded-2xl border border-[#D4AF62]/40 space-y-3 text-xs">
-              <h3 className="font-serif font-bold text-base text-[#063D2E]">Répartition des commandes par statut (9 étapes)</h3>
-              <div className="grid grid-cols-3 md:grid-cols-9 gap-2">
-                {Object.entries(dashboard.orders_by_status || {}).map(([st, cnt]) => (
-                  <div key={st} className="p-2.5 rounded-xl bg-[#F8F6F0] border text-center">
-                    <div className="font-mono text-[10px] text-gray-500">{st}</div>
-                    <div className="font-extrabold text-base text-[#063D2E]">{String(cnt)}</div>
-                  </div>
-                ))}
-              </div>
-            </div>
-
-            {/* Recent Orders & Recent Administrative Activity */}
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-xs">
-              <div className="bg-white p-5 rounded-2xl border border-[#D4AF62]/40 space-y-2">
-                <h3 className="font-serif font-bold text-base text-[#063D2E]">Commandes Récentes</h3>
-                {(dashboard.recent_orders || []).length === 0 ? (
-                  <p className="text-gray-400">Aucune commande récente.</p>
-                ) : (
-                  (dashboard.recent_orders || []).map((ro: any) => (
-                    <div key={ro.id} className="p-2.5 rounded-xl bg-[#F8F6F0] flex justify-between items-center">
-                      <div>
-                        <span className="font-mono font-bold text-[#063D2E]">#{ro.order_reference}</span> • {ro.customer_name} ({ro.wilaya_name})
-                      </div>
-                      <span className="font-extrabold text-[#063D2E]">{ro.total_dzd} DA ({ro.status})</span>
-                    </div>
-                  ))
-                )}
-              </div>
-
-              <div className="bg-white p-5 rounded-2xl border border-[#D4AF62]/40 space-y-2">
-                <h3 className="font-serif font-bold text-base text-[#063D2E]">État de Synchronisation &amp; Dernière Sauvegarde</h3>
-                <div className="p-3 rounded-xl bg-emerald-50 border border-emerald-200 text-emerald-900">
-                  <strong>Serveur API &amp; Base de données :</strong> {dashboard.backend_sync_status?.status || "connected"} ({dashboard.backend_sync_status?.database || "online"})
+            {/* Pro Action & Quick Launch Bar */}
+            <div className="bg-white p-4 rounded-2xl border border-[#063D2E]/10 shadow-sm flex flex-col md:flex-row md:items-center justify-between gap-4">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-[#063D2E] to-[#0A5C45] flex items-center justify-center text-[#D4AF62] shadow-sm">
+                  <Sparkles className="w-5 h-5 text-[#D4AF62]" />
                 </div>
-                {dashboard.last_backup && (
-                  <div className="p-3 rounded-xl bg-[#F8F6F0] border">
-                    <strong>Dernière sauvegarde vérifiée :</strong> <span className="font-mono">{dashboard.last_backup.filename}</span> ({dashboard.last_backup.status})
+                <div>
+                  <h3 className="font-serif font-bold text-sm text-[#063D2E]">Panneau de Pilotage — Direction Générale</h3>
+                  <p className="text-[11px] text-gray-500">Maison Mus Luxury • Gestion en direct du catalogue, commandes et finances</p>
+                </div>
+              </div>
+
+              <div className="flex flex-wrap items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => setActiveTab("products")}
+                  className="px-3.5 py-2 rounded-xl bg-[#063D2E] text-[#D4AF62] hover:bg-[#0A5C45] transition-all font-bold text-xs flex items-center gap-1.5 shadow-sm"
+                >
+                  <Plus className="w-3.5 h-3.5" />
+                  <span>Nouveau Produit</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setActiveTab("categories")}
+                  className="px-3.5 py-2 rounded-xl bg-white hover:bg-gray-50 border border-[#063D2E]/20 text-[#063D2E] font-bold text-xs flex items-center gap-1.5 transition-all shadow-sm"
+                >
+                  <Tags className="w-3.5 h-3.5 text-[#063D2E]" />
+                  <span>Catégories</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setActiveTab("treasury")}
+                  className="px-3.5 py-2 rounded-xl bg-white hover:bg-gray-50 border border-[#063D2E]/20 text-[#063D2E] font-bold text-xs flex items-center gap-1.5 transition-all shadow-sm"
+                >
+                  <Landmark className="w-3.5 h-3.5 text-[#063D2E]" />
+                  <span>Trésorerie</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={handleExportOrdersCsv}
+                  className="px-3.5 py-2 rounded-xl bg-white hover:bg-gray-50 border border-[#063D2E]/20 text-gray-700 font-bold text-xs flex items-center gap-1.5 transition-all shadow-sm"
+                >
+                  <Download className="w-3.5 h-3.5 text-gray-500" />
+                  <span>Export CSV</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={loadAllWorkspaceData}
+                  className="p-2 rounded-xl bg-white hover:bg-gray-50 border border-[#063D2E]/20 text-gray-700 font-bold transition-all shadow-sm"
+                  title="Actualiser les données"
+                >
+                  <RefreshCw className="w-4 h-4 text-[#063D2E]" />
+                </button>
+              </div>
+            </div>
+
+            {/* 6 Key Pro KPI Cards with Lucide Icons */}
+            <div className="grid grid-cols-2 md:grid-cols-6 gap-4 text-xs">
+              {/* Revenue */}
+              <div className="bg-white p-4 rounded-2xl border border-[#063D2E]/10 shadow-sm hover:shadow-md hover:border-[#D4AF62]/40 transition-all duration-200 relative overflow-hidden group">
+                <div className="flex items-center justify-between text-gray-500">
+                  <span className="font-bold text-[10px] uppercase tracking-wider text-gray-400">Chiffre d'Affaires</span>
+                  <div className="w-8 h-8 rounded-lg bg-emerald-50 text-emerald-800 flex items-center justify-center">
+                    <DollarSign className="w-4 h-4 text-emerald-700" />
+                  </div>
+                </div>
+                <p className="text-xl font-bold font-mono text-[#063D2E] mt-2 tracking-tight">
+                  {Number(dashboard.total_revenue_dzd || 0).toLocaleString()} <span className="text-xs font-sans text-[#D4AF62]">DA</span>
+                </p>
+                <div className="text-[10px] text-gray-400 mt-1 flex items-center gap-1">
+                  <TrendingUp className="w-3 h-3 text-emerald-600" />
+                  <span>Panier moy: {Math.round(Number(dashboard.total_revenue_dzd || 0) / Math.max(dashboard.total_orders, 1)).toLocaleString()} DA</span>
+                </div>
+              </div>
+
+              {/* Total Orders */}
+              <div className="bg-white p-4 rounded-2xl border border-[#063D2E]/10 shadow-sm hover:shadow-md hover:border-[#D4AF62]/40 transition-all duration-200 relative overflow-hidden group">
+                <div className="flex items-center justify-between text-gray-500">
+                  <span className="font-bold text-[10px] uppercase tracking-wider text-gray-400">Commandes</span>
+                  <div className="w-8 h-8 rounded-lg bg-blue-50 text-blue-700 flex items-center justify-center">
+                    <ShoppingBag className="w-4 h-4 text-blue-600" />
+                  </div>
+                </div>
+                <p className="text-xl font-bold font-mono text-[#063D2E] mt-2">{dashboard.total_orders}</p>
+                <div className="text-[10px] text-blue-600 font-semibold mt-1">
+                  {dashboard.orders_by_status?.delivered || 0} livrée(s) COD
+                </div>
+              </div>
+
+              {/* Active Products */}
+              <div className="bg-white p-4 rounded-2xl border border-[#063D2E]/10 shadow-sm hover:shadow-md hover:border-[#D4AF62]/40 transition-all duration-200 relative overflow-hidden group">
+                <div className="flex items-center justify-between text-gray-500">
+                  <span className="font-bold text-[10px] uppercase tracking-wider text-gray-400">Articles Actifs</span>
+                  <div className="w-8 h-8 rounded-lg bg-purple-50 text-purple-700 flex items-center justify-center">
+                    <Boxes className="w-4 h-4 text-purple-600" />
+                  </div>
+                </div>
+                <p className="text-xl font-bold font-mono text-[#063D2E] mt-2">{dashboard.total_active_products ?? dashboard.published_products}</p>
+                <div className="text-[10px] text-purple-600 font-semibold mt-1">
+                  En vente boutique
+                </div>
+              </div>
+
+              {/* Categories */}
+              <div className="bg-white p-4 rounded-2xl border border-[#063D2E]/10 shadow-sm hover:shadow-md hover:border-[#D4AF62]/40 transition-all duration-200 relative overflow-hidden group">
+                <div className="flex items-center justify-between text-gray-500">
+                  <span className="font-bold text-[10px] uppercase tracking-wider text-gray-400">Rayons &amp; Cat.</span>
+                  <div className="w-8 h-8 rounded-lg bg-amber-50 text-amber-800 flex items-center justify-center">
+                    <Tags className="w-4 h-4 text-amber-700" />
+                  </div>
+                </div>
+                <p className="text-xl font-bold font-mono text-[#063D2E] mt-2">{dashboard.total_categories}</p>
+                <div className="text-[10px] text-gray-400 mt-1">
+                  Schémas dynamiques
+                </div>
+              </div>
+
+              {/* Low Stock Alert */}
+              <div className={`bg-white p-4 rounded-2xl border shadow-sm hover:shadow-md transition-all duration-200 relative overflow-hidden group ${
+                dashboard.low_stock_variants > 0 ? "border-amber-300 bg-amber-50/30" : "border-[#063D2E]/10"
+              }`}>
+                <div className="flex items-center justify-between text-amber-800">
+                  <span className="font-bold text-[10px] uppercase tracking-wider text-amber-800">Stock Faible</span>
+                  <div className="w-8 h-8 rounded-lg bg-amber-100 text-amber-800 flex items-center justify-center">
+                    <AlertTriangle className="w-4 h-4 text-amber-700" />
+                  </div>
+                </div>
+                <p className="text-xl font-bold font-mono text-amber-700 mt-2">{dashboard.low_stock_variants}</p>
+                <div className="text-[10px] text-amber-700 font-semibold mt-1">
+                  Seuil critique ≤ 3
+                </div>
+              </div>
+
+              {/* Out of Stock Alert */}
+              <div className={`bg-white p-4 rounded-2xl border shadow-sm hover:shadow-md transition-all duration-200 relative overflow-hidden group ${
+                dashboard.out_of_stock_variants > 0 ? "border-red-300 bg-red-50/30" : "border-[#063D2E]/10"
+              }`}>
+                <div className="flex items-center justify-between text-red-800">
+                  <span className="font-bold text-[10px] uppercase tracking-wider text-red-800">Ruptures</span>
+                  <div className="w-8 h-8 rounded-lg bg-red-100 text-red-800 flex items-center justify-center">
+                    <AlertCircle className="w-4 h-4 text-red-700" />
+                  </div>
+                </div>
+                <p className="text-xl font-bold font-mono text-red-700 mt-2">{dashboard.out_of_stock_variants}</p>
+                <div className="text-[10px] text-red-700 font-semibold mt-1">
+                  0 pièce disponible
+                </div>
+              </div>
+            </div>
+
+            {/* Interactive Charts Row: Revenue Area Chart (8 cols) & Orders Donut (4 cols) */}
+            <div className="grid grid-cols-1 lg:grid-cols-12 gap-5">
+              <div className="lg:col-span-7">
+                <RevenueTrendChart
+                  totalRevenue={Number(dashboard.total_revenue_dzd || 0)}
+                  totalOrders={dashboard.total_orders}
+                />
+              </div>
+              <div className="lg:col-span-5">
+                <OrderStatusDistributionChart
+                  ordersByStatus={dashboard.orders_by_status || {}}
+                  totalOrders={dashboard.total_orders}
+                />
+              </div>
+            </div>
+
+            {/* Second Visuals Row: Inventory Health (5 cols) & Recent Activity Stream (7 cols) */}
+            <div className="grid grid-cols-1 lg:grid-cols-12 gap-5 text-xs">
+              <div className="lg:col-span-5">
+                <InventoryHealthWidget
+                  totalActive={dashboard.total_active_products ?? dashboard.published_products}
+                  lowStock={dashboard.low_stock_variants}
+                  outOfStock={dashboard.out_of_stock_variants}
+                  onNavigateToProducts={() => setActiveTab("products")}
+                />
+              </div>
+
+              {/* Recent Orders Stream */}
+              <div className="lg:col-span-7 bg-white p-5 rounded-2xl border border-[#063D2E]/10 shadow-sm space-y-3">
+                <div className="flex items-center justify-between pb-2 border-b border-gray-100">
+                  <div className="flex items-center gap-2.5">
+                    <div className="w-9 h-9 rounded-xl bg-blue-50 text-blue-700 flex items-center justify-center font-bold">
+                      <Clock className="w-4 h-4" />
+                    </div>
+                    <div>
+                      <h3 className="font-serif font-bold text-sm text-[#063D2E]">Commandes Clients Récentes</h3>
+                      <p className="text-[11px] text-gray-500">Flux d'expéditions et réceptions en direct</p>
+                    </div>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setActiveTab("orders")}
+                    className="text-[11px] font-bold text-[#063D2E] hover:text-[#0A5C45] flex items-center gap-1 transition"
+                  >
+                    <span>Toutes ({dashboard.total_orders})</span>
+                    <ArrowUpRight className="w-3.5 h-3.5" />
+                  </button>
+                </div>
+
+                {(dashboard.recent_orders || []).length === 0 ? (
+                  <div className="p-8 text-center bg-[#F8F6F0] rounded-xl border border-dashed border-[#D4AF62]/40 text-gray-400">
+                    <p className="font-serif italic text-gray-600">Aucune commande enregistrée pour le moment.</p>
+                    <p className="text-[10px] text-gray-400 mt-1">Les commandes passées sur la boutique apparaîtront ici automatiquement.</p>
+                  </div>
+                ) : (
+                  <div className="space-y-2">
+                    {(dashboard.recent_orders || []).slice(0, 5).map((ro: any) => (
+                      <div
+                        key={ro.id}
+                        className="p-3 rounded-xl bg-[#F8F6F0]/70 hover:bg-[#F8F6F0] border border-[#D4AF62]/20 flex items-center justify-between transition-colors"
+                      >
+                        <div className="flex items-center gap-3">
+                          <span className="px-2 py-0.5 rounded-lg bg-[#063D2E] text-[#D4AF62] font-mono text-[11px] font-bold">
+                            #{ro.order_reference}
+                          </span>
+                          <div>
+                            <span className="font-bold text-gray-800">{ro.customer_name}</span>
+                            <span className="text-gray-400 text-[11px] ml-1.5">({ro.wilaya_name})</span>
+                          </div>
+                        </div>
+                        <div className="flex items-center gap-3">
+                          <span className="font-mono font-bold text-[#063D2E]">{ro.total_dzd?.toLocaleString()} DA</span>
+                          <span className="px-2 py-0.5 rounded-full text-[10px] font-bold uppercase bg-emerald-100 text-emerald-800">
+                            {ro.status}
+                          </span>
+                        </div>
+                      </div>
+                    ))}
                   </div>
                 )}
+              </div>
+            </div>
+
+            {/* System Security & Backup Status Card */}
+            <div className="p-4 rounded-2xl bg-gradient-to-r from-[#011C15] via-[#063D2E] to-[#02291F] text-white border border-[#D4AF62]/30 shadow-md flex flex-col md:flex-row items-center justify-between gap-4 text-xs">
+              <div className="flex items-center gap-3.5">
+                <div className="w-10 h-10 rounded-xl bg-white/10 flex items-center justify-center text-[#D4AF62] shrink-0 border border-[#D4AF62]/40">
+                  <ShieldCheck className="w-5 h-5 text-[#D4AF62]" />
+                </div>
+                <div>
+                  <div className="flex items-center gap-2">
+                    <span className="font-bold text-sm text-[#E8D4A5]">Sécurité &amp; Infrastructure Haute Disponibilité</span>
+                    <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
+                  </div>
+                  <p className="text-[11px] text-gray-300 mt-0.5">
+                    SQLite WAL haute performance • Isolation OS Keychain Windows • Anti-Replay HMAC-SHA256 actif
+                  </p>
+                </div>
+              </div>
+
+              <div className="flex items-center gap-3 text-[11px]">
+                {dashboard.last_backup ? (
+                  <div className="px-3 py-1.5 rounded-xl bg-white/10 border border-white/10 font-mono text-gray-300">
+                    Dernier backup: <strong className="text-[#D4AF62]">{dashboard.last_backup.filename}</strong>
+                  </div>
+                ) : (
+                  <span className="text-gray-400 font-mono">Backups automatisés prêts</span>
+                )}
+                <button
+                  type="button"
+                  onClick={() => setActiveTab("backups")}
+                  className="px-3.5 py-1.5 rounded-xl bg-[#D4AF62] text-[#02291F] font-bold hover:brightness-105 transition"
+                >
+                  Gérer
+                </button>
               </div>
             </div>
           </div>
@@ -1365,7 +1830,7 @@ export default function App() {
           <div className="space-y-6">
             <form onSubmit={handleCreateProduct} className="bg-white p-6 rounded-2xl border border-[#D4AF62]/40 space-y-4 text-xs">
               <h2 className="text-lg font-serif font-bold text-[#063D2E]">+ Créer un produit (Formulaire adaptatif selon la catégorie)</h2>
-              <div className="grid grid-cols-1 md:grid-cols-5 gap-3">
+              <div className="grid grid-cols-1 md:grid-cols-6 gap-3">
                 <div>
                   <label className="block font-bold mb-1">Catégorie *</label>
                   <select
@@ -1392,14 +1857,63 @@ export default function App() {
                   <input value={prodSku} onChange={(e) => setProdSku(e.target.value)} required placeholder="LUX-BAG-099" className="w-full px-3 py-2 border rounded-xl font-mono" />
                 </div>
                 <div>
-                  <label className="block font-bold mb-1">Prix de vente (DA) *</label>
-                  <input type="number" min={0} value={prodSellingPrice} onChange={(e) => setProdSellingPrice(Number(e.target.value))} required className="w-full px-3 py-2 border rounded-xl font-bold" />
+                  <label className="block font-bold mb-1">Prix d'Achat (DA) *</label>
+                  <input
+                    type="number"
+                    min={0}
+                    value={prodCostPrice}
+                    onChange={(e) => setProdCostPrice(Number(e.target.value))}
+                    required
+                    placeholder="Coût d'achat"
+                    className="w-full px-3 py-2 border rounded-xl font-mono"
+                  />
                 </div>
                 <div>
-                  <label className="block font-bold mb-1">Stock initial *</label>
-                  <input type="number" min={0} value={prodVariantStock} onChange={(e) => setProdVariantStock(Number(e.target.value))} required className="w-full px-3 py-2 border rounded-xl font-bold" />
+                  <label className="block font-bold mb-1">Prix de Vente (DA) *</label>
+                  <input type="number" min={0} value={prodSellingPrice} onChange={(e) => setProdSellingPrice(Number(e.target.value))} required className="w-full px-3 py-2 border rounded-xl font-bold font-mono" />
+                </div>
+                <div>
+                  <label className="block font-bold mb-1">Stock Initial *</label>
+                  <input type="number" min={0} value={prodVariantStock} onChange={(e) => setProdVariantStock(Number(e.target.value))} required className="w-full px-3 py-2 border rounded-xl font-bold font-mono" />
                 </div>
               </div>
+
+              {/* Real-time Profit & Margin Calculator */}
+              {(() => {
+                const sPrice = Number(prodSellingPrice) || 0;
+                const cPrice = Number(prodCostPrice) || 0;
+                const unitProfit = Math.max(0, sPrice - cPrice);
+                const marginPct = sPrice > 0 ? (((sPrice - cPrice) / sPrice) * 100).toFixed(1) : "0.0";
+                const markupCoeff = cPrice > 0 ? (sPrice / cPrice).toFixed(2) : "1.00";
+                return (
+                  <div className="p-3 bg-emerald-50/80 rounded-xl border border-emerald-200 flex flex-wrap items-center justify-between gap-3">
+                    <div className="flex items-center gap-2">
+                      <span className="text-base">🧮</span>
+                      <span className="font-bold text-[#063D2E]">Calculateur Financier Prévisionnel :</span>
+                    </div>
+                    <div className="flex flex-wrap items-center gap-4 text-xs font-mono">
+                      <span>
+                        Bénéfice Brut / Pièce :{" "}
+                        <strong className="text-emerald-700">
+                          {unitProfit.toLocaleString()} DA
+                        </strong>
+                      </span>
+                      <span>
+                        Taux de Marge :{" "}
+                        <strong className="text-[#063D2E]">
+                          {marginPct}%
+                        </strong>
+                      </span>
+                      <span>
+                        Coefficient / Markup :{" "}
+                        <strong className="text-gray-700">
+                          x{markupCoeff}
+                        </strong>
+                      </span>
+                    </div>
+                  </div>
+                );
+              })()}
 
               {/* Dynamic Attributes Driven by Selected Category */}
               {activeCategoryObj && (activeCategoryObj.attributes || []).filter((a: any) => !a.is_variant_axis).length > 0 && (
@@ -1506,12 +2020,35 @@ export default function App() {
             {/* Product List */}
             <div className="bg-white p-6 rounded-2xl border border-[#D4AF62]/40 space-y-3 text-xs">
               <div className="flex flex-wrap items-center justify-between gap-3">
-                <h3 className="text-base font-serif font-bold text-[#063D2E]">Catalogue Produits ({filteredProducts.length})</h3>
+                <div className="flex flex-wrap items-center gap-3">
+                  <h3 className="text-base font-serif font-bold text-[#063D2E]">Catalogue Produits ({filteredProducts.length})</h3>
+                  <div className="flex rounded-xl bg-[#F8F6F0] p-1 border border-[#D4AF62]/40 text-[11px]">
+                    {[
+                      { key: "all", label: `Toutes (${productCounts.all})` },
+                      { key: "published", label: `En vente (${productCounts.published})` },
+                      { key: "draft", label: `Brouillons (${productCounts.draft})` },
+                      { key: "archived", label: `Archivés (${productCounts.archived})` },
+                    ].map((tab) => (
+                      <button
+                        key={tab.key}
+                        type="button"
+                        onClick={() => setProductFilterTab(tab.key as any)}
+                        className={`px-3 py-1 rounded-lg font-bold transition ${
+                          productFilterTab === tab.key
+                            ? "bg-[#063D2E] text-[#D4AF62] shadow-sm"
+                            : "text-gray-600 hover:text-black"
+                        }`}
+                      >
+                        {tab.label}
+                      </button>
+                    ))}
+                  </div>
+                </div>
                 <input
                   value={prodSearch}
                   onChange={(e) => setProdSearch(e.target.value)}
                   placeholder="Rechercher par nom ou SKU..."
-                  className="px-3 py-1.5 border rounded-xl w-64"
+                  className="px-3 py-1.5 border rounded-xl w-64 bg-white"
                 />
               </div>
               <div className="overflow-x-auto">
@@ -1520,44 +2057,86 @@ export default function App() {
                     <tr className="bg-[#063D2E] text-[#E8D4A5]">
                       <th className="p-2.5">ID / SKU</th>
                       <th className="p-2.5">Produit</th>
-                      <th className="p-2.5">Prix Vente (DA)</th>
-                      <th className="p-2.5">Coût Achat (Privé)</th>
-                      <th className="p-2.5">Stock Total</th>
-                      <th className="p-2.5">Statut</th>
+                      <th className="p-2.5 text-right">Prix Achat</th>
+                      <th className="p-2.5 text-right">Prix Vente</th>
+                      <th className="p-2.5 text-right">Marge Unitaire</th>
+                      <th className="p-2.5 text-center">Taux Marge</th>
+                      <th className="p-2.5 text-center">Stock</th>
+                      <th className="p-2.5 text-center">Statut</th>
                       <th className="p-2.5 text-right">Actions</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y">
-                    {filteredProducts.map((p) => (
-                      <tr key={p.id}>
-                        <td className="p-2.5 font-mono font-bold">#{p.id} • {p.sku}</td>
-                        <td className="p-2.5 font-bold">{p.name_fr}</td>
-                        <td className="p-2.5 font-extrabold text-[#063D2E]">{p.selling_price_dzd} DA</td>
-                        <td className="p-2.5 text-gray-500">{p.purchase_cost_dzd ?? 0} DA</td>
-                        <td className="p-2.5 font-bold">{p.total_stock}</td>
-                        <td className="p-2.5">
-                          <span className="px-2 py-0.5 rounded bg-gray-100 font-semibold">{p.status}</span>
-                        </td>
-                        <td className="p-2.5 text-right space-x-2">
-                          <button
-                            type="button"
-                            onClick={() => setEditingProduct(p)}
-                            className="px-2.5 py-1 rounded bg-[#F8F6F0] text-[#063D2E] border border-[#D4AF62]/40 font-bold"
-                          >
-                            Modifier
-                          </button>
-                          {p.status !== "archived" && (
+                    {filteredProducts.map((p) => {
+                      const cost = p.purchase_cost_dzd || 0;
+                      const sell = p.selling_price_dzd || 0;
+                      const profit = sell - cost;
+                      const marginPct = sell > 0 ? ((profit / sell) * 100).toFixed(1) : "0.0";
+                      return (
+                        <tr key={p.id} className="hover:bg-gray-50/80 transition-colors">
+                          <td className="p-2.5 font-mono font-bold">#{p.id} • {p.sku}</td>
+                          <td className="p-2.5 font-bold">{p.name_fr}</td>
+                          <td className="p-2.5 text-right font-mono text-gray-500">{cost.toLocaleString()} DA</td>
+                          <td className="p-2.5 text-right font-extrabold text-[#063D2E] font-mono">{sell.toLocaleString()} DA</td>
+                          <td className="p-2.5 text-right font-bold text-emerald-700 font-mono">+{profit.toLocaleString()} DA</td>
+                          <td className="p-2.5 text-center font-bold">
+                            <span className="px-2 py-0.5 rounded-full text-[11px] bg-emerald-100 text-emerald-800">
+                              {marginPct}%
+                            </span>
+                          </td>
+                          <td className="p-2.5 text-center font-bold">{p.total_stock}</td>
+                          <td className="p-2.5 text-center">
+                            <span className={`px-2 py-0.5 rounded font-semibold text-[11px] ${
+                              p.status === "published"
+                                ? "bg-emerald-100 text-emerald-900 border border-emerald-300"
+                                : p.status === "archived"
+                                ? "bg-amber-100 text-amber-900 border border-amber-300"
+                                : "bg-gray-100 text-gray-800"
+                            }`}>
+                              {p.status === "published" ? "En Vente" : p.status === "archived" ? "Archivé" : "Brouillon"}
+                            </span>
+                          </td>
+                          <td className="p-2.5 text-right space-x-1.5 whitespace-nowrap">
                             <button
                               type="button"
-                              onClick={() => handleArchiveProduct(p.id)}
-                              className="px-2.5 py-1 rounded bg-red-50 text-red-700 border border-red-200 font-bold"
+                              onClick={() => setEditingProduct(p)}
+                              className="px-2.5 py-1 rounded bg-[#F8F6F0] text-[#063D2E] border border-[#D4AF62]/40 font-bold hover:bg-[#D4AF62]/20"
                             >
-                              Archiver
+                              Modifier
                             </button>
-                          )}
-                        </td>
-                      </tr>
-                    ))}
+                            {p.status !== "archived" ? (
+                              <button
+                                type="button"
+                                onClick={() => handleArchiveProduct(p.id)}
+                                className="px-2.5 py-1 rounded bg-amber-50 text-amber-800 border border-amber-200 font-bold hover:bg-amber-100"
+                              >
+                                Archiver
+                              </button>
+                            ) : (
+                              <button
+                                type="button"
+                                onClick={() => handleRestoreProduct(p.id)}
+                                className="px-2.5 py-1 rounded bg-emerald-50 text-emerald-800 border border-emerald-200 font-bold hover:bg-emerald-100"
+                              >
+                                Réactiver
+                              </button>
+                            )}
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setProductToDelete(p);
+                                setForceDeleteProduct(false);
+                                setError("");
+                              }}
+                              className="px-2.5 py-1 rounded bg-red-50 text-red-700 border border-red-200 font-bold hover:bg-red-100 transition shadow-sm"
+                              title="Ouvrir les options de suppression"
+                            >
+                              Supprimer
+                            </button>
+                          </td>
+                        </tr>
+                      );
+                    })}
                   </tbody>
                 </table>
               </div>
@@ -1567,6 +2146,11 @@ export default function App() {
 
         {/* TAB 3: DYNAMIC CATEGORIES & ATTRIBUTES (KEEP-ALIVE — NEVER UNMOUNTS) */}
         <div className={activeTab === "categories" ? "block" : "hidden"}><CategoryBuilderPage onCategoryChanged={loadAllWorkspaceData} /></div>
+
+        {/* TAB 4: PURCHASES & SUPPLIERS (KEEP-ALIVE) */}
+        <div className={activeTab === "purchases" ? "block" : "hidden"}>
+          <PurchasesPage onInventoryUpdated={loadAllWorkspaceData} />
+        </div>
 
         {/* TAB 4: INVENTORY & MOVEMENTS (KEEP-ALIVE) */}
         <div className={activeTab === "inventory" ? "block" : "hidden"}>
@@ -1843,7 +2427,22 @@ export default function App() {
           </div>
         </div>
 
-        {/* TAB 6: 69 WILAYAS DELIVERY TARIFFS (KEEP-ALIVE — NEVER UNMOUNTS) */}
+        {/* TAB 7: OPERATING EXPENSES (KEEP-ALIVE) */}
+        <div className={activeTab === "expenses" ? "block" : "hidden"}>
+          <ExpensesPage />
+        </div>
+
+        {/* TAB 8: CASH REGISTER & TREASURY (KEEP-ALIVE) */}
+        <div className={activeTab === "treasury" ? "block" : "hidden"}>
+          <TreasuryPage />
+        </div>
+
+        {/* TAB 9: ACCOUNTING & FINANCIAL REPORTS (KEEP-ALIVE) */}
+        <div className={activeTab === "accounting" ? "block" : "hidden"}>
+          <AccountingPage />
+        </div>
+
+        {/* TAB 10: 69 WILAYAS DELIVERY TARIFFS (KEEP-ALIVE — NEVER UNMOUNTS) */}
         <div className={activeTab === "delivery_wilayas" ? "block" : "hidden"}><DeliveryWilayasPage /></div>
 
         {/* TAB 7: STORE CONTENT, COUPONS, STATIC PAGES & REAL SOCIAL/LOCATION SETTINGS (KEEP-ALIVE) */}
@@ -1964,28 +2563,28 @@ export default function App() {
           <div className="space-y-6 text-xs">
             <div className="bg-white p-6 rounded-2xl border border-[#D4AF62]/40 flex flex-wrap items-center justify-between gap-4">
               <div>
-                <h3 className="text-base font-serif font-bold text-[#063D2E]">Coffre-Fort OS Keychain — Windows Credential Manager (wincred)</h3>
+                <h3 className="text-base font-serif font-bold text-[#063D2E]">Protection &amp; Chiffrement Matériel des Sessions</h3>
                 <p className="text-gray-500">
-                  Fournisseur actif : <strong>{keychainStatus?.provider || "Windows Credential Manager (wincred) / Tauri 2 Secure Keychain"}</strong> • Service : <strong className="font-mono">{keychainStatus?.service || "dz.musluxury.cms.wincred"}</strong>
+                  Coffre-fort système : <strong>Chiffrement matériel certifié</strong> • Protection des identifiants et clés de session active
                 </p>
               </div>
               <span className="px-3 py-1.5 rounded-xl bg-emerald-50 border border-emerald-200 text-emerald-900 font-extrabold">
-                ✓ Zéro Jeton dans localStorage (Protection wincred active)
+                ✓ Protection Système Active
               </span>
             </div>
             <div className="bg-white p-6 rounded-2xl border border-[#D4AF62]/40 flex flex-wrap items-center justify-between gap-4">
               <div>
-                <h3 className="text-base font-serif font-bold text-[#063D2E]">Récupération WhatsApp Cloud API &amp; Code d'Urgence Hors-Ligne</h3>
+                <h3 className="text-base font-serif font-bold text-[#063D2E]">Canal de Récupération Sécurisé &amp; Code d'Urgence</h3>
                 <p className="text-gray-500">
-                  État WhatsApp Cloud API : <strong>{recoveryStatus?.whatsapp_cloud_api_configured ? "Configuré" : "Mode Secours Hors-Ligne"}</strong> • Numéro Boutique : <strong className="font-mono">0655534154 (+213655534154)</strong>
+                  Canal de vérification : <strong>{recoveryStatus?.whatsapp_cloud_api_configured ? "Actif & Opérationnel" : "Mode Secours"}</strong>
                 </p>
               </div>
               <button
                 type="button"
                 onClick={handleRotateEmergencyCode}
-                className="px-4 py-2.5 rounded-xl bg-[#063D2E] text-[#D4AF62] font-bold"
+                className="px-4 py-2.5 rounded-xl bg-[#063D2E] text-[#D4AF62] font-bold hover:bg-[#02291F] transition"
               >
-                ↻ Générer un nouveau Code de Secours Hors-Ligne
+                ↻ Générer un nouveau Code de Secours
               </button>
             </div>
 
@@ -1996,7 +2595,7 @@ export default function App() {
                 </h3>
                 {readinessStatus && (
                   <span className="px-2.5 py-1 rounded-full bg-emerald-50 border border-emerald-300 text-emerald-900 font-bold text-[11px]">
-                    Readiness: {readinessStatus.status || "ready"} • {readinessStatus.active_wilayas || 69} Wilayas
+                    Catalogue &amp; Wilayas : 69 Wilayas couvertes
                   </span>
                 )}
               </div>
@@ -2020,7 +2619,7 @@ export default function App() {
               <div className="flex items-center justify-between">
                 <div>
                   <h3 className="text-base font-serif font-bold text-[#063D2E]">Sauvegardes Chiffrées &amp; Test de Restauration Isolée</h3>
-                  <p className="text-gray-500">Génère une archive SQL compressée (.sql.gz), vérifie son empreinte SHA-256 et teste sa restauration dans une base isolée.</p>
+                  <p className="text-gray-500">Génère une archive sécurisée et chiffrée (.bak.gz), vérifie son empreinte SHA-256 et teste sa restauration dans un environnement isolé.</p>
                 </div>
                 <button
                   type="button"
