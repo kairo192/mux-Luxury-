@@ -56,10 +56,12 @@ def reset_owner_credentials(email: str, new_password: str) -> dict:
 
 
 if __name__ == "__main__":
+    import getpass
     parser = argparse.ArgumentParser(description="Emergency Owner Password Reset")
     parser.add_argument("--email", default="admin@musluxury.dz", help="Administrator email")
-    parser.add_argument("--new-password", required=True, help="New password (>= 10 chars)")
+    parser.add_argument("--new-password", required=False, default=None, help="New password (omit to prompt securely via getpass)")
     args = parser.parse_args()
-    info = reset_owner_credentials(args.email, args.new_password)
+    pw = args.new_password or getpass.getpass("Enter new administrator password (>= 10 chars): ")
+    info = reset_owner_credentials(args.email, pw)
     print(f"[OK] Password updated for {info['email']} (ID #{info['admin_id']}).")
     print(f"[OK] New Offline Emergency Code: {info['new_emergency_code']}")

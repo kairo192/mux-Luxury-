@@ -51,3 +51,12 @@ def get_database_credentials_summary() -> dict:
         "sqlite_path": os.getenv("LUXE_SQLITE_PATH", "./backend/luxe_store.sqlite3"),
         "database_url_configured": bool(os.getenv("DATABASE_URL")),
     }
+
+
+_NON_PROD_ENVS = {"development", "dev", "local", "test", "testing"}
+
+def app_env() -> str:
+    return (os.getenv("APP_ENV") or "production").strip().lower()
+
+def is_production() -> bool:
+    return app_env() not in _NON_PROD_ENVS

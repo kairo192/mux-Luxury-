@@ -12,6 +12,7 @@ import json
 import re
 import secrets
 import time
+from datetime import datetime, timedelta, timezone
 from typing import Any, Dict, List, Optional
 from fastapi import Depends, FastAPI, File, Header, HTTPException, Query, Request, Response, UploadFile, status
 from fastapi.middleware.cors import CORSMiddleware
@@ -33,7 +34,7 @@ from .security import (
 )
 
 _DUMMY_PASSWORD_HASH = _hash_pw_init("luxe_constant_time_dummy_mitigation_2026!")
-_ENABLE_PUBLIC_DOCS = os.getenv("APP_ENV", "production").strip().lower() != "production" 
+_ENABLE_PUBLIC_DOCS = (not config.is_production()) or (os.getenv("ENABLE_API_DOCS", "").strip() == "1") 
 
 app = FastAPI(
     title="Mus Luxury (LUXE) E-Commerce API",
@@ -354,6 +355,7 @@ def serialize_product(conn, row: dict, include_private: bool = False) -> dict:
         (p["id"],)
     )
     p["gallery_images"] = [dict(img) for img in cur.fetchall()]
+    p["images"] = p["gallery_images"]
     p["variants"] = variants
     p["total_stock"] = total_stock
     p["in_stock"] = total_stock > 0
@@ -633,23 +635,30 @@ def create_guest_order(
     if not payload.items:
         raise HTTPException(status_code=400, detail="Order must contain at least one item")
 
-    # Compute idempotency signature from explicit Idempotency-Key header or deterministic order payload
-    if idempotency_key and idempotency_key.strip():
+    # Compute idempotency signature from explicit Idempotency-Key header or deterministic order payload (M-10)
+    has_explicit_idem_key = bool(idempotency_key and idempotency_key.strip())
+    if has_explicit_idem_key:
         idem_raw = f"explicit_key:{idempotency_key.strip()}"
     else:
         idem_raw = f"{payload.phone}|{payload.wilaya_code}|{payload.commune}|" + ",".join(
             f"{i.variant_id}:{i.quantity}" for i in sorted(payload.items, key=lambda x: x.variant_id)
         )
     idem_hash = hashlib.sha256(idem_raw.encode("utf-8")).hexdigest()
+    cutoff_utc = (datetime.now(timezone.utc) - timedelta(minutes=10)).strftime("%Y-%m-%d %H:%M:%S")
 
     with db_session(commit=True) as conn:
-        # Start immediate transaction to lock inventory rows safely
         if not conn.in_transaction:
             conn.execute("BEGIN IMMEDIATE")
         cur = conn.cursor()
 
-        # Check duplicate order submission
-        cur.execute("SELECT order_reference FROM orders WHERE idempotency_hash = ? AND status != 'cancelled'", (idem_hash,))
+        # Check duplicate order submission (explicit keys permanent; payload-derived keys scoped to 10-minute window)
+        if has_explicit_idem_key:
+            cur.execute("SELECT order_reference FROM orders WHERE idempotency_hash = ? AND status != 'cancelled'", (idem_hash,))
+        else:
+            cur.execute(
+                "SELECT order_reference FROM orders WHERE idempotency_hash = ? AND status != 'cancelled' AND created_at >= ?",
+                (idem_hash, cutoff_utc),
+            )
         dup = cur.fetchone()
         if dup:
             raise HTTPException(
@@ -728,7 +737,12 @@ def create_guest_order(
             else:
                 discount_dzd = int(cpn["discount_value"])
             discount_dzd = min(discount_dzd, subtotal_dzd)
-            cur.execute("UPDATE coupons SET usage_count = usage_count + 1 WHERE id = ?", (cpn["id"],))
+            cur.execute(
+                "UPDATE coupons SET usage_count = usage_count + 1 WHERE id = ? AND is_active = 1 AND (usage_limit IS NULL OR usage_count < usage_limit)",
+                (cpn["id"],),
+            )
+            if cur.rowcount == 0:
+                raise HTTPException(status_code=400, detail=f"Coupon '{cpn['code']}' has reached its maximum usage limit")
 
         total_dzd = (subtotal_dzd - discount_dzd) + delivery_fee_dzd
 
@@ -753,23 +767,31 @@ def create_guest_order(
             )
             customer_id = cur.lastrowid
 
-        # 4. Create Order Record
-        order_ref = f"LUX-{int(time.time()) % 100000:05d}-{secrets.token_hex(2).upper()}"
-        cur.execute(
-            """INSERT INTO orders
-               (order_reference, customer_id, customer_name, customer_phone, wilaya_code, wilaya_name,
-                commune, delivery_address, delivery_method, payment_method,
-                subtotal_dzd, delivery_fee_dzd, total_dzd, status, customer_notes, stock_deducted, idempotency_hash)
-               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'cod', ?, ?, ?, 'new', ?, 1, ?)""",
-            (
-                order_ref, customer_id, payload.full_name, payload.phone,
-                payload.wilaya_code, zone["wilaya_name_fr"], payload.commune,
-                payload.delivery_address, payload.delivery_method,
-                subtotal_dzd, delivery_fee_dzd, total_dzd,
-                payload.customer_notes, idem_hash
-            )
-        )
-        order_id = cur.lastrowid
+        # 4. Create Order Record (M-11: 32-bit random hex suffix + retry on reference collision)
+        order_ref = ""
+        order_id = None
+        for _attempt in range(3):
+            order_ref = f"LUX-{int(time.time()) % 100000:05d}-{secrets.token_hex(4).upper()}"
+            try:
+                cur.execute(
+                    """INSERT INTO orders
+                       (order_reference, customer_id, customer_name, customer_phone, wilaya_code, wilaya_name,
+                        commune, delivery_address, delivery_method, payment_method,
+                        subtotal_dzd, delivery_fee_dzd, total_dzd, status, customer_notes, stock_deducted, idempotency_hash)
+                       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'cod', ?, ?, ?, 'new', ?, 1, ?)""",
+                    (
+                        order_ref, customer_id, payload.full_name, payload.phone,
+                        payload.wilaya_code, zone["wilaya_name_fr"], payload.commune,
+                        payload.delivery_address, payload.delivery_method,
+                        subtotal_dzd, delivery_fee_dzd, total_dzd,
+                        payload.customer_notes, idem_hash,
+                    ),
+                )
+                order_id = cur.lastrowid
+                break
+            except Exception as exc:
+                if _attempt == 2:
+                    raise
 
         # 5. Insert Order Items, Decrement Stock Safely & Log Inventory Movements
         out_items = []
@@ -1286,15 +1308,24 @@ def update_order_status(
                     detail=f"Invalid order status transition from terminal status '{prev_status}' to '{payload.status}'"
                 )
 
-        # If order is cancelled or returned and stock was deducted, restore stock safely
+        # If order is cancelled or returned and stock was deducted, restore stock atomically (H-2 & M-14)
         if payload.status in ("cancelled", "returned") and stock_deducted == 1:
             cur.execute("SELECT * FROM order_items WHERE order_id = ?", (order_id,))
             for item in cur.fetchall():
+                qty_restore = int(item["quantity"])
+                cur.execute(
+                    "UPDATE product_variants SET stock_qty = stock_qty + ? WHERE id = ?",
+                    (qty_restore, item["variant_id"]),
+                )
+                if cur.rowcount == 0:
+                    # M-14: Variant row was deleted; skip gracefully without raising TypeError (500)
+                    continue
                 cur.execute("SELECT stock_qty FROM product_variants WHERE id = ?", (item["variant_id"],))
                 v = cur.fetchone()
-                prev_q = int(v["stock_qty"])
-                new_q = prev_q + int(item["quantity"])
-                cur.execute("UPDATE product_variants SET stock_qty = ? WHERE id = ?", (new_q, item["variant_id"]))
+                if not v:
+                    continue
+                new_q = int(v["stock_qty"])
+                prev_q = new_q - qty_restore
                 cur.execute(
                     "UPDATE products SET sales_count = CASE WHEN sales_count >= ? THEN sales_count - ? ELSE 0 END WHERE id = ?",
                     (int(item["quantity"]), int(item["quantity"]), item["product_id"])
@@ -1342,15 +1373,9 @@ async def upload_product_image(
     file: UploadFile = File(...),
     admin: dict = Depends(require_permission("products:write"))
 ):
-    buf = bytearray()
-    while True:
-        chunk = await file.read(65536)
-        if not chunk:
-            break
-        buf.extend(chunk)
-        if len(buf) > MAX_UPLOAD_IMAGE_BYTES:
-            raise HTTPException(status_code=413, detail="Image exceeds maximum allowed size of 5 MB")
-    data = bytes(buf)
+    data = await file.read(MAX_UPLOAD_IMAGE_BYTES + 1)
+    if len(data) > MAX_UPLOAD_IMAGE_BYTES:
+        raise HTTPException(status_code=413, detail="Image exceeds maximum allowed size of 5 MB")
     validate_uploaded_image(file.filename or "upload.jpg", file.content_type or "", data)
     digest = hashlib.sha256(data).hexdigest()[:16]
     ext = {"image/jpeg": ".jpg", "image/png": ".png", "image/webp": ".webp"}[file.content_type]
@@ -1791,33 +1816,34 @@ def request_admin_password_recovery(payload: RecoveryRequestInput, request: Requ
             )
             try:
                 dispatch_info = dispatch_whatsapp_recovery_otp(e164_phone, otp, expires_minutes=5)
+                log_audit(
+                    conn,
+                    user["id"],
+                    "whatsapp_recovery_requested",
+                    "admin_user",
+                    str(user["id"]),
+                    {"channel": payload.channel, "mode": dispatch_info.get("mode"), "message_id": dispatch_info.get("message_id")},
+                )
             except RuntimeError as exc:
-                raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail=str(exc))
+                log_audit(conn, user["id"], "whatsapp_recovery_dispatch_error", "admin_user", str(user["id"]), {"error": str(exc)[:200]})
+                if not config.is_production():
+                    raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail=str(exc))
 
-            log_audit(
-                conn,
-                user["id"],
-                "whatsapp_recovery_requested",
-                "admin_user",
-                str(user["id"]),
-                {"channel": payload.channel, "mode": dispatch_info.get("mode"), "message_id": dispatch_info.get("message_id")},
-            )
             resp = {
                 "status": "recovery_initiated",
                 "channel": "whatsapp_cloud_api",
-                "delivery_mode": dispatch_info.get("mode", "live"),
-                "message_id": dispatch_info.get("message_id"),
                 "expires_in_seconds": 300,
-                "message": "If this verified administrator number is eligible, a single-use verification code has been dispatched."
+                "message": "If this verified administrator number is eligible, a single-use verification code has been dispatched.",
             }
-            if cfg["test_capture"] or cfg["sandbox_mode"]:
+            if (not config.is_production()) and cfg["test_capture"]:
                 resp["test_otp"] = otp
             return resp
 
         return {
             "status": "recovery_initiated",
             "channel": payload.channel,
-            "message": "If this verified administrator number is eligible, a single-use verification code has been dispatched."
+            "expires_in_seconds": 300,
+            "message": "If this verified administrator number is eligible, a single-use verification code has been dispatched.",
         }
 
 @app.post("/api/v1/admin/auth/recovery/verify")
@@ -1919,6 +1945,9 @@ def rotate_admin_emergency_recovery_code(admin: dict = Depends(require_permissio
             "notice": "Conservez ce code hors-ligne en lieu sûr. Seul son hash SHA-256 est stocké en base."
         }
 
+MAX_WEBHOOK_BODY_BYTES = 64 * 1024
+MAX_WEBHOOK_STATUSES_PER_CALL = 50
+
 @app.get("/api/v1/webhooks/whatsapp")
 def verify_whatsapp_webhook(
     hub_mode: Optional[str] = Query(None, alias="hub.mode"),
@@ -1927,20 +1956,33 @@ def verify_whatsapp_webhook(
 ):
     """
     Meta WhatsApp Cloud API Webhook Verification Endpoint (GET).
+    C-3.4: Returns 503 when WHATSAPP_WEBHOOK_VERIFY_TOKEN is empty/unconfigured.
     """
     cfg = get_whatsapp_config()
     expected_token = cfg["webhook_verify_token"]
-    if hub_mode == "subscribe" and expected_token and hub_verify_token and hmac.compare_digest(hub_verify_token, expected_token):
+    if not expected_token:
+        raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail="WhatsApp webhook verify token is not configured")
+    if hub_mode == "subscribe" and hub_verify_token and hmac.compare_digest(hub_verify_token, expected_token):
         return Response(content=str(hub_challenge or ""), media_type="text/plain")
-    raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Webhook verification token mismatch or unconfigured")
+    raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Webhook verification token mismatch")
 
 @app.post("/api/v1/webhooks/whatsapp")
 async def receive_whatsapp_webhook(request: Request):
     """
-    Meta WhatsApp Cloud API Webhook Receiver (POST) for message delivery & read receipts.
-    Strictly requires a configured WHATSAPP_APP_SECRET and a valid X-Hub-Signature-256 HMAC header.
+    Meta WhatsApp Cloud API Webhook Receiver (POST) for message delivery & read receipts (H-4).
+    - Enforces per-IP rate limiting.
+    - Returns 503 if WHATSAPP_APP_SECRET is not configured.
+    - Caps payload size at 64 KB and statuses logged per request at 50.
+    - Always requires a valid HMAC-SHA256 X-Hub-Signature-256 header.
     """
+    client_ip = get_real_client_ip(request)
+    check_rate_limit(f"wa_webhook:{client_ip}", max_requests=60, window_seconds=60)
+    cfg = get_whatsapp_config()
+    if not cfg["app_secret"]:
+        raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail="WhatsApp webhook app secret is not configured")
     raw_body = await request.body()
+    if len(raw_body) > MAX_WEBHOOK_BODY_BYTES:
+        raise HTTPException(status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE, detail="Webhook payload exceeds 64 KB limit")
     sig_header = request.headers.get("X-Hub-Signature-256")
     if not verify_whatsapp_webhook_signature(raw_body, sig_header):
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid or missing X-Hub-Signature-256 webhook signature")
@@ -1951,18 +1993,20 @@ async def receive_whatsapp_webhook(request: Request):
 
     statuses_logged = 0
     with db_session(commit=True) as conn:
-        for entry in payload.get("entry", []):
-            for change in entry.get("changes", []):
-                val = change.get("value", {})
-                for st in val.get("statuses", []):
+        for entry in (payload.get("entry") or [])[:20]:
+            for change in (entry.get("changes") or [])[:20]:
+                val = change.get("value") or {}
+                for st in (val.get("statuses") or [])[:MAX_WEBHOOK_STATUSES_PER_CALL]:
+                    if statuses_logged >= MAX_WEBHOOK_STATUSES_PER_CALL:
+                        break
                     statuses_logged += 1
                     log_audit(
                         conn,
                         None,
                         "whatsapp_webhook_status",
                         "whatsapp_message",
-                        str(st.get("id", "unknown")),
-                        {"status": st.get("status"), "recipient_id": st.get("recipient_id")},
+                        str(st.get("id", "unknown"))[:120],
+                        {"status": str(st.get("status", ""))[:64], "recipient_id": str(st.get("recipient_id", ""))[:64]},
                     )
     return {"received": True, "statuses_logged": statuses_logged}
 
@@ -2354,6 +2398,7 @@ class BulkWilayaRateItem(BaseModel):
     home_supported: bool = True
     stop_desk_supported: bool = True
     estimated_days: str = "24h - 48h"
+    is_active: Optional[bool] = True
 
 class BulkWilayaRatesUpdate(BaseModel):
     zones: List[BulkWilayaRateItem]
@@ -2564,6 +2609,8 @@ def admin_bulk_update_delivery_zones(
             z = cur.fetchone()
             if not z:
                 continue
+            if item.is_active is not None:
+                cur.execute("UPDATE delivery_zones SET is_active = ? WHERE id = ?", (1 if item.is_active else 0, z["id"]))
             cur.execute(
                 "UPDATE delivery_rates SET fee_dzd = ?, estimated_days = ?, is_supported = ? WHERE zone_id = ? AND delivery_method = 'home'",
                 (item.home_fee_dzd, item.estimated_days, 1 if item.home_supported else 0, z["id"])
@@ -2583,6 +2630,7 @@ def admin_bulk_update_delivery_zones(
 # ============================================================================
 
 class CategoryUpdateInput(BaseModel):
+    slug: Optional[str] = None
     name_fr: Optional[str] = None
     name_ar: Optional[str] = None
     name_en: Optional[str] = None

@@ -22,7 +22,7 @@
       }
     ],
     "security": {
-      "csp": "default-src 'self'; connect-src 'self' https://api.musluxury.dz http://localhost:8000 http://127.0.0.1:8000 https: http:; img-src 'self' data: blob: https: http://localhost:8000 http://127.0.0.1:8000; style-src 'self' 'unsafe-inline'"
+      "csp": "default-src 'self'; connect-src 'self' https://api.musluxury.dz https://musluxury.dz http://localhost:8000 http://127.0.0.1:8000 ipc: http://ipc.localhost; img-src 'self' data: blob: https://api.musluxury.dz https://musluxury.dz http://localhost:8000 http://127.0.0.1:8000; style-src 'self' 'unsafe-inline'"
     }
   },
   "bundle": {

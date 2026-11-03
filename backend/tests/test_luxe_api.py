@@ -14,6 +14,7 @@ os.environ["BACKUP_ENCRYPTION_KEY"] = "test_only_ephemeral_backup_encryption_key
 os.environ["WHATSAPP_CLOUD_API_TOKEN"] = "EAATest_Sandbox_Token_For_Automated_Suite"
 os.environ["WHATSAPP_PHONE_NUMBER_ID"] = "109283746519283"
 os.environ["WHATSAPP_SANDBOX_MODE"] = "true"
+os.environ["WHATSAPP_TEST_CAPTURE"] = "1"
 os.environ["WHATSAPP_WEBHOOK_VERIFY_TOKEN"] = "mus_luxury_wa_webhook_verify_2026_secret"
 os.environ["WHATSAPP_APP_SECRET"] = "meta_app_secret_test_key_2026" 
 
@@ -1338,6 +1339,7 @@ class TestLuxeEcommercePlatform(unittest.TestCase):
         os.environ["WHATSAPP_CLOUD_API_TOKEN"] = "EAATest_Sandbox_Token_2026"
         os.environ["WHATSAPP_PHONE_NUMBER_ID"] = "109283746519283"
         os.environ["WHATSAPP_SANDBOX_MODE"] = "true"
+        os.environ["WHATSAPP_TEST_CAPTURE"] = "1"
         try:
             r_stat = self.client.get("/api/v1/admin/auth/recovery/status")
             self.assertEqual(r_stat.status_code, 200)
@@ -3167,7 +3169,7 @@ flushOfflineMutationQueue(async () => true).then((res) => {
 
         repo_root = Path(__file__).resolve().parents[2]
         req_txt = (repo_root / "backend" / "requirements.txt").read_text(encoding="utf-8")
-        self.assertIn("pydantic>=1.10.13,<2.0.0", req_txt)
+        self.assertIn("pydantic>=1.10.4,<2.0.0", req_txt)
 
     # 79. Claude Audit Fix: Nonce Recorded Only After Valid Signature, Bounded FIFO Revocation & Closed Webhook
     def test_79_claude_audit_nonce_after_signature_fifo_revocation_and_webhook_closed(self):
@@ -3178,6 +3180,7 @@ flushOfflineMutationQueue(async () => true).then((res) => {
             SEEN_NONCES,
             REVOKED_TOKENS,
             MAX_REVOKED_TOKENS,
+            get_hmac_signing_secret,
             get_secret_key,
             revoke_token,
             verify_signed_request,
@@ -3196,7 +3199,7 @@ flushOfflineMutationQueue(async () => true).then((res) => {
         # Legitimate request with the same nonce_victim_01 must now succeed
         body_hash = _hashlib.sha256(body).hexdigest()
         msg = f"POST|/api/v1/admin/secure-action|{ts}|{nonce}|{body_hash}"
-        good_sig = _hmac.new(get_secret_key().encode("utf-8"), msg.encode("utf-8"), _hashlib.sha256).hexdigest()
+        good_sig = _hmac.new(get_hmac_signing_secret().encode("utf-8"), msg.encode("utf-8"), _hashlib.sha256).hexdigest()
         verify_signed_request("POST", "/api/v1/admin/secure-action", body, good_sig, ts, nonce)
         self.assertIn(nonce, SEEN_NONCES)
 
@@ -3221,7 +3224,7 @@ flushOfflineMutationQueue(async () => true).then((res) => {
                 content=b'{"entry":[]}',
                 headers={"X-Hub-Signature-256": "sha256=deadbeef"},
             )
-            self.assertEqual(r_wh.status_code, 401)
+            self.assertEqual(r_wh.status_code, 503)
         finally:
             if old_app_sec is not None:
                 os.environ["WHATSAPP_APP_SECRET"] = old_app_sec

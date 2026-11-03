@@ -64,32 +64,48 @@ def normalize_algerian_phone(raw_phone: str) -> Tuple[str, str, str]:
 def get_whatsapp_config() -> dict:
     """
     Reads Meta WhatsApp Business Cloud API configuration from environment variables.
-    Supports both WHATSAPP_CLOUD_API_TOKEN and WHATSAPP_ACCESS_TOKEN.
+    C-2 & C-3.4 Hardening:
+    - Never defaults WHATSAPP_WEBHOOK_VERIFY_TOKEN; rejects compromised SHA-256 digests in production.
+    - In production (`config.is_production()`), sandbox mode and placeholder tokens (`EAATest_`, `test_`)
+      are strictly disabled (`is_configured = False`, `sandbox_mode = False`) so simulated delivery
+      can never silently replace real WhatsApp delivery or expose `test_otp`.
     """
+    from .security import COMPROMISED_SECRET_SHA256_DENYLIST
+
     token = os.getenv("WHATSAPP_CLOUD_API_TOKEN", "").strip()
     if not token and "WHATSAPP_CLOUD_API_TOKEN" not in os.environ:
-        # Only fall back to WHATSAPP_ACCESS_TOKEN if explicitly set by caller
         token = os.getenv("WHATSAPP_ACCESS_TOKEN", "").strip()
     phone_number_id = os.getenv("WHATSAPP_PHONE_NUMBER_ID", "").strip()
     business_account_id = os.getenv("WHATSAPP_BUSINESS_ACCOUNT_ID", "").strip()
+
     app_secret = os.getenv("WHATSAPP_APP_SECRET", "").strip()
-    if app_secret.startswith(("replace_with_", "<CHANGE_ME")):
+    if app_secret.lower().startswith(("replace", "change", "<change", "<replace")):
         app_secret = ""
+    elif config.is_production() and hashlib.sha256(app_secret.encode("utf-8")).hexdigest() in COMPROMISED_SECRET_SHA256_DENYLIST:
+        app_secret = ""
+
     webhook_verify_token = os.getenv("WHATSAPP_WEBHOOK_VERIFY_TOKEN", "").strip()
-    if webhook_verify_token.startswith(("replace_with_", "<CHANGE_ME")):
-        webhook_verify_token = "" 
+    if webhook_verify_token.lower().startswith(("replace", "change", "<change", "<replace")):
+        webhook_verify_token = ""
+    elif config.is_production() and hashlib.sha256(webhook_verify_token.encode("utf-8")).hexdigest() in COMPROMISED_SECRET_SHA256_DENYLIST:
+        webhook_verify_token = ""
+
     api_version = os.getenv("WHATSAPP_API_VERSION", "v20.0").strip() or "v20.0"
     template_name = os.getenv("WHATSAPP_TEMPLATE_NAME", "luxe_admin_password_reset").strip()
     template_lang = os.getenv("WHATSAPP_TEMPLATE_LANG", "fr").strip() or "fr"
     sandbox_raw = os.getenv("WHATSAPP_SANDBOX_MODE", "").strip().lower()
-    test_capture = os.getenv("WHATSAPP_TEST_CAPTURE", "").strip() == "1"
+    in_prod = config.is_production()
 
-    # If token is a placeholder (`EAATest_...` or `test_...`) and WHATSAPP_SANDBOX_MODE is not explicitly false,
-    # operate in sandbox mode unless the caller explicitly cleared WHATSAPP_CLOUD_API_TOKEN to test 503 behavior.
-    is_placeholder_token = token.startswith("EAATest_") or token.startswith("test_")
-    sandbox_mode = sandbox_raw in ("1", "true", "yes") or (bool(token) and is_placeholder_token)
+    # C-2: test_capture and sandbox_mode are strictly disabled in production
+    test_capture = (not in_prod) and (os.getenv("WHATSAPP_TEST_CAPTURE", "").strip() == "1")
+    is_placeholder_token = token.startswith(("EAATest_", "test_", "<CHANGE_ME", "replace_")) or phone_number_id.startswith("<CHANGE_ME")
 
-    is_configured = bool(token and phone_number_id)
+    if in_prod:
+        sandbox_mode = False
+        is_configured = bool(token and phone_number_id and not is_placeholder_token and sandbox_raw not in ("1", "true", "yes"))
+    else:
+        sandbox_mode = sandbox_raw in ("1", "true", "yes") or (bool(token) and is_placeholder_token)
+        is_configured = bool(token and phone_number_id and not token.startswith("<CHANGE_ME"))
 
     return {
         "token": token,

@@ -1454,7 +1454,7 @@
     "/api/v1/webhooks/whatsapp": {
       "get": {
         "summary": "Verify Whatsapp Webhook",
-        "description": "Meta WhatsApp Cloud API Webhook Verification Endpoint (GET).",
+        "description": "Meta WhatsApp Cloud API Webhook Verification Endpoint (GET).\nC-3.4: Returns 503 when WHATSAPP_WEBHOOK_VERIFY_TOKEN is empty/unconfigured.",
         "operationId": "verify_whatsapp_webhook_api_v1_webhooks_whatsapp_get",
         "parameters": [
           {
@@ -1508,7 +1508,7 @@
       },
       "post": {
         "summary": "Receive Whatsapp Webhook",
-        "description": "Meta WhatsApp Cloud API Webhook Receiver (POST) for message delivery & read receipts.\nStrictly requires a configured WHATSAPP_APP_SECRET and a valid X-Hub-Signature-256 HMAC header.",
+        "description": "Meta WhatsApp Cloud API Webhook Receiver (POST) for message delivery & read receipts (H-4).\n- Enforces per-IP rate limiting.\n- Returns 503 if WHATSAPP_APP_SECRET is not configured.\n- Caps payload size at 64 KB and statuses logged per request at 50.\n- Always requires a valid HMAC-SHA256 X-Hub-Signature-256 header.",
         "operationId": "receive_whatsapp_webhook_api_v1_webhooks_whatsapp_post",
         "responses": {
           "200": {
@@ -3465,6 +3465,11 @@
             "title": "Estimated Days",
             "type": "string",
             "default": "24h - 48h"
+          },
+          "is_active": {
+            "title": "Is Active",
+            "type": "boolean",
+            "default": true
           }
         }
       },
@@ -3655,6 +3660,10 @@
         "title": "CategoryUpdateInput",
         "type": "object",
         "properties": {
+          "slug": {
+            "title": "Slug",
+            "type": "string"
+          },
           "name_fr": {
             "title": "Name Fr",
             "type": "string"

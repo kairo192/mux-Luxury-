@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import {
   fetchStoreLayout,
   fetchCategories,
@@ -42,6 +42,7 @@ export default function App() {
   const [address, setAddress] = useState("");
   const [orderConfirmed, setOrderConfirmed] = useState<any | null>(null);
   const [isSubmittingOrder, setIsSubmittingOrder] = useState(false);
+  const idemKeyRef = useRef<string | null>(null);
   const [errorMsg, setErrorMsg] = useState("");
   const [customerNotice, setCustomerNotice] = useState<StoreCustomerNotice | null>(null);
 
@@ -242,7 +243,14 @@ export default function App() {
         .map((c) => `${c.variant.id}:${c.quantity}`)
         .sort()
         .join(",");
-      const idemKey = `order-${cleanPhone}-${selectedWilaya}-${commune}-${cartFingerprint}`;
+      if (!idemKeyRef.current) {
+        const randUuid =
+          typeof crypto !== "undefined" && typeof crypto.randomUUID === "function"
+            ? crypto.randomUUID()
+            : `${cartFingerprint}-${Math.random().toString(36).slice(2, 10)}`;
+        idemKeyRef.current = `order-${cleanPhone}-${selectedWilaya}-${commune}-${randUuid}`;
+      }
+      const idemKey = idemKeyRef.current;
       const res = await submitGuestOrder(
         {
           full_name: customerName.trim(),
@@ -256,6 +264,7 @@ export default function App() {
         },
         idemKey
       );
+      idemKeyRef.current = null;
       setOrderConfirmed(res);
       setCart([]);
       setAppliedCoupon(null);

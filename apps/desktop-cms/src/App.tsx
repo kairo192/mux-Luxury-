@@ -1495,7 +1495,7 @@ export default function App() {
                     + Ajouter Image Galerie
                   </button>
                   {(editingProduct.images || [])[0] && (
-                    <button type="button" onClick={() => handleRemoveProductGalleryImage(editingProduct.images[0].id)} className="px-3 py-2 rounded-xl bg-red-50 text-red-700 border border-red-200 font-bold">
+                    <button type="button" onClick={() => handleRemoveProductGalleryImage((editingProduct.gallery_images || editingProduct.images)[0].id)} className="px-3 py-2 rounded-xl bg-red-50 text-red-700 border border-red-200 font-bold">
                       Supprimer 1ère Image
                     </button>
                   )}

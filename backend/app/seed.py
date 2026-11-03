@@ -2,6 +2,7 @@ import os
 import hashlib
 import json
 import time
+from .config import app_env, is_production
 from .database import db_session, init_db
 from .security import hash_password
 
@@ -139,8 +140,7 @@ def seed_initial_data() -> None:
         # In production (APP_ENV=production), NEVER seed default admin credentials or hardcoded recovery codes!
         # Instead, leave admin_users empty so the First-Time Owner Setup Wizard (/api/v1/admin/auth/initialize-owner) runs and locks itself.
         owner_id = None
-        app_env = os.getenv("APP_ENV", "production").strip().lower()
-        if app_env in ("test", "development", "local") or os.getenv("SEED_DEFAULT_ADMIN") == "1":
+        if (not is_production()) or os.getenv("LUXE_SEED_DEMO_ACCOUNTS") == "1" or os.getenv("SEED_DEFAULT_ADMIN") == "1":
             admin_pw = os.getenv("ADMIN_INITIAL_PASSWORD") or "MusLuxury2026!"
             editor_pw = os.getenv("EDITOR_INITIAL_PASSWORD") or "EditorLuxury2026!"
             cur.execute(
@@ -156,7 +156,7 @@ def seed_initial_data() -> None:
                 ("editor@musluxury.dz", "Sarah (Product Manager)", "+213550000002", hash_password(editor_pw), role_ids["product_manager"])
             )
 
-            if app_env == "test":
+            if not is_production():
                 emergency_hash = hashlib.sha256(b"LUXE-EMERGENCY-2026-RECOVERY").hexdigest()
                 cur.execute(
                     """INSERT INTO admin_recovery_codes (admin_user_id, phone, code_hash, channel, max_attempts, expires_at)
