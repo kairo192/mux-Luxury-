@@ -41,6 +41,7 @@ export default function App() {
   const [commune, setCommune] = useState("Ouled Yaïch");
   const [address, setAddress] = useState("");
   const [orderConfirmed, setOrderConfirmed] = useState<any | null>(null);
+  const [isSubmittingOrder, setIsSubmittingOrder] = useState(false);
   const [errorMsg, setErrorMsg] = useState("");
   const [customerNotice, setCustomerNotice] = useState<StoreCustomerNotice | null>(null);
 
@@ -220,6 +221,7 @@ export default function App() {
 
   async function handleCheckout(e: React.FormEvent) {
     e.preventDefault();
+    if (isSubmittingOrder) return;
     setErrorMsg("");
     const cleanPhone = customerPhone.replace(/[\s\-\.]/g, "");
     if (customerName.trim().length < 3 || /[<>]/.test(customerName) || /[<>]/.test(address)) {
@@ -234,8 +236,13 @@ export default function App() {
       setCustomerNotice({ type: "error", title: "Numéro de téléphone invalide", message: msg });
       return;
     }
+    setIsSubmittingOrder(true);
     try {
-      const idemKey = `order-${cleanPhone}-${Date.now()}`;
+      const cartFingerprint = cart
+        .map((c) => `${c.variant.id}:${c.quantity}`)
+        .sort()
+        .join(",");
+      const idemKey = `order-${cleanPhone}-${selectedWilaya}-${commune}-${cartFingerprint}`;
       const res = await submitGuestOrder(
         {
           full_name: customerName.trim(),
@@ -261,6 +268,8 @@ export default function App() {
       const msg = err.message || "Erreur lors de la validation de la commande";
       setErrorMsg(msg);
       setCustomerNotice({ type: "error", title: "Validation de la commande", message: msg });
+    } finally {
+      setIsSubmittingOrder(false);
     }
   }
 
@@ -443,8 +452,8 @@ export default function App() {
               <span>Total à payer à la livraison (Wilaya {selectedWilaya}) :</span>
               <span>{calcPreview?.total_dzd ?? subtotal} DA</span>
             </div>
-            <button type="submit" className="w-full py-3.5 rounded-xl bg-[#063D2E] hover:bg-[#02291F] text-[#D4AF62] font-extrabold text-sm">
-              Confirmer ma commande (Cash on Delivery)
+            <button type="submit" disabled={isSubmittingOrder} className="w-full py-3.5 rounded-xl bg-[#063D2E] hover:bg-[#02291F] disabled:opacity-50 text-[#D4AF62] font-extrabold text-sm">
+              {isSubmittingOrder ? "Validation en cours..." : "Confirmer ma commande (Cash on Delivery)"}
             </button>
           </form>
         </section>

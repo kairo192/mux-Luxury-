@@ -9,11 +9,37 @@ import time
 from typing import Dict, List, Optional, Set, Tuple
 from fastapi import HTTPException, Request, status
 
-SECRET_KEY = os.getenv("SECRET_KEY", "luxe_dev_secret_key_change_in_prod_998877665544332211")
+from cryptography.fernet import Fernet
+
+_EPHEMERAL_DEV_SECRET = secrets.token_hex(32)
+_FORBIDDEN_WEAK_SECRETS = {
+    "",
+    "luxe_dev_secret_key_change_in_prod_998877665544332211",
+    "change_me",
+}
+
+def get_secret_key() -> str:
+    """
+    Retrieves SECRET_KEY from environment.
+    In production (APP_ENV=production), fails closed (raises RuntimeError) if SECRET_KEY
+    is missing, shorter than 32 characters, or set to a placeholder/default string.
+    """
+    raw = os.getenv("SECRET_KEY", "").strip()
+    app_env = os.getenv("APP_ENV", "production").strip().lower()
+    is_weak = len(raw) < 32 or raw in _FORBIDDEN_WECRETS_SET or raw.startswith("<CHANGE_ME")
+    if app_env == "production" and is_weak:
+        raise RuntimeError(
+            "CRITICAL SECURITY ERROR: SECRET_KEY environment variable must be set to a strong >=32-character secret in production"
+        )
+    if is_weak:
+        return _EPHEMERAL_DEV_SECRET
+    return raw
+
+_FORBIDDEN_WECRETS_SET = _FORBIDDEN_WEAK_SECRETS
 TOKEN_TTL_SECONDS = int(os.getenv("ACCESS_TOKEN_EXPIRE_MINUTES", "480")) * 60
 
-# Revoked token blacklist (for explicit logout)
-REVOKED_TOKENS: Set[str] = set()
+# Bounded FIFO/LRU Revoked token blacklist (never .clear()s all tokens when full)
+REVOKED_TOKENS: Dict[str, float] = {}
 USER_SESSION_REVOKED_NS: Dict[int, int] = {}
 
 # Nonce cache with timestamps to prevent Replay Attacks (OWASP Anti-Replay)
@@ -52,7 +78,7 @@ def create_access_token(user_id: int, email: str, role: str, permissions: list) 
         "jti": secrets.token_hex(16),
     }
     raw = base64.urlsafe_b64encode(json.dumps(payload).encode("utf-8")).decode("utf-8")
-    sig = hmac.new(SECRET_KEY.encode("utf-8"), raw.encode("utf-8"), hashlib.sha256).hexdigest()
+    sig = hmac.new(get_secret_key().encode("utf-8"), raw.encode("utf-8"), hashlib.sha256).hexdigest()
     return f"{raw}.{sig}"
 
 def decode_access_token(token: str) -> dict:
@@ -60,7 +86,7 @@ def decode_access_token(token: str) -> dict:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Session token has been revoked")
     try:
         raw, sig = token.split(".", 1)
-        expected_sig = hmac.new(SECRET_KEY.encode("utf-8"), raw.encode("utf-8"), hashlib.sha256).hexdigest()
+        expected_sig = hmac.new(get_secret_key().encode("utf-8"), raw.encode("utf-8"), hashlib.sha256).hexdigest()
         if not hmac.compare_digest(sig, expected_sig):
             raise ValueError("Invalid token signature")
         payload = json.loads(base64.urlsafe_b64decode(raw.encode("utf-8")).decode("utf-8"))
@@ -88,16 +114,23 @@ def revoke_all_user_sessions(user_id: int, conn=None) -> int:
     return now_ns
 
 def revoke_token(token: str) -> None:
+    now = time.time()
     if len(REVOKED_TOKENS) >= MAX_REVOKED_TOKENS:
-        REVOKED_TOKENS.clear()
-    REVOKED_TOKENS.add(token)
+        expired = [k for k, ts in REVOKED_TOKENS.items() if now - ts > TOKEN_TTL_SECONDS]
+        for k in expired:
+            REVOKED_TOKENS.pop(k, None)
+        if len(REVOKED_TOKENS) >= MAX_REVOKED_TOKENS:
+            oldest_k = min(REVOKED_TOKENS, key=REVOKED_TOKENS.get)
+            REVOKED_TOKENS.pop(oldest_k, None)
+    REVOKED_TOKENS[token] = now
 
 # ============================================================================
 # CRYPTOGRAPHIC REQUEST SIGNING & REPLAY ATTACK DEFENSE (Section 8)
 # Protects against Man-in-the-Middle tampering and Replay Attacks
 # ============================================================================
 
-def sign_api_request(method: str, path: str, body_bytes: bytes, secret: str = SECRET_KEY) -> Tuple[str, str, str]:
+def sign_api_request(method: str, path: str, body_bytes: bytes, secret: Optional[str] = None) -> Tuple[str, str, str]:
+    secret = secret or get_secret_key()
     """
     Generates HMAC-SHA256 signature, timestamp, and unique nonce for client-side API requests.
     """
@@ -116,8 +149,9 @@ def verify_signed_request(
     timestamp_str: Optional[str],
     nonce: Optional[str],
     max_skew_seconds: int = 300,
-    secret: str = SECRET_KEY
+    secret: Optional[str] = None
 ) -> None:
+    secret = secret or get_secret_key()
     """
     Cryptographic verification:
     1. Validates timestamp freshness (prevents delayed packets, max 300s window).
@@ -149,10 +183,6 @@ def verify_signed_request(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail=f"Replay Attack Detected: Nonce '{nonce}' has already been processed"
         )
-    if len(SEEN_NONCES) >= MAX_SEEN_NONCES:
-        oldest_k = min(SEEN_NONCES, key=SEEN_NONCES.get)
-        SEEN_NONCES.pop(oldest_k, None)
-    SEEN_NONCES[nonce] = now
 
     body_hash = hashlib.sha256(body_bytes).hexdigest()
     msg = f"{method.upper()}|{path}|{timestamp_str}|{nonce}|{body_hash}"
@@ -163,6 +193,12 @@ def verify_signed_request(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Cryptographic signature mismatch: Request payload or headers were tampered with in transit"
         )
+
+    # Record nonce ONLY AFTER verifying signature is valid (prevents unauthenticated nonce burning)
+    if len(SEEN_NONCES) >= MAX_SEEN_NONCES:
+        oldest_k = min(SEEN_NONCES, key=SEEN_NONCES.get)
+        SEEN_NONCES.pop(oldest_k, None)
+    SEEN_NONCES[nonce] = now
 
 def check_rate_limit(key: str, max_requests: int, window_seconds: int = 60) -> None:
     now = time.time()
@@ -260,3 +296,34 @@ def get_real_client_ip(request: Request) -> str:
             if first_hop and len(first_hop) <= 64:
                 return first_hop
     return peer_ip
+
+
+BACKUP_MAGIC_HEADER = b"LUXEENC1"
+
+def _derive_backup_fernet(salt: bytes) -> Fernet:
+    raw_key = os.getenv("BACKUP_ENCRYPTION_KEY", "").strip()
+    if not raw_key or raw_key.startswith("<CHANGE_ME"):
+        raw_key = get_secret_key()
+    dk = hashlib.pbkdf2_hmac("sha256", raw_key.encode("utf-8"), salt, 100000, dklen=32)
+    return Fernet(base64.urlsafe_b64encode(dk))
+
+def encrypt_backup_bytes(plaintext_bytes: bytes) -> bytes:
+    """
+    Encrypts a compressed SQL backup archive at rest using AES-128-CBC + HMAC-SHA256 (Fernet)
+    with a unique 16-byte random salt per backup archive.
+    """
+    salt = secrets.token_bytes(16)
+    f = _derive_backup_fernet(salt)
+    token = f.encrypt(plaintext_bytes)
+    return BACKUP_MAGIC_HEADER + salt + token
+
+def decrypt_backup_bytes(stored_bytes: bytes) -> bytes:
+    """
+    Decrypts an encrypted backup archive (or returns legacy unencrypted gzip bytes if no header).
+    """
+    if stored_bytes.startswith(BACKUP_MAGIC_HEADER):
+        salt = stored_bytes[8:24]
+        token = stored_bytes[24:]
+        f = _derive_backup_fernet(salt)
+        return f.decrypt(token)
+    return stored_bytes

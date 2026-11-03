@@ -3,10 +3,19 @@ import os
 import tempfile
 import unittest
 
-# Configure isolated test SQLite database before importing app
+# Configure isolated test environment & SQLite database before importing app
 TEST_DB_FD, TEST_DB_PATH = tempfile.mkstemp(suffix=".sqlite3")
 os.close(TEST_DB_FD)
+os.environ["APP_ENV"] = "test"
+os.environ["LUXE_DB_ENGINE"] = "sqlite"
 os.environ["LUXE_SQLITE_PATH"] = TEST_DB_PATH
+os.environ["SECRET_KEY"] = "test_only_ephemeral_secret_key_for_unit_test_suite_2026_0123456789"
+os.environ["BACKUP_ENCRYPTION_KEY"] = "test_only_ephemeral_backup_encryption_key_2026_0123456789abcdef"
+os.environ["WHATSAPP_CLOUD_API_TOKEN"] = "EAATest_Sandbox_Token_For_Automated_Suite"
+os.environ["WHATSAPP_PHONE_NUMBER_ID"] = "109283746519283"
+os.environ["WHATSAPP_SANDBOX_MODE"] = "true"
+os.environ["WHATSAPP_WEBHOOK_VERIFY_TOKEN"] = "mus_luxury_wa_webhook_verify_2026_secret"
+os.environ["WHATSAPP_APP_SECRET"] = "meta_app_secret_test_key_2026" 
 
 from fastapi.testclient import TestClient
 from app.main import app
@@ -3063,6 +3072,241 @@ flushOfflineMutationQueue(async () => true).then((res) => {
         dc_txt = (repo_root / "docker-compose.yml").read_text(encoding="utf-8")
         self.assertIn("LUXE_DB_ENGINE: ${LUXE_DB_ENGINE:-postgres}", dc_txt)
         self.assertIn("DATABASE_URL: ${DATABASE_URL:-postgresql://", dc_txt)
+
+
+    # 77. Claude Audit Fix: Production Seed Gate (Zero Default Admin/Recovery Code) & Fail-Closed SECRET_KEY
+    def test_77_claude_audit_production_seed_gate_and_fail_closed_secret_key(self):
+        import sqlite3 as _sqlite3
+        from pathlib import Path
+        from app.seed import seed_initial_data
+        from app.security import get_secret_key
+
+        # 1. Verify that when APP_ENV=production on a fresh DB, zero default admin users or static recovery codes are seeded
+        fd, prod_db = tempfile.mkstemp(suffix=".sqlite3")
+        os.close(fd)
+        os.remove(prod_db)
+        old_env = os.environ.get("APP_ENV")
+        old_db = os.environ.get("LUXE_SQLITE_PATH")
+        try:
+            os.environ["APP_ENV"] = "production"
+            os.environ["LUXE_SQLITE_PATH"] = prod_db
+            import app.database as _db_mod
+            orig_db_path = _db_mod.DB_PATH
+            _db_mod.DB_PATH = prod_db
+            try:
+                seed_initial_data()
+                conn = _sqlite3.connect(prod_db)
+                admin_cnt = conn.execute("SELECT COUNT(*) FROM admin_users").fetchone()[0]
+                rec_cnt = conn.execute("SELECT COUNT(*) FROM admin_recovery_codes").fetchone()[0]
+                wilaya_cnt = conn.execute("SELECT COUNT(*) FROM delivery_zones").fetchone()[0]
+                conn.close()
+                self.assertEqual(admin_cnt, 0, "Production seed must NOT create default admin_users")
+                self.assertEqual(rec_cnt, 0, "Production seed must NOT create hardcoded recovery codes")
+                self.assertEqual(wilaya_cnt, 69, "Production seed must still seed all 69 Wilayas")
+            finally:
+                _db_mod.DB_PATH = orig_db_path
+        finally:
+            if old_env is not None:
+                os.environ["APP_ENV"] = old_env
+            if old_db is not None:
+                os.environ["LUXE_SQLITE_PATH"] = old_db
+            if os.path.exists(prod_db):
+                os.remove(prod_db)
+
+        # 2. Verify get_secret_key() raises RuntimeError in production when SECRET_KEY is missing or placeholder
+        old_sk = os.environ.get("SECRET_KEY")
+        try:
+            os.environ["APP_ENV"] = "production"
+            os.environ["SECRET_KEY"] = "<CHANGE_ME_GENERATE_WITH_OPENSSL_RAND_HEX_64>"
+            with self.assertRaises(RuntimeError):
+                get_secret_key()
+        finally:
+            os.environ["APP_ENV"] = "test"
+            if old_sk is not None:
+                os.environ["SECRET_KEY"] = old_sk
+
+        # 3. Verify .env.example uses <CHANGE_ME_*> placeholders and libpq postgresql:// URL
+        repo_root = Path(__file__).resolve().parents[2]
+        env_ex = (repo_root / ".env.example").read_text(encoding="utf-8")
+        self.assertIn("SECRET_KEY=<CHANGE_ME_", env_ex)
+        self.assertIn("LUXE_DB_ENGINE=postgres", env_ex)
+        self.assertIn("DATABASE_URL=postgresql://", env_ex)
+        self.assertNotIn("postgresql+psycopg://", env_ex)
+        self.assertNotIn("MusLuxury2026!", env_ex)
+        self.assertNotIn("LUXE-EMERGENCY-2026-RECOVERY", env_ex)
+        self.assertFalse((repo_root / ".env").exists(), ".env must not exist in repository working tree")
+
+    # 78. Claude Audit Fix: PostgreSQL URL Normalization, Fail-Closed DB Connection & Pydantic<2.0 Pin
+    def test_78_claude_audit_postgres_url_normalization_and_fail_closed_connection(self):
+        from pathlib import Path
+        from app.database import normalize_postgres_url, get_connection
+
+        self.assertEqual(
+            normalize_postgres_url("postgresql+psycopg://luxe_app_user:secret@db:5432/luxe_ecommerce"),
+            "postgresql://luxe_app_user:secret@db:5432/luxe_ecommerce",
+        )
+        self.assertEqual(
+            normalize_postgres_url("postgres://luxe_app_user:secret@db:5432/luxe_ecommerce"),
+            "postgresql://luxe_app_user:secret@db:5432/luxe_ecommerce",
+        )
+
+        # Verify LUXE_DB_ENGINE=postgres never silently falls back to SQLite when Postgres connection fails
+        old_eng = os.environ.get("LUXE_DB_ENGINE")
+        old_url = os.environ.get("DATABASE_URL")
+        try:
+            os.environ["LUXE_DB_ENGINE"] = "postgres"
+            os.environ["DATABASE_URL"] = "postgresql://invalid_user:invalid_pass@127.0.0.1:59999/nonexistent_db?connect_timeout=1"
+            with self.assertRaises(RuntimeError):
+                get_connection()
+        finally:
+            os.environ["LUXE_DB_ENGINE"] = old_eng or "sqlite"
+            if old_url is None:
+                os.environ.pop("DATABASE_URL", None)
+            else:
+                os.environ["DATABASE_URL"] = old_url
+
+        repo_root = Path(__file__).resolve().parents[2]
+        req_txt = (repo_root / "backend" / "requirements.txt").read_text(encoding="utf-8")
+        self.assertIn("pydantic>=1.10.13,<2.0.0", req_txt)
+
+    # 79. Claude Audit Fix: Nonce Recorded Only After Valid Signature, Bounded FIFO Revocation & Closed Webhook
+    def test_79_claude_audit_nonce_after_signature_fifo_revocation_and_webhook_closed(self):
+        import hashlib as _hashlib
+        import hmac as _hmac
+        import time as _time
+        from app.security import (
+            SEEN_NONCES,
+            REVOKED_TOKENS,
+            MAX_REVOKED_TOKENS,
+            get_secret_key,
+            revoke_token,
+            verify_signed_request,
+        )
+
+        # 1. Forged signature with nonce_victim_01 must fail with 401 AND must NOT burn nonce_victim_01
+        ts = str(int(_time.time()))
+        nonce = "nonce_victim_01_unburned"
+        body = b'{"action":"test"}'
+        SEEN_NONCES.pop(nonce, None)
+
+        with self.assertRaises(Exception):
+            verify_signed_request("POST", "/api/v1/admin/secure-action", body, "bad_sig_000", ts, nonce)
+        self.assertNotIn(nonce, SEEN_NONCES, "Invalid signature must not record nonce in SEEN_NONCES")
+
+        # Legitimate request with the same nonce_victim_01 must now succeed
+        body_hash = _hashlib.sha256(body).hexdigest()
+        msg = f"POST|/api/v1/admin/secure-action|{ts}|{nonce}|{body_hash}"
+        good_sig = _hmac.new(get_secret_key().encode("utf-8"), msg.encode("utf-8"), _hashlib.sha256).hexdigest()
+        verify_signed_request("POST", "/api/v1/admin/secure-action", body, good_sig, ts, nonce)
+        self.assertIn(nonce, SEEN_NONCES)
+
+        # 2. Verify revoke_token evicts only 1 oldest entry at capacity and never calls .clear()
+        REVOKED_TOKENS.clear()
+        now = _time.time()
+        for i in range(MAX_REVOKED_TOKENS):
+            REVOKED_TOKENS[f"tok_{i}"] = now + i
+        revoke_token("tok_newest")
+        self.assertEqual(len(REVOKED_TOKENS), MAX_REVOKED_TOKENS)
+        self.assertNotIn("tok_0", REVOKED_TOKENS)
+        self.assertIn("tok_newest", REVOKED_TOKENS)
+        self.assertIn("tok_9999", REVOKED_TOKENS)
+        REVOKED_TOKENS.clear()
+
+        # 3. Verify POST /api/v1/webhooks/whatsapp rejects requests when WHATSAPP_APP_SECRET is empty/placeholder
+        old_app_sec = os.environ.get("WHATSAPP_APP_SECRET")
+        try:
+            os.environ["WHATSAPP_APP_SECRET"] = "<CHANGE_ME_META_APP_SECRET_FOR_WEBHOOK_HMAC>"
+            r_wh = self.client.post(
+                "/api/v1/webhooks/whatsapp",
+                content=b'{"entry":[]}',
+                headers={"X-Hub-Signature-256": "sha256=deadbeef"},
+            )
+            self.assertEqual(r_wh.status_code, 401)
+        finally:
+            if old_app_sec is not None:
+                os.environ["WHATSAPP_APP_SECRET"] = old_app_sec
+
+    # 80. Claude Audit Fix: Encrypted Backups at Rest, Audit-Log RBAC, Redacted Blacklist Reason & Zero Orphaned JSX Closers
+    def test_80_claude_audit_encrypted_backups_rbac_audit_logs_and_jsx_ast_clean(self):
+        import subprocess
+        from pathlib import Path
+        from app.main import BACKUP_STORAGE_DIR
+        from app.security import BACKUP_MAGIC_HEADER
+
+        headers = self.get_admin_headers()
+
+        # 1. Verify manual backup file on disk is encrypted at rest with LUXEENC1 header (not raw gzip)
+        r_bkp = self.client.post("/api/v1/admin/backups", headers=headers)
+        self.assertEqual(r_bkp.status_code, 201)
+        bkp_data = r_bkp.json()
+        bkp_path = os.path.join(BACKUP_STORAGE_DIR, bkp_data["filename"])
+        with open(bkp_path, "rb") as bf:
+            raw_disk_bytes = bf.read(16)
+        self.assertTrue(raw_disk_bytes.startswith(BACKUP_MAGIC_HEADER), "Backup file on disk must be encrypted with LUXEENC1 header")
+
+        # 2. Verify editor@musluxury.dz (product_manager without settings:write) is blocked from /api/v1/admin/audit-logs with 403
+        editor_headers = self.get_admin_headers("editor@musluxury.dz", "EditorLuxury2026!")
+        r_audit_ed = self.client.get("/api/v1/admin/audit-logs", headers=editor_headers)
+        self.assertEqual(r_audit_ed.status_code, 403)
+
+        # 3. Verify blacklisted phone rejection message does NOT leak the internal admin blacklist reason
+        self.client.post(
+            "/api/v1/admin/cod-risk/blacklist",
+            json={"phone": "0559887766", "reason": "SECRET_INTERNAL_ADMIN_NOTE_DO_NOT_LEAK", "is_blocked": True},
+            headers=headers,
+        )
+        r_ord_bl = self.client.post(
+            "/api/v1/orders",
+            json={
+                "full_name": "Client Test",
+                "phone": "0559887766",
+                "wilaya_code": "16",
+                "commune": "Alger Centre",
+                "delivery_address": "10 Rue Didouche Mourad",
+                "delivery_method": "home",
+                "items": [{"variant_id": 1, "quantity": 1}],
+            },
+        )
+        self.assertEqual(r_ord_bl.status_code, 403)
+        self.assertNotIn("SECRET_INTERNAL_ADMIN_NOTE_DO_NOT_LEAK", r_ord_bl.text)
+        self.client.delete("/api/v1/admin/cod-risk/blacklist/0559887766", headers=headers)
+
+        # 4. Verify zero orphaned )} JSXText nodes in Desktop CMS & Storefront TSX and deterministic cartFingerprint in Storefront
+        repo_root = Path(__file__).resolve().parents[2]
+        sf_code = (repo_root / "apps" / "storefront" / "src" / "App.tsx").read_text(encoding="utf-8")
+        self.assertIn("cartFingerprint", sf_code)
+        self.assertIn("isSubmittingOrder", sf_code)
+        self.assertNotIn("Date.now()", sf_code)
+
+        js_ast_check = """
+const fs = require("fs");
+const babel = require("@babel/core");
+for (const f of ["apps/desktop-cms/src/App.tsx", "apps/storefront/src/App.tsx"]) {
+  const code = fs.readFileSync(f, "utf8");
+  const ast = babel.parseSync(code, {
+    filename: f,
+    presets: ["@babel/preset-typescript", ["@babel/preset-react", { runtime: "automatic" }]],
+  });
+  function walk(n) {
+    if (!n || typeof n !== "object") return;
+    if (n.type === "JSXText" && n.value.includes(")}")) {
+      throw new Error("Orphaned )} in " + f + " line " + n.loc?.start?.line);
+    }
+    for (const k of Object.keys(n)) {
+      const c = n[k];
+      if (Array.isArray(c)) c.forEach(walk);
+      else walk(c);
+    }
+  }
+  walk(ast);
+}
+console.log("JSX_AST_CLEAN");
+"""
+        env = os.environ.copy()
+        env["NODE_PATH"] = "/usr/share/nodejs"
+        res = subprocess.run(["node", "-e", js_ast_check], cwd=str(repo_root), env=env, capture_output=True, text=True)
+        self.assertEqual(res.returncode, 0, res.stderr)
+        self.assertIn("JSX_AST_CLEAN", res.stdout)
 
 
 if __name__ == "__main__":

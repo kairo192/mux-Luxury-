@@ -73,7 +73,11 @@ def get_whatsapp_config() -> dict:
     phone_number_id = os.getenv("WHATSAPP_PHONE_NUMBER_ID", "").strip()
     business_account_id = os.getenv("WHATSAPP_BUSINESS_ACCOUNT_ID", "").strip()
     app_secret = os.getenv("WHATSAPP_APP_SECRET", "").strip()
-    webhook_verify_token = os.getenv("WHATSAPP_WEBHOOK_VERIFY_TOKEN", "mus_luxury_wa_webhook_verify_2026_secret").strip()
+    if app_secret.startswith(("replace_with_", "<CHANGE_ME")):
+        app_secret = ""
+    webhook_verify_token = os.getenv("WHATSAPP_WEBHOOK_VERIFY_TOKEN", "").strip()
+    if webhook_verify_token.startswith(("replace_with_", "<CHANGE_ME")):
+        webhook_verify_token = "" 
     api_version = os.getenv("WHATSAPP_API_VERSION", "v20.0").strip() or "v20.0"
     template_name = os.getenv("WHATSAPP_TEMPLATE_NAME", "luxe_admin_password_reset").strip()
     template_lang = os.getenv("WHATSAPP_TEMPLATE_LANG", "fr").strip() or "fr"
@@ -196,13 +200,11 @@ def dispatch_whatsapp_recovery_otp(to_phone: str, otp_code: str, expires_minutes
 def verify_whatsapp_webhook_signature(raw_body: bytes, signature_header: Optional[str]) -> bool:
     """
     Verifies X-Hub-Signature-256 sent by Meta Webhooks using WHATSAPP_APP_SECRET.
+    Fails closed (returns False) if WHATSAPP_APP_SECRET is not configured or signature is missing.
     """
     cfg = get_whatsapp_config()
     secret = cfg["app_secret"]
-    if not secret or secret.startswith("replace_with_"):
-        # If app secret is not enforced yet, require explicit header format check
-        return bool(signature_header and signature_header.startswith("sha256="))
-    if not signature_header or not signature_header.startswith("sha256="):
+    if not secret or not signature_header or not signature_header.startswith("sha256="):
         return False
     received_sig = signature_header.split("=", 1)[1].strip()
     expected_sig = hmac.new(secret.encode("utf-8"), raw_body, hashlib.sha256).hexdigest()

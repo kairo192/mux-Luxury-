@@ -150,19 +150,37 @@ class PostgresCompatConnection:
         self._conn.close()
 
 
+def normalize_postgres_url(raw_url: str) -> str:
+    """
+    Normalizes SQLAlchemy-style URLs (`postgresql+psycopg://...` or `postgres://...`)
+    into standard libpq connection URIs (`postgresql://...`) accepted by psycopg 3.
+    """
+    u = (raw_url or "").strip()
+    u = re.sub(r"^postgresql\+[a-zA-Z0-9_]+://", "postgresql://", u)
+    if u.startswith("postgres://"):
+        u = "postgresql://" + u[len("postgres://"):]
+    return u
+
+
 def get_connection():
     """
-    Connects to PostgreSQL 16 when LUXE_DB_ENGINE=postgres (and DATABASE_URL is reachable),
-    or uses high-concurrency SQLite WAL mode with foreign_keys=ON and 30s busy_timeout.
+    Connects to PostgreSQL 16 when LUXE_DB_ENGINE=postgres.
+    Fails closed (raises RuntimeError) if LUXE_DB_ENGINE=postgres and PostgreSQL is unreachable,
+    preventing silent fallback to ephemeral container SQLite in production.
     """
-    if os.getenv("LUXE_DB_ENGINE", "").lower() == "postgres" and os.getenv("DATABASE_URL"):
+    engine = os.getenv("LUXE_DB_ENGINE", "").strip().lower()
+    raw_db_url = os.getenv("DATABASE_URL", "").strip()
+    if engine == "postgres":
+        if not raw_db_url or "<CHANGE_ME" in raw_db_url:
+            raise RuntimeError("CRITICAL: LUXE_DB_ENGINE=postgres requires a valid DATABASE_URL")
+        pg_url = normalize_postgres_url(raw_db_url)
         try:
             import psycopg
             from psycopg.rows import dict_row
-            raw_pg = psycopg.connect(os.environ["DATABASE_URL"], row_factory=dict_row)
+            raw_pg = psycopg.connect(pg_url, row_factory=dict_row)
             return PostgresCompatConnection(raw_pg)
-        except Exception:
-            pass
+        except Exception as exc:
+            raise RuntimeError(f"CRITICAL: PostgreSQL connection failed (silent SQLite fallback is disabled): {exc}") from exc
 
     conn = sqlite3.connect(DB_PATH, timeout=30.0, check_same_thread=False)
     conn.row_factory = sqlite3.Row

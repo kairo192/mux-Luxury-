@@ -28,6 +28,8 @@ def load_dotenv_files() -> Dict[str, str]:
                     val = val.strip()
                     if (val.startswith('"') and val.endswith('"')) or (val.startswith("'") and val.endswith("'")):
                         val = val[1:-1]
+                    if val.startswith("<CHANGE_ME") or "<CHANGE_ME" in val:
+                        continue
                     loaded[key] = val
                     if key not in os.environ:
                         os.environ[key] = val

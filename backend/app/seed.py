@@ -1,3 +1,4 @@
+import os
 import hashlib
 import json
 import time
@@ -134,27 +135,34 @@ def seed_initial_data() -> None:
                     (role_ids[rname], perm_ids[pcode])
                 )
 
-        # 2. Seed Admin Users with Verified Algerian Phone Numbers for WhatsApp Recovery
-        cur.execute(
-            """INSERT INTO admin_users (email, full_name, phone, emergency_phone, whatsapp_verified, totp_enabled, password_hash, role_id, is_active)
-               VALUES (?, ?, ?, ?, 1, 1, ?, ?, 1)""",
-            ("admin@musluxury.dz", "Mustapha Harbit (Owner)", "+213550000001", "+213655534154", hash_password("MusLuxury2026!"), role_ids["super_admin"])
-        )
-        owner_id = cur.lastrowid
+        # 2. Admin User Seeding Policy:
+        # In production (APP_ENV=production), NEVER seed default admin credentials or hardcoded recovery codes!
+        # Instead, leave admin_users empty so the First-Time Owner Setup Wizard (/api/v1/admin/auth/initialize-owner) runs and locks itself.
+        owner_id = None
+        app_env = os.getenv("APP_ENV", "production").strip().lower()
+        if app_env in ("test", "development", "local") or os.getenv("SEED_DEFAULT_ADMIN") == "1":
+            admin_pw = os.getenv("ADMIN_INITIAL_PASSWORD") or "MusLuxury2026!"
+            editor_pw = os.getenv("EDITOR_INITIAL_PASSWORD") or "EditorLuxury2026!"
+            cur.execute(
+                """INSERT INTO admin_users (email, full_name, phone, emergency_phone, whatsapp_verified, totp_enabled, password_hash, role_id, is_active)
+                   VALUES (?, ?, ?, ?, 1, 1, ?, ?, 1)""",
+                ("admin@musluxury.dz", "Mustapha Harbit (Owner)", "+213550000001", "+213655534154", hash_password(admin_pw), role_ids["super_admin"])
+            )
+            owner_id = cur.lastrowid
 
-        cur.execute(
-            """INSERT INTO admin_users (email, full_name, phone, whatsapp_verified, totp_enabled, password_hash, role_id, is_active)
-               VALUES (?, ?, ?, 1, 0, ?, ?, 1)""",
-            ("editor@musluxury.dz", "Sarah (Product Manager)", "+213550000002", hash_password("EditorLuxury2026!"), role_ids["product_manager"])
-        )
+            cur.execute(
+                """INSERT INTO admin_users (email, full_name, phone, whatsapp_verified, totp_enabled, password_hash, role_id, is_active)
+                   VALUES (?, ?, ?, 1, 0, ?, ?, 1)""",
+                ("editor@musluxury.dz", "Sarah (Product Manager)", "+213550000002", hash_password(editor_pw), role_ids["product_manager"])
+            )
 
-        # Seed an Offline Emergency Recovery Code for the Owner (Section 6 fallback)
-        emergency_hash = hashlib.sha256(b"LUXE-EMERGENCY-2026-RECOVERY").hexdigest()
-        cur.execute(
-            """INSERT INTO admin_recovery_codes (admin_user_id, phone, code_hash, channel, max_attempts, expires_at)
-               VALUES (?, '+213550000001', ?, 'offline_emergency', 3, ?)""",
-            (owner_id, emergency_hash, int(time.time()) + 86400 * 365)
-        )
+            if app_env == "test":
+                emergency_hash = hashlib.sha256(b"LUXE-EMERGENCY-2026-RECOVERY").hexdigest()
+                cur.execute(
+                    """INSERT INTO admin_recovery_codes (admin_user_id, phone, code_hash, channel, max_attempts, expires_at)
+                       VALUES (?, '+213550000001', ?, 'offline_emergency', 3, ?)""",
+                    (owner_id, emergency_hash, int(time.time()) + 86400 * 365)
+                )
 
         # 3. Store Settings & Website Product Card Customization (Section 4.4)
         settings = {
@@ -514,8 +522,8 @@ def seed_initial_data() -> None:
             )
 
         cur.execute(
-            "INSERT INTO backup_records (filename, backup_type, size_bytes, sha256_checksum, status, triggered_by) VALUES (?, 'full', 248920, ?, 'verified', 1)",
-            ("luxe_backup_initial_20261031.sql.gz", hashlib.sha256(b"initial_luxe_seed").hexdigest())
+            "INSERT INTO backup_records (filename, backup_type, size_bytes, sha256_checksum, status, triggered_by) VALUES (?, 'full', 248920, ?, 'verified', ?)",
+            ("luxe_backup_initial_20261031.sql.gz", hashlib.sha256(b"initial_luxe_seed").hexdigest(), owner_id)
         )
 
         # Seed Official Mus Luxury Static Pages (about, faq, returns, terms)

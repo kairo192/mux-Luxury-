@@ -13,11 +13,14 @@ fi
 echo "[2/3] Verifying gzip archive integrity..."
 gzip -t "$BACKUP_FILE"
 
-echo "[3/3] Restoring database..."
+echo "[3/3] Restoring database atomically (all-or-nothing transaction)..."
 if [ -n "${DATABASE_URL:-}" ] && command -v psql >/dev/null 2>&1; then
-  gunzip -c "$BACKUP_FILE" | psql "${DATABASE_URL}"
+  gunzip -c "$BACKUP_FILE" | psql --single-transaction -v ON_ERROR_STOP=1 "${DATABASE_URL}"
 else
   SQLITE_FILE="${LUXE_SQLITE_PATH:-./backend/luxe_store.sqlite3}"
-  python3 -c "import sqlite3, gzip; sql = gzip.open('$BACKUP_FILE', 'rt', encoding='utf-8').read(); conn = sqlite3.connect('$SQLITE_FILE'); conn.executescript(sql); conn.commit(); conn.close()"
+  TMP_RESTORE="${SQLITE_FILE}.restore_tmp"
+  rm -f "$TMP_RESTORE"
+  python3 -c "import sqlite3, gzip; sql = gzip.open('$BACKUP_FILE', 'rt', encoding='utf-8').read(); conn = sqlite3.connect('$TMP_RESTORE'); conn.executescript(sql); conn.execute('SELECT COUNT(*) FROM products').fetchone(); conn.commit(); conn.close()"
+  mv "$TMP_RESTORE" "$SQLITE_FILE"
 fi
-echo "Restore completed successfully."
+echo "Atomic restore completed and verified successfully."

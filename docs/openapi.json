@@ -1508,7 +1508,7 @@
       },
       "post": {
         "summary": "Receive Whatsapp Webhook",
-        "description": "Meta WhatsApp Cloud API Webhook Receiver (POST) for message delivery & read receipts.",
+        "description": "Meta WhatsApp Cloud API Webhook Receiver (POST) for message delivery & read receipts.\nStrictly requires a configured WHATSAPP_APP_SECRET and a valid X-Hub-Signature-256 HMAC header.",
         "operationId": "receive_whatsapp_webhook_api_v1_webhooks_whatsapp_post",
         "responses": {
           "200": {

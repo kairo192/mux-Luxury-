@@ -24,17 +24,23 @@ from .security import (
     get_real_client_ip,
     create_access_token,
     decode_access_token,
+    decrypt_backup_bytes,
+    encrypt_backup_bytes,
+    hash_password as _hash_pw_init,
     revoke_token,
     validate_uploaded_image,
     verify_password,
 )
 
+_DUMMY_PASSWORD_HASH = _hash_pw_init("luxe_constant_time_dummy_mitigation_2026!")
+_ENABLE_PUBLIC_DOCS = os.getenv("APP_ENV", "production").strip().lower() != "production" 
+
 app = FastAPI(
     title="Mus Luxury (LUXE) E-Commerce API",
     version="1.0.0",
     description="Production REST API for LUXE Algerian E-Commerce Storefront & Tauri 2 Desktop CMS",
-    docs_url="/api/v1/docs",
-    openapi_url="/api/v1/openapi.json",
+    docs_url="/api/v1/docs" if _ENABLE_PUBLIC_DOCS else None,
+    openapi_url="/api/v1/openapi.json" if _ENABLE_PUBLIC_DOCS else None,
 )
 
 _DEFAULT_CORS_ORIGINS = [
@@ -472,24 +478,44 @@ def list_public_products(
             WHERE {' AND '.join(where)}
             ORDER BY {order_sql}
         """
+        reserved_params = {"category", "brand", "q", "min_price", "max_price", "in_stock_only", "sort", "page", "page_size"}
+        dynamic_attr_filters = {
+            (k[5:] if k.startswith("attr_") else k): v
+            for k, v in request.query_params.items()
+            if k not in reserved_params and v
+        }
+        start = (page - 1) * page_size
+        if not in_stock_only and not dynamic_attr_filters:
+            count_sql = f"""
+                SELECT COUNT(*) AS cnt FROM products p
+                JOIN categories c ON c.id = p.category_id
+                LEFT JOIN brands b ON b.id = p.brand_id
+                WHERE {' AND '.join(where)}
+            """
+            cur.execute(count_sql, params)
+            total = int(cur.fetchone()["cnt"])
+            paged_sql = sql + " LIMIT ? OFFSET ?"
+            cur.execute(paged_sql, [*params, page_size, start])
+            page_items = [serialize_product(conn, dict(r), include_private=False) for r in cur.fetchall()]
+            return {
+                "items": page_items,
+                "total": total,
+                "page": page,
+                "page_size": page_size,
+            }
+
         cur.execute(sql, params)
         items = [serialize_product(conn, dict(r), include_private=False) for r in cur.fetchall()]
         if in_stock_only:
             items = [it for it in items if it["in_stock"]]
 
-        # Dynamic Category Attribute & Variant Axis Filtering (e.g. ?attr_color=Bordeaux&attr_size=L)
-        reserved_params = {"category", "brand", "q", "min_price", "max_price", "in_stock_only", "sort", "page", "page_size"}
-        for qp_key, qp_val in request.query_params.items():
-            if qp_key in reserved_params or not qp_val:
-                continue
-            attr_key = qp_key[5:] if qp_key.startswith("attr_") else qp_key
+        for attr_key, qp_val in dynamic_attr_filters.items():
             items = [
                 it for it in items
                 if it.get("attributes", {}).get(attr_key) == qp_val
                 or any(v.get("attributes", {}).get(attr_key) == qp_val for v in it.get("variants", []))
             ]
         total = len(items)
-        start = (page - 1) * page_size
         return {
             "items": items[start : start + page_size],
             "total": total,
@@ -601,7 +627,7 @@ def create_guest_order(
         if bl_row:
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
-                detail=f"Commande refusée (Protection Anti-Retour COD) : Ce numéro ({local_chk}) est bloqué suite à des retours répétés ({bl_row['reason']}). Contactez la boutique sur WhatsApp au 0655534154."
+                detail=f"Commande refusée (Protection Anti-Retour COD) : Ce numéro ({local_chk}) ne peut pas passer de commande automatique. Contactez le service client Mus Luxury sur WhatsApp au 0655534154."
             )
 
     if not payload.items:
@@ -754,9 +780,18 @@ def create_guest_order(
                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)""",
                 (order_id, v["product_id"], v["id"], v["product_name"], v["title"], v["sku"], unit_price, qty, line_total)
             )
-            prev_qty = int(v["stock_qty"])
-            new_qty = prev_qty - qty
-            cur.execute("UPDATE product_variants SET stock_qty = ? WHERE id = ?", (new_qty, v["id"]))
+            cur.execute(
+                "UPDATE product_variants SET stock_qty = stock_qty - ? WHERE id = ? AND is_active = 1 AND stock_qty >= ?",
+                (qty, v["id"], qty)
+            )
+            if cur.rowcount == 0:
+                raise HTTPException(
+                    status_code=status.HTTP_409_CONFLICT,
+                    detail=f"Insufficient stock for '{v['product_name']} ({v['title']})'"
+                )
+            cur.execute("SELECT stock_qty FROM product_variants WHERE id = ?", (v["id"],))
+            new_qty = int(cur.fetchone()["stock_qty"])
+            prev_qty = new_qty + qty
             cur.execute("UPDATE products SET sales_count = sales_count + ? WHERE id = ?", (qty, v["product_id"]))
             cur.execute(
                 """INSERT INTO inventory_movements
@@ -837,7 +872,9 @@ def admin_login(payload: LoginRequest, request: Request):
             (payload.email.strip().lower(),)
         )
         user = cur.fetchone()
-        if not user or not verify_password(payload.password, user["password_hash"]):
+        candidate_hash = user["password_hash"] if user else _DUMMY_PASSWORD_HASH
+        pw_ok = verify_password(payload.password, candidate_hash)
+        if not user or not pw_ok:
             raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid email or password")
 
         cur.execute(
@@ -1298,12 +1335,22 @@ def _resolve_writable_dir(env_key: str, local_subdir: str) -> str:
 UPLOAD_STORAGE_DIR = _resolve_writable_dir("UPLOAD_DIR", "uploads")
 BACKUP_STORAGE_DIR = _resolve_writable_dir("BACKUP_DIR", "backups")
 
+MAX_UPLOAD_IMAGE_BYTES = 5 * 1024 * 1024
+
 @app.post("/api/v1/admin/upload", status_code=201)
 async def upload_product_image(
     file: UploadFile = File(...),
     admin: dict = Depends(require_permission("products:write"))
 ):
-    data = await file.read()
+    buf = bytearray()
+    while True:
+        chunk = await file.read(65536)
+        if not chunk:
+            break
+        buf.extend(chunk)
+        if len(buf) > MAX_UPLOAD_IMAGE_BYTES:
+            raise HTTPException(status_code=413, detail="Image exceeds maximum allowed size of 5 MB")
+    data = bytes(buf)
     validate_uploaded_image(file.filename or "upload.jpg", file.content_type or "", data)
     digest = hashlib.sha256(data).hexdigest()[:16]
     ext = {"image/jpeg": ".jpg", "image/png": ".png", "image/webp": ".webp"}[file.content_type]
@@ -1346,12 +1393,13 @@ def trigger_manual_backup(admin: dict = Depends(require_permission("backups:writ
         cur = conn.cursor()
         sql_dump = "\n".join(conn.iterdump())
         compressed_bytes = gzip.compress(sql_dump.encode("utf-8"))
-        checksum = hashlib.sha256(compressed_bytes).hexdigest()
+        encrypted_bytes = encrypt_backup_bytes(compressed_bytes)
+        checksum = hashlib.sha256(encrypted_bytes).hexdigest()
         fname = f"luxe_backup_{int(time.time())}_{secrets.token_hex(3)}.sql.gz"
         fpath = os.path.join(BACKUP_STORAGE_DIR, fname)
         with open(fpath, "wb") as bf:
-            bf.write(compressed_bytes)
-        real_size = len(compressed_bytes)
+            bf.write(encrypted_bytes)
+        real_size = len(encrypted_bytes)
 
         cur.execute(
             """INSERT INTO backup_records
@@ -1392,14 +1440,18 @@ def verify_backup_restoration_isolated(
             raise HTTPException(status_code=404, detail="Backup file missing from storage directory")
 
         with open(fpath, "rb") as bf:
-            compressed_bytes = bf.read()
+            stored_bytes = bf.read()
 
-        actual_sha256 = hashlib.sha256(compressed_bytes).hexdigest()
+        actual_sha256 = hashlib.sha256(stored_bytes).hexdigest()
         if not hmac.compare_digest(actual_sha256, bkp["sha256_checksum"]):
             cur.execute("UPDATE backup_records SET status = 'failed' WHERE id = ?", (backup_id,))
             raise HTTPException(status_code=400, detail="Backup integrity check failed: SHA-256 mismatch")
 
-        sql_script = gzip.decompress(compressed_bytes).decode("utf-8")
+        try:
+            compressed_bytes = decrypt_backup_bytes(stored_bytes)
+            sql_script = gzip.decompress(compressed_bytes).decode("utf-8")
+        except Exception as exc:
+            raise HTTPException(status_code=400, detail=f"Backup decryption or decompression failed: {exc}")
         with tempfile.TemporaryDirectory() as tmpdir:
             temp_db_path = os.path.join(tmpdir, "isolated_restore_test.db")
             temp_conn = sqlite3.connect(temp_db_path)
@@ -1877,20 +1929,20 @@ def verify_whatsapp_webhook(
     Meta WhatsApp Cloud API Webhook Verification Endpoint (GET).
     """
     cfg = get_whatsapp_config()
-    if hub_mode == "subscribe" and hub_verify_token and hmac.compare_digest(hub_verify_token, cfg["webhook_verify_token"]):
+    expected_token = cfg["webhook_verify_token"]
+    if hub_mode == "subscribe" and expected_token and hub_verify_token and hmac.compare_digest(hub_verify_token, expected_token):
         return Response(content=str(hub_challenge or ""), media_type="text/plain")
-    raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Webhook verification token mismatch")
+    raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Webhook verification token mismatch or unconfigured")
 
 @app.post("/api/v1/webhooks/whatsapp")
 async def receive_whatsapp_webhook(request: Request):
     """
     Meta WhatsApp Cloud API Webhook Receiver (POST) for message delivery & read receipts.
+    Strictly requires a configured WHATSAPP_APP_SECRET and a valid X-Hub-Signature-256 HMAC header.
     """
     raw_body = await request.body()
     sig_header = request.headers.get("X-Hub-Signature-256")
-    cfg = get_whatsapp_config()
-    has_live_secret = bool(cfg["app_secret"] and not cfg["app_secret"].startswith("replace_with_"))
-    if (sig_header or has_live_secret) and not verify_whatsapp_webhook_signature(raw_body, sig_header):
+    if not verify_whatsapp_webhook_signature(raw_body, sig_header):
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid or missing X-Hub-Signature-256 webhook signature")
     try:
         payload = json.loads(raw_body.decode("utf-8") or "{}")
@@ -2394,11 +2446,15 @@ def admin_adjust_variant_stock(
         v = cur.fetchone()
         if not v:
             raise HTTPException(status_code=404, detail="Variant not found")
-        prev_qty = int(v["stock_qty"])
-        new_qty = prev_qty + payload.change_qty
-        if new_qty < 0:
+        cur.execute(
+            "UPDATE product_variants SET stock_qty = stock_qty + ? WHERE id = ? AND (stock_qty + ?) >= 0",
+            (payload.change_qty, variant_id, payload.change_qty)
+        )
+        if cur.rowcount == 0:
             raise HTTPException(status_code=400, detail="Stock quantity cannot become negative")
-        cur.execute("UPDATE product_variants SET stock_qty = ? WHERE id = ?", (new_qty, variant_id))
+        cur.execute("SELECT stock_qty FROM product_variants WHERE id = ?", (variant_id,))
+        new_qty = int(cur.fetchone()["stock_qty"])
+        prev_qty = new_qty - payload.change_qty
         cur.execute(
             """INSERT INTO inventory_movements
                (variant_id, admin_user_id, change_qty, previous_qty, new_qty, reason)
@@ -2572,12 +2628,16 @@ def admin_list_products(
             where.append("(p.name_fr LIKE ? OR p.sku LIKE ?)")
             params.extend([f"%{q}%", f"%{q}%"])
 
-        cur.execute(f"SELECT * FROM products p WHERE {' AND '.join(where)} ORDER BY p.id DESC", params)
-        all_rows = [serialize_product(conn, dict(r), include_private=True) for r in cur.fetchall()]
-        total = len(all_rows)
+        cur.execute(f"SELECT COUNT(*) AS cnt FROM products p WHERE {' AND '.join(where)}", params)
+        total = int(cur.fetchone()["cnt"])
         start = (page - 1) * page_size
+        cur.execute(
+            f"SELECT * FROM products p WHERE {' AND '.join(where)} ORDER BY p.id DESC LIMIT ? OFFSET ?",
+            [*params, page_size, start]
+        )
+        paged_rows = [serialize_product(conn, dict(r), include_private=True) for r in cur.fetchall()]
         return {
-            "items": all_rows[start : start + page_size],
+            "items": paged_rows,
             "total": total,
             "page": page,
             "page_size": page_size,
@@ -3130,7 +3190,7 @@ def api_readiness_check():
 def admin_list_audit_logs(
     limit: int = Query(40, ge=1, le=200),
     action_filter: Optional[str] = Query(None, alias="action"),
-    admin: dict = Depends(require_permission("dashboard:read")),
+    admin: dict = Depends(require_permission("settings:write")),
 ):
     with db_session() as conn:
         cur = conn.cursor()

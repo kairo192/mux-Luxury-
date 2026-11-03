@@ -1358,7 +1358,7 @@ export default function App() {
           </div>
         )}
 
-        )}</div>
+        </div>
 
         {/* TAB 2: PRODUCTS & DYNAMIC CATEGORY ATTRIBUTES (KEEP-ALIVE) */}
         <div className={activeTab === "products" ? "block" : "hidden"}>
@@ -1563,8 +1563,6 @@ export default function App() {
               </div>
             </div>
           </div>
-        )}
-
         </div>
 
         {/* TAB 3: DYNAMIC CATEGORIES & ATTRIBUTES (KEEP-ALIVE — NEVER UNMOUNTS) */}
@@ -1622,8 +1620,6 @@ export default function App() {
               </div>
             </div>
           </div>
-        )}
-
         </div>
 
         {/* TAB 5: ORDERS & INVOICES (KEEP-ALIVE) */}
@@ -1845,8 +1841,6 @@ export default function App() {
               </div>
             )}
           </div>
-        )}
-
         </div>
 
         {/* TAB 6: 69 WILAYAS DELIVERY TARIFFS (KEEP-ALIVE — NEVER UNMOUNTS) */}
@@ -1963,8 +1957,6 @@ export default function App() {
               </form>
             </div>
           </div>
-        )}
-
         </div>
 
         {/* TAB 8: BACKUPS, WHATSAPP RECOVERY STATUS & ISOLATED RESTORE VERIFICATION (KEEP-ALIVE) */}
