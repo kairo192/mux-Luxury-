@@ -52,8 +52,8 @@ export function DeliveryWilayasPage() {
   }, []);
 
   async function handleSaveZone(z: WilayaZone) {
-    const homeFee = Number(z.rates.home.fee_dzd);
-    const deskFee = Number(z.rates.stop_desk.fee_dzd);
+    const homeFee = Number(z.rates?.home?.fee_dzd ?? 0);
+    const deskFee = Number(z.rates?.stop_desk?.fee_dzd ?? 0);
     if (isNaN(homeFee) || homeFee < 0 || isNaN(deskFee) || deskFee < 0) {
       notifyClientWarning(
         "Tarif de livraison invalide",
@@ -67,10 +67,10 @@ export function DeliveryWilayasPage() {
       await DesktopCmsApi.updateDeliveryZone(z.wilaya_code, {
         home_fee_dzd: homeFee,
         stop_desk_fee_dzd: deskFee,
-        home_supported: Boolean(z.rates.home.is_supported),
-        stop_desk_supported: Boolean(z.rates.stop_desk.is_supported),
-        estimated_days: z.rates.home.estimated_days,
-        communes: z.communes,
+        home_supported: Boolean(z.rates?.home?.is_supported ?? true),
+        stop_desk_supported: Boolean(z.rates?.stop_desk?.is_supported ?? true),
+        estimated_days: z.rates?.home?.estimated_days || "48-72h",
+        communes: z.communes || [],
         is_active: Boolean(z.is_active),
       });
       const msg = `Tarifs de la Wilaya ${z.wilaya_code} - ${z.wilaya_name_fr} enregistrés (Domicile: ${homeFee} DA | Stop-Desk: ${deskFee} DA).`;
@@ -91,7 +91,7 @@ export function DeliveryWilayasPage() {
 
   async function handleBulkSaveAllWilayas() {
     const invalidZone = zones.find(
-      (z) => Number(z.rates.home.fee_dzd) < 0 || Number(z.rates.stop_desk.fee_dzd) < 0
+      (z) => Number(z.rates?.home?.fee_dzd ?? 0) < 0 || Number(z.rates?.stop_desk?.fee_dzd ?? 0) < 0
     );
     if (invalidZone) {
       notifyClientWarning(
@@ -105,11 +105,11 @@ export function DeliveryWilayasPage() {
     try {
       const payload = zones.map((z) => ({
         wilaya_code: z.wilaya_code,
-        home_fee_dzd: Number(z.rates.home.fee_dzd),
-        stop_desk_fee_dzd: Number(z.rates.stop_desk.fee_dzd),
-        home_supported: Boolean(z.rates.home.is_supported),
-        stop_desk_supported: Boolean(z.rates.stop_desk.is_supported),
-        estimated_days: z.rates.home.estimated_days,
+        home_fee_dzd: Number(z.rates?.home?.fee_dzd ?? 0),
+        stop_desk_fee_dzd: Number(z.rates?.stop_desk?.fee_dzd ?? 0),
+        home_supported: Boolean(z.rates?.home?.is_supported ?? true),
+        stop_desk_supported: Boolean(z.rates?.stop_desk?.is_supported ?? true),
+        estimated_days: z.rates?.home?.estimated_days || "48-72h",
         is_active: Boolean(z.is_active),
       }));
       await DesktopCmsApi.bulkUpdateDeliveryZones(payload);
@@ -211,14 +211,14 @@ export function DeliveryWilayasPage() {
                   <div className="flex items-center gap-2">
                     <input
                       type="checkbox"
-                      checked={Boolean(z.rates.home.is_supported)}
+                      checked={Boolean(z.rates?.home?.is_supported ?? true)}
                       onChange={(e) => updateLocalRate(z.wilaya_code, "home", "is_supported", e.target.checked ? 1 : 0)}
                     />
                     <input
                       type="number"
                       min={0}
                       step={50}
-                      value={z.rates.home.fee_dzd}
+                      value={z.rates?.home?.fee_dzd ?? 0}
                       onChange={(e) => updateLocalRate(z.wilaya_code, "home", "fee_dzd", Number(e.target.value))}
                       className="w-24 px-2.5 py-1.5 rounded-lg border border-gray-300 font-extrabold text-[#063D2E]"
                     />
@@ -229,14 +229,14 @@ export function DeliveryWilayasPage() {
                   <div className="flex items-center gap-2">
                     <input
                       type="checkbox"
-                      checked={Boolean(z.rates.stop_desk.is_supported)}
+                      checked={Boolean(z.rates?.stop_desk?.is_supported ?? true)}
                       onChange={(e) => updateLocalRate(z.wilaya_code, "stop_desk", "is_supported", e.target.checked ? 1 : 0)}
                     />
                     <input
                       type="number"
                       min={0}
                       step={50}
-                      value={z.rates.stop_desk.fee_dzd}
+                      value={z.rates?.stop_desk?.fee_dzd ?? 0}
                       onChange={(e) => updateLocalRate(z.wilaya_code, "stop_desk", "fee_dzd", Number(e.target.value))}
                       className="w-24 px-2.5 py-1.5 rounded-lg border border-gray-300 font-extrabold text-[#B68F40]"
                     />
@@ -246,7 +246,7 @@ export function DeliveryWilayasPage() {
                 <td className="py-2.5">
                   <input
                     type="text"
-                    value={z.rates.home.estimated_days}
+                    value={z.rates?.home?.estimated_days || "48-72h"}
                     onChange={(e) => updateLocalRate(z.wilaya_code, "home", "estimated_days", e.target.value)}
                     className="w-28 px-2 py-1 rounded border border-gray-200 text-xs"
                   />

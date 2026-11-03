@@ -10,6 +10,12 @@ import {
   RefreshCw,
   Sparkles,
   ArrowUpRight,
+  CheckCircle2,
+  AlertTriangle,
+  Search,
+  BookOpen,
+  Tag,
+  X,
 } from "lucide-react";
 import { DesktopCmsApi } from "../api/adminClient";
 
@@ -142,15 +148,17 @@ export const AccountingPage: React.FC = () => {
         <div className="flex items-center gap-3">
           <button
             onClick={() => loadAllAccountingData()}
-            className="px-4 py-2 text-xs font-semibold rounded border border-[#063D2E]/20 text-[#063D2E] hover:bg-[#063D2E]/5 transition-colors"
+            className="inline-flex items-center gap-1.5 px-4 py-2 text-xs font-semibold rounded-xl border border-[#063D2E]/20 text-[#063D2E] hover:bg-[#063D2E]/5 transition-colors"
           >
-            🔄 Actualiser
+            <RefreshCw className="w-3.5 h-3.5 text-[#063D2E]" />
+            <span>Actualiser</span>
           </button>
           <button
             onClick={handleExportOrdersCsv}
-            className="px-4 py-2 text-xs font-semibold rounded bg-[#063D2E] text-[#D4AF62] hover:bg-[#0A5C45] shadow-sm transition-all flex items-center gap-2"
+            className="inline-flex items-center gap-1.5 px-4 py-2 text-xs font-semibold rounded-xl bg-[#063D2E] text-[#D4AF62] hover:bg-[#0A5C45] shadow-xs transition-all"
           >
-            <span>📥</span> Exporter Commandes CSV
+            <Download className="w-3.5 h-3.5 text-[#D4AF62]" />
+            <span>Exporter Commandes CSV</span>
           </button>
         </div>
       </div>
@@ -159,41 +167,49 @@ export const AccountingPage: React.FC = () => {
       <div className="flex gap-2 border-b border-gray-200">
         <button
           onClick={() => setActiveTab("pnl")}
-          className={`pb-3 px-4 text-xs font-bold transition-all relative ${
+          className={`pb-3 px-4 text-xs font-bold transition-all relative inline-flex items-center gap-1.5 ${
             activeTab === "pnl"
               ? "text-[#063D2E] border-b-2 border-[#063D2E]"
               : "text-gray-400 hover:text-gray-600"
           }`}
         >
-          📊 Compte de Résultat (P&L)
+          <BarChart3 className="w-3.5 h-3.5" />
+          <span>Compte de Résultat (P&amp;L)</span>
         </button>
         <button
           onClick={() => setActiveTab("products")}
-          className={`pb-3 px-4 text-xs font-bold transition-all relative ${
+          className={`pb-3 px-4 text-xs font-bold transition-all relative inline-flex items-center gap-1.5 ${
             activeTab === "products"
               ? "text-[#063D2E] border-b-2 border-[#063D2E]"
               : "text-gray-400 hover:text-gray-600"
           }`}
         >
-          🏷️ Rentabilité par Produit ({products.length})
+          <Tag className="w-3.5 h-3.5" />
+          <span>Rentabilité par Produit ({products.length})</span>
         </button>
         <button
           onClick={() => setActiveTab("ledger")}
-          className={`pb-3 px-4 text-xs font-bold transition-all relative ${
+          className={`pb-3 px-4 text-xs font-bold transition-all relative inline-flex items-center gap-1.5 ${
             activeTab === "ledger"
               ? "text-[#063D2E] border-b-2 border-[#063D2E]"
               : "text-gray-400 hover:text-gray-600"
           }`}
         >
-          📜 Grand Livre & Journal Comptable
+          <BookOpen className="w-3.5 h-3.5" />
+          <span>Grand Livre &amp; Journal Comptable</span>
         </button>
       </div>
 
       {/* Error notification */}
       {error && (
-        <div className="p-3 bg-red-50 border border-red-200 text-red-700 text-xs rounded-md flex justify-between items-center">
-          <span>⚠️ {error}</span>
-          <button onClick={() => setError(null)} className="text-red-500 font-bold">&times;</button>
+        <div className="p-3 bg-red-50 border border-red-200 text-red-700 text-xs rounded-xl flex justify-between items-center">
+          <span className="flex items-center gap-1.5">
+            <AlertTriangle className="w-4 h-4 text-red-600 shrink-0" />
+            <span>{error}</span>
+          </span>
+          <button onClick={() => setError(null)} className="text-red-500 font-bold hover:opacity-75 transition">
+            <X className="w-4 h-4" />
+          </button>
         </div>
       )}
 
@@ -423,16 +439,16 @@ export const AccountingPage: React.FC = () => {
       {/* TAB 2: Product Profitability Matrix */}
       {!loading && activeTab === "products" && (
         <div className="space-y-4">
-          <div className="flex flex-col sm:flex-row items-center justify-between gap-3 bg-gray-50 p-3 rounded-lg border border-gray-200">
+          <div className="flex flex-col sm:flex-row items-center justify-between gap-3 bg-gray-50 p-3 rounded-xl border border-gray-200">
             <div className="relative w-full sm:w-80">
               <input
                 type="text"
                 placeholder="Rechercher produit, référence..."
                 value={searchProduct}
                 onChange={(e) => setSearchProduct(e.target.value)}
-                className="w-full text-xs pl-8 pr-3 py-2 border border-gray-300 rounded focus:border-[#063D2E] outline-none"
+                className="w-full text-xs pl-8 pr-3 py-2 border border-gray-300 rounded-xl focus:border-[#063D2E] outline-none"
               />
-              <span className="absolute left-2.5 top-2 text-gray-400 text-xs">🔍</span>
+              <Search className="w-3.5 h-3.5 absolute left-2.5 top-2.5 text-gray-400" />
             </div>
             <div className="text-xs text-gray-500">
               {filteredProducts.length} référence(s) analysée(s)
@@ -531,7 +547,11 @@ export const AccountingPage: React.FC = () => {
             }`}
           >
             <div className="flex items-center gap-3">
-              <span className="text-xl">{isBalanced ? "✓" : "⚠️"}</span>
+              {isBalanced ? (
+                <CheckCircle2 className="w-5 h-5 text-emerald-700 shrink-0" />
+              ) : (
+                <AlertTriangle className="w-5 h-5 text-red-700 shrink-0" />
+              )}
               <div>
                 <div className="font-bold text-xs">
                   {isBalanced

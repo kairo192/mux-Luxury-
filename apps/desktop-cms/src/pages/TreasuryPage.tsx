@@ -11,6 +11,9 @@ import {
   ArrowUpRight,
   ArrowDownRight,
   DollarSign,
+  AlertTriangle,
+  CheckCircle2,
+  X,
 } from "lucide-react";
 import { DesktopCmsApi } from "../api/adminClient";
 
@@ -122,9 +125,10 @@ export const TreasuryPage: React.FC = () => {
         <div className="flex items-center gap-3">
           <button
             onClick={() => loadData()}
-            className="px-4 py-2 text-xs font-semibold rounded border border-[#063D2E]/20 text-[#063D2E] hover:bg-[#063D2E]/5 transition-colors"
+            className="inline-flex items-center gap-1.5 px-4 py-2 text-xs font-semibold rounded-xl border border-[#063D2E]/20 text-[#063D2E] hover:bg-[#063D2E]/5 transition-colors"
           >
-            🔄 Actualiser
+            <RefreshCw className="w-3.5 h-3.5 text-[#063D2E]" />
+            <span>Actualiser</span>
           </button>
           <button
             onClick={() => {
@@ -132,24 +136,35 @@ export const TreasuryPage: React.FC = () => {
               setSuccess(null);
               setShowModal(true);
             }}
-            className="px-4 py-2 text-xs font-semibold rounded bg-[#063D2E] text-[#D4AF62] hover:bg-[#0A5C45] shadow-sm transition-all flex items-center gap-2"
+            className="inline-flex items-center gap-1.5 px-4 py-2 text-xs font-semibold rounded-xl bg-[#063D2E] text-[#D4AF62] hover:bg-[#0A5C45] shadow-xs transition-all"
           >
-            <span>+</span> Enregistrer une Opération Caisse
+            <Plus className="w-4 h-4 text-[#D4AF62]" />
+            <span>Enregistrer une Opération Caisse</span>
           </button>
         </div>
       </div>
 
       {/* Notifications */}
       {error && (
-        <div className="p-3 bg-red-50 border border-red-200 text-red-700 text-xs rounded-md flex justify-between items-center">
-          <span>⚠️ {error}</span>
-          <button onClick={() => setError(null)} className="text-red-500 font-bold">&times;</button>
+        <div className="p-3 bg-red-50 border border-red-200 text-red-700 text-xs rounded-xl flex justify-between items-center">
+          <span className="flex items-center gap-1.5">
+            <AlertTriangle className="w-4 h-4 text-red-600 shrink-0" />
+            <span>{error}</span>
+          </span>
+          <button onClick={() => setError(null)} className="text-red-500 font-bold hover:opacity-75 transition">
+            <X className="w-4 h-4" />
+          </button>
         </div>
       )}
       {success && (
-        <div className="p-3 bg-emerald-50 border border-emerald-200 text-emerald-800 text-xs rounded-md flex justify-between items-center">
-          <span>✓ {success}</span>
-          <button onClick={() => setSuccess(null)} className="text-emerald-600 font-bold">&times;</button>
+        <div className="p-3 bg-emerald-50 border border-emerald-200 text-emerald-800 text-xs rounded-xl flex justify-between items-center">
+          <span className="flex items-center gap-1.5">
+            <CheckCircle2 className="w-4 h-4 text-emerald-700 shrink-0" />
+            <span>{success}</span>
+          </span>
+          <button onClick={() => setSuccess(null)} className="text-emerald-600 font-bold hover:opacity-75 transition">
+            <X className="w-4 h-4" />
+          </button>
         </div>
       )}
 
@@ -447,18 +462,18 @@ export const TreasuryPage: React.FC = () => {
                 >
                   {movType === "inflow" ? (
                     <>
-                      <option value="cash_in">💵 Alimentation / Fond de Caisse Initial</option>
-                      <option value="bank_withdrawal">🏦 Retrait Bancaire vers Caisse</option>
-                      <option value="cod_collection">🚚 Encaissement Livreur COD</option>
-                      <option value="capital_contribution">💼 Apport en Compte Courant</option>
+                      <option value="cash_in">Alimentation / Fond de Caisse Initial</option>
+                      <option value="bank_withdrawal">Retrait Bancaire vers Caisse</option>
+                      <option value="cod_collection">Encaissement Livreur COD</option>
+                      <option value="capital_contribution">Apport en Compte Courant</option>
                       <option value="other_inflow">Autre Entrée Diverse</option>
                     </>
                   ) : (
                     <>
-                      <option value="cash_out">💸 Retrait Espèces Propriétaire</option>
-                      <option value="bank_deposit">🏦 Dépôt Espèces vers Banque</option>
-                      <option value="minor_expense">🧾 Menue Dépense Boutique Imprévue</option>
-                      <option value="cash_adjustment">⚖️ Régularisation Écart de Caisse</option>
+                      <option value="cash_out">Retrait Espèces Propriétaire</option>
+                      <option value="bank_deposit">Dépôt Espèces vers Banque</option>
+                      <option value="minor_expense">Menue Dépense Boutique Imprévue</option>
+                      <option value="cash_adjustment">Régularisation Écart de Caisse</option>
                       <option value="other_outflow">Autre Sortie Diverse</option>
                     </>
                   )}

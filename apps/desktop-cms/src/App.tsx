@@ -35,6 +35,29 @@ import {
   Download,
   Clock,
   Sparkles,
+  Edit3,
+  Trash2,
+  Archive,
+  RotateCcw,
+  Search,
+  SlidersHorizontal,
+  Calculator,
+  Wand2,
+  Eye,
+  EyeOff,
+  CheckSquare,
+  Square,
+  PackagePlus,
+  MessageCircle,
+  Ban,
+  Radio,
+  ShieldAlert,
+  UploadCloud,
+  X,
+  Layers,
+  Tag,
+  Check,
+  Filter,
 } from "lucide-react";
 import { RevenueTrendChart, OrderStatusDistributionChart, InventoryHealthWidget } from "./components/CmsCharts";
 import { DesktopCmsApi, restoreSessionFromOsKeychain } from "./api/adminClient";
@@ -156,8 +179,24 @@ export default function App() {
   const [editingProduct, setEditingProduct] = useState<any | null>(null);
   const [productToDelete, setProductToDelete] = useState<any | null>(null);
   const [forceDeleteProduct, setForceDeleteProduct] = useState(false);
-  const [productFilterTab, setProductFilterTab] = useState<"all" | "published" | "draft" | "archived">("all");
+  const [productFilterTab, setProductFilterTab] = useState<"all" | "published" | "draft" | "archived" | "low_stock">("all");
   const [deletingProduct, setDeletingProduct] = useState(false);
+
+  function handleGenerateAutoSku() {
+    const cat = categories.find((c) => c.id === Number(prodCategoryId));
+    let prefix = "LUX";
+    if (cat?.slug) {
+      if (cat.slug.includes("sac") || cat.slug.includes("maroquinerie")) prefix = "LUX-BAG";
+      else if (cat.slug.includes("chaussure") || cat.slug.includes("soulier")) prefix = "LUX-SHO";
+      else if (cat.slug.includes("beaute") || cat.slug.includes("maquillage") || cat.slug.includes("parfum")) prefix = "LUX-BEA";
+      else if (cat.slug.includes("accessoire") || cat.slug.includes("chale")) prefix = "LUX-ACC";
+      else prefix = `LUX-${cat.slug.slice(0, 3).toUpperCase()}`;
+    }
+    const randomNum = Math.floor(100 + Math.random() * 900);
+    const newSku = `${prefix}-${randomNum}`;
+    setProdSku(newSku);
+    notifyClientSuccess("SKU Généré", `Référence attribuée : ${newSku}`);
+  }
 
   // Order Filter State
   const [orderStatusFilter, setOrderStatusFilter] = useState("");
@@ -190,7 +229,15 @@ export default function App() {
         setRequiresOwnerSetup(false);
         setCheckingSetup(false);
       });
-  }, []);
+
+    function handleWindowFocus() {
+      if (user) {
+        void loadAllWorkspaceData();
+      }
+    }
+    window.addEventListener("focus", handleWindowFocus);
+    return () => window.removeEventListener("focus", handleWindowFocus);
+  }, [user]);
 
   async function loadAllWorkspaceData() {
     if (!user) return;
@@ -1058,10 +1105,10 @@ export default function App() {
               info: "bg-[#063D2E] text-white border-[#D4AF62]",
             };
             const badgeMap = {
-              success: "✓ CONFIRMATION",
-              error: "⛔ ALERTE SÉCURITÉ / ACTION",
-              warning: "⚠️ VÉRIFICATION REQUISE",
-              info: "ℹ️ INFORMATION",
+              success: "CONFIRMATION",
+              error: "ALERTE SÉCURITÉ / ACTION",
+              warning: "VÉRIFICATION REQUISE",
+              info: "INFORMATION",
             };
             return (
               <div
@@ -1072,8 +1119,12 @@ export default function App() {
               >
                 <div className="space-y-1 text-xs">
                   <div className="flex items-center gap-2">
-                    <span className="px-2 py-0.5 rounded-full bg-white/15 text-[#D4AF62] font-extrabold text-[10px]">
-                      {badgeMap[t.type]}
+                    <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-white/15 text-[#D4AF62] font-extrabold text-[10px]">
+                      {t.type === "success" && <CheckCircle2 className="w-3 h-3 text-emerald-400" />}
+                      {t.type === "error" && <ShieldAlert className="w-3 h-3 text-rose-400" />}
+                      {t.type === "warning" && <AlertTriangle className="w-3 h-3 text-amber-400" />}
+                      {t.type === "info" && <Clock className="w-3 h-3 text-[#D4AF62]" />}
+                      <span>{badgeMap[t.type]}</span>
                     </span>
                     <span className="text-[10px] opacity-70 font-mono">{t.timestamp}</span>
                   </div>
@@ -1083,10 +1134,10 @@ export default function App() {
                 <button
                   type="button"
                   onClick={() => setToastQueue((prev) => prev.filter((item) => item.id !== t.id))}
-                  className="text-xs font-bold px-2 py-1 rounded bg-white/10 hover:bg-white/20"
+                  className="text-xs font-bold p-1 rounded bg-white/10 hover:bg-white/20"
                   aria-label="Fermer la notification"
                 >
-                  ✕
+                  <X className="w-3.5 h-3.5" />
                 </button>
               </div>
             );
@@ -1111,20 +1162,23 @@ export default function App() {
                 }`}
               >
                 <div className="flex items-center gap-2">
+                  {activeMessageBox.type === "error" && <ShieldAlert className="w-4 h-4 text-rose-300" />}
+                  {activeMessageBox.type === "warning" && <AlertTriangle className="w-4 h-4 text-amber-300" />}
+                  {activeMessageBox.type === "info" && <CheckCircle2 className="w-4 h-4 text-[#D4AF62]" />}
                   <span className="text-base font-extrabold text-[#D4AF62]">
                     {activeMessageBox.type === "error"
-                      ? "⛔ Message Système — Action interrompue"
+                      ? "Message Système — Action interrompue"
                       : activeMessageBox.type === "warning"
-                      ? "⚠️ Vérification des données"
-                      : "✓ Confirmation Mus Luxury CMS"}
+                      ? "Vérification des données"
+                      : "Confirmation Mus Luxury CMS"}
                   </span>
                 </div>
                 <button
                   type="button"
                   onClick={() => setActiveMessageBox(null)}
-                  className="w-7 h-7 rounded-full bg-black/25 text-white font-bold text-xs flex items-center justify-center"
+                  className="w-7 h-7 rounded-full bg-black/25 text-white font-bold text-xs flex items-center justify-center hover:bg-black/40 transition"
                 >
-                  ✕
+                  <X className="w-4 h-4" />
                 </button>
               </div>
               <div className="p-6 space-y-4 text-xs">
@@ -1160,7 +1214,7 @@ export default function App() {
         >
           <div className="px-6 py-4 bg-[#063D2E] text-white flex items-center justify-between border-b border-[#D4AF62]/40">
             <div className="flex items-center gap-2">
-              <span className="text-xl">⚠️</span>
+              <AlertTriangle className="w-5 h-5 text-[#D4AF62]" />
               <div>
                 <h3 className="text-base font-serif font-bold text-[#D4AF62]">
                   Suppression / Archivage du Produit
@@ -1172,16 +1226,17 @@ export default function App() {
               type="button"
               onClick={() => { setProductToDelete(null); setForceDeleteProduct(false); setError(""); }}
               disabled={deletingProduct}
-              className="w-8 h-8 rounded-full bg-white/10 hover:bg-white/20 text-white font-bold flex items-center justify-center"
+              className="w-8 h-8 rounded-full bg-white/10 hover:bg-white/20 text-white font-bold flex items-center justify-center transition"
             >
-              ✕
+              <X className="w-4 h-4" />
             </button>
           </div>
 
           <div className="p-6 space-y-5 text-xs">
             {error && (
-              <div className="p-3 bg-red-100 border border-red-300 text-red-800 rounded-xl text-xs font-semibold">
-                ⚠️ {error}
+              <div className="p-3 bg-red-100 border border-red-300 text-red-800 rounded-xl text-xs font-semibold flex items-center gap-2">
+                <AlertTriangle className="w-4 h-4 text-red-800 shrink-0" />
+                <span>{error}</span>
               </div>
             )}
             {/* Product info banner */}
@@ -1194,7 +1249,7 @@ export default function App() {
                     className="w-full h-full object-cover"
                   />
                 ) : (
-                  <span className="text-2xl">👜</span>
+                  <ShoppingBag className="w-7 h-7 text-[#063D2E]/40" />
                 )}
               </div>
               <div className="space-y-1">
@@ -1246,9 +1301,10 @@ export default function App() {
                     type="button"
                     disabled={deletingProduct}
                     onClick={() => handleConfirmDeleteProduct(true)}
-                    className="px-4 py-2.5 rounded-xl bg-red-700 hover:bg-red-800 disabled:opacity-50 text-white font-extrabold whitespace-nowrap shadow-sm shrink-0"
+                    className="inline-flex items-center gap-1.5 px-4 py-2.5 rounded-xl bg-red-700 hover:bg-red-800 disabled:opacity-50 text-white font-extrabold whitespace-nowrap shadow-xs shrink-0"
                   >
-                    {deletingProduct ? "Suppression..." : "🗑️ Supprimer Définitivement"}
+                    <Trash2 className="w-4 h-4 text-white" />
+                    <span>{deletingProduct ? "Suppression..." : "Supprimer Définitivement"}</span>
                   </button>
                 </div>
               </div>
@@ -1268,9 +1324,10 @@ export default function App() {
                     type="button"
                     disabled={deletingProduct}
                     onClick={() => handleConfirmDeleteProduct(false)}
-                    className="px-4 py-2.5 rounded-xl bg-amber-600 hover:bg-amber-700 disabled:opacity-50 text-white font-extrabold whitespace-nowrap shadow-sm shrink-0"
+                    className="inline-flex items-center gap-1.5 px-4 py-2.5 rounded-xl bg-amber-600 hover:bg-amber-700 disabled:opacity-50 text-white font-extrabold whitespace-nowrap shadow-xs shrink-0"
                   >
-                    {deletingProduct ? "Archivage..." : "📦 Archiver la Pièce"}
+                    <Archive className="w-4 h-4 text-white" />
+                    <span>{deletingProduct ? "Archivage..." : "Archiver la Pièce"}</span>
                   </button>
                 </div>
               </div>
@@ -1303,8 +1360,9 @@ export default function App() {
       {renderDeleteProductModal()}
         <form onSubmit={handleFirstTimeSetup} className="max-w-lg w-full bg-[#063D2E] p-8 rounded-2xl border-2 border-[#D4AF62] space-y-4 shadow-2xl">
           <div className="text-center">
-            <span className="px-3 py-1 rounded-full bg-[#D4AF62] text-[#02291F] text-[10px] font-extrabold uppercase">
-              ★ Première Ouverture — Configuration Initiale ★
+            <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-[#D4AF62] text-[#02291F] text-[10px] font-extrabold uppercase tracking-wide">
+              <Sparkles className="w-3 h-3 text-[#02291F]" />
+              <span>Première Ouverture — Configuration Initiale</span>
             </span>
             <h1 className="text-2xl font-serif text-white font-bold mt-2">Accès Propriétaire &amp; Direction</h1>
             <p className="text-xs text-[#E8D4A5] mt-1">
@@ -1427,6 +1485,7 @@ export default function App() {
     published: products.filter((p) => p.status === "published").length,
     draft: products.filter((p) => p.status === "draft").length,
     archived: products.filter((p) => p.status === "archived").length,
+    low_stock: products.filter((p) => (p.total_stock ?? 0) <= 3 && p.status !== "archived").length,
   };
 
   const filteredProducts = products.filter((p) => {
@@ -1436,6 +1495,7 @@ export default function App() {
       (p?.sku && p.sku.toLowerCase().includes(prodSearch.toLowerCase()));
     if (!matchesSearch) return false;
     if (productFilterTab === "all") return true;
+    if (productFilterTab === "low_stock") return (p.total_stock ?? 0) <= 3 && p.status !== "archived";
     return p.status === productFilterTab;
   });
 
@@ -1828,8 +1888,76 @@ export default function App() {
         {/* TAB 2: PRODUCTS & DYNAMIC CATEGORY ATTRIBUTES (KEEP-ALIVE) */}
         <div className={activeTab === "products" ? "block" : "hidden"}>
           <div className="space-y-6">
-            <form onSubmit={handleCreateProduct} className="bg-white p-6 rounded-2xl border border-[#D4AF62]/40 space-y-4 text-xs">
-              <h2 className="text-lg font-serif font-bold text-[#063D2E]">+ Créer un produit (Formulaire adaptatif selon la catégorie)</h2>
+            {/* Pro Sub-Header Launch Bar */}
+            <div className="bg-white p-4 rounded-2xl border border-[#063D2E]/10 shadow-xs flex flex-col md:flex-row md:items-center justify-between gap-4">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-[#063D2E] to-[#0A5C45] flex items-center justify-center text-[#D4AF62] shadow-xs shrink-0">
+                  <ShoppingBag className="w-5 h-5 text-[#D4AF62]" />
+                </div>
+                <div>
+                  <h2 className="text-base font-serif font-bold text-[#063D2E]">Catalogue &amp; Matrice Produits</h2>
+                  <p className="text-xs text-gray-500">Gestion des collections haute couture, marges commerciales et déclinaisons en temps réel</p>
+                </div>
+              </div>
+              <div className="flex flex-wrap items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => setActiveTab("categories")}
+                  className="px-3 py-1.5 rounded-xl bg-[#F8F6F0] text-[#063D2E] border border-[#D4AF62]/40 font-bold text-xs hover:bg-[#D4AF62]/20 transition flex items-center gap-1.5"
+                >
+                  <Tags className="w-3.5 h-3.5 text-[#063D2E]" />
+                  <span>Gérer les Catégories</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={async () => {
+                    await loadAllWorkspaceData();
+                    notifyClientSuccess("Catalogue synchronisé", "Toutes les références ont été réactualisées depuis la base centrale.");
+                  }}
+                  className="px-3 py-1.5 rounded-xl bg-[#063D2E] text-[#D4AF62] font-bold text-xs hover:bg-[#084e3b] transition flex items-center gap-1.5 shadow-xs"
+                >
+                  <RefreshCw className="w-3.5 h-3.5 text-[#D4AF62]" />
+                  <span>Actualiser</span>
+                </button>
+              </div>
+            </div>
+
+            {/* Zero Categories Warning / Onboarding Callout */}
+            {categories.length === 0 && (
+              <div className="p-4 rounded-2xl bg-amber-50 border border-amber-200 flex flex-col md:flex-row items-center justify-between gap-4">
+                <div className="flex items-center gap-3">
+                  <div className="w-10 h-10 rounded-xl bg-amber-100 flex items-center justify-center text-amber-800 shrink-0">
+                    <AlertTriangle className="w-5 h-5 text-amber-700" />
+                  </div>
+                  <div>
+                    <h4 className="text-sm font-bold text-amber-900">Boutique Vierge : Aucune Catégorie Définie</h4>
+                    <p className="text-xs text-amber-800 mt-0.5">
+                      Pour publier des pièces et bénéficier des attributs dynamiques (matières, dimensions, pointures), configurez vos catégories d'abord.
+                    </p>
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setActiveTab("categories")}
+                  className="px-4 py-2 rounded-xl bg-[#063D2E] text-[#D4AF62] font-bold text-xs hover:bg-[#084e3b] transition flex items-center gap-2 shrink-0 shadow-xs"
+                >
+                  <Plus className="w-3.5 h-3.5" />
+                  <span>Créer des Catégories</span>
+                </button>
+              </div>
+            )}
+
+            <form onSubmit={handleCreateProduct} className="bg-white p-6 rounded-2xl border border-[#D4AF62]/40 space-y-4 text-xs shadow-xs">
+              <div className="flex items-center justify-between">
+                <h2 className="text-lg font-serif font-bold text-[#063D2E] flex items-center gap-2">
+                  <Plus className="w-5 h-5 text-[#D4AF62]" />
+                  <span>Créer un produit de luxe (Formulaire adaptatif)</span>
+                </h2>
+                <span className="text-[11px] text-gray-500 font-mono">
+                  {categories.length} catégorie(s) disponible(s)
+                </span>
+              </div>
+
               <div className="grid grid-cols-1 md:grid-cols-6 gap-3">
                 <div>
                   <label className="block font-bold mb-1">Catégorie *</label>
@@ -1839,22 +1967,49 @@ export default function App() {
                       setProdCategoryId(Number(e.target.value));
                       setProdDynamicAttrs({});
                     }}
-                    className="w-full px-3 py-2 border rounded-xl bg-white font-semibold"
+                    className="w-full px-3 py-2 border rounded-xl bg-white font-semibold focus:border-[#063D2E] outline-none"
                   >
-                    {categories.map((c) => (
-                      <option key={c.id} value={c.id}>
-                        {c.name_fr}
-                      </option>
-                    ))}
+                    {categories.length === 0 ? (
+                      <option value="">-- Aucune catégorie --</option>
+                    ) : (
+                      categories.map((c) => (
+                        <option key={c.id} value={c.id}>
+                          {c.name_fr}
+                        </option>
+                      ))
+                    )}
                   </select>
                 </div>
                 <div>
                   <label className="block font-bold mb-1">Nom du produit (FR) *</label>
-                  <input value={prodNameFr} onChange={(e) => setProdNameFr(e.target.value)} required placeholder="ex: Sac Émeraude Prestige" className="w-full px-3 py-2 border rounded-xl" />
+                  <input
+                    value={prodNameFr}
+                    onChange={(e) => setProdNameFr(e.target.value)}
+                    required
+                    placeholder="ex: Sac Émeraude Prestige"
+                    className="w-full px-3 py-2 border rounded-xl bg-white focus:border-[#063D2E] outline-none"
+                  />
                 </div>
-                <div>
-                  <label className="block font-bold mb-1">Code SKU *</label>
-                  <input value={prodSku} onChange={(e) => setProdSku(e.target.value)} required placeholder="LUX-BAG-099" className="w-full px-3 py-2 border rounded-xl font-mono" />
+                <div className="relative">
+                  <div className="flex items-center justify-between mb-1">
+                    <label className="block font-bold">Code SKU *</label>
+                    <button
+                      type="button"
+                      onClick={handleGenerateAutoSku}
+                      className="text-[10px] text-[#A16207] hover:underline font-bold flex items-center gap-0.5"
+                      title="Générer automatiquement une référence unique"
+                    >
+                      <Wand2 className="w-2.5 h-2.5" />
+                      <span>Auto</span>
+                    </button>
+                  </div>
+                  <input
+                    value={prodSku}
+                    onChange={(e) => setProdSku(e.target.value)}
+                    required
+                    placeholder="LUX-BAG-099"
+                    className="w-full px-3 py-2 border rounded-xl font-mono uppercase bg-white focus:border-[#063D2E] outline-none"
+                  />
                 </div>
                 <div>
                   <label className="block font-bold mb-1">Prix d'Achat (DA) *</label>
@@ -1865,16 +2020,30 @@ export default function App() {
                     onChange={(e) => setProdCostPrice(Number(e.target.value))}
                     required
                     placeholder="Coût d'achat"
-                    className="w-full px-3 py-2 border rounded-xl font-mono"
+                    className="w-full px-3 py-2 border rounded-xl font-mono bg-white focus:border-[#063D2E] outline-none"
                   />
                 </div>
                 <div>
                   <label className="block font-bold mb-1">Prix de Vente (DA) *</label>
-                  <input type="number" min={0} value={prodSellingPrice} onChange={(e) => setProdSellingPrice(Number(e.target.value))} required className="w-full px-3 py-2 border rounded-xl font-bold font-mono" />
+                  <input
+                    type="number"
+                    min={0}
+                    value={prodSellingPrice}
+                    onChange={(e) => setProdSellingPrice(Number(e.target.value))}
+                    required
+                    className="w-full px-3 py-2 border rounded-xl font-bold font-mono bg-white focus:border-[#063D2E] outline-none text-[#063D2E]"
+                  />
                 </div>
                 <div>
                   <label className="block font-bold mb-1">Stock Initial *</label>
-                  <input type="number" min={0} value={prodVariantStock} onChange={(e) => setProdVariantStock(Number(e.target.value))} required className="w-full px-3 py-2 border rounded-xl font-bold font-mono" />
+                  <input
+                    type="number"
+                    min={0}
+                    value={prodVariantStock}
+                    onChange={(e) => setProdVariantStock(Number(e.target.value))}
+                    required
+                    className="w-full px-3 py-2 border rounded-xl font-bold font-mono bg-white focus:border-[#063D2E] outline-none"
+                  />
                 </div>
               </div>
 
@@ -1882,33 +2051,39 @@ export default function App() {
               {(() => {
                 const sPrice = Number(prodSellingPrice) || 0;
                 const cPrice = Number(prodCostPrice) || 0;
+                const stock = Math.max(0, Number(prodVariantStock) || 0);
                 const unitProfit = Math.max(0, sPrice - cPrice);
                 const marginPct = sPrice > 0 ? (((sPrice - cPrice) / sPrice) * 100).toFixed(1) : "0.0";
                 const markupCoeff = cPrice > 0 ? (sPrice / cPrice).toFixed(2) : "1.00";
+                const totalStockValue = sPrice * stock;
                 return (
-                  <div className="p-3 bg-emerald-50/80 rounded-xl border border-emerald-200 flex flex-wrap items-center justify-between gap-3">
+                  <div className="p-3.5 bg-gradient-to-r from-emerald-50/90 via-[#F8F6F0] to-emerald-50/90 rounded-xl border border-emerald-200/80 flex flex-wrap items-center justify-between gap-3 shadow-xs">
                     <div className="flex items-center gap-2">
-                      <span className="text-base">🧮</span>
-                      <span className="font-bold text-[#063D2E]">Calculateur Financier Prévisionnel :</span>
+                      <div className="w-7 h-7 rounded-lg bg-emerald-100 flex items-center justify-center text-emerald-800">
+                        <Calculator className="w-4 h-4 text-emerald-800" />
+                      </div>
+                      <span className="font-bold text-[#063D2E] text-xs">Calculateur Financier Prévisionnel :</span>
                     </div>
                     <div className="flex flex-wrap items-center gap-4 text-xs font-mono">
-                      <span>
-                        Bénéfice Brut / Pièce :{" "}
-                        <strong className="text-emerald-700">
-                          {unitProfit.toLocaleString()} DA
+                      <span className="flex items-center gap-1">
+                        <span className="text-gray-500">Bénéfice Brut :</span>
+                        <strong className="text-emerald-700 font-bold">
+                          +{unitProfit.toLocaleString()} DA
                         </strong>
                       </span>
-                      <span>
-                        Taux de Marge :{" "}
-                        <strong className="text-[#063D2E]">
+                      <span className="flex items-center gap-1">
+                        <span className="text-gray-500">Marge :</span>
+                        <span className="px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-900 font-bold text-[11px]">
                           {marginPct}%
-                        </strong>
+                        </span>
                       </span>
-                      <span>
-                        Coefficient / Markup :{" "}
-                        <strong className="text-gray-700">
-                          x{markupCoeff}
-                        </strong>
+                      <span className="flex items-center gap-1">
+                        <span className="text-gray-500">Markup :</span>
+                        <strong className="text-[#063D2E] font-bold">x{markupCoeff}</strong>
+                      </span>
+                      <span className="flex items-center gap-1">
+                        <span className="text-gray-500">Valeur Stock :</span>
+                        <strong className="text-gray-700">{totalStockValue.toLocaleString()} DA</strong>
                       </span>
                     </div>
                   </div>
@@ -1918,8 +2093,9 @@ export default function App() {
               {/* Dynamic Attributes Driven by Selected Category */}
               {activeCategoryObj && (activeCategoryObj.attributes || []).filter((a: any) => !a.is_variant_axis).length > 0 && (
                 <div className="p-4 rounded-xl bg-[#F8F6F0] border border-[#D4AF62]/30 space-y-2">
-                  <p className="font-bold text-[#063D2E]">
-                    Caractéristiques spécifiques à la catégorie « {activeCategoryObj.name_fr} » :
+                  <p className="font-bold text-[#063D2E] flex items-center gap-2">
+                    <SlidersHorizontal className="w-3.5 h-3.5 text-[#063D2E]" />
+                    <span>Caractéristiques spécifiques à la catégorie « {activeCategoryObj.name_fr} » :</span>
                   </p>
                   <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
                     {(activeCategoryObj.attributes || [])
@@ -1958,19 +2134,30 @@ export default function App() {
                 </div>
               )}
 
-              <button type="submit" className="px-6 py-2.5 rounded-xl bg-[#D4AF62] text-[#02291F] font-extrabold">
-                Enregistrer &amp; Publier le Produit
+              <button
+                type="submit"
+                className="inline-flex items-center gap-2 px-6 py-2.5 rounded-xl bg-gradient-to-r from-[#D4AF62] to-[#E8D4A5] text-[#02291F] font-extrabold shadow-xs hover:brightness-105 transition"
+              >
+                <Plus className="w-4 h-4 text-[#02291F]" />
+                <span>Enregistrer &amp; Publier le Produit</span>
               </button>
             </form>
 
             {/* Edit Product Modal / Inline Form */}
             {editingProduct && (
-              <form onSubmit={handleSaveEditedProduct} className="bg-[#F8F6F0] p-5 rounded-2xl border-2 border-[#D4AF62] space-y-3 text-xs">
+              <form onSubmit={handleSaveEditedProduct} className="bg-[#F8F6F0] p-5 rounded-2xl border-2 border-[#D4AF62] space-y-3 text-xs shadow-md">
                 <div className="flex justify-between items-center">
-                  <h4 className="font-serif font-bold text-base text-[#063D2E]">
-                    Modifier Produit #{editingProduct.id} ({editingProduct.sku}) — Version v{editingProduct.version || 1}
+                  <h4 className="font-serif font-bold text-base text-[#063D2E] flex items-center gap-2">
+                    <Edit3 className="w-4 h-4 text-[#063D2E]" />
+                    <span>Modifier Produit #{editingProduct.id} ({editingProduct.sku}) — Version v{editingProduct.version || 1}</span>
                   </h4>
-                  <button type="button" onClick={() => setEditingProduct(null)} className="font-bold">Fermer ✕</button>
+                  <button
+                    type="button"
+                    onClick={() => setEditingProduct(null)}
+                    className="p-1.5 rounded-lg text-gray-500 hover:text-black hover:bg-white/50 transition font-bold"
+                  >
+                    <X className="w-4 h-4" />
+                  </button>
                 </div>
                 <div className="grid grid-cols-1 md:grid-cols-4 gap-3">
                   <div>
@@ -1995,14 +2182,17 @@ export default function App() {
                   </div>
                 </div>
                 <div className="flex flex-wrap items-center gap-2 pt-2">
-                  <button type="submit" className="px-5 py-2 rounded-xl bg-[#063D2E] text-[#D4AF62] font-extrabold">
-                    Enregistrer les modifications
+                  <button type="submit" className="px-5 py-2 rounded-xl bg-[#063D2E] text-[#D4AF62] font-extrabold flex items-center gap-1.5">
+                    <Check className="w-4 h-4 text-[#D4AF62]" />
+                    <span>Enregistrer les modifications</span>
                   </button>
-                  <button type="button" onClick={() => handleGenerateVariantMatrix(editingProduct.id)} className="px-4 py-2 rounded-xl bg-[#D4AF62] text-[#02291F] font-bold">
-                    + Générer Matrice Variantes ({matrixColorCsv} × {matrixSizeCsv})
+                  <button type="button" onClick={() => handleGenerateVariantMatrix(editingProduct.id)} className="px-4 py-2 rounded-xl bg-[#D4AF62] text-[#02291F] font-bold flex items-center gap-1.5">
+                    <Plus className="w-3.5 h-3.5" />
+                    <span>Générer Matrice Variantes ({matrixColorCsv} × {matrixSizeCsv})</span>
                   </button>
-                  <label className="px-4 py-2 rounded-xl bg-[#F8F6F0] border border-[#D4AF62] text-[#063D2E] font-bold cursor-pointer">
-                    📁 Téléverser Image PC
+                  <label className="px-4 py-2 rounded-xl bg-white border border-[#D4AF62] text-[#063D2E] font-bold cursor-pointer hover:bg-[#F8F6F0] transition flex items-center gap-1.5">
+                    <UploadCloud className="w-4 h-4 text-[#063D2E]" />
+                    <span>Téléverser Image PC</span>
                     <input type="file" accept="image/jpeg,image/png,image/webp" onChange={handleUploadLocalProductMedia} className="hidden" />
                   </label>
                   <button type="button" onClick={() => handleAddProductGalleryImage(editingProduct.id)} className="px-4 py-2 rounded-xl bg-white border border-[#063D2E] text-[#063D2E] font-bold">
@@ -2017,17 +2207,20 @@ export default function App() {
               </form>
             )}
 
-            {/* Product List */}
-            <div className="bg-white p-6 rounded-2xl border border-[#D4AF62]/40 space-y-3 text-xs">
-              <div className="flex flex-wrap items-center justify-between gap-3">
+            {/* Product Catalogue Table & Tools */}
+            <div className="bg-white p-6 rounded-2xl border border-[#D4AF62]/40 space-y-4 text-xs shadow-xs">
+              <div className="flex flex-col md:flex-row md:items-center justify-between gap-3">
                 <div className="flex flex-wrap items-center gap-3">
-                  <h3 className="text-base font-serif font-bold text-[#063D2E]">Catalogue Produits ({filteredProducts.length})</h3>
-                  <div className="flex rounded-xl bg-[#F8F6F0] p-1 border border-[#D4AF62]/40 text-[11px]">
+                  <h3 className="text-base font-serif font-bold text-[#063D2E]">
+                    Catalogue Produits ({filteredProducts.length})
+                  </h3>
+                  <div className="flex flex-wrap rounded-xl bg-[#F8F6F0] p-1 border border-[#D4AF62]/40 text-[11px]">
                     {[
                       { key: "all", label: `Toutes (${productCounts.all})` },
                       { key: "published", label: `En vente (${productCounts.published})` },
                       { key: "draft", label: `Brouillons (${productCounts.draft})` },
                       { key: "archived", label: `Archivés (${productCounts.archived})` },
+                      { key: "low_stock", label: `Stock Faible (${productCounts.low_stock})` },
                     ].map((tab) => (
                       <button
                         key={tab.key}
@@ -2035,7 +2228,7 @@ export default function App() {
                         onClick={() => setProductFilterTab(tab.key as any)}
                         className={`px-3 py-1 rounded-lg font-bold transition ${
                           productFilterTab === tab.key
-                            ? "bg-[#063D2E] text-[#D4AF62] shadow-sm"
+                            ? "bg-[#063D2E] text-[#D4AF62] shadow-xs"
                             : "text-gray-600 hover:text-black"
                         }`}
                       >
@@ -2044,102 +2237,309 @@ export default function App() {
                     ))}
                   </div>
                 </div>
-                <input
-                  value={prodSearch}
-                  onChange={(e) => setProdSearch(e.target.value)}
-                  placeholder="Rechercher par nom ou SKU..."
-                  className="px-3 py-1.5 border rounded-xl w-64 bg-white"
-                />
+                <div className="flex items-center gap-2">
+                  <div className="relative">
+                    <Search className="w-3.5 h-3.5 absolute left-3 top-2.5 text-gray-400" />
+                    <input
+                      value={prodSearch}
+                      onChange={(e) => setProdSearch(e.target.value)}
+                      placeholder="Rechercher par nom ou SKU..."
+                      className="pl-8 pr-3 py-1.5 border rounded-xl w-60 bg-[#F8F6F0] focus:bg-white focus:border-[#063D2E] outline-none transition"
+                    />
+                    {prodSearch && (
+                      <button
+                        type="button"
+                        onClick={() => setProdSearch("")}
+                        className="absolute right-2.5 top-2 text-gray-400 hover:text-gray-700 text-xs font-bold"
+                      >
+                        <X className="w-3.5 h-3.5" />
+                      </button>
+                    )}
+                  </div>
+                </div>
               </div>
-              <div className="overflow-x-auto">
-                <table className="w-full text-left border-collapse">
-                  <thead>
-                    <tr className="bg-[#063D2E] text-[#E8D4A5]">
-                      <th className="p-2.5">ID / SKU</th>
-                      <th className="p-2.5">Produit</th>
-                      <th className="p-2.5 text-right">Prix Achat</th>
-                      <th className="p-2.5 text-right">Prix Vente</th>
-                      <th className="p-2.5 text-right">Marge Unitaire</th>
-                      <th className="p-2.5 text-center">Taux Marge</th>
-                      <th className="p-2.5 text-center">Stock</th>
-                      <th className="p-2.5 text-center">Statut</th>
-                      <th className="p-2.5 text-right">Actions</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y">
-                    {filteredProducts.map((p) => {
-                      const cost = p.purchase_cost_dzd || 0;
-                      const sell = p.selling_price_dzd || 0;
-                      const profit = sell - cost;
-                      const marginPct = sell > 0 ? ((profit / sell) * 100).toFixed(1) : "0.0";
-                      return (
-                        <tr key={p.id} className="hover:bg-gray-50/80 transition-colors">
-                          <td className="p-2.5 font-mono font-bold">#{p.id} • {p.sku}</td>
-                          <td className="p-2.5 font-bold">{p.name_fr}</td>
-                          <td className="p-2.5 text-right font-mono text-gray-500">{cost.toLocaleString()} DA</td>
-                          <td className="p-2.5 text-right font-extrabold text-[#063D2E] font-mono">{sell.toLocaleString()} DA</td>
-                          <td className="p-2.5 text-right font-bold text-emerald-700 font-mono">+{profit.toLocaleString()} DA</td>
-                          <td className="p-2.5 text-center font-bold">
-                            <span className="px-2 py-0.5 rounded-full text-[11px] bg-emerald-100 text-emerald-800">
-                              {marginPct}%
-                            </span>
-                          </td>
-                          <td className="p-2.5 text-center font-bold">{p.total_stock}</td>
-                          <td className="p-2.5 text-center">
-                            <span className={`px-2 py-0.5 rounded font-semibold text-[11px] ${
-                              p.status === "published"
-                                ? "bg-emerald-100 text-emerald-900 border border-emerald-300"
-                                : p.status === "archived"
-                                ? "bg-amber-100 text-amber-900 border border-amber-300"
-                                : "bg-gray-100 text-gray-800"
-                            }`}>
-                              {p.status === "published" ? "En Vente" : p.status === "archived" ? "Archivé" : "Brouillon"}
-                            </span>
-                          </td>
-                          <td className="p-2.5 text-right space-x-1.5 whitespace-nowrap">
-                            <button
-                              type="button"
-                              onClick={() => setEditingProduct(p)}
-                              className="px-2.5 py-1 rounded bg-[#F8F6F0] text-[#063D2E] border border-[#D4AF62]/40 font-bold hover:bg-[#D4AF62]/20"
-                            >
-                              Modifier
-                            </button>
-                            {p.status !== "archived" ? (
+
+              {/* Table or Empty State */}
+              {filteredProducts.length === 0 ? (
+                products.length === 0 ? (
+                  /* Empty State: Zero Products in DB */
+                  <div className="p-12 text-center bg-[#F8F6F0]/60 rounded-2xl border-2 border-dashed border-[#D4AF62]/40 space-y-4">
+                    <div className="w-16 h-16 rounded-2xl bg-gradient-to-br from-[#063D2E] to-[#0A5C45] flex items-center justify-center mx-auto text-[#D4AF62] shadow-md">
+                      <PackagePlus className="w-8 h-8 text-[#D4AF62]" />
+                    </div>
+                    <div className="max-w-md mx-auto space-y-1">
+                      <h4 className="text-lg font-serif font-bold text-[#063D2E]">Votre Catalogue Mus Luxury est Vierge</h4>
+                      <p className="text-xs text-gray-600 leading-relaxed">
+                        Aucun article n'est encore enregistré dans la base de données. Utilisez le formulaire ci-dessus pour publier votre première pièce d'exception (maroquinerie, souliers, cosmétiques).
+                      </p>
+                    </div>
+                    <div className="flex items-center justify-center gap-3 pt-2">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          const input = document.querySelector<HTMLInputElement>("input[placeholder*='Sac Émeraude']");
+                          input?.focus();
+                        }}
+                        className="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl bg-[#063D2E] text-[#D4AF62] font-extrabold text-xs shadow-xs hover:bg-[#084e3b] transition"
+                      >
+                        <Plus className="w-4 h-4 text-[#D4AF62]" />
+                        <span>Créer un Premier Produit</span>
+                      </button>
+                      {categories.length === 0 && (
+                        <button
+                          type="button"
+                          onClick={() => setActiveTab("categories")}
+                          className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl bg-white border border-[#D4AF62] text-[#063D2E] font-bold text-xs hover:bg-[#F8F6F0] transition"
+                        >
+                          <Tags className="w-4 h-4 text-[#063D2E]" />
+                          <span>Configurer les Catégories</span>
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                ) : (
+                  /* Empty State: Filter Returned No Products */
+                  <div className="p-10 text-center bg-gray-50 rounded-2xl border border-gray-200 space-y-3">
+                    <Search className="w-10 h-10 text-gray-300 mx-auto" />
+                    <div>
+                      <p className="font-bold text-gray-700 text-sm">Aucun produit ne correspond à vos critères de recherche</p>
+                      {prodSearch && <p className="text-xs text-gray-500 mt-0.5">Aucun résultat pour « {prodSearch} »</p>}
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setProdSearch("");
+                        setProductFilterTab("all");
+                      }}
+                      className="px-4 py-2 rounded-xl bg-[#063D2E] text-[#D4AF62] font-bold text-xs hover:bg-[#084e3b] transition"
+                    >
+                      Réinitialiser la recherche
+                    </button>
+                  </div>
+                )
+              ) : (
+                <div className="overflow-x-auto">
+                  <table className="w-full text-left border-collapse">
+                    <thead>
+                      <tr className="bg-[#063D2E] text-[#E8D4A5]">
+                        <th className="p-2.5 w-10 text-center">
+                          <input
+                            type="checkbox"
+                            checked={filteredProducts.length > 0 && selectedProductIds.length === filteredProducts.length}
+                            onChange={(e) => {
+                              if (e.target.checked) {
+                                setSelectedProductIds(filteredProducts.map((p) => p.id));
+                              } else {
+                                setSelectedProductIds([]);
+                              }
+                            }}
+                            className="rounded text-[#063D2E] w-4 h-4 cursor-pointer"
+                          />
+                        </th>
+                        <th className="p-2.5">ID / SKU</th>
+                        <th className="p-2.5">Produit &amp; Catégorie</th>
+                        <th className="p-2.5 text-right">Prix Achat</th>
+                        <th className="p-2.5 text-right">Prix Vente</th>
+                        <th className="p-2.5 text-right">Marge Unitaire</th>
+                        <th className="p-2.5 text-center">Taux Marge</th>
+                        <th className="p-2.5 text-center">Stock &amp; Disponibilité</th>
+                        <th className="p-2.5 text-center">Statut</th>
+                        <th className="p-2.5 text-right">Actions</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y">
+                      {filteredProducts.map((p) => {
+                        const cost = p.purchase_cost_dzd || 0;
+                        const sell = p.selling_price_dzd || 0;
+                        const profit = sell - cost;
+                        const marginPct = sell > 0 ? ((profit / sell) * 100).toFixed(1) : "0.0";
+                        const stock = p.total_stock ?? 0;
+                        const isSelected = selectedProductIds.includes(p.id);
+                        const cat = categories.find((c) => c.id === p.category_id);
+                        return (
+                          <tr
+                            key={p.id}
+                            className={`transition-colors ${isSelected ? "bg-amber-50/60" : "hover:bg-gray-50/80"}`}
+                          >
+                            <td className="p-2.5 text-center">
+                              <input
+                                type="checkbox"
+                                checked={isSelected}
+                                onChange={(e) => {
+                                  if (e.target.checked) {
+                                    setSelectedProductIds([...selectedProductIds, p.id]);
+                                  } else {
+                                    setSelectedProductIds(selectedProductIds.filter((id) => id !== p.id));
+                                  }
+                                }}
+                                className="rounded text-[#063D2E] w-4 h-4 cursor-pointer"
+                              />
+                            </td>
+                            <td className="p-2.5 font-mono">
+                              <span className="font-bold text-[#063D2E]">#{p.id}</span>
+                              <div className="text-[11px] text-gray-500 font-bold">{p.sku}</div>
+                            </td>
+                            <td className="p-2.5">
+                              <div className="font-bold text-[#063D2E] text-sm">{p.name_fr}</div>
+                              {cat && (
+                                <span className="inline-block mt-0.5 px-2 py-0.5 rounded-full bg-[#F8F6F0] text-gray-600 border border-[#D4AF62]/30 text-[10px] font-semibold">
+                                  {cat.name_fr}
+                                </span>
+                              )}
+                            </td>
+                            <td className="p-2.5 text-right font-mono text-gray-500">{cost.toLocaleString()} DA</td>
+                            <td className="p-2.5 text-right font-extrabold text-[#063D2E] font-mono text-sm">{sell.toLocaleString()} DA</td>
+                            <td className="p-2.5 text-right font-bold text-emerald-700 font-mono">+{profit.toLocaleString()} DA</td>
+                            <td className="p-2.5 text-center">
+                              <span
+                                className={`px-2 py-0.5 rounded-full text-[11px] font-bold ${
+                                  Number(marginPct) >= 40
+                                    ? "bg-emerald-100 text-emerald-900 border border-emerald-300"
+                                    : Number(marginPct) >= 20
+                                    ? "bg-blue-100 text-blue-900 border border-blue-300"
+                                    : "bg-amber-100 text-amber-900 border border-amber-300"
+                                }`}
+                              >
+                                {marginPct}%
+                              </span>
+                            </td>
+                            <td className="p-2.5 text-center font-bold">
+                              {stock > 3 ? (
+                                <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full bg-emerald-50 text-emerald-800 border border-emerald-200 text-[11px]">
+                                  <span className="w-2 h-2 rounded-full bg-emerald-500" />
+                                  <span>{stock} en stock</span>
+                                </span>
+                              ) : stock > 0 ? (
+                                <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full bg-amber-50 text-amber-800 border border-amber-300 text-[11px]">
+                                  <span className="w-2 h-2 rounded-full bg-amber-500 animate-pulse" />
+                                  <span>Faible ({stock})</span>
+                                </span>
+                              ) : (
+                                <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full bg-rose-50 text-rose-800 border border-rose-300 text-[11px]">
+                                  <span className="w-2 h-2 rounded-full bg-rose-500" />
+                                  <span>Rupture</span>
+                                </span>
+                              )}
+                            </td>
+                            <td className="p-2.5 text-center">
+                              <span
+                                className={`inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full font-bold text-[11px] ${
+                                  p.status === "published"
+                                    ? "bg-emerald-100 text-emerald-900 border border-emerald-300"
+                                    : p.status === "archived"
+                                    ? "bg-amber-100 text-amber-900 border border-amber-300"
+                                    : "bg-gray-100 text-gray-800 border border-gray-300"
+                                }`}
+                              >
+                                {p.status === "published" ? (
+                                  <>
+                                    <CheckCircle2 className="w-3 h-3 text-emerald-700" />
+                                    <span>En Vente</span>
+                                  </>
+                                ) : p.status === "archived" ? (
+                                  <>
+                                    <Archive className="w-3 h-3 text-amber-700" />
+                                    <span>Archivé</span>
+                                  </>
+                                ) : (
+                                  <>
+                                    <Clock className="w-3 h-3 text-gray-600" />
+                                    <span>Brouillon</span>
+                                  </>
+                                )}
+                              </span>
+                            </td>
+                            <td className="p-2.5 text-right space-x-1.5 whitespace-nowrap">
                               <button
                                 type="button"
-                                onClick={() => handleArchiveProduct(p.id)}
-                                className="px-2.5 py-1 rounded bg-amber-50 text-amber-800 border border-amber-200 font-bold hover:bg-amber-100"
+                                onClick={() => setEditingProduct(p)}
+                                className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-[#F8F6F0] text-[#063D2E] border border-[#D4AF62]/40 font-bold hover:bg-[#D4AF62]/20 transition"
+                                title="Modifier la fiche et les variantes"
                               >
-                                Archiver
+                                <Edit3 className="w-3 h-3 text-[#063D2E]" />
+                                <span>Modifier</span>
                               </button>
-                            ) : (
+                              {p.status !== "archived" ? (
+                                <button
+                                  type="button"
+                                  onClick={() => handleArchiveProduct(p.id)}
+                                  className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-amber-50 text-amber-800 border border-amber-200 font-bold hover:bg-amber-100 transition"
+                                  title="Archiver ce produit de la vitrine"
+                                >
+                                  <Archive className="w-3 h-3 text-amber-800" />
+                                  <span>Archiver</span>
+                                </button>
+                              ) : (
+                                <button
+                                  type="button"
+                                  onClick={() => handleRestoreProduct(p.id)}
+                                  className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-emerald-50 text-emerald-800 border border-emerald-200 font-bold hover:bg-emerald-100 transition"
+                                  title="Réactiver ce produit sur la vitrine"
+                                >
+                                  <RotateCcw className="w-3 h-3 text-emerald-800" />
+                                  <span>Réactiver</span>
+                                </button>
+                              )}
                               <button
                                 type="button"
-                                onClick={() => handleRestoreProduct(p.id)}
-                                className="px-2.5 py-1 rounded bg-emerald-50 text-emerald-800 border border-emerald-200 font-bold hover:bg-emerald-100"
+                                onClick={() => {
+                                  setProductToDelete(p);
+                                  setForceDeleteProduct(false);
+                                  setError("");
+                                }}
+                                className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-red-50 text-red-700 border border-red-200 font-bold hover:bg-red-100 transition shadow-xs"
+                                title="Ouvrir les options de suppression"
                               >
-                                Réactiver
+                                <Trash2 className="w-3 h-3 text-red-700" />
+                                <span>Supprimer</span>
                               </button>
-                            )}
-                            <button
-                              type="button"
-                              onClick={() => {
-                                setProductToDelete(p);
-                                setForceDeleteProduct(false);
-                                setError("");
-                              }}
-                              className="px-2.5 py-1 rounded bg-red-50 text-red-700 border border-red-200 font-bold hover:bg-red-100 transition shadow-sm"
-                              title="Ouvrir les options de suppression"
-                            >
-                              Supprimer
-                            </button>
-                          </td>
-                        </tr>
-                      );
-                    })}
-                  </tbody>
-                </table>
-              </div>
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+
+              {/* Floating Batch Action Dock */}
+              {selectedProductIds.length > 0 && (
+                <div className="fixed bottom-6 left-1/2 transform -translate-x-1/2 z-40 bg-[#063D2E] text-white px-5 py-3 rounded-2xl shadow-2xl border-2 border-[#D4AF62] flex items-center gap-4 animate-in slide-in-from-bottom duration-200">
+                  <div className="flex items-center gap-2">
+                    <CheckSquare className="w-4 h-4 text-[#D4AF62]" />
+                    <span className="font-bold text-xs text-[#E8D4A5]">
+                      {selectedProductIds.length} produit(s) sélectionné(s)
+                    </span>
+                  </div>
+                  <div className="h-4 w-px bg-white/20" />
+                  <div className="flex items-center gap-2">
+                    <button
+                      type="button"
+                      onClick={() => handleBulkStatus("published")}
+                      className="inline-flex items-center gap-1 px-3 py-1.5 rounded-xl bg-emerald-700 hover:bg-emerald-600 text-white font-bold text-xs transition"
+                    >
+                      <CheckCircle2 className="w-3.5 h-3.5" />
+                      <span>Publier</span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => handleBulkStatus("archived")}
+                      className="inline-flex items-center gap-1 px-3 py-1.5 rounded-xl bg-amber-600 hover:bg-amber-500 text-white font-bold text-xs transition"
+                    >
+                      <Archive className="w-3.5 h-3.5" />
+                      <span>Archiver</span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setSelectedProductIds([])}
+                      className="p-1.5 rounded-lg text-white/60 hover:text-white transition"
+                      title="Désélectionner tout"
+                    >
+                      <X className="w-4 h-4" />
+                    </button>
+                  </div>
+                </div>
+              )}
             </div>
           </div>
         </div>
@@ -2278,34 +2678,38 @@ export default function App() {
                       <button
                         type="button"
                         onClick={() => handleNotifyOrderCustomerWhatsapp(o.id, "confirmation_call")}
-                        className="px-3 py-1.5 rounded-lg bg-emerald-700 hover:bg-emerald-800 text-white font-bold"
+                        className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-emerald-700 hover:bg-emerald-800 text-white font-bold"
                         title="Envoyer la demande de confirmation WhatsApp au client"
                       >
-                        💬 WhatsApp Confirmer
+                        <MessageCircle className="w-3.5 h-3.5 text-white" />
+                        <span>WhatsApp Confirmer</span>
                       </button>
                       <button
                         type="button"
                         onClick={() => handleNotifyOrderCustomerWhatsapp(o.id, "shipped_notice")}
-                        className="px-3 py-1.5 rounded-lg bg-[#F8F6F0] border border-[#063D2E] text-[#063D2E] font-bold"
+                        className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-[#F8F6F0] border border-[#063D2E] text-[#063D2E] font-bold hover:bg-gray-100 transition"
                         title="Notifier le client de l'expédition du colis"
                       >
-                        🚚 Avis Expédition
+                        <Truck className="w-3.5 h-3.5 text-[#063D2E]" />
+                        <span>Avis Expédition</span>
                       </button>
                       {risk.is_blacklisted ? (
                         <button
                           type="button"
                           onClick={() => handleUnblockCustomerPhone(o.customer_phone)}
-                          className="px-3 py-1.5 rounded-lg bg-emerald-700 text-white font-bold"
+                          className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-emerald-700 text-white font-bold hover:bg-emerald-800 transition"
                         >
-                          ✓ Débloquer Numéro
+                          <CheckCircle2 className="w-3.5 h-3.5 text-white" />
+                          <span>Débloquer Numéro</span>
                         </button>
                       ) : (
                         <button
                           type="button"
                           onClick={() => handleBlockCustomerPhone(o.customer_phone, "Retours COD répétés / Non-récupération")}
-                          className="px-3 py-1.5 rounded-lg bg-red-50 text-red-800 border border-red-200 font-bold"
+                          className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-red-50 text-red-800 border border-red-200 font-bold hover:bg-red-100 transition"
                         >
-                          🚫 Bloquer Numéro (Anti-Retour)
+                          <Ban className="w-3.5 h-3.5 text-red-700" />
+                          <span>Bloquer Numéro (Anti-Retour)</span>
                         </button>
                       )}
                     </div>
@@ -2364,8 +2768,11 @@ export default function App() {
                 <div className="space-y-1.5 pt-1">
                   {codBlacklist.map((bl) => (
                     <div key={bl.phone_e164} className="p-2.5 rounded-xl bg-red-50 border border-red-200 flex flex-wrap items-center justify-between gap-2">
-                      <div>
-                        <span className="font-mono font-bold text-red-900">⛔ {bl.phone_local} ({bl.phone_e164})</span> — <span className="text-red-800">{bl.reason}</span>
+                      <div className="flex items-center gap-2">
+                        <Ban className="w-4 h-4 text-red-700 shrink-0" />
+                        <span className="font-mono font-bold text-red-900">{bl.phone_local} ({bl.phone_e164})</span>
+                        <span className="text-gray-400">•</span>
+                        <span className="text-red-800">{bl.reason}</span>
                       </div>
                       <button
                         type="button"
@@ -2381,9 +2788,10 @@ export default function App() {
             </div>
 
             {waOutbox.length > 0 && (
-              <div className="bg-white p-5 rounded-2xl border border-[#D4AF62]/40 shadow-sm space-y-2 text-xs">
-                <h4 className="font-serif font-bold text-[#063D2E] text-sm">
-                  📡 Journal des Communications WhatsApp Client ({waOutbox.length} dernier(s) message(s))
+              <div className="bg-white p-5 rounded-2xl border border-[#D4AF62]/40 shadow-xs space-y-2 text-xs">
+                <h4 className="font-serif font-bold text-[#063D2E] text-sm flex items-center gap-2">
+                  <Radio className="w-4 h-4 text-[#D4AF62]" />
+                  <span>Journal des Communications WhatsApp Client ({waOutbox.length} dernier(s) message(s))</span>
                 </h4>
                 <div className="space-y-1.5 max-h-40 overflow-y-auto">
                   {waOutbox.slice(0, 6).map((m: any, idx: number) => (
@@ -2417,7 +2825,13 @@ export default function App() {
                   <h4 className="font-serif font-bold text-base text-[#063D2E]">
                     Facture COD #{selectedInvoice.order_reference} — {selectedInvoice.boutique_info?.name}
                   </h4>
-                  <button type="button" onClick={() => setSelectedInvoice(null)} className="font-bold">Fermer ✕</button>
+                  <button
+                    type="button"
+                    onClick={() => setSelectedInvoice(null)}
+                    className="p-1 rounded-lg text-gray-500 hover:text-black transition"
+                  >
+                    <X className="w-4 h-4" />
+                  </button>
                 </div>
                 <p><strong>Boutique :</strong> {selectedInvoice.boutique_info?.address} • Tél/WhatsApp : {selectedInvoice.boutique_info?.phone}</p>
                 <p><strong>Client :</strong> {selectedInvoice.customer_name} ({selectedInvoice.customer_phone}) — {selectedInvoice.delivery_address}</p>
@@ -2568,8 +2982,9 @@ export default function App() {
                   Coffre-fort système : <strong>Chiffrement matériel certifié</strong> • Protection des identifiants et clés de session active
                 </p>
               </div>
-              <span className="px-3 py-1.5 rounded-xl bg-emerald-50 border border-emerald-200 text-emerald-900 font-extrabold">
-                ✓ Protection Système Active
+              <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-emerald-50 border border-emerald-200 text-emerald-900 font-extrabold">
+                <ShieldCheck className="w-4 h-4 text-emerald-700" />
+                <span>Protection Système Active</span>
               </span>
             </div>
             <div className="bg-white p-6 rounded-2xl border border-[#D4AF62]/40 flex flex-wrap items-center justify-between gap-4">
@@ -2584,14 +2999,15 @@ export default function App() {
                 onClick={handleRotateEmergencyCode}
                 className="px-4 py-2.5 rounded-xl bg-[#063D2E] text-[#D4AF62] font-bold hover:bg-[#02291F] transition"
               >
-                ↻ Générer un nouveau Code de Secours
+                Générer un nouveau Code de Secours
               </button>
             </div>
 
             <div className="bg-white p-6 rounded-2xl border border-[#D4AF62]/40 space-y-3">
               <div className="flex items-center justify-between">
-                <h3 className="text-base font-serif font-bold text-[#063D2E]">
-                  🛡️ Journal d'Audit Administrateur ({auditLogs.length} événement(s) tracé(s))
+                <h3 className="text-base font-serif font-bold text-[#063D2E] flex items-center gap-2">
+                  <ShieldCheck className="w-5 h-5 text-[#D4AF62]" />
+                  <span>Journal d'Audit Administrateur ({auditLogs.length} événement(s) tracé(s))</span>
                 </h3>
                 {readinessStatus && (
                   <span className="px-2.5 py-1 rounded-full bg-emerald-50 border border-emerald-300 text-emerald-900 font-bold text-[11px]">
@@ -2632,7 +3048,10 @@ export default function App() {
 
               {restoreReport && (
                 <div className="p-4 rounded-xl bg-emerald-50 border border-emerald-300 space-y-1">
-                  <p className="font-bold text-emerald-900">✓ Restauration isolée vérifiée avec succès ({restoreReport.filename})</p>
+                  <p className="font-bold text-emerald-900 flex items-center gap-1.5">
+                    <CheckCircle2 className="w-4 h-4 text-emerald-700" />
+                    <span>Restauration isolée vérifiée avec succès ({restoreReport.filename})</span>
+                  </p>
                   <p>
                     Enregistrements restaurés et vérifiés : Produits: <strong>{restoreReport.restored_counts?.products}</strong> • Catégories: <strong>{restoreReport.restored_counts?.categories}</strong> • Commandes: <strong>{restoreReport.restored_counts?.orders}</strong> • Wilayas: <strong>{restoreReport.restored_counts?.delivery_zones}</strong>
                   </p>

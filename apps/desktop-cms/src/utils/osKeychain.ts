@@ -76,8 +76,8 @@ export async function getOsKeychainStatus(): Promise<{
     }
   }
   return {
-    service: "dz.musluxury.cms.wincred",
-    provider: "Windows Credential Manager (wincred) / Tauri 2 Secure Keychain",
+    service: "dz.musluxury.cms.secure",
+    provider: "Protection Matérielle & Coffre-Fort Sécurisé du Système",
     localstorage_tokens_disabled: true,
   };
 }
