@@ -990,9 +990,374 @@
       }
     };
 
-    const CATEGORIES = [];
+    const CATEGORIES = [
+      {
+        id: 1, slug: "sacs", name_fr: "Sacs", name_ar: "حقائب", name_en: "Bags",
+        description_fr: "Élégance et praticité au quotidien : sacs à main matelassés, cabas et sacs bandoulière.",
+        image: ASSET_MAP.cat_sacs,
+        attributes: [
+          { key: "color", label_fr: "Couleur", label_ar: "اللون", label_en: "Color", type: "color", variant: true, filterable: true, options: ["Bordeaux", "Vert Émeraude", "Noir", "Beige", "Rose Poudré"] },
+          { key: "size", label_fr: "Taille", label_ar: "المقاس", label_en: "Size", type: "size", variant: true, filterable: true, options: ["S", "M", "L", "Standard"] },
+          { key: "bag_type", label_fr: "Type de sac", label_ar: "نوع الحقيبة", label_en: "Bag Type", type: "single_select", variant: false, filterable: true, options: ["Sac à main", "Sac bandoulière"] },
+          { key: "material", label_fr: "Matériau", label_ar: "الخامة", label_en: "Material", type: "short_text", variant: false, filterable: false, options: [] },
+          { key: "lining", label_fr: "Doublure", label_ar: "البطانة", label_en: "Lining", type: "short_text", variant: false, filterable: false, options: [] },
+          { key: "closure", label_fr: "Fermeture", label_ar: "الإغلاق", label_en: "Closure", type: "short_text", variant: false, filterable: false, options: [] },
+          { key: "dimensions", label_fr: "Dimensions", label_ar: "الأبعاد", label_en: "Dimensions", type: "measurement", variant: false, filterable: false, options: [] },
+          { key: "strap_type", label_fr: "Bandoulière", label_ar: "الحزام", label_en: "Strap Type", type: "short_text", variant: false, filterable: false, options: [] }
+        ]
+      },
+      {
+        id: 2, slug: "chaussures", name_fr: "Chaussures", name_ar: "أحذية", name_en: "Shoes",
+        description_fr: "Baskets urbaines et chaussures de ville aux finitions irréprochables.",
+        image: ASSET_MAP.cat_chaussures,
+        attributes: [
+          { key: "color", label_fr: "Couleur", label_ar: "اللون", label_en: "Color", type: "color", variant: true, filterable: true, options: ["Blanc & Noir", "Noir", "Or"] },
+          { key: "size", label_fr: "Pointure", label_ar: "المقاس", label_en: "Shoe Size", type: "size", variant: true, filterable: true, options: ["37", "38", "39", "40", "41"] },
+          { key: "gender", label_fr: "Genre", label_ar: "الجنس", label_en: "Gender", type: "single_select", variant: false, filterable: true, options: ["Femme", "Homme", "Unisexe"] },
+          { key: "shoe_type", label_fr: "Type de chaussure", label_ar: "نوع الحذاء", label_en: "Shoe Type", type: "single_select", variant: false, filterable: true, options: ["Baskets", "Escarpins"] },
+          { key: "material", label_fr: "Matériau", label_ar: "الخامة", label_en: "Material", type: "short_text", variant: false, filterable: false, options: [] },
+          { key: "sole", label_fr: "Semelle", label_ar: "النعل", label_en: "Sole", type: "short_text", variant: false, filterable: false, options: [] }
+        ]
+      },
+      {
+        id: 3, slug: "chale", name_fr: "Châle", name_ar: "شال", name_en: "Shawls",
+        description_fr: "Châles et écharpes soyeuses aux motifs raffinés.",
+        image: ASSET_MAP.cat_chale,
+        attributes: [
+          { key: "color", label_fr: "Couleur", label_ar: "اللون", label_en: "Color", type: "color", variant: true, filterable: true, options: ["Beige & Noir", "Vert Émeraude", "Or"] },
+          { key: "size", label_fr: "Dimensions", label_ar: "المقاس", label_en: "Dimensions", type: "size", variant: true, filterable: true, options: ["180 × 70 cm", "200 × 80 cm"] },
+          { key: "fabric", label_fr: "Matière", label_ar: "القماش", label_en: "Fabric", type: "single_select", variant: false, filterable: true, options: ["Soie & Cachemire", "Laine fine"] }
+        ]
+      },
+      {
+        id: 4, slug: "maquillage", name_fr: "Maquillage", name_ar: "مكياج", name_en: "Makeup",
+        description_fr: "Coffrets beauté complets, rouges à lèvres satinés et palettes.",
+        image: ASSET_MAP.cat_maquillage,
+        attributes: [
+          { key: "shade", label_fr: "Teinte / Coffret", label_ar: "الدرجة", label_en: "Shade", type: "color", variant: true, filterable: true, options: ["Teinte 01 Rose Nude", "Teinte 02 Rubis Intense"] },
+          { key: "size", label_fr: "Format", label_ar: "الحجم", label_en: "Format", type: "size", variant: true, filterable: true, options: ["Coffret Standard", "Coffret Prestige"] },
+          { key: "skin_type", label_fr: "Type de peau", label_ar: "نوع البشرة", label_en: "Skin Type", type: "single_select", variant: false, filterable: true, options: ["Tous types de peau", "Peau sensible"] },
+          { key: "finish", label_fr: "Fini", label_ar: "اللمسة النهائية", label_en: "Finish", type: "single_select", variant: false, filterable: true, options: ["Satiné & Velours", "Mat"] },
+          { key: "volume", label_fr: "Poids / Volume", label_ar: "الوزن", label_en: "Weight", type: "measurement", variant: false, filterable: false, options: [] }
+        ]
+      },
+      {
+        id: 5, slug: "chapeau", name_fr: "Chapeau", name_ar: "قبعات", name_en: "Hats",
+        description_fr: "Chapeaux d'été et feutres classiques à ruban contrasté.",
+        image: ASSET_MAP.cat_chapeau,
+        attributes: [
+          { key: "color", label_fr: "Couleur", label_ar: "اللون", label_en: "Color", type: "color", variant: true, filterable: true, options: ["Beige", "Noir"] },
+          { key: "size", label_fr: "Tour de tête", label_ar: "المقاس", label_en: "Size", type: "size", variant: true, filterable: true, options: ["M (56-57cm)", "L (58-59cm)"] },
+          { key: "material", label_fr: "Matière", label_ar: "الخامة", label_en: "Material", type: "short_text", variant: false, filterable: false, options: [] }
+        ]
+      },
+      {
+        id: 6, slug: "casquette", name_fr: "Casquette", name_ar: "قبعات رياضية", name_en: "Caps",
+        description_fr: "Casquettes brodées au style sport-chic.",
+        image: ASSET_MAP.casquette,
+        attributes: [
+          { key: "color", label_fr: "Couleur", label_ar: "اللون", label_en: "Color", type: "color", variant: true, filterable: true, options: ["Noir & Blanc", "Vert Émeraude"] },
+          { key: "size", label_fr: "Taille", label_ar: "المقاس", label_en: "Size", type: "size", variant: true, filterable: true, options: ["Ajustable", "M/L"] },
+          { key: "material", label_fr: "Matière", label_ar: "الخامة", label_en: "Material", type: "short_text", variant: false, filterable: false, options: [] }
+        ]
+      },
+      {
+        id: 7, slug: "les-lunettes", name_fr: "Les Lunettes", name_ar: "نظارات", name_en: "Eyewear",
+        description_fr: "Lunettes solaires UV400 aux montures écaille et dorées.",
+        image: ASSET_MAP.lunettes,
+        attributes: [
+          { key: "frame_color", label_fr: "Couleur monture", label_ar: "لون الإطار", label_en: "Frame Color", type: "color", variant: true, filterable: true, options: ["Écaille & Or", "Noir Intense"] },
+          { key: "size", label_fr: "Calibre", label_ar: "المقاس", label_en: "Lens Width", type: "size", variant: true, filterable: true, options: ["52 mm", "55 mm"] },
+          { key: "uv_protection", label_fr: "Protection UV", label_ar: "حماية الأشعة", label_en: "UV Protection", type: "single_select", variant: false, filterable: true, options: ["UV400 Polarisé", "UV400 Catégorie 3"] },
+          { key: "material", label_fr: "Matériau monture", label_ar: "خامة الإطار", label_en: "Frame Material", type: "short_text", variant: false, filterable: false, options: [] }
+        ]
+      },
+      {
+        id: 8, slug: "les-montres", name_fr: "Les Montres", name_ar: "ساعات", name_en: "Watches",
+        description_fr: "Garde-temps chronographes aux finitions dorées.",
+        image: ASSET_MAP.montre,
+        attributes: [
+          { key: "dial_color", label_fr: "Couleur du cadran", label_ar: "لون الميناء", label_en: "Dial Color", type: "color", variant: true, filterable: true, options: ["Noir & Or", "Émeraude & Or"] },
+          { key: "size", label_fr: "Diamètre boîtier", label_ar: "قطر الساعة", label_en: "Case Diameter", type: "size", variant: true, filterable: true, options: ["38 mm", "41 mm"] },
+          { key: "movement", label_fr: "Mouvement", label_ar: "الحركة", label_en: "Movement", type: "single_select", variant: false, filterable: true, options: ["Chronographe Quartz Précision", "Automatique"] },
+          { key: "water_resistance", label_fr: "Étanchéité", label_ar: "مقاومة الماء", label_en: "Water Resistance", type: "short_text", variant: false, filterable: false, options: [] },
+          { key: "strap_material", label_fr: "Bracelet", label_ar: "السوار", label_en: "Strap Material", type: "short_text", variant: false, filterable: false, options: [] }
+        ]
+      },
+      {
+        id: 9, slug: "accessoires", name_fr: "Accessoires", name_ar: "إكسسوارات", name_en: "Accessories",
+        description_fr: "Parures dorées, bagues et boucles d'oreilles ciselées.",
+        image: ASSET_MAP.accessoires,
+        attributes: [
+          { key: "finish", label_fr: "Finition", label_ar: "الطلاء", label_en: "Finish", type: "color", variant: true, filterable: true, options: ["Or 18K Plaqué", "Or"] },
+          { key: "size", label_fr: "Taille coffret", label_ar: "الحجم", label_en: "Set Size", type: "size", variant: true, filterable: true, options: ["Parure 5 pièces", "Parure Complète 8 pièces"] },
+          { key: "material", label_fr: "Alliage", label_ar: "المعدن", label_en: "Material", type: "short_text", variant: false, filterable: false, options: [] }
+        ]
+      }
+    ];
 
-    const PRODUCTS = [];
+    const PRODUCTS = [
+      {
+        id: 1, category_id: 1, category_slug: "sacs", sku: "LUX-BAG-001",
+        badge: "Nouveau",
+        name_fr: "Sac à main Chanel style", name_ar: "حقيبة يد ستايل شانيل", name_en: "Chanel Style Quilted Handbag",
+        brand: "CHANEL STYLE",
+        rating: "4.8", reviews: 12,
+        description_fr: "Un sac iconique au style intemporel. Élégant, pratique et parfait pour toutes les occasions. Ce modèle allie luxe et raffinement avec ses finitions soignées et sa chaîne argentée.",
+        image: ASSET_MAP.sac_chanel,
+        gallery: [ASSET_MAP.sac_chanel, ASSET_MAP.sac_burgundy, ASSET_MAP.sac_noir, ASSET_MAP.sac_rose],
+        selling_price_dzd: 4500, previous_price_dzd: 5500, discount_percent: 18,
+        sales_count: 24,
+        attributes: {
+          bag_type: "Sac à main",
+          material: "Cuir synthétique matelassé",
+          lining: "Tissu premium doux",
+          closure: "Fermoir rotatif à rabat",
+          dimensions: "26 × 15 × 8 cm",
+          strap_type: "Chaîne argentée tressée cuir"
+        },
+        swatches: ["#5B1E31", "#181818", "#DFC9AC", "#C98594"],
+        variants: [
+          { id: 1001, sku: "LUX-BAG-001-BOR-S", title: "Bordeaux / S", stock: 3, price: 4300, attrs: { color: "Bordeaux", size: "S" }, img: ASSET_MAP.sac_chanel },
+          { id: 1002, sku: "LUX-BAG-001-BOR-M", title: "Bordeaux / M", stock: 4, price: 4500, attrs: { color: "Bordeaux", size: "M" }, img: ASSET_MAP.sac_chanel },
+          { id: 1003, sku: "LUX-BAG-001-BOR-L", title: "Bordeaux / L", stock: 6, price: 4500, attrs: { color: "Bordeaux", size: "L" }, img: ASSET_MAP.sac_chanel },
+          { id: 1004, sku: "LUX-BAG-001-NOI-M", title: "Noir / M", stock: 5, price: 4500, attrs: { color: "Noir", size: "M" }, img: ASSET_MAP.sac_noir },
+          { id: 1005, sku: "LUX-BAG-001-NOI-L", title: "Noir / L", stock: 4, price: 4500, attrs: { color: "Noir", size: "L" }, img: ASSET_MAP.sac_noir },
+          { id: 1006, sku: "LUX-BAG-001-BEI-M", title: "Beige / M", stock: 3, price: 4500, attrs: { color: "Beige", size: "M" }, img: ASSET_MAP.sac_beige },
+          { id: 1007, sku: "LUX-BAG-001-ROS-M", title: "Rose Poudré / M", stock: 2, price: 4500, attrs: { color: "Rose Poudré", size: "M" }, img: ASSET_MAP.sac_rose }
+        ]
+      },
+      {
+        id: 2, category_id: 2, category_slug: "chaussures", sku: "LUX-SHOE-001",
+        badge: "Meilleure vente",
+        name_fr: "Baskets élégantes", name_ar: "حذاء رياضي أنيق", name_en: "Luxury Urban Sneakers",
+        brand: "MUS LUXURY",
+        rating: "4.9", reviews: 8,
+        description_fr: "Baskets basses bicolores à semelle confort et finitions dorées subtiles, pensées pour un style urbain chic au quotidien.",
+        image: ASSET_MAP.baskets,
+        gallery: [ASSET_MAP.baskets],
+        selling_price_dzd: 6800, previous_price_dzd: 8500, discount_percent: 20,
+        sales_count: 19,
+        attributes: {
+          gender: "Unisexe",
+          shoe_type: "Baskets",
+          material: "Cuir grainé supérieur",
+          sole: "Caoutchouc antidérapant cousu"
+        },
+        swatches: ["#EAEAEA", "#181818"],
+        variants: [
+          { id: 2001, sku: "LUX-SHOE-001-BN-37", title: "Blanc & Noir / 37", stock: 3, price: 6800, attrs: { color: "Blanc & Noir", size: "37" } },
+          { id: 2002, sku: "LUX-SHOE-001-BN-38", title: "Blanc & Noir / 38", stock: 4, price: 6800, attrs: { color: "Blanc & Noir", size: "38" } },
+          { id: 2003, sku: "LUX-SHOE-001-BN-39", title: "Blanc & Noir / 39", stock: 6, price: 6800, attrs: { color: "Blanc & Noir", size: "39" } },
+          { id: 2004, sku: "LUX-SHOE-001-BN-40", title: "Blanc & Noir / 40", stock: 3, price: 6800, attrs: { color: "Blanc & Noir", size: "40" } },
+          { id: 2005, sku: "LUX-SHOE-001-BN-41", title: "Blanc & Noir / 41", stock: 0, price: 6800, attrs: { color: "Blanc & Noir", size: "41" } },
+          { id: 2006, sku: "LUX-SHOE-001-NOI-39", title: "Noir / 39", stock: 5, price: 6800, attrs: { color: "Noir", size: "39" } },
+          { id: 2007, sku: "LUX-SHOE-001-NOI-40", title: "Noir / 40", stock: 4, price: 6800, attrs: { color: "Noir", size: "40" } }
+        ]
+      },
+      {
+        id: 3, category_id: 3, category_slug: "chale", sku: "LUX-SHW-001",
+        badge: "Promo",
+        name_fr: "Écharpe luxueuse", name_ar: "شال فاخر", name_en: "Luxury Printed Shawl",
+        brand: "MAISON OR",
+        rating: "4.7", reviews: 5,
+        description_fr: "Écharpe et châle au tombé soyeux, rehaussé de motifs délicats noir et or sur fond beige.",
+        image: ASSET_MAP.chale,
+        gallery: [ASSET_MAP.chale],
+        selling_price_dzd: 2200, previous_price_dzd: 3200, discount_percent: 31,
+        sales_count: 15,
+        attributes: {
+          fabric: "Soie & Cachemire"
+        },
+        swatches: ["#D2B895", "#063D2E"],
+        variants: [
+          { id: 3001, sku: "LUX-SHW-001-BN-180", title: "Beige & Noir / 180 × 70 cm", stock: 8, price: 2200, attrs: { color: "Beige & Noir", size: "180 × 70 cm" } },
+          { id: 3002, sku: "LUX-SHW-001-BN-200", title: "Beige & Noir / 200 × 80 cm", stock: 4, price: 2500, attrs: { color: "Beige & Noir", size: "200 × 80 cm" } },
+          { id: 3003, sku: "LUX-SHW-001-EM-180", title: "Vert Émeraude / 180 × 70 cm", stock: 5, price: 2200, attrs: { color: "Vert Émeraude", size: "180 × 70 cm" } }
+        ]
+      },
+      {
+        id: 4, category_id: 4, category_slug: "maquillage", sku: "LUX-MKP-001",
+        badge: "Populaire",
+        name_fr: "Set maquillage complet", name_ar: "مجموعة مكياج كاملة", name_en: "Complete Luxury Makeup Set",
+        brand: "MUS BEAUTY",
+        rating: "4.8", reviews: 7,
+        description_fr: "Coffret beauté réunissant rouges à lèvres satinés, palette d'ombres à paupières haute pigmentation et poudre compacte.",
+        image: ASSET_MAP.maquillage,
+        gallery: [ASSET_MAP.maquillage],
+        selling_price_dzd: 3900, previous_price_dzd: 5200, discount_percent: 25,
+        sales_count: 21,
+        attributes: {
+          skin_type: "Tous types de peau",
+          finish: "Satiné & Velours",
+          volume: "145 g (Coffret 5 pièces)"
+        },
+        swatches: ["#C66B7D", "#8E1B2B"],
+        variants: [
+          { id: 4001, sku: "LUX-MKP-001-01-STD", title: "Teinte 01 Rose Nude / Coffret Standard", stock: 10, price: 3900, attrs: { shade: "Teinte 01 Rose Nude", size: "Coffret Standard" } },
+          { id: 4002, sku: "LUX-MKP-001-01-PR", title: "Teinte 01 Rose Nude / Coffret Prestige", stock: 4, price: 4600, attrs: { shade: "Teinte 01 Rose Nude", size: "Coffret Prestige" } },
+          { id: 4003, sku: "LUX-MKP-001-02-STD", title: "Teinte 02 Rubis Intense / Coffret Standard", stock: 6, price: 3900, attrs: { shade: "Teinte 02 Rubis Intense", size: "Coffret Standard" } }
+        ]
+      },
+      {
+        id: 5, category_id: 5, category_slug: "chapeau", sku: "LUX-HAT-001",
+        badge: "Été",
+        name_fr: "Chapeau élégant", name_ar: "قبعة أنيقة", name_en: "Classic Ribbon Sun Hat",
+        brand: "MUS LUXURY",
+        rating: "4.6", reviews: 4,
+        description_fr: "Chapeau finement tressé avec ruban noir contrasté pour une allure solaire et distinguée.",
+        image: ASSET_MAP.chapeau,
+        gallery: [ASSET_MAP.chapeau],
+        selling_price_dzd: 1800, previous_price_dzd: 2500, discount_percent: 28,
+        sales_count: 9,
+        attributes: {
+          material: "Paille naturelle tressée main"
+        },
+        swatches: ["#DFC9AC", "#181818"],
+        variants: [
+          { id: 5001, sku: "LUX-HAT-001-BEI-M", title: "Beige / M (56-57cm)", stock: 7, price: 1800, attrs: { color: "Beige", size: "M (56-57cm)" } },
+          { id: 5002, sku: "LUX-HAT-001-BEI-L", title: "Beige / L (58-59cm)", stock: 4, price: 1800, attrs: { color: "Beige", size: "L (58-59cm)" } }
+        ]
+      },
+      {
+        id: 6, category_id: 1, category_slug: "sacs", sku: "LUX-BAG-002",
+        badge: "Exclusif",
+        name_fr: "Sac à main élégant Émeraude", name_ar: "حقيبة يد أنيقة زمردية", name_en: "Emerald Signature Handbag",
+        brand: "ÉMERAUDE PARIS",
+        rating: "4.9", reviews: 18,
+        description_fr: "Ce sac à main est conçu pour les femmes modernes qui recherchent à la fois l'élégance et la praticité. Fabriqué en cuir synthétique haut de gamme avec doublure douce.",
+        image: ASSET_MAP.sac_emeraude,
+        gallery: [ASSET_MAP.sac_emeraude, ASSET_MAP.sac_beige, ASSET_MAP.sac_noir],
+        selling_price_dzd: 12500, previous_price_dzd: 16900, discount_percent: 26,
+        sales_count: 27,
+        attributes: {
+          bag_type: "Sac à main",
+          material: "Cuir synthétique haut de gamme",
+          lining: "Tissu suédé doux",
+          closure: "Zippée & fermoir doré",
+          dimensions: "28 × 20 × 12 cm",
+          strap_type: "Poignée structurée & bandoulière amovible"
+        },
+        swatches: ["#063D2E", "#181818", "#DFC9AC"],
+        variants: [
+          { id: 1008, sku: "LUX-BAG-002-EME-STD", title: "Vert Émeraude / Standard", stock: 5, price: 12500, attrs: { color: "Vert Émeraude", size: "Standard" }, img: ASSET_MAP.sac_emeraude },
+          { id: 1009, sku: "LUX-BAG-002-EME-L", title: "Vert Émeraude / L", stock: 3, price: 13200, attrs: { color: "Vert Émeraude", size: "L" }, img: ASSET_MAP.sac_emeraude },
+          { id: 1010, sku: "LUX-BAG-002-NOI-STD", title: "Noir / Standard", stock: 4, price: 12500, attrs: { color: "Noir", size: "Standard" }, img: ASSET_MAP.sac_noir },
+          { id: 1011, sku: "LUX-BAG-002-BEI-STD", title: "Beige / Standard", stock: 2, price: 12500, attrs: { color: "Beige", size: "Standard" }, img: ASSET_MAP.sac_beige }
+        ]
+      },
+      {
+        id: 7, category_id: 1, category_slug: "sacs", sku: "LUX-BAG-003",
+        badge: null,
+        name_fr: "Sac bandoulière Beige", name_ar: "حقيبة كتف بيج أنيقة", name_en: "Minimalist Beige Crossbody Bag",
+        brand: "MUS LUXURY",
+        rating: "4.8", reviews: 9,
+        description_fr: "Sac bandoulière structuré couleur beige sablé avec fermoir doré.",
+        image: ASSET_MAP.sac_beige,
+        gallery: [ASSET_MAP.sac_beige, ASSET_MAP.sac_rose],
+        selling_price_dzd: 9800, previous_price_dzd: 11900, discount_percent: 18,
+        sales_count: 11,
+        attributes: {
+          bag_type: "Sac bandoulière",
+          material: "Cuir lisse",
+          lining: "Coton sergé",
+          closure: "Rabat magnétique doré",
+          dimensions: "24 × 16 × 7 cm",
+          strap_type: "Bandoulière réglable"
+        },
+        swatches: ["#DFC9AC", "#C98594"],
+        variants: [
+          { id: 1012, sku: "LUX-BAG-003-BEI-S", title: "Beige / S", stock: 3, price: 9500, attrs: { color: "Beige", size: "S" }, img: ASSET_MAP.sac_beige },
+          { id: 1013, sku: "LUX-BAG-003-BEI-M", title: "Beige / M", stock: 4, price: 9800, attrs: { color: "Beige", size: "M" }, img: ASSET_MAP.sac_beige },
+          { id: 1014, sku: "LUX-BAG-003-ROS-M", title: "Rose Poudré / M", stock: 3, price: 9800, attrs: { color: "Rose Poudré", size: "M" }, img: ASSET_MAP.sac_rose }
+        ]
+      },
+      {
+        id: 8, category_id: 6, category_slug: "casquette", sku: "LUX-CAP-001",
+        badge: null,
+        name_fr: "Casquette brodée Urbaine", name_ar: "قبعة رياضية مطرزة", name_en: "Embroidered Urban Cap",
+        brand: "MUS LUXURY",
+        rating: "4.7", reviews: 6,
+        description_fr: "Casquette noire ajustée avec broderie blanche en relief.",
+        image: ASSET_MAP.casquette,
+        gallery: [ASSET_MAP.casquette],
+        selling_price_dzd: 2400, previous_price_dzd: 3000, discount_percent: 20,
+        sales_count: 10,
+        attributes: {
+          material: "Coton sergé respirant"
+        },
+        swatches: ["#222222", "#063D2E"],
+        variants: [
+          { id: 6001, sku: "LUX-CAP-001-NB-ADJ", title: "Noir & Blanc / Ajustable", stock: 9, price: 2400, attrs: { color: "Noir & Blanc", size: "Ajustable" } },
+          { id: 6002, sku: "LUX-CAP-001-EM-ADJ", title: "Vert Émeraude / Ajustable", stock: 5, price: 2400, attrs: { color: "Vert Émeraude", size: "Ajustable" } }
+        ]
+      },
+      {
+        id: 9, category_id: 7, category_slug: "les-lunettes", sku: "LUX-SUN-001",
+        badge: "UV400",
+        name_fr: "Lunettes solaires Prestige", name_ar: "نظارات شمسية فاخرة", name_en: "Prestige UV400 Sunglasses",
+        brand: "MAISON OR",
+        rating: "4.9", reviews: 11,
+        description_fr: "Lunettes solaires aux verres dégradés UV400 et branches finement dorées.",
+        image: ASSET_MAP.lunettes,
+        gallery: [ASSET_MAP.lunettes],
+        selling_price_dzd: 5400, previous_price_dzd: 6900, discount_percent: 22,
+        sales_count: 14,
+        attributes: {
+          uv_protection: "UV400 Polarisé",
+          material: "Acétate écaille & branches dorées"
+        },
+        swatches: ["#5C3A21", "#121212"],
+        variants: [
+          { id: 7001, sku: "LUX-SUN-001-EC-52", title: "Écaille & Or / 52 mm", stock: 5, price: 5400, attrs: { frame_color: "Écaille & Or", size: "52 mm" } },
+          { id: 7002, sku: "LUX-SUN-001-EC-55", title: "Écaille & Or / 55 mm", stock: 3, price: 5400, attrs: { frame_color: "Écaille & Or", size: "55 mm" } },
+          { id: 7003, sku: "LUX-SUN-001-NO-55", title: "Noir Intense / 55 mm", stock: 4, price: 5400, attrs: { frame_color: "Noir Intense", size: "55 mm" } }
+        ]
+      },
+      {
+        id: 10, category_id: 8, category_slug: "les-montres", sku: "LUX-WTC-001",
+        badge: "Édition Or",
+        name_fr: "Montre Chronographe Impériale", name_ar: "ساعة كرونوغراف ذهبية", name_en: "Imperial Gold Chronograph Watch",
+        brand: "MAISON OR",
+        rating: "4.9", reviews: 16,
+        description_fr: "Chronographe en acier doré à cadran soleillé noir et étanchéité 5 ATM.",
+        image: ASSET_MAP.montre,
+        gallery: [ASSET_MAP.montre],
+        selling_price_dzd: 15900, previous_price_dzd: 19500, discount_percent: 18,
+        sales_count: 17,
+        attributes: {
+          movement: "Chronographe Quartz Précision",
+          water_resistance: "5 ATM (50 mètres)",
+          strap_material: "Maillons acier inoxydable doré"
+        },
+        swatches: ["#1C2421", "#063D2E"],
+        variants: [
+          { id: 8001, sku: "LUX-WTC-001-NO-41", title: "Noir & Or / 41 mm", stock: 4, price: 15900, attrs: { dial_color: "Noir & Or", size: "41 mm" } },
+          { id: 8002, sku: "LUX-WTC-001-NO-38", title: "Noir & Or / 38 mm", stock: 3, price: 15500, attrs: { dial_color: "Noir & Or", size: "38 mm" } },
+          { id: 8003, sku: "LUX-WTC-001-EO-41", title: "Émeraude & Or / 41 mm", stock: 2, price: 15900, attrs: { dial_color: "Émeraude & Or", size: "41 mm" } }
+        ]
+      },
+      {
+        id: 11, category_id: 9, category_slug: "accessoires", sku: "LUX-ACC-001",
+        badge: null,
+        name_fr: "Parure Bijoux & Bagues Dorées", name_ar: "طقم مجوهرات وإكسسوارات ذهبية", name_en: "Gold-Plated Jewelry Set",
+        brand: "MAISON OR",
+        rating: "4.8", reviews: 10,
+        description_fr: "Ensemble raffiné de bagues, boucles d'oreilles et chaîne dorée.",
+        image: ASSET_MAP.accessoires,
+        gallery: [ASSET_MAP.accessoires],
+        selling_price_dzd: 3800, previous_price_dzd: 4800, discount_percent: 21,
+        sales_count: 13,
+        attributes: {
+          material: "Acier chirurgical plaqué Or 18K"
+        },
+        swatches: ["#D4AF62"],
+        variants: [
+          { id: 9001, sku: "LUX-ACC-001-OR-5P", title: "Or 18K Plaqué / Parure 5 pièces", stock: 8, price: 3800, attrs: { finish: "Or 18K Plaqué", size: "Parure 5 pièces" } },
+          { id: 9002, sku: "LUX-ACC-001-OR-8P", title: "Or 18K Plaqué / Parure Complète 8 pièces", stock: 4, price: 4900, attrs: { finish: "Or 18K Plaqué", size: "Parure Complète 8 pièces" } }
+        ]
+      }
+    ];
 
     // Official List of All 69 Algerian Wilayas (01 Adrar to 69 El Abiodh Sidi Cheikh — Law n° 26-06)
     const WILAYAS = [
@@ -1085,8 +1450,8 @@
       cart: [],
       appliedCoupon: null,
       lastConfirmedOrder: null,
-      categories: [],
-      products: [],
+      categories: JSON.parse(JSON.stringify(CATEGORIES)),
+      products: JSON.parse(JSON.stringify(PRODUCTS)),
       orders: [],
       activePdpProductId: null,
       activePdpVariantId: null,
@@ -1376,32 +1741,22 @@
 
       // 2. Homepage Categories Grid (Matches 1000589999.png Dark Emerald & Gold Cards)
       const homeGrid = document.getElementById("home-categories-grid");
-      if (homeGrid) {
-        if (state.categories.length === 0) {
-          homeGrid.innerHTML = `
-            <div class="col-span-full bg-white/60 backdrop-blur rounded-2xl p-8 text-center border border-gold-reflective/20">
-              <p class="font-serif italic text-emerald-deep font-medium">Aucune catégorie disponible pour le moment.</p>
-            </div>
+      homeGrid.innerHTML = state.categories
+        .map((c) => {
+          return `
+            <button type="button" onclick="filterByCategory('${c.slug}')" class="h-full group cat-card-bg rounded-xl sm:rounded-2xl overflow-hidden border border-gold-reflective/35 shadow-luxury hover:shadow-luxury-hover hover:border-gold-reflective transition text-center flex flex-col justify-between">
+              <div class="aspect-[4/3] w-full overflow-hidden bg-emerald-forest relative">
+                <img src="${c.image}" alt="${catName(c)}" loading="lazy" decoding="async" class="w-full h-full object-cover group-hover:scale-105 transition duration-500" />
+                <div class="absolute inset-0 bg-gradient-to-t from-emerald-forest/75 via-transparent to-transparent"></div>
+              </div>
+              <div class="w-full px-1.5 sm:px-2 py-2 sm:py-2.5 flex items-center justify-center gap-1.5 bg-emerald-forest/95 border-t border-gold-reflective/20">
+                <span class="w-1.5 h-1.5 rounded-full bg-gold-reflective flex-shrink-0"></span>
+                <span class="font-semibold text-[11px] sm:text-xs text-white group-hover:text-gold-reflective truncate transition">${catName(c)}</span>
+              </div>
+            </button>
           `;
-        } else {
-          homeGrid.innerHTML = state.categories
-            .map((c) => {
-              return `
-                <button type="button" onclick="filterByCategory('${c.slug}')" class="h-full group cat-card-bg rounded-xl sm:rounded-2xl overflow-hidden border border-gold-reflective/35 shadow-luxury hover:shadow-luxury-hover hover:border-gold-reflective transition text-center flex flex-col justify-between">
-                  <div class="aspect-[4/3] w-full overflow-hidden bg-emerald-forest relative">
-                    <img src="${c.image}" alt="${catName(c)}" loading="lazy" decoding="async" class="w-full h-full object-cover group-hover:scale-105 transition duration-500" />
-                    <div class="absolute inset-0 bg-gradient-to-t from-emerald-forest/75 via-transparent to-transparent"></div>
-                  </div>
-                  <div class="w-full px-1.5 sm:px-2 py-2 sm:py-2.5 flex items-center justify-center gap-1.5 bg-emerald-forest/95 border-t border-gold-reflective/20">
-                    <span class="w-1.5 h-1.5 rounded-full bg-gold-reflective flex-shrink-0"></span>
-                    <span class="font-semibold text-[11px] sm:text-xs text-white group-hover:text-gold-reflective truncate transition">${catName(c)}</span>
-                  </div>
-                </button>
-              `;
-            })
-            .join("");
-        }
-      }
+        })
+        .join("");
 
       renderDynamicSidebarFilters();
       renderCatalogProducts();
@@ -2311,11 +2666,18 @@
         });
         if (!apiOrdRes.ok) {
           const errJson = await apiOrdRes.json().catch(() => ({}));
-          const errMsg = typeof errJson.detail === "string"
-            ? errJson.detail
-            : (Array.isArray(errJson.detail) ? errJson.detail.map((d) => d.msg || d).join(", ") : "");
-          showToast(errMsg || "Impossible d'enregistrer la commande. Veuillez vérifier vos articles et réessayer.", "error");
-          return;
+          if (apiOrdRes.status === 403 && errJson.detail) {
+            showToast(String(errJson.detail), "error");
+            return;
+          }
+          if (apiOrdRes.status === 409) {
+            showToast("Stock insuffisant ou commande déjà transmise.", "error");
+            return;
+          }
+          if (apiOrdRes.status === 422) {
+            showToast("Veuillez vérifier vos coordonnées de livraison.", "error");
+            return;
+          }
         } else {
           const createdOrd = await apiOrdRes.json();
           if (createdOrd.order_reference) {
@@ -2801,17 +3163,14 @@
         .join("");
     }
 
-    async function syncStorefrontWithBackend(isInitial = false) {
+    async function syncStorefrontWithBackend() {
       try {
         const [catRes, prodRes, wilRes] = await Promise.all([
           fetch("/api/v1/categories").then((r) => (r.ok ? r.json() : null)).catch(() => null),
           fetch("/api/v1/products?page_size=50").then((r) => (r.ok ? r.json() : null)).catch(() => null),
           fetch("/api/v1/delivery-zones").then((r) => (r.ok ? r.json() : null)).catch(() => null),
         ]);
-
-        let hasChanged = false;
-
-        if (catRes && Array.isArray(catRes.items)) {
+        if (catRes && Array.isArray(catRes.items) && catRes.items.length > 0) {
           state.categories = catRes.items.map((c) => ({
             id: c.id,
             slug: c.slug,
@@ -2831,54 +3190,41 @@
               options: (a.options || []).map((o) => o.value),
             })),
           }));
-          if (state.activeCategorySlug !== "all" && !state.categories.some((c) => c.slug === state.activeCategorySlug)) {
-            state.activeCategorySlug = "all";
-          }
-          hasChanged = true;
         }
-
-        if (prodRes && Array.isArray(prodRes.items)) {
-          state.products = prodRes.items.map((p) => {
-            const catSlug = (p.category && p.category.slug) ? p.category.slug : (p.category_slug || "");
-            const catId = (p.category && p.category.id) ? p.category.id : p.category_id;
-            return {
-              id: p.id,
-              slug: p.slug,
-              category_id: catId,
-              category_slug: catSlug,
-              sku: p.sku,
-              badge: p.is_new_arrival ? "Nouveau" : p.is_featured ? "Populaire" : null,
-              name_fr: p.name_fr,
-              name_ar: p.name_ar || p.name_fr,
-              name_en: p.name_en || p.name_fr,
-              brand: (p.brand && p.brand.name) ? p.brand.name : (p.brand_name || "MUS LUXURY"),
-              rating: "4.9",
-              reviews: p.sales_count || 10,
-              description_fr: p.description_fr || "",
-              image: p.main_image_url || ASSET_MAP.sac_chanel,
-              gallery: (p.gallery_images && p.gallery_images.length > 0)
-                ? p.gallery_images.map((g) => g.image_url || g)
-                : [p.main_image_url || ASSET_MAP.sac_chanel],
-              selling_price_dzd: p.selling_price_dzd,
-              previous_price_dzd: p.previous_price_dzd,
-              discount_percent: p.discount_percent || 0,
-              sales_count: p.sales_count || 0,
-              attributes: p.attributes || {},
-              swatches: ["#063D2E", "#181818", "#D4AF62"],
-              variants: (p.variants || []).map((v) => ({
-                id: v.id,
-                sku: v.sku,
-                title: v.title || `${p.name_fr} - ${v.sku}`,
-                stock: v.stock_qty ?? 0,
-                price: v.effective_price_dzd || v.price_override_dzd || p.selling_price_dzd,
-                attrs: typeof v.attributes === "object" && v.attributes !== null ? v.attributes : {},
-                img: v.image_url || p.main_image_url || ASSET_MAP.sac_chanel,
-              })),
-            };
-          });
-          hasChanged = true;
+        if (prodRes && Array.isArray(prodRes.items) && prodRes.items.length > 0) {
+          state.products = prodRes.items.map((p) => ({
+            id: p.id,
+            slug: p.slug,
+            category_id: p.category_id,
+            category_slug: p.category_slug,
+            sku: p.sku,
+            badge: p.is_new_arrival ? "Nouveau" : p.is_featured ? "Populaire" : null,
+            name_fr: p.name_fr,
+            name_ar: p.name_ar || p.name_fr,
+            name_en: p.name_en || p.name_fr,
+            brand: p.brand_name || "MUS LUXURY",
+            rating: "4.9",
+            reviews: p.sales_count || 10,
+            description_fr: p.description_fr || "",
+            image: p.main_image_url || ASSET_MAP.sac_chanel,
+            gallery: [p.main_image_url || ASSET_MAP.sac_chanel],
+            selling_price_dzd: p.selling_price_dzd,
+            previous_price_dzd: p.previous_price_dzd,
+            discount_percent: p.discount_percent || 0,
+            sales_count: p.sales_count || 0,
+            attributes: p.attributes || {},
+            swatches: ["#063D2E", "#181818", "#D4AF62"],
+            variants: (p.variants || []).map((v) => ({
+              id: v.id,
+              sku: v.sku,
+              title: v.title,
+              stock: v.stock_qty,
+              price: v.effective_price_dzd || p.selling_price_dzd,
+              attrs: v.attributes || {},
+              img: v.image_url || p.main_image_url || ASSET_MAP.sac_chanel,
+            })),
+          }));
         }
-
         if (wilRes && Array.isArray(wilRes.items) && wilRes.items.length > 0) {
           WILAYAS.splice(
             0,
@@ -2892,52 +3238,17 @@
               desk_fee: w.rates?.stop_desk?.fee_dzd ?? 400,
             }))
           );
-          hasChanged = true;
         }
-
-        if (hasChanged || isInitial) {
-          renderStorefront();
-        }
+        renderStorefront();
       } catch (_e) {
-        if (isInitial) {
-          renderStorefront();
-        }
+        renderStorefront();
       }
     }
 
-    // Real-Time Synchronization with Desktop CMS (BroadcastChannel, Focus, Visibility & Polling)
-    try {
-      const bc = new BroadcastChannel("mus_luxury_realtime");
-      bc.onmessage = (ev) => {
-        if (ev && ev.data && ev.data.type === "CATALOG_UPDATED") {
-          void syncStorefrontWithBackend();
-        }
-      };
-    } catch (_) {}
-
-    window.addEventListener("mus_luxury_catalog_updated", () => {
-      void syncStorefrontWithBackend();
-    });
-
-    window.addEventListener("focus", () => {
-      void syncStorefrontWithBackend();
-    });
-
-    document.addEventListener("visibilitychange", () => {
-      if (document.visibilityState === "visible") {
-        void syncStorefrontWithBackend();
-      }
-    });
-
-    // 3-second live background polling to instantly catch external CMS updates
-    setInterval(() => {
-      void syncStorefrontWithBackend();
-    }, 3000);
-
-    window.addEventListener("DOMContentLoaded", async () => {
+    window.addEventListener("DOMContentLoaded", () => {
       renderStorefront();
-      await syncStorefrontWithBackend(true);
+      syncStorefrontWithBackend();
     });
-</script>
+  </script>
 </body>
 </html>
