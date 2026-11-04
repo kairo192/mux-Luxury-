@@ -371,3 +371,123 @@ CREATE TABLE IF NOT EXISTS customer_phone_blacklist (
 );
 CREATE INDEX IF NOT EXISTS idx_phone_blacklist_e164 ON customer_phone_blacklist(phone_e164);
 CREATE INDEX IF NOT EXISTS idx_phone_blacklist_local ON customer_phone_blacklist(phone_local);
+
+-- 26. ERP: Fournisseurs & Achats (Purchasing & Suppliers)
+CREATE TABLE IF NOT EXISTS suppliers (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    name TEXT NOT NULL,
+    company_name TEXT,
+    contact_person TEXT,
+    phone TEXT,
+    email TEXT,
+    address TEXT,
+    tax_id TEXT,
+    notes TEXT,
+    balance_dzd INTEGER NOT NULL DEFAULT 0,
+    is_active INTEGER NOT NULL DEFAULT 1,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE IF NOT EXISTS purchase_orders (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    supplier_id INTEGER NOT NULL REFERENCES suppliers(id) ON DELETE RESTRICT,
+    reference TEXT NOT NULL UNIQUE,
+    status TEXT NOT NULL DEFAULT 'draft',
+    subtotal_dzd INTEGER NOT NULL DEFAULT 0,
+    shipping_dzd INTEGER NOT NULL DEFAULT 0,
+    tax_dzd INTEGER NOT NULL DEFAULT 0,
+    total_cost_dzd INTEGER NOT NULL DEFAULT 0,
+    payment_status TEXT NOT NULL DEFAULT 'unpaid',
+    paid_amount_dzd INTEGER NOT NULL DEFAULT 0,
+    expected_date DATE,
+    received_at TIMESTAMP,
+    notes TEXT,
+    created_by INTEGER REFERENCES admin_users(id),
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE IF NOT EXISTS purchase_order_items (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    purchase_order_id INTEGER NOT NULL REFERENCES purchase_orders(id) ON DELETE CASCADE,
+    product_id INTEGER NOT NULL REFERENCES products(id),
+    variant_id INTEGER REFERENCES product_variants(id),
+    product_name TEXT NOT NULL,
+    variant_title TEXT NOT NULL DEFAULT '',
+    sku TEXT NOT NULL,
+    quantity_ordered INTEGER NOT NULL CHECK (quantity_ordered > 0),
+    quantity_received INTEGER NOT NULL DEFAULT 0,
+    unit_cost_dzd INTEGER NOT NULL CHECK (unit_cost_dzd >= 0),
+    line_total_dzd INTEGER NOT NULL CHECK (line_total_dzd >= 0)
+);
+
+-- 27. ERP: Dépenses & Frais Généraux (Operating Expenses)
+CREATE TABLE IF NOT EXISTS expenses (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    description TEXT NOT NULL,
+    category TEXT NOT NULL,
+    amount_dzd INTEGER NOT NULL CHECK (amount_dzd > 0),
+    expense_date DATE NOT NULL,
+    payment_method TEXT NOT NULL DEFAULT 'cash',
+    recipient TEXT,
+    receipt_reference TEXT,
+    payment_status TEXT NOT NULL DEFAULT 'paid',
+    notes TEXT,
+    created_by INTEGER REFERENCES admin_users(id),
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+-- 28. ERP: Caisse & Mouvements de Trésorerie (Cash & Bank Operations)
+CREATE TABLE IF NOT EXISTS cash_movements (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    account_type TEXT NOT NULL DEFAULT 'cash_box',
+    movement_type TEXT NOT NULL,
+    amount_dzd INTEGER NOT NULL CHECK (amount_dzd > 0),
+    source_type TEXT NOT NULL,
+    source_reference TEXT,
+    description TEXT NOT NULL,
+    recorded_by INTEGER REFERENCES admin_users(id),
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+-- 29. ERP: Grand Livre & Écritures Comptables (Accounting Ledger)
+CREATE TABLE IF NOT EXISTS accounting_ledger (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    entry_number TEXT NOT NULL,
+    journal_code TEXT NOT NULL,
+    entry_date DATE NOT NULL,
+    account_code TEXT NOT NULL,
+    account_name TEXT NOT NULL,
+    label TEXT NOT NULL,
+    debit_dzd INTEGER NOT NULL DEFAULT 0 CHECK (debit_dzd >= 0),
+    credit_dzd INTEGER NOT NULL DEFAULT 0 CHECK (credit_dzd >= 0),
+    source_document TEXT,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+CREATE INDEX IF NOT EXISTS idx_ledger_entry_number ON accounting_ledger(entry_number);
+CREATE INDEX IF NOT EXISTS idx_ledger_account_code ON accounting_ledger(account_code);
+CREATE INDEX IF NOT EXISTS idx_ledger_entry_date ON accounting_ledger(entry_date);
+
+-- Indexes for High Performance & Query Amplification Protection (Backend Architect & Cloudflare Security Audit)
+CREATE INDEX IF NOT EXISTS idx_products_category_id ON products(category_id);
+CREATE INDEX IF NOT EXISTS idx_products_status ON products(status);
+CREATE INDEX IF NOT EXISTS idx_products_lookup ON products(status, deleted_at, category_id);
+CREATE INDEX IF NOT EXISTS idx_products_slug ON products(slug);
+CREATE INDEX IF NOT EXISTS idx_products_sku ON products(sku);
+CREATE INDEX IF NOT EXISTS idx_products_brand_id ON products(brand_id);
+CREATE INDEX IF NOT EXISTS idx_products_created_at ON products(created_at);
+CREATE INDEX IF NOT EXISTS idx_products_price ON products(selling_price_dzd);
+CREATE INDEX IF NOT EXISTS idx_categories_slug ON categories(slug);
+CREATE INDEX IF NOT EXISTS idx_categories_active ON categories(is_active, deleted_at, display_order);
+CREATE INDEX IF NOT EXISTS idx_product_variants_product_id ON product_variants(product_id);
+CREATE INDEX IF NOT EXISTS idx_product_variants_active ON product_variants(product_id, is_active);
+CREATE INDEX IF NOT EXISTS idx_pav_product_attr ON product_attribute_values(product_id, attribute_id);
+CREATE INDEX IF NOT EXISTS idx_vav_variant_attr ON variant_attribute_values(variant_id, attribute_id);
+CREATE INDEX IF NOT EXISTS idx_product_images_product ON product_images(product_id, display_order);
+CREATE INDEX IF NOT EXISTS idx_order_items_order_id ON order_items(order_id);
+CREATE INDEX IF NOT EXISTS idx_orders_status_created ON orders(status, created_at);
+CREATE INDEX IF NOT EXISTS idx_orders_idempotency_hash ON orders(idempotency_hash);
+CREATE INDEX IF NOT EXISTS idx_orders_customer_phone ON orders(customer_phone);
+CREATE INDEX IF NOT EXISTS idx_delivery_rates_zone_id ON delivery_rates(zone_id);
+CREATE INDEX IF NOT EXISTS idx_delivery_rates_zone_method ON delivery_rates(zone_id, delivery_method);

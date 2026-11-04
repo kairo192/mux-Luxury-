@@ -528,6 +528,60 @@
         <!-- Product Cards Grid -->
         <div class="lg:col-span-9">
           <div id="store-products-grid" class="product-card-grid grid-cols-2 sm:grid-cols-2 md:grid-cols-3 xl:grid-cols-3 gap-3 sm:gap-5">
+            <div class="bg-white rounded-xl sm:rounded-2xl overflow-hidden border border-gold-reflective/25 p-3 sm:p-4 space-y-3 animate-pulse">
+              <div class="w-full aspect-[4/5] bg-gray-200/80 rounded-xl"></div>
+              <div class="h-2.5 bg-gray-200/80 rounded w-1/3"></div>
+              <div class="h-4 bg-gray-200/80 rounded w-3/4"></div>
+              <div class="flex justify-between items-center pt-2">
+                <div class="h-5 bg-gray-200/80 rounded w-2/5"></div>
+                <div class="h-7 w-7 bg-gray-200/80 rounded-full"></div>
+              </div>
+            </div>
+            <div class="bg-white rounded-xl sm:rounded-2xl overflow-hidden border border-gold-reflective/25 p-3 sm:p-4 space-y-3 animate-pulse">
+              <div class="w-full aspect-[4/5] bg-gray-200/80 rounded-xl"></div>
+              <div class="h-2.5 bg-gray-200/80 rounded w-1/3"></div>
+              <div class="h-4 bg-gray-200/80 rounded w-3/4"></div>
+              <div class="flex justify-between items-center pt-2">
+                <div class="h-5 bg-gray-200/80 rounded w-2/5"></div>
+                <div class="h-7 w-7 bg-gray-200/80 rounded-full"></div>
+              </div>
+            </div>
+            <div class="bg-white rounded-xl sm:rounded-2xl overflow-hidden border border-gold-reflective/25 p-3 sm:p-4 space-y-3 animate-pulse">
+              <div class="w-full aspect-[4/5] bg-gray-200/80 rounded-xl"></div>
+              <div class="h-2.5 bg-gray-200/80 rounded w-1/3"></div>
+              <div class="h-4 bg-gray-200/80 rounded w-3/4"></div>
+              <div class="flex justify-between items-center pt-2">
+                <div class="h-5 bg-gray-200/80 rounded w-2/5"></div>
+                <div class="h-7 w-7 bg-gray-200/80 rounded-full"></div>
+              </div>
+            </div>
+            <div class="bg-white rounded-xl sm:rounded-2xl overflow-hidden border border-gold-reflective/25 p-3 sm:p-4 space-y-3 animate-pulse">
+              <div class="w-full aspect-[4/5] bg-gray-200/80 rounded-xl"></div>
+              <div class="h-2.5 bg-gray-200/80 rounded w-1/3"></div>
+              <div class="h-4 bg-gray-200/80 rounded w-3/4"></div>
+              <div class="flex justify-between items-center pt-2">
+                <div class="h-5 bg-gray-200/80 rounded w-2/5"></div>
+                <div class="h-7 w-7 bg-gray-200/80 rounded-full"></div>
+              </div>
+            </div>
+            <div class="bg-white rounded-xl sm:rounded-2xl overflow-hidden border border-gold-reflective/25 p-3 sm:p-4 space-y-3 animate-pulse">
+              <div class="w-full aspect-[4/5] bg-gray-200/80 rounded-xl"></div>
+              <div class="h-2.5 bg-gray-200/80 rounded w-1/3"></div>
+              <div class="h-4 bg-gray-200/80 rounded w-3/4"></div>
+              <div class="flex justify-between items-center pt-2">
+                <div class="h-5 bg-gray-200/80 rounded w-2/5"></div>
+                <div class="h-7 w-7 bg-gray-200/80 rounded-full"></div>
+              </div>
+            </div>
+            <div class="bg-white rounded-xl sm:rounded-2xl overflow-hidden border border-gold-reflective/25 p-3 sm:p-4 space-y-3 animate-pulse">
+              <div class="w-full aspect-[4/5] bg-gray-200/80 rounded-xl"></div>
+              <div class="h-2.5 bg-gray-200/80 rounded w-1/3"></div>
+              <div class="h-4 bg-gray-200/80 rounded w-3/4"></div>
+              <div class="flex justify-between items-center pt-2">
+                <div class="h-5 bg-gray-200/80 rounded w-2/5"></div>
+                <div class="h-7 w-7 bg-gray-200/80 rounded-full"></div>
+              </div>
+            </div>
           </div>
         </div>
       </div>
@@ -1442,6 +1496,7 @@
       activeCategorySlug: "all",
       searchQuery: "",
       maxPriceFilter: 25000,
+      isCatalogLoaded: false,
       inStockOnly: false,
       onlyFavorites: false,
       sortBy: "newest",
@@ -1644,9 +1699,13 @@
       if (el) el.scrollIntoView({ behavior: "smooth" });
     }
 
+    let searchDebounceTimer = null;
     function handleStoreSearch(val) {
-      state.searchQuery = val.trim().toLowerCase();
-      renderCatalogProducts();
+      clearTimeout(searchDebounceTimer);
+      searchDebounceTimer = setTimeout(() => {
+        state.searchQuery = val.trim().toLowerCase();
+        renderCatalogProducts();
+      }, 200);
     }
 
     function triggerSearchBtn() {
@@ -1654,10 +1713,14 @@
       renderCatalogProducts();
     }
 
+    let priceDebounceTimer = null;
     function handlePriceFilter(val) {
-      state.maxPriceFilter = Number(val);
       document.getElementById("filter-price-display").textContent = formatDZD(val);
-      renderCatalogProducts();
+      clearTimeout(priceDebounceTimer);
+      priceDebounceTimer = setTimeout(() => {
+        state.maxPriceFilter = Number(val);
+        renderCatalogProducts();
+      }, 150);
     }
 
     function handleInStockToggle(checked) {
@@ -1882,6 +1945,20 @@
       document.getElementById("catalog-count-pill").textContent = `${list.length} article${list.length > 1 ? "s" : ""}`;
 
       const grid = document.getElementById("store-products-grid");
+      if (!state.isCatalogLoaded && state.products.length === 0) {
+        grid.innerHTML = Array(6).fill(`
+          <div class="bg-white rounded-xl sm:rounded-2xl overflow-hidden border border-gold-reflective/25 p-3 sm:p-4 space-y-3 animate-pulse">
+            <div class="w-full aspect-[4/5] bg-gray-200/80 rounded-xl"></div>
+            <div class="h-2.5 bg-gray-200/80 rounded w-1/3"></div>
+            <div class="h-4 bg-gray-200/80 rounded w-3/4"></div>
+            <div class="flex justify-between items-center pt-2">
+              <div class="h-5 bg-gray-200/80 rounded w-2/5"></div>
+              <div class="h-7 w-7 bg-gray-200/80 rounded-full"></div>
+            </div>
+          </div>
+        `).join("");
+        return;
+      }
       if (list.length === 0) {
         grid.innerHTML = `
           <div class="col-span-full bg-white rounded-2xl p-10 text-center border border-gold-reflective/25 space-y-3">
@@ -3166,6 +3243,9 @@
     }
 
     let isSyncingBackend = false;
+    let lastCatJson = "";
+    let lastProdJson = "";
+    let lastWilJson = "";
     async function syncStorefrontWithBackend() {
       if (isSyncingBackend) return;
       isSyncingBackend = true;
@@ -3175,7 +3255,13 @@
           fetch("/api/v1/products?page_size=50").then((r) => (r.ok ? r.json() : null)).catch(() => null),
           fetch("/api/v1/delivery-zones").then((r) => (r.ok ? r.json() : null)).catch(() => null),
         ]);
+        let dataChanged = false;
         if (catRes && Array.isArray(catRes.items)) {
+          const rawCat = JSON.stringify(catRes.items);
+          if (rawCat !== lastCatJson) {
+            lastCatJson = rawCat;
+            dataChanged = true;
+          }
           state.categories = catRes.items.map((c) => ({
             id: c.id,
             slug: c.slug,
@@ -3197,6 +3283,11 @@
           }));
         }
         if (prodRes && Array.isArray(prodRes.items)) {
+          const rawProd = JSON.stringify(prodRes.items);
+          if (rawProd !== lastProdJson) {
+            lastProdJson = rawProd;
+            dataChanged = true;
+          }
           state.products = prodRes.items.map((p) => {
             const catSlug = (p.category && p.category.slug) || p.category_slug || "";
             const brandName = (p.brand && p.brand.name) || p.brand_name || "MUS LUXURY";
@@ -3240,6 +3331,11 @@
           });
         }
         if (wilRes && Array.isArray(wilRes.items) && wilRes.items.length > 0) {
+          const rawWil = JSON.stringify(wilRes.items);
+          if (rawWil !== lastWilJson) {
+            lastWilJson = rawWil;
+            dataChanged = true;
+          }
           WILAYAS.splice(
             0,
             WILAYAS.length,
@@ -3253,7 +3349,10 @@
             }))
           );
         }
-        renderStorefront();
+        if (dataChanged || !state.isCatalogLoaded) {
+          state.isCatalogLoaded = true;
+          renderStorefront();
+        }
       } catch (_e) {
         renderStorefront();
       } finally {
@@ -3265,8 +3364,19 @@
       renderStorefront();
       syncStorefrontWithBackend();
 
-      // Realtime Background Sync: Re-sync every 3 seconds
-      setInterval(syncStorefrontWithBackend, 3000);
+      // Realtime Background Sync: Re-sync every 4 seconds only if tab is actively visible
+      setInterval(() => {
+        if (document.visibilityState === "visible") {
+          syncStorefrontWithBackend();
+        }
+      }, 4000);
+
+      // Re-sync immediately when customer returns or focuses the window
+      document.addEventListener("visibilitychange", () => {
+        if (document.visibilityState === "visible") {
+          syncStorefrontWithBackend();
+        }
+      });
 
       // Re-sync immediately whenever the customer focuses the browser window or returns from another tab
       window.addEventListener("focus", syncStorefrontWithBackend);
