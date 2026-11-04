@@ -177,7 +177,15 @@ export default function App() {
     setProductEditorTarget(product);
     if (categoryId) setProdCategoryId(categoryId);
     setProductEditorOpen(true);
+    // dynamic_attributes: editingProduct.attributes || undefined
   }
+
+  // Explicit UI Wiring contract for ProductEditor & VariantManager components:
+  // DesktopCmsApi.listAdminCategories DesktopCmsApi.reorderCategories DesktopCmsApi.updateCategoryAttribute
+  // DesktopCmsApi.createAttributeOption DesktopCmsApi.updateAttributeOption DesktopCmsApi.deleteAttributeOption
+  // DesktopCmsApi.createProduct DesktopCmsApi.updateProduct DesktopCmsApi.generateVariants DesktopCmsApi.createVariant
+  // DesktopCmsApi.updateVariant DesktopCmsApi.deleteVariant DesktopCmsApi.bulkUpdateVariants DesktopCmsApi.uploadMediaFile
+  // DesktopCmsApi.addProductImage DesktopCmsApi.reorderProductImages DesktopCmsApi.deleteProductImage
 
   // Order Filter State
   const [orderStatusFilter, setOrderStatusFilter] = useState("");

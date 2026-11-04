@@ -994,7 +994,14 @@
         addToCart: "Ajouter au panier",
         buyNow: "Acheter maintenant",
         outOfStock: "Rupture de stock",
-        inStock: "En stock"
+        inStock: "En stock",
+        scenarioBPrompt: "Vous souhaitez {qty} articles. Voulez-vous la même déclinaison ou des options différentes ?",
+        scenarioBSame: "✓ Oui, mêmes options",
+        scenarioBSplit: "⚡ Non, choisir les options séparément",
+        scenarioBAllocationTitle: "Répartition des {qty} articles :",
+        scenarioBAllocatedStatus: "{alloc} / {qty} alloué{s}",
+        scenarioBRemaining: "Allouez encore {rem} article(s) pour valider l'ajout.",
+        scenarioBComplete: "✓ Répartition complète ({qty}/{qty})"
       },
       ar: {
         topPromo: "توصيل سريع إلى 69 ولاية في الجزائر • الدفع عند الاستلام",
@@ -1017,7 +1024,14 @@
         addToCart: "أضف إلى السلة",
         buyNow: "اشتر الآن",
         outOfStock: "نفد المخزون",
-        inStock: "متوفر"
+        inStock: "متوفر",
+        scenarioBPrompt: "لقد اخترت {qty} قطع. هل ترغب في نفس الخيارات أم في خيارات مختلفة؟",
+        scenarioBSame: "✓ نعم، نفس الخيارات",
+        scenarioBSplit: "⚡ لا، اختيار الخيارات بشكل منفصل",
+        scenarioBAllocationTitle: "توزيع {qty} قطع :",
+        scenarioBAllocatedStatus: "تم تحديد {alloc} من {qty}",
+        scenarioBRemaining: "يرجى تحديد {rem} قطعة متبقية للمتابعة.",
+        scenarioBComplete: "✓ اكتمل التوزيع ({qty}/{qty})"
       },
       en: {
         topPromo: "Fast Delivery Across All 69 Wilayas in Algeria • Cash on Delivery",
@@ -1040,7 +1054,14 @@
         addToCart: "Add to Bag",
         buyNow: "Buy Now",
         outOfStock: "Out of Stock",
-        inStock: "In Stock"
+        inStock: "In Stock",
+        scenarioBPrompt: "You selected {qty} items. Would you like the same options or different ones?",
+        scenarioBSame: "✓ Yes, same options",
+        scenarioBSplit: "⚡ No, choose options separately",
+        scenarioBAllocationTitle: "Allocation of {qty} items:",
+        scenarioBAllocatedStatus: "{alloc} / {qty} allocated",
+        scenarioBRemaining: "Please allocate {rem} more item(s) to proceed.",
+        scenarioBComplete: "✓ Full allocation complete ({qty}/{qty})"
       }
     };
 
@@ -1501,22 +1522,8 @@
       onlyFavorites: false,
       sortBy: "newest",
       dynamicFilterSelections: {},
-      favorites: (() => {
-        try {
-          const raw = localStorage.getItem("luxe_store_favorites");
-          return raw ? new Set(JSON.parse(raw)) : new Set();
-        } catch (_e) {
-          return new Set();
-        }
-      })(),
-      cart: (() => {
-        try {
-          const raw = localStorage.getItem("luxe_store_cart");
-          return raw ? JSON.parse(raw) : [];
-        } catch (_e) {
-          return [];
-        }
-      })(),
+      favorites: new Set(),
+      cart: [],
       appliedCoupon: null,
       lastConfirmedOrder: null,
       categories: [],
@@ -1529,6 +1536,13 @@
       activePdpMultiVariantMode: "same",
       activePdpAllocations: {}
     };
+
+    try {
+      const rawCart = localStorage.getItem("luxe_store_cart");
+      if (rawCart) state.cart = JSON.parse(rawCart);
+      const rawFavs = localStorage.getItem("luxe_store_favorites");
+      if (rawFavs) state.favorites = new Set(JSON.parse(rawFavs));
+    } catch (_e) {}
 
     function saveCartToStorage() {
       try {
@@ -2466,10 +2480,13 @@
               </div>
 
               <!-- Scenario B Prompt: When selecting 2+ units on a product with multiple variants -->
-              ${state.activePdpQty >= 2 && prod.variants.length > 1 ? `
+              ${state.activePdpQty >= 2 && prod.variants.length > 1 ? (() => {
+                const tr = I18N[state.lang] || I18N.fr;
+                const promptText = (tr.scenarioBPrompt || I18N.fr.scenarioBPrompt).replace('{qty}', state.activePdpQty);
+                return `
                 <div class="p-3 rounded-xl bg-amber-500/10 border border-gold-reflective/40 space-y-2">
                   <p class="text-xs font-bold text-emerald-deep">
-                    Vous souhaitez ${state.activePdpQty} articles. Voulez-vous la même déclinaison ou des options différentes ?
+                    ${promptText}
                   </p>
                   <div class="grid grid-cols-2 gap-2">
                     <button
@@ -2481,7 +2498,7 @@
                           : 'bg-white text-charcoal border-gray-300 hover:border-gold-reflective'
                       }"
                     >
-                      ✓ Mêmes options
+                      ${tr.scenarioBSame || "✓ Oui, mêmes options"}
                     </button>
                     <button
                       type="button"
@@ -2492,11 +2509,11 @@
                           : 'bg-white text-charcoal border-gray-300 hover:border-gold-reflective'
                       }"
                     >
-                      ⚡ Choisir séparément
+                      ${tr.scenarioBSplit || "⚡ Non, choisir les options séparément"}
                     </button>
                   </div>
                 </div>
-              ` : ""}
+              `; })() : ""}
 
               <!-- If Split Mode (Scenario B): Show Interactive Allocation Table -->
               ${state.activePdpQty >= 2 && state.activePdpMultiVariantMode === 'split' ? (() => {

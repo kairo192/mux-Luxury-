@@ -19,6 +19,7 @@ import {
 import { DesktopCmsApi } from "../api/adminClient";
 import { notifyClientError, notifyClientSuccess, notifyClientWarning } from "../utils/clientNotifier";
 import { VariantManager, EditorVariant, VariantAxis } from "./VariantManager";
+import { LiveProductCardPreview } from "./LiveProductCardPreview";
 
 // ============================================================================
 // FULL DYNAMIC PRODUCT EDITOR (create + edit)
@@ -186,6 +187,39 @@ export function ProductEditor({ open, product, categories, brands, onClose, onSa
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const galleryInputRef = useRef<HTMLInputElement | null>(null);
   const [uploadTarget, setUploadTarget] = useState<"main" | "gallery">("main");
+  const [localBrands, setLocalBrands] = useState<any[]>(brands);
+  const [showNewBrandForm, setShowNewBrandForm] = useState(false);
+  const [newBrandName, setNewBrandName] = useState("");
+  const [newBrandLogoUrl, setNewBrandLogoUrl] = useState("");
+  const [creatingBrand, setCreatingBrand] = useState(false);
+  const [showLivePreview, setShowLivePreview] = useState(true);
+
+  useEffect(() => {
+    setLocalBrands(brands);
+  }, [brands]);
+
+  async function handleCreateBrand() {
+    if (!newBrandName.trim()) return;
+    setCreatingBrand(true);
+    try {
+      const slug = slugify(newBrandName);
+      const created = await DesktopCmsApi.createBrand({
+        name: newBrandName.trim(),
+        slug,
+        logo_url: newBrandLogoUrl.trim() || undefined,
+      });
+      setLocalBrands((prev) => [...prev, created]);
+      patch({ brand_id: created.id });
+      setShowNewBrandForm(false);
+      setNewBrandName("");
+      setNewBrandLogoUrl("");
+      notifyClientSuccess("Marque créée", `La marque « ${created.name} » a été enregistrée.`);
+    } catch (err: any) {
+      notifyClientError("Échec création marque", err.message || "Erreur réseau.");
+    } finally {
+      setCreatingBrand(false);
+    }
+  }
 
   useEffect(() => {
     if (!open) return;
@@ -478,7 +512,7 @@ export function ProductEditor({ open, product, categories, brands, onClose, onSa
     <div className="fixed inset-0 z-50 bg-black/50 backdrop-blur-sm flex items-start justify-center overflow-y-auto p-4">
       <form
         onSubmit={handleSubmit}
-        className="w-full max-w-6xl bg-white rounded-3xl shadow-2xl border border-[#D4AF62]/50 my-6 overflow-hidden text-xs"
+        className="w-full max-w-7xl bg-white rounded-3xl shadow-2xl border border-[#D4AF62]/50 my-6 overflow-hidden text-xs"
       >
         {/* Header */}
         <div className="px-6 py-4 bg-gradient-to-r from-[#063D2E] to-[#0A5C45] text-white flex items-center justify-between gap-4">
@@ -497,14 +531,27 @@ export function ProductEditor({ open, product, categories, brands, onClose, onSa
               </p>
             </div>
           </div>
-          <button
-            type="button"
-            onClick={requestClose}
-            className="p-2 rounded-xl bg-white/10 hover:bg-white/20 transition"
-            title="Fermer"
-          >
-            <X className="w-4 h-4 text-[#E8D4A5]" />
-          </button>
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={() => setShowLivePreview(!showLivePreview)}
+              className={`hidden md:inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl font-bold text-xs transition border ${
+                showLivePreview
+                  ? "bg-[#D4AF62] text-[#02291F] border-[#D4AF62]"
+                  : "bg-white/10 text-white/90 border-white/20 hover:bg-white/20"
+              }`}
+            >
+              <span>{showLivePreview ? "Aperçu actif" : "Afficher l'aperçu"}</span>
+            </button>
+            <button
+              type="button"
+              onClick={requestClose}
+              className="p-2 rounded-xl bg-white/10 hover:bg-white/20 transition"
+              title="Fermer"
+            >
+              <X className="w-4 h-4 text-[#E8D4A5]" />
+            </button>
+          </div>
         </div>
 
         {/* Tabs */}
@@ -535,7 +582,9 @@ export function ProductEditor({ open, product, categories, brands, onClose, onSa
         </div>
 
         {/* Body */}
-        <div className="p-6 space-y-5 max-h-[70vh] overflow-y-auto">
+        <div className="p-6 max-h-[72vh] overflow-y-auto">
+          <div className={`grid grid-cols-1 ${showLivePreview ? "lg:grid-cols-12" : ""} gap-6 items-start`}>
+            <div className={`${showLivePreview ? "lg:col-span-8" : "w-full"} space-y-5`}>
           {conflict && (
             <div className="p-3 rounded-xl bg-amber-50 border border-amber-300 flex items-start gap-2">
               <AlertTriangle className="w-4 h-4 text-amber-700 shrink-0 mt-0.5" />
@@ -602,19 +651,55 @@ export function ProductEditor({ open, product, categories, brands, onClose, onSa
                   )}
                 </div>
                 <div>
-                  <label className="block font-bold mb-1">Marque</label>
-                  <select
-                    value={draft.brand_id}
-                    onChange={(e) => patch({ brand_id: e.target.value === "" ? "" : Number(e.target.value) })}
-                    className="w-full px-3 py-2 border rounded-xl bg-white"
-                  >
-                    <option value="">— Sans marque —</option>
-                    {brands.map((b) => (
-                      <option key={b.id} value={b.id}>
-                        {b.name}
-                      </option>
-                    ))}
-                  </select>
+                  <div className="flex items-center justify-between mb-1">
+                    <label className="font-bold">Marque</label>
+                    <button
+                      type="button"
+                      onClick={() => setShowNewBrandForm(!showNewBrandForm)}
+                      className="text-[11px] font-bold text-[#063D2E] hover:underline"
+                    >
+                      {showNewBrandForm ? "Annuler" : "+ Nouvelle marque"}
+                    </button>
+                  </div>
+                  {showNewBrandForm ? (
+                    <div className="p-3 rounded-xl bg-amber-500/10 border border-[#D4AF62]/40 space-y-2">
+                      <input
+                        value={newBrandName}
+                        onChange={(e) => setNewBrandName(e.target.value)}
+                        placeholder="Nom (ex: Chanel, Hermès, Maison Mus)…"
+                        className="w-full px-3 py-1.5 border rounded-lg bg-white"
+                      />
+                      <div className="flex items-center gap-2">
+                        <input
+                          value={newBrandLogoUrl}
+                          onChange={(e) => setNewBrandLogoUrl(e.target.value)}
+                          placeholder="URL logo (optionnel)…"
+                          className="flex-1 px-3 py-1.5 border rounded-lg bg-white font-mono text-[11px]"
+                        />
+                        <button
+                          type="button"
+                          disabled={creatingBrand || !newBrandName.trim()}
+                          onClick={handleCreateBrand}
+                          className="px-3 py-1.5 rounded-lg bg-[#063D2E] text-[#D4AF62] font-bold disabled:opacity-50"
+                        >
+                          {creatingBrand ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : "Créer"}
+                        </button>
+                      </div>
+                    </div>
+                  ) : (
+                    <select
+                      value={draft.brand_id}
+                      onChange={(e) => patch({ brand_id: e.target.value === "" ? "" : Number(e.target.value) })}
+                      className="w-full px-3 py-2 border rounded-xl bg-white"
+                    >
+                      <option value="">— Sans marque —</option>
+                      {localBrands.map((b) => (
+                        <option key={b.id} value={b.id}>
+                          {b.name}
+                        </option>
+                      ))}
+                    </select>
+                  )}
                 </div>
               </div>
 
@@ -1126,6 +1211,38 @@ export function ProductEditor({ open, product, categories, brands, onClose, onSa
               </div>
             </div>
           )}
+            </div>
+
+            {/* Live Storefront Preview Column */}
+            {showLivePreview && (
+              <div className="lg:col-span-4 sticky top-0 space-y-3">
+                <LiveProductCardPreview
+                  name={draft.name_fr}
+                  brandName={localBrands.find((b) => b.id === Number(draft.brand_id))?.name}
+                  categoryName={category?.name_fr}
+                  mainImageUrl={draft.main_image_url}
+                  sellingPriceDzd={draft.selling_price_dzd}
+                  previousPriceDzd={draft.previous_price_dzd}
+                  discountPercent={draft.discount_percent}
+                  isFeatured={draft.is_featured}
+                  isNewArrival={draft.is_new_arrival}
+                  variants={draft.variants}
+                />
+                <div className="p-3 rounded-2xl bg-[#063D2E]/5 border border-[#D4AF62]/30 text-[11px] text-[#063D2E] space-y-1">
+                  <div className="flex justify-between font-bold">
+                    <span>Marge unitaire estimée :</span>
+                    <span className={margin >= 0 ? "text-emerald-700" : "text-rose-700"}>
+                      {margin >= 0 ? "+" : ""}{margin} DZD ({marginPct.toFixed(0)}%)
+                    </span>
+                  </div>
+                  <div className="flex justify-between text-gray-500">
+                    <span>Coût d'achat fournisseur :</span>
+                    <span>{draft.purchase_cost_dzd || 0} DZD</span>
+                  </div>
+                </div>
+              </div>
+            )}
+          </div>
         </div>
 
         {/* Footer */}

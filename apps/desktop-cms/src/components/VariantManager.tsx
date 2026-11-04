@@ -106,6 +106,8 @@ export function VariantManager({
     return seeded;
   });
   const [customValue, setCustomValue] = useState<Record<string, string>>({});
+  const [customColorHex, setCustomColorHex] = useState<Record<string, string>>({});
+  const [customMeta, setCustomMeta] = useState<Record<string, { color_hex?: string }>>({});
   const [defaultStock, setDefaultStock] = useState(3);
   const [defaultThreshold, setDefaultThreshold] = useState(3);
   const [selectedIds, setSelectedIds] = useState<number[]>([]);
@@ -155,14 +157,26 @@ export function VariantManager({
     });
   }
 
-  function addCustomValue(axisKey: string) {
+  function addCustomValue(axisKey: string, hex?: string) {
     const value = (customValue[axisKey] || "").trim();
     if (!value) return;
     setSelection((prev) => ({
       ...prev,
       [axisKey]: Array.from(new Set([...(prev[axisKey] || []), value])),
     }));
+    if (hex) {
+      setCustomMeta((prev) => ({ ...prev, [`${axisKey}:${value}`]: { color_hex: hex } }));
+    }
     setCustomValue((prev) => ({ ...prev, [axisKey]: "" }));
+
+    const axis = axes.find((a) => a.attr_key === axisKey);
+    if (axis && axis.id) {
+      DesktopCmsApi.createAttributeOption(axis.id, {
+        value,
+        label_fr: value,
+        color_hex: hex || undefined,
+      }).catch(() => null);
+    }
   }
 
   function buildDraftCombos() {
@@ -499,28 +513,66 @@ export function VariantManager({
                     <X className="w-3 h-3" />
                   </button>
                 ))}
-              <div className="flex items-center gap-1">
-                <input
-                  value={customValue[axis.attr_key] || ""}
-                  onChange={(e) => setCustomValue((p) => ({ ...p, [axis.attr_key]: e.target.value }))}
-                  onKeyDown={(e) => {
-                    if (e.key === "Enter") {
-                      e.preventDefault();
-                      addCustomValue(axis.attr_key);
-                    }
-                  }}
-                  placeholder="Autre valeur…"
-                  className="w-28 px-2 py-1 border border-dashed rounded-lg bg-white"
-                />
-                <button
-                  type="button"
-                  onClick={() => addCustomValue(axis.attr_key)}
-                  className="px-2 py-1 rounded-lg bg-white border border-[#D4AF62] font-bold text-[#063D2E]"
-                  title="Ajouter cette valeur personnalisée"
-                >
-                  <Plus className="w-3 h-3" />
-                </button>
-              </div>
+              {axis.input_type === "color" || axis.attr_key.toLowerCase().includes("color") || axis.attr_key.toLowerCase().includes("couleur") ? (
+                <div className="flex items-center gap-1.5 p-1 rounded-xl bg-white border border-[#D4AF62]/40 shadow-xs">
+                  <input
+                    type="color"
+                    value={customColorHex[axis.attr_key] || "#063D2E"}
+                    onChange={(e) => setCustomColorHex((p) => ({ ...p, [axis.attr_key]: e.target.value }))}
+                    className="w-6 h-6 rounded cursor-pointer border-0 p-0 bg-transparent"
+                    title="Choisir une nuance sur la palette"
+                  />
+                  <input
+                    value={customColorHex[axis.attr_key] || "#063D2E"}
+                    onChange={(e) => setCustomColorHex((p) => ({ ...p, [axis.attr_key]: e.target.value }))}
+                    placeholder="#HEX"
+                    className="w-16 px-1 py-0.5 font-mono uppercase text-[10px] border rounded bg-white text-center"
+                  />
+                  <input
+                    value={customValue[axis.attr_key] || ""}
+                    onChange={(e) => setCustomValue((p) => ({ ...p, [axis.attr_key]: e.target.value }))}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter") {
+                        e.preventDefault();
+                        addCustomValue(axis.attr_key, customColorHex[axis.attr_key] || "#063D2E");
+                      }
+                    }}
+                    placeholder="Nom (ex: Vert sauge)…"
+                    className="w-28 px-2 py-1 border rounded-lg bg-white text-xs"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => addCustomValue(axis.attr_key, customColorHex[axis.attr_key] || "#063D2E")}
+                    className="px-2 py-1 rounded-lg bg-[#063D2E] text-[#D4AF62] font-bold hover:brightness-110 shadow-xs"
+                    title="Créer cette couleur visuelle"
+                  >
+                    <Plus className="w-3 h-3" />
+                  </button>
+                </div>
+              ) : (
+                <div className="flex items-center gap-1">
+                  <input
+                    value={customValue[axis.attr_key] || ""}
+                    onChange={(e) => setCustomValue((p) => ({ ...p, [axis.attr_key]: e.target.value }))}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter") {
+                        e.preventDefault();
+                        addCustomValue(axis.attr_key);
+                      }
+                    }}
+                    placeholder="Autre valeur…"
+                    className="w-28 px-2 py-1 border border-dashed rounded-lg bg-white text-xs"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => addCustomValue(axis.attr_key)}
+                    className="px-2 py-1 rounded-lg bg-white border border-[#D4AF62] font-bold text-[#063D2E]"
+                    title="Ajouter cette valeur personnalisée"
+                  >
+                    <Plus className="w-3 h-3" />
+                  </button>
+                </div>
+              )}
             </div>
           </div>
         ))}
