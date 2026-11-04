@@ -1501,8 +1501,22 @@
       onlyFavorites: false,
       sortBy: "newest",
       dynamicFilterSelections: {},
-      favorites: new Set(),
-      cart: [],
+      favorites: (() => {
+        try {
+          const raw = localStorage.getItem("luxe_store_favorites");
+          return raw ? new Set(JSON.parse(raw)) : new Set();
+        } catch (_e) {
+          return new Set();
+        }
+      })(),
+      cart: (() => {
+        try {
+          const raw = localStorage.getItem("luxe_store_cart");
+          return raw ? JSON.parse(raw) : [];
+        } catch (_e) {
+          return [];
+        }
+      })(),
       appliedCoupon: null,
       lastConfirmedOrder: null,
       categories: [],
@@ -1515,6 +1529,18 @@
       activePdpMultiVariantMode: "same",
       activePdpAllocations: {}
     };
+
+    function saveCartToStorage() {
+      try {
+        localStorage.setItem("luxe_store_cart", JSON.stringify(state.cart));
+      } catch (_e) {}
+    }
+
+    function saveFavoritesToStorage() {
+      try {
+        localStorage.setItem("luxe_store_favorites", JSON.stringify([...state.favorites]));
+      } catch (_e) {}
+    }
 
     function formatDZD(amount) {
       const n = Number(amount) || 0;
@@ -1751,6 +1777,7 @@
         state.favorites.add(prodId);
         showToast("Article ajouté à vos favoris");
       }
+      saveFavoritesToStorage();
       document.getElementById("fav-count-badge").textContent = state.favorites.size;
       renderCatalogProducts();
     }
@@ -2691,6 +2718,7 @@
       } else {
         state.cart.push({ variantId, productId: prodId, quantity: qty });
       }
+      saveCartToStorage();
       state.lastConfirmedOrder = null;
       renderStorefront();
       if (notify) showToast(`${prodName(prod)} (${variant.title}) ajouté au panier`);
@@ -2710,6 +2738,7 @@
       } else {
         showToast("Quantité maximale en stock atteinte", "error");
       }
+      saveCartToStorage();
       renderStorefront();
       renderCartDrawerContent();
     }
@@ -2962,6 +2991,7 @@
 
       state.orders.unshift(newOrder);
       state.cart = [];
+      saveCartToStorage();
       state.appliedCoupon = null;
       state.lastConfirmedOrder = newOrder;
       renderStorefront();
