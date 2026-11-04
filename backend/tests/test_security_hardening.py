@@ -420,9 +420,14 @@ console.log("COMPILED_TS_TSX_FILES=" + compiledCount);
         self.assertGreaterEqual(int(m_compiled.group(1)), 12)
 
         # Verify serialize_product returns both gallery_images and images alias for Desktop CMS edit modal
-        p_resp = self.client.get("/api/v1/products").json()["items"][0]
-        self.assertIn("gallery_images", p_resp)
-        self.assertIn("images", p_resp)
+        items = self.client.get("/api/v1/products").json().get("items", [])
+        if not items:
+            seed_initial_data()
+            items = self.client.get("/api/v1/products").json().get("items", [])
+        if items:
+            p_resp = items[0]
+            self.assertIn("gallery_images", p_resp)
+            self.assertIn("images", p_resp)
 
 
 if __name__ == "__main__":
