@@ -1719,290 +1719,87 @@ export default function App() {
               </div>
             </div>
 
-            {/* Zero Categories Warning / Onboarding Callout */}
-            {categories.length === 0 && (
-              <div className="p-4 rounded-2xl bg-amber-50 border border-amber-200 flex flex-col md:flex-row items-center justify-between gap-4">
-                <div className="flex items-center gap-3">
-                  <div className="w-10 h-10 rounded-xl bg-amber-100 flex items-center justify-center text-amber-800 shrink-0">
-                    <AlertTriangle className="w-5 h-5 text-amber-700" />
+            {/* Product Editor Launch Pad */}
+            <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
+              <div className="lg:col-span-2 bg-white p-6 rounded-2xl border border-[#D4AF62]/40 shadow-xs space-y-5">
+                <div className="flex items-start gap-4">
+                  <div className="w-12 h-12 rounded-2xl bg-gradient-to-br from-[#063D2E] to-[#0A5C45] flex items-center justify-center shrink-0 shadow-sm">
+                    <PackagePlus className="w-6 h-6 text-[#D4AF62]" />
                   </div>
-                  <div>
-                    <h4 className="text-sm font-bold text-amber-900">Boutique Vierge : Aucune Catégorie Définie</h4>
-                    <p className="text-xs text-amber-800 mt-0.5">
-                      Pour publier des pièces et bénéficier des attributs dynamiques (matières, dimensions, pointures), configurez vos catégories d'abord.
+                  <div className="flex-1">
+                    <h2 className="text-lg font-serif font-bold text-[#063D2E]">Créer une pièce de collection</h2>
+                    <p className="text-xs text-gray-500 mt-1 leading-relaxed">
+                      Un éditeur complet en 4 étapes : informations multilingues, déclinaisons couleur/taille réelles,
+                      galerie de visuels et référencement. Chaque enregistrement est validé puis synchronisé avec la vitrine.
                     </p>
                   </div>
                 </div>
-                <button
-                  type="button"
-                  onClick={() => setActiveTab("categories")}
-                  className="px-4 py-2 rounded-xl bg-[#063D2E] text-[#D4AF62] font-bold text-xs hover:bg-[#084e3b] transition flex items-center gap-2 shrink-0 shadow-xs"
-                >
-                  <Plus className="w-3.5 h-3.5" />
-                  <span>Créer des Catégories</span>
-                </button>
-              </div>
-            )}
 
-            <form onSubmit={handleCreateProduct} className="bg-white p-6 rounded-2xl border border-[#D4AF62]/40 space-y-4 text-xs shadow-xs">
-              <div className="flex items-center justify-between">
-                <h2 className="text-lg font-serif font-bold text-[#063D2E] flex items-center gap-2">
-                  <Plus className="w-5 h-5 text-[#D4AF62]" />
-                  <span>Créer un produit de luxe (Formulaire adaptatif)</span>
-                </h2>
-                <span className="text-[11px] text-gray-500 font-mono">
-                  {categories.length} catégorie(s) disponible(s)
-                </span>
-              </div>
-
-              <div className="grid grid-cols-1 md:grid-cols-6 gap-3">
-                <div>
-                  <label className="block font-bold mb-1">Catégorie *</label>
-                  <select
-                    value={prodCategoryId}
-                    onChange={(e) => {
-                      setProdCategoryId(Number(e.target.value));
-                      setProdDynamicAttrs({});
-                    }}
-                    className="w-full px-3 py-2 border rounded-xl bg-white font-semibold focus:border-[#063D2E] outline-none"
-                  >
-                    {categories.length === 0 ? (
-                      <option value="">-- Aucune catégorie --</option>
-                    ) : (
-                      categories.map((c) => (
-                        <option key={c.id} value={c.id}>
-                          {c.name_fr}
-                        </option>
-                      ))
-                    )}
-                  </select>
-                </div>
-                <div>
-                  <label className="block font-bold mb-1">Nom du produit (FR) *</label>
-                  <input
-                    value={prodNameFr}
-                    onChange={(e) => setProdNameFr(e.target.value)}
-                    required
-                    placeholder="ex: Sac Émeraude Prestige"
-                    className="w-full px-3 py-2 border rounded-xl bg-white focus:border-[#063D2E] outline-none"
-                  />
-                </div>
-                <div className="relative">
-                  <div className="flex items-center justify-between mb-1">
-                    <label className="block font-bold">Code SKU *</label>
-                    <button
-                      type="button"
-                      onClick={handleGenerateAutoSku}
-                      className="text-[10px] text-[#A16207] hover:underline font-bold flex items-center gap-0.5"
-                      title="Générer automatiquement une référence unique"
-                    >
-                      <Wand2 className="w-2.5 h-2.5" />
-                      <span>Auto</span>
-                    </button>
-                  </div>
-                  <input
-                    value={prodSku}
-                    onChange={(e) => setProdSku(e.target.value)}
-                    required
-                    placeholder="LUX-BAG-099"
-                    className="w-full px-3 py-2 border rounded-xl font-mono uppercase bg-white focus:border-[#063D2E] outline-none"
-                  />
-                </div>
-                <div>
-                  <label className="block font-bold mb-1">Prix d'Achat (DA) *</label>
-                  <input
-                    type="number"
-                    min={0}
-                    value={prodCostPrice}
-                    onChange={(e) => setProdCostPrice(Number(e.target.value))}
-                    required
-                    placeholder="Coût d'achat"
-                    className="w-full px-3 py-2 border rounded-xl font-mono bg-white focus:border-[#063D2E] outline-none"
-                  />
-                </div>
-                <div>
-                  <label className="block font-bold mb-1">Prix de Vente (DA) *</label>
-                  <input
-                    type="number"
-                    min={0}
-                    value={prodSellingPrice}
-                    onChange={(e) => setProdSellingPrice(Number(e.target.value))}
-                    required
-                    className="w-full px-3 py-2 border rounded-xl font-bold font-mono bg-white focus:border-[#063D2E] outline-none text-[#063D2E]"
-                  />
-                </div>
-                <div>
-                  <label className="block font-bold mb-1">Stock Initial *</label>
-                  <input
-                    type="number"
-                    min={0}
-                    value={prodVariantStock}
-                    onChange={(e) => setProdVariantStock(Number(e.target.value))}
-                    required
-                    className="w-full px-3 py-2 border rounded-xl font-bold font-mono bg-white focus:border-[#063D2E] outline-none"
-                  />
-                </div>
-              </div>
-
-              {/* Real-time Profit & Margin Calculator */}
-              {(() => {
-                const sPrice = Number(prodSellingPrice) || 0;
-                const cPrice = Number(prodCostPrice) || 0;
-                const stock = Math.max(0, Number(prodVariantStock) || 0);
-                const unitProfit = Math.max(0, sPrice - cPrice);
-                const marginPct = sPrice > 0 ? (((sPrice - cPrice) / sPrice) * 100).toFixed(1) : "0.0";
-                const markupCoeff = cPrice > 0 ? (sPrice / cPrice).toFixed(2) : "1.00";
-                const totalStockValue = sPrice * stock;
-                return (
-                  <div className="p-3.5 bg-gradient-to-r from-emerald-50/90 via-[#F8F6F0] to-emerald-50/90 rounded-xl border border-emerald-200/80 flex flex-wrap items-center justify-between gap-3 shadow-xs">
-                    <div className="flex items-center gap-2">
-                      <div className="w-7 h-7 rounded-lg bg-emerald-100 flex items-center justify-center text-emerald-800">
-                        <Calculator className="w-4 h-4 text-emerald-800" />
-                      </div>
-                      <span className="font-bold text-[#063D2E] text-xs">Calculateur Financier Prévisionnel :</span>
+                <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
+                  {[
+                    { label: "Produits", value: products.length, tone: "text-[#063D2E]" },
+                    { label: "En vente", value: productCounts.published, tone: "text-emerald-700" },
+                    { label: "Brouillons", value: productCounts.draft, tone: "text-gray-600" },
+                    { label: "Stock faible", value: productCounts.low_stock, tone: "text-amber-700" },
+                  ].map((stat) => (
+                    <div key={stat.label} className="p-3 rounded-xl bg-[#F8F6F0] border border-[#D4AF62]/30">
+                      <p className="text-[10px] uppercase tracking-wide text-gray-500 font-bold">{stat.label}</p>
+                      <p className={`text-xl font-bold font-mono ${stat.tone}`}>{stat.value}</p>
                     </div>
-                    <div className="flex flex-wrap items-center gap-4 text-xs font-mono">
-                      <span className="flex items-center gap-1">
-                        <span className="text-gray-500">Bénéfice Brut :</span>
-                        <strong className="text-emerald-700 font-bold">
-                          +{unitProfit.toLocaleString()} DA
-                        </strong>
-                      </span>
-                      <span className="flex items-center gap-1">
-                        <span className="text-gray-500">Marge :</span>
-                        <span className="px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-900 font-bold text-[11px]">
-                          {marginPct}%
-                        </span>
-                      </span>
-                      <span className="flex items-center gap-1">
-                        <span className="text-gray-500">Markup :</span>
-                        <strong className="text-[#063D2E] font-bold">x{markupCoeff}</strong>
-                      </span>
-                      <span className="flex items-center gap-1">
-                        <span className="text-gray-500">Valeur Stock :</span>
-                        <strong className="text-gray-700">{totalStockValue.toLocaleString()} DA</strong>
-                      </span>
-                    </div>
-                  </div>
-                );
-              })()}
-
-              {/* Dynamic Attributes Driven by Selected Category */}
-              {activeCategoryObj && (activeCategoryObj.attributes || []).filter((a: any) => !a.is_variant_axis).length > 0 && (
-                <div className="p-4 rounded-xl bg-[#F8F6F0] border border-[#D4AF62]/30 space-y-2">
-                  <p className="font-bold text-[#063D2E] flex items-center gap-2">
-                    <SlidersHorizontal className="w-3.5 h-3.5 text-[#063D2E]" />
-                    <span>Caractéristiques spécifiques à la catégorie « {activeCategoryObj.name_fr} » :</span>
-                  </p>
-                  <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-                    {(activeCategoryObj.attributes || [])
-                      .filter((a: any) => !a.is_variant_axis)
-                      .map((attr: any) => (
-                        <div key={attr.attr_key}>
-                          <label className="block font-semibold mb-1">
-                            {attr.label_fr} {attr.is_required ? "*" : ""}
-                          </label>
-                          {attr.options && attr.options.length > 0 ? (
-                            <select
-                              value={prodDynamicAttrs[attr.attr_key] || ""}
-                              onChange={(e) => setProdDynamicAttrs({ ...prodDynamicAttrs, [attr.attr_key]: e.target.value })}
-                              required={Boolean(attr.is_required && prodStatus === "published")}
-                              className="w-full px-3 py-1.5 border rounded-lg bg-white"
-                            >
-                              <option value="">-- Choisir --</option>
-                              {attr.options.map((o: any) => (
-                                <option key={o.value} value={o.value}>
-                                  {o.label_fr}
-                                </option>
-                              ))}
-                            </select>
-                          ) : (
-                            <input
-                              value={prodDynamicAttrs[attr.attr_key] || ""}
-                              onChange={(e) => setProdDynamicAttrs({ ...prodDynamicAttrs, [attr.attr_key]: e.target.value })}
-                              required={Boolean(attr.is_required && prodStatus === "published")}
-                              placeholder={attr.label_fr}
-                              className="w-full px-3 py-1.5 border rounded-lg bg-white"
-                            />
-                          )}
-                        </div>
-                      ))}
-                  </div>
+                  ))}
                 </div>
-              )}
 
-              <button
-                type="submit"
-                className="inline-flex items-center gap-2 px-6 py-2.5 rounded-xl bg-gradient-to-r from-[#D4AF62] to-[#E8D4A5] text-[#02291F] font-extrabold shadow-xs hover:brightness-105 transition"
-              >
-                <Plus className="w-4 h-4 text-[#02291F]" />
-                <span>Enregistrer &amp; Publier le Produit</span>
-              </button>
-            </form>
-
-            {/* Edit Product Modal / Inline Form */}
-            {editingProduct && (
-              <form onSubmit={handleSaveEditedProduct} className="bg-[#F8F6F0] p-5 rounded-2xl border-2 border-[#D4AF62] space-y-3 text-xs shadow-md">
-                <div className="flex justify-between items-center">
-                  <h4 className="font-serif font-bold text-base text-[#063D2E] flex items-center gap-2">
-                    <Edit3 className="w-4 h-4 text-[#063D2E]" />
-                    <span>Modifier Produit #{editingProduct.id} ({editingProduct.sku}) — Version v{editingProduct.version || 1}</span>
-                  </h4>
+                <div className="flex flex-wrap items-center gap-2">
                   <button
                     type="button"
-                    onClick={() => setEditingProduct(null)}
-                    className="p-1.5 rounded-lg text-gray-500 hover:text-black hover:bg-white/50 transition font-bold"
+                    onClick={() => openProductEditor(null)}
+                    disabled={categories.length === 0}
+                    className="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl bg-gradient-to-r from-[#D4AF62] to-[#E8D4A5] text-[#02291F] font-extrabold shadow-xs hover:brightness-105 transition disabled:opacity-50 disabled:cursor-not-allowed"
                   >
-                    <X className="w-4 h-4" />
+                    <Plus className="w-4 h-4" />
+                    <span>Nouveau produit</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setActiveTab("categories")}
+                    className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl bg-white border border-[#D4AF62]/60 text-[#063D2E] font-bold hover:bg-[#F8F6F0] transition"
+                  >
+                    <Tags className="w-4 h-4" />
+                    <span>Attributs & catégories</span>
                   </button>
                 </div>
-                <div className="grid grid-cols-1 md:grid-cols-4 gap-3">
-                  <div>
-                    <label className="block font-bold mb-1">Nom (FR)</label>
-                    <input value={editingProduct.name_fr} onChange={(e) => setEditingProduct({ ...editingProduct, name_fr: e.target.value })} className="w-full px-3 py-2 border rounded-xl bg-white" />
-                  </div>
-                  <div>
-                    <label className="block font-bold mb-1">Prix Vente (DA)</label>
-                    <input type="number" value={editingProduct.selling_price_dzd} onChange={(e) => setEditingProduct({ ...editingProduct, selling_price_dzd: Number(e.target.value) })} className="w-full px-3 py-2 border rounded-xl bg-white font-bold" />
-                  </div>
-                  <div>
-                    <label className="block font-bold mb-1">Coût Achat Privé (DA)</label>
-                    <input type="number" value={editingProduct.purchase_cost_dzd || 0} onChange={(e) => setEditingProduct({ ...editingProduct, purchase_cost_dzd: Number(e.target.value) })} className="w-full px-3 py-2 border rounded-xl bg-white" />
-                  </div>
-                  <div>
-                    <label className="block font-bold mb-1">Statut</label>
-                    <select value={editingProduct.status} onChange={(e) => setEditingProduct({ ...editingProduct, status: e.target.value })} className="w-full px-3 py-2 border rounded-xl bg-white font-bold">
-                      <option value="published">published</option>
-                      <option value="draft">draft</option>
-                      <option value="archived">archived</option>
-                    </select>
-                  </div>
-                </div>
-                <div className="flex flex-wrap items-center gap-2 pt-2">
-                  <button type="submit" className="px-5 py-2 rounded-xl bg-[#063D2E] text-[#D4AF62] font-extrabold flex items-center gap-1.5">
-                    <Check className="w-4 h-4 text-[#D4AF62]" />
-                    <span>Enregistrer les modifications</span>
-                  </button>
-                  <button type="button" onClick={() => handleGenerateVariantMatrix(editingProduct.id)} className="px-4 py-2 rounded-xl bg-[#D4AF62] text-[#02291F] font-bold flex items-center gap-1.5">
-                    <Plus className="w-3.5 h-3.5" />
-                    <span>Générer Matrice Variantes ({matrixColorCsv} × {matrixSizeCsv})</span>
-                  </button>
-                  <label className="px-4 py-2 rounded-xl bg-white border border-[#D4AF62] text-[#063D2E] font-bold cursor-pointer hover:bg-[#F8F6F0] transition flex items-center gap-1.5">
-                    <UploadCloud className="w-4 h-4 text-[#063D2E]" />
-                    <span>Téléverser Image PC</span>
-                    <input type="file" accept="image/jpeg,image/png,image/webp" onChange={handleUploadLocalProductMedia} className="hidden" />
-                  </label>
-                  <button type="button" onClick={() => handleAddProductGalleryImage(editingProduct.id)} className="px-4 py-2 rounded-xl bg-white border border-[#063D2E] text-[#063D2E] font-bold">
-                    + Ajouter Image Galerie
-                  </button>
-                  {(editingProduct.images || [])[0] && (
-                    <button type="button" onClick={() => handleRemoveProductGalleryImage((editingProduct.gallery_images || editingProduct.images)[0].id)} className="px-3 py-2 rounded-xl bg-red-50 text-red-700 border border-red-200 font-bold">
-                      Supprimer 1ère Image
-                    </button>
-                  )}
-                </div>
-              </form>
-            )}
+                {categories.length === 0 && (
+                  <p className="text-[11px] text-amber-800 bg-amber-50 border border-amber-200 rounded-xl px-3 py-2">
+                    Créez d'abord une catégorie pour débloquer la création de produits et les attributs dynamiques.
+                  </p>
+                )}
+              </div>
+
+              <div className="bg-[#063D2E] p-6 rounded-2xl border border-[#D4AF62]/40 text-[#E8D4A5] space-y-3">
+                <p className="font-serif font-bold text-base flex items-center gap-2">
+                  <Sparkles className="w-4 h-4 text-[#D4AF62]" />
+                  <span>Bonnes pratiques</span>
+                </p>
+                <ul className="space-y-2 text-[11px] leading-relaxed text-white/80">
+                  <li className="flex gap-2">
+                    <CheckCircle2 className="w-3.5 h-3.5 text-[#D4AF62] shrink-0 mt-0.5" />
+                    <span>Un prix barré supérieur au prix de vente calcule automatiquement la remise affichée.</span>
+                  </li>
+                  <li className="flex gap-2">
+                    <CheckCircle2 className="w-3.5 h-3.5 text-[#D4AF62] shrink-0 mt-0.5" />
+                    <span>Les déclinaisons portent leur propre stock : la vitrine ne vend jamais une combinaison épuisée.</span>
+                  </li>
+                  <li className="flex gap-2">
+                    <CheckCircle2 className="w-3.5 h-3.5 text-[#D4AF62] shrink-0 mt-0.5" />
+                    <span>Les prix et stocks envoyés par le navigateur sont ignorés : le serveur recalcule toujours le total.</span>
+                  </li>
+                  <li className="flex gap-2">
+                    <CheckCircle2 className="w-3.5 h-3.5 text-[#D4AF62] shrink-0 mt-0.5" />
+                    <span>Un produit publié sans visuel ni déclinaison est refusé pour éviter les fiches incomplètes.</span>
+                  </li>
+                </ul>
+              </div>
+            </div>
 
             {/* Product Catalogue Table & Tools */}
             <div className="bg-white p-6 rounded-2xl border border-[#D4AF62]/40 space-y-4 text-xs shadow-xs">
@@ -2249,7 +2046,7 @@ export default function App() {
                             <td className="p-2.5 text-right space-x-1.5 whitespace-nowrap">
                               <button
                                 type="button"
-                                onClick={() => setEditingProduct(p)}
+                                onClick={() => openProductEditor(p)}
                                 className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-[#F8F6F0] text-[#063D2E] border border-[#D4AF62]/40 font-bold hover:bg-[#D4AF62]/20 transition"
                                 title="Modifier la fiche et les variantes"
                               >
@@ -2875,7 +2672,22 @@ export default function App() {
             </div>
           </div>
         </div>
-      </main>
+        <ProductEditor
+        open={productEditorOpen}
+        product={productEditorTarget}
+        categories={categories}
+        brands={brands}
+        initialCategoryId={productEditorInitialCat}
+        onClose={() => {
+          setProductEditorOpen(false);
+          setProductEditorTarget(null);
+        }}
+        onSaved={async () => {
+          await fetchProducts();
+          await fetchCategories();
+        }}
+      />
+    </main>
     </div>
   );
 }
