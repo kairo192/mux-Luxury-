@@ -1450,8 +1450,8 @@
       cart: [],
       appliedCoupon: null,
       lastConfirmedOrder: null,
-      categories: JSON.parse(JSON.stringify(CATEGORIES)),
-      products: JSON.parse(JSON.stringify(PRODUCTS)),
+      categories: [],
+      products: [],
       orders: [],
       activePdpProductId: null,
       activePdpVariantId: null,
@@ -1741,22 +1741,31 @@
 
       // 2. Homepage Categories Grid (Matches 1000589999.png Dark Emerald & Gold Cards)
       const homeGrid = document.getElementById("home-categories-grid");
-      homeGrid.innerHTML = state.categories
-        .map((c) => {
-          return `
-            <button type="button" onclick="filterByCategory('${c.slug}')" class="h-full group cat-card-bg rounded-xl sm:rounded-2xl overflow-hidden border border-gold-reflective/35 shadow-luxury hover:shadow-luxury-hover hover:border-gold-reflective transition text-center flex flex-col justify-between">
-              <div class="aspect-[4/3] w-full overflow-hidden bg-emerald-forest relative">
-                <img src="${c.image}" alt="${catName(c)}" loading="lazy" decoding="async" class="w-full h-full object-cover group-hover:scale-105 transition duration-500" />
-                <div class="absolute inset-0 bg-gradient-to-t from-emerald-forest/75 via-transparent to-transparent"></div>
-              </div>
-              <div class="w-full px-1.5 sm:px-2 py-2 sm:py-2.5 flex items-center justify-center gap-1.5 bg-emerald-forest/95 border-t border-gold-reflective/20">
-                <span class="w-1.5 h-1.5 rounded-full bg-gold-reflective flex-shrink-0"></span>
-                <span class="font-semibold text-[11px] sm:text-xs text-white group-hover:text-gold-reflective truncate transition">${catName(c)}</span>
-              </div>
-            </button>
-          `;
-        })
-        .join("");
+      if (state.categories.length === 0) {
+        homeGrid.innerHTML = `
+          <div class="col-span-full py-8 px-4 text-center bg-white/70 backdrop-blur-sm rounded-2xl border border-gold-reflective/30 space-y-1.5">
+            <p class="font-luxury text-emerald-deep font-bold text-sm sm:text-base">Maison Mus Luxury</p>
+            <p class="text-[11px] sm:text-xs text-charcoal/70">Nouvelle collection en cours d'actualisation.</p>
+          </div>
+        `;
+      } else {
+        homeGrid.innerHTML = state.categories
+          .map((c) => {
+            return `
+              <button type="button" onclick="filterByCategory('${c.slug}')" class="h-full group cat-card-bg rounded-xl sm:rounded-2xl overflow-hidden border border-gold-reflective/35 shadow-luxury hover:shadow-luxury-hover hover:border-gold-reflective transition text-center flex flex-col justify-between">
+                <div class="aspect-[4/3] w-full overflow-hidden bg-emerald-forest relative">
+                  <img src="${c.image}" alt="${catName(c)}" loading="lazy" decoding="async" onerror="this.src='${ASSET_MAP.cat_sacs}'" class="w-full h-full object-cover group-hover:scale-105 transition duration-500" />
+                  <div class="absolute inset-0 bg-gradient-to-t from-emerald-forest/75 via-transparent to-transparent"></div>
+                </div>
+                <div class="w-full px-1.5 sm:px-2 py-2 sm:py-2.5 flex items-center justify-center gap-1.5 bg-emerald-forest/95 border-t border-gold-reflective/20">
+                  <span class="w-1.5 h-1.5 rounded-full bg-gold-reflective flex-shrink-0"></span>
+                  <span class="font-semibold text-[11px] sm:text-xs text-white group-hover:text-gold-reflective truncate transition">${catName(c)}</span>
+                </div>
+              </button>
+            `;
+          })
+          .join("");
+      }
 
       renderDynamicSidebarFilters();
       renderCatalogProducts();
@@ -2518,7 +2527,6 @@
         showToast("Code promo invalide", "error");
         return;
       }
-      const subtotal = computeCartSubtotal();
       if (subtotal < found.minOrder) {
         showToast(`Minimum de commande requis : ${formatDZD(found.minOrder)}`, "error");
         return;
@@ -2666,25 +2674,19 @@
         });
         if (!apiOrdRes.ok) {
           const errJson = await apiOrdRes.json().catch(() => ({}));
-          if (apiOrdRes.status === 403 && errJson.detail) {
-            showToast(String(errJson.detail), "error");
-            return;
-          }
-          if (apiOrdRes.status === 409) {
-            showToast("Stock insuffisant ou commande déjà transmise.", "error");
-            return;
-          }
-          if (apiOrdRes.status === 422) {
-            showToast("Veuillez vérifier vos coordonnées de livraison.", "error");
-            return;
-          }
+          const errMsg = errJson.detail || "Erreur lors de l'enregistrement de votre commande (" + apiOrdRes.status + ").";
+          showToast(String(errMsg), "error");
+          return;
         } else {
           const createdOrd = await apiOrdRes.json();
-          if (createdOrd.order_reference) {
+          if (createdOrd && createdOrd.order_reference) {
             orderRef = createdOrd.order_reference;
           }
         }
-      } catch (_e) {}
+      } catch (_err) {
+        showToast("Impossible de contacter le serveur. Veuillez vérifier votre connexion.", "error");
+        return;
+      }
 
       for (const line of orderItems) {
         const prod = state.products.find((p) => p.id === line.product_id);
@@ -3163,14 +3165,17 @@
         .join("");
     }
 
+    let isSyncingBackend = false;
     async function syncStorefrontWithBackend() {
+      if (isSyncingBackend) return;
+      isSyncingBackend = true;
       try {
         const [catRes, prodRes, wilRes] = await Promise.all([
           fetch("/api/v1/categories").then((r) => (r.ok ? r.json() : null)).catch(() => null),
           fetch("/api/v1/products?page_size=50").then((r) => (r.ok ? r.json() : null)).catch(() => null),
           fetch("/api/v1/delivery-zones").then((r) => (r.ok ? r.json() : null)).catch(() => null),
         ]);
-        if (catRes && Array.isArray(catRes.items) && catRes.items.length > 0) {
+        if (catRes && Array.isArray(catRes.items)) {
           state.categories = catRes.items.map((c) => ({
             id: c.id,
             slug: c.slug,
@@ -3191,39 +3196,48 @@
             })),
           }));
         }
-        if (prodRes && Array.isArray(prodRes.items) && prodRes.items.length > 0) {
-          state.products = prodRes.items.map((p) => ({
-            id: p.id,
-            slug: p.slug,
-            category_id: p.category_id,
-            category_slug: p.category_slug,
-            sku: p.sku,
-            badge: p.is_new_arrival ? "Nouveau" : p.is_featured ? "Populaire" : null,
-            name_fr: p.name_fr,
-            name_ar: p.name_ar || p.name_fr,
-            name_en: p.name_en || p.name_fr,
-            brand: p.brand_name || "MUS LUXURY",
-            rating: "4.9",
-            reviews: p.sales_count || 10,
-            description_fr: p.description_fr || "",
-            image: p.main_image_url || ASSET_MAP.sac_chanel,
-            gallery: [p.main_image_url || ASSET_MAP.sac_chanel],
-            selling_price_dzd: p.selling_price_dzd,
-            previous_price_dzd: p.previous_price_dzd,
-            discount_percent: p.discount_percent || 0,
-            sales_count: p.sales_count || 0,
-            attributes: p.attributes || {},
-            swatches: ["#063D2E", "#181818", "#D4AF62"],
-            variants: (p.variants || []).map((v) => ({
-              id: v.id,
-              sku: v.sku,
-              title: v.title,
-              stock: v.stock_qty,
-              price: v.effective_price_dzd || p.selling_price_dzd,
-              attrs: v.attributes || {},
-              img: v.image_url || p.main_image_url || ASSET_MAP.sac_chanel,
-            })),
-          }));
+        if (prodRes && Array.isArray(prodRes.items)) {
+          state.products = prodRes.items.map((p) => {
+            const catSlug = (p.category && p.category.slug) || p.category_slug || "";
+            const brandName = (p.brand && p.brand.name) || p.brand_name || "MUS LUXURY";
+            const mainImg = p.main_image_url || ASSET_MAP.sac_chanel;
+            const gallery = (p.images && p.images.length)
+              ? p.images.map((im) => (typeof im === "string" ? im : im.image_url || mainImg))
+              : [mainImg];
+
+            return {
+              id: p.id,
+              slug: p.slug,
+              category_id: p.category_id,
+              category_slug: catSlug,
+              sku: p.sku,
+              badge: p.is_new_arrival ? "Nouveau" : p.is_featured ? "Populaire" : (p.discount_percent > 0 ? "Promo" : null),
+              name_fr: p.name_fr,
+              name_ar: p.name_ar || p.name_fr,
+              name_en: p.name_en || p.name_fr,
+              brand: brandName,
+              rating: "4.9",
+              reviews: p.sales_count || 12,
+              description_fr: p.description_fr || "",
+              image: mainImg,
+              gallery: gallery,
+              selling_price_dzd: p.selling_price_dzd,
+              previous_price_dzd: p.previous_price_dzd,
+              discount_percent: p.discount_percent || 0,
+              sales_count: p.sales_count || 0,
+              attributes: p.attributes || {},
+              swatches: ["#063D2E", "#181818", "#D4AF62"],
+              variants: (p.variants || []).map((v) => ({
+                id: v.id,
+                sku: v.sku,
+                title: v.title,
+                stock: v.stock_qty,
+                price: v.effective_price_dzd || p.selling_price_dzd,
+                attrs: v.attributes || {},
+                img: v.image_url || mainImg,
+              })),
+            };
+          });
         }
         if (wilRes && Array.isArray(wilRes.items) && wilRes.items.length > 0) {
           WILAYAS.splice(
@@ -3242,12 +3256,29 @@
         renderStorefront();
       } catch (_e) {
         renderStorefront();
+      } finally {
+        isSyncingBackend = false;
       }
     }
 
     window.addEventListener("DOMContentLoaded", () => {
       renderStorefront();
       syncStorefrontWithBackend();
+
+      // Realtime Background Sync: Re-sync every 3 seconds
+      setInterval(syncStorefrontWithBackend, 3000);
+
+      // Re-sync immediately whenever the customer focuses the browser window or returns from another tab
+      window.addEventListener("focus", syncStorefrontWithBackend);
+
+      // BroadcastChannel & Storage event for instant zero-lag inter-tab updates
+      try {
+        const syncBc = new BroadcastChannel("luxe_catalog_sync");
+        syncBc.onmessage = () => syncStorefrontWithBackend();
+      } catch (_e) {}
+      window.addEventListener("storage", (e) => {
+        if (e.key === "luxe_catalog_sync") syncStorefrontWithBackend();
+      });
     });
   </script>
 </body>
