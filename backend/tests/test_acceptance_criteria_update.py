@@ -505,5 +505,194 @@ class TestUpdateMdAcceptanceCriteria(unittest.TestCase):
         self.assertEqual(prod_list.status_code, 200)
 
 
+    # --- UPDATE 02.MD DEDICATED SPECIFICATION TESTS ---
+
+    # Update 02 - Req 1: Completely custom color with custom name & HEX, persist and verify
+    def test_u02_01_custom_color_creation_hex_persistence(self):
+        cat_id = self._create_category("atelier", "Atelier Couleurs", with_attributes=False)
+        # 1. Create color attribute
+        attr_resp = self.client.post(
+            "/api/v1/admin/category-attributes",
+            headers=self.admin_headers,
+            json={
+                "category_id": cat_id,
+                "attr_key": "custom_color",
+                "label_fr": "Couleur Nuancier",
+                "input_type": "color",
+                "is_variant_axis": True,
+                "is_filterable": True,
+            },
+        )
+        self.assertEqual(attr_resp.status_code, 201)
+        attr_id = [a["id"] for a in attr_resp.json()["attributes"] if a["attr_key"] == "custom_color"][0]
+
+        # 2. Add custom color option with HEX
+        opt_resp = self.client.post(
+            f"/api/v1/admin/category-attributes/{attr_id}/options",
+            headers=self.admin_headers,
+            json={
+                "value": "Vert Sauge Impérial",
+                "label_fr": "Vert Sauge Impérial",
+                "color_hex": "#0A5C45",
+                "display_order": 1,
+            },
+        )
+        self.assertEqual(opt_resp.status_code, 201)
+        opt_data = opt_resp.json()
+        self.assertEqual(opt_data["value"], "Vert Sauge Impérial")
+        self.assertEqual(opt_data["color_hex"], "#0A5C45")
+
+        # 3. Reload category and verify option is persisted
+        cat_check = self.client.get("/api/v1/admin/categories", headers=self.admin_headers)
+        self.assertEqual(cat_check.status_code, 200)
+        items = cat_check.json().get("items", [])
+        matching_cats = [c for c in items if c["id"] == cat_id]
+        self.assertTrue(len(matching_cats) > 0)
+        attrs = matching_cats[0]["attributes"]
+        color_attr = [a for a in attrs if a["attr_key"] == "custom_color"][0]
+        self.assertEqual(len(color_attr["options"]), 1)
+        self.assertEqual(color_attr["options"][0]["color_hex"], "#0A5C45")
+
+    # Update 02 - Req 2: Create brand on the fly, upload logo, assign to product
+    def test_u02_02_brand_creation_and_product_assignment(self):
+        cat_id = self._create_category("haute-couture", "Haute Couture", with_attributes=False)
+        # 1. Create brand
+        brand_slug = f"maison-el-djazair-{self.suffix}"
+        brand_resp = self.client.post(
+            "/api/v1/admin/brands",
+            headers=self.admin_headers,
+            json={
+                "name": f"Maison El Djazaïr {self.suffix}",
+                "slug": brand_slug,
+                "logo_url": "https://musluxury.dz/assets/brand_logo.png",
+            },
+        )
+        self.assertEqual(brand_resp.status_code, 201)
+        brand_id = brand_resp.json()["id"]
+
+        # 2. Create product with this brand
+        prod_resp = self.client.post(
+            "/api/v1/admin/products",
+            headers=self.admin_headers,
+            json={
+                "category_id": cat_id,
+                "brand_id": brand_id,
+                "slug": f"robe-royale-{self.suffix}",
+                "sku": f"ROB-{self.suffix.upper()}",
+                "name_fr": f"Robe Royale {self.suffix}",
+                "selling_price_dzd": 85000,
+                "status": "published",
+                "variants": [
+                    {"sku": f"ROB-{self.suffix.upper()}-STD", "title": "Standard", "stock_qty": 2},
+                ],
+            },
+        )
+        self.assertEqual(prod_resp.status_code, 201)
+        prod = prod_resp.json()
+        self.assertEqual(prod["brand_id"], brand_id)
+
+    # Update 02 - Req 4 & 5: Arbitrary custom variant dimensions (e.g. Matière + Contenance)
+    def test_u02_04_05_arbitrary_variant_dimensions(self):
+        cat_id = self._create_category("cosmetics", "Cosmétiques & Parfums", with_attributes=False)
+        # Add 'matiere' variant axis
+        self.client.post(
+            "/api/v1/admin/category-attributes",
+            headers=self.admin_headers,
+            json={
+                "category_id": cat_id,
+                "attr_key": "matiere",
+                "label_fr": "Flaconnage",
+                "input_type": "short_text",
+                "is_variant_axis": True,
+                "options": [{"value": "Cristal Doré", "label_fr": "Cristal Doré"}],
+            },
+        )
+        # Add 'contenance' variant axis
+        self.client.post(
+            "/api/v1/admin/category-attributes",
+            headers=self.admin_headers,
+            json={
+                "category_id": cat_id,
+                "attr_key": "contenance",
+                "label_fr": "Volume",
+                "input_type": "measurement",
+                "is_variant_axis": True,
+                "options": [
+                    {"value": "50ml", "label_fr": "50ml"},
+                    {"value": "100ml", "label_fr": "100ml"},
+                ],
+            },
+        )
+
+        # Create product with arbitrary dimensions
+        prod_resp = self.client.post(
+            "/api/v1/admin/products",
+            headers=self.admin_headers,
+            json={
+                "category_id": cat_id,
+                "slug": f"elixir-orient-{self.suffix}",
+                "sku": f"ELX-{self.suffix.upper()}",
+                "name_fr": f"Élixir d'Orient {self.suffix}",
+                "selling_price_dzd": 19500,
+                "status": "published",
+                "variants": [
+                    {
+                        "sku": f"ELX-{self.suffix.upper()}-50ML",
+                        "title": "Cristal Doré / 50ml",
+                        "stock_qty": 8,
+                        "attributes": {"matiere": "Cristal Doré", "contenance": "50ml"},
+                    },
+                    {
+                        "sku": f"ELX-{self.suffix.upper()}-100ML",
+                        "title": "Cristal Doré / 100ml",
+                        "stock_qty": 4,
+                        "price_override_dzd": 27000,
+                        "attributes": {"matiere": "Cristal Doré", "contenance": "100ml"},
+                    },
+                ],
+            },
+        )
+        self.assertEqual(prod_resp.status_code, 201)
+        prod = prod_resp.json()
+        self.assertEqual(len(prod["variants"]), 2)
+        self.assertEqual(prod["total_stock"], 12)
+
+    # Update 02 - Req 11: Validation rejects negative stock and invalid prices
+    def test_u02_11_reject_negative_values(self):
+        cat_id = self._create_category("val", "Validation Test", with_attributes=False)
+        bad_price = self.client.post(
+            "/api/v1/admin/products",
+            headers=self.admin_headers,
+            json={
+                "category_id": cat_id,
+                "slug": f"neg-price-{self.suffix}",
+                "sku": f"NEG-{self.suffix.upper()}",
+                "name_fr": "Negative Price",
+                "selling_price_dzd": -100,  # Negative
+                "status": "draft",
+            },
+        )
+        self.assertEqual(bad_price.status_code, 422)
+
+    # Update 02 - Req 15: Image upload rejects oversized or invalid file types
+    def test_u02_15_image_upload_validation(self):
+        # 1. Invalid file extension (.exe or .txt)
+        bad_ext = self.client.post(
+            "/api/v1/admin/upload",
+            headers=self.admin_headers,
+            files={"file": ("malicious.exe", b"fake binary content", "application/octet-stream")},
+        )
+        self.assertIn(bad_ext.status_code, (400, 422))
+
+        # 2. Oversized file (> 5MB)
+        oversized_data = b"X" * (5 * 1024 * 1024 + 1024)
+        oversized = self.client.post(
+            "/api/v1/admin/upload",
+            headers=self.admin_headers,
+            files={"file": ("huge.jpg", oversized_data, "image/jpeg")},
+        )
+        self.assertIn(oversized.status_code, (400, 413, 422))
+
+
 if __name__ == "__main__":
     unittest.main()
