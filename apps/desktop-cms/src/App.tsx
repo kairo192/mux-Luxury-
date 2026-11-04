@@ -2673,20 +2673,19 @@ export default function App() {
           </div>
         </div>
         <ProductEditor
-        open={productEditorOpen}
-        product={productEditorTarget}
-        categories={categories}
-        brands={brands}
-        initialCategoryId={productEditorInitialCat}
-        onClose={() => {
-          setProductEditorOpen(false);
-          setProductEditorTarget(null);
-        }}
-        onSaved={async () => {
-          await fetchProducts();
-          await fetchCategories();
-        }}
-      />
+          open={productEditorOpen}
+          product={productEditorTarget}
+          categories={categories}
+          brands={brands}
+          initialCategoryId={prodCategoryId}
+          onClose={() => {
+            setProductEditorOpen(false);
+            setProductEditorTarget(null);
+          }}
+          onSaved={async () => {
+            await loadAllWorkspaceData();
+          }}
+        />
     </main>
     </div>
   );
