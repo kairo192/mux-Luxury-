@@ -67,6 +67,7 @@ import { PurchasesPage } from "./pages/PurchasesPage";
 import { ExpensesPage } from "./pages/ExpensesPage";
 import { TreasuryPage } from "./pages/TreasuryPage";
 import { AccountingPage } from "./pages/AccountingPage";
+import { ProductEditor } from "./components/ProductEditor";
 
 type CmsTab =
   | "dashboard"
@@ -146,9 +147,6 @@ export default function App() {
   const [loadingWorkspace, setLoadingWorkspace] = useState(false);
   const [selectedProductIds, setSelectedProductIds] = useState<number[]>([]);
   const [newBrandName, setNewBrandName] = useState("");
-  const [newImageUrl, setNewImageUrl] = useState("/assets/prod_sac_chanel_hd.jpg");
-  const [matrixColorCsv, setMatrixColorCsv] = useState("Noir, Or");
-  const [matrixSizeCsv, setMatrixSizeCsv] = useState("S, M, L");
   const [bannerTitleFr, setBannerTitleFr] = useState("");
   const [bannerImageUrl, setBannerImageUrl] = useState("/assets/hero_banner_mus.jpg");
   const [orderSearch, setOrderSearch] = useState("");
@@ -165,37 +163,20 @@ export default function App() {
     return unsubNet;
   }, []);
 
-  // Product Search, Creation, Edit & Variant Matrix State
+  // Product Search & Editor State
   const [prodSearch, setProdSearch] = useState(() => readDraft("luxe_cms_prod_search", ""));
   const [prodCategoryId, setProdCategoryId] = useState<number>(() => readDraft("luxe_cms_prod_cat_id", 1));
-  const [prodNameFr, setProdNameFr] = useState(() => readDraft("luxe_cms_prod_name_fr", ""));
-  const [prodSku, setProdSku] = useState(() => readDraft("luxe_cms_prod_sku", ""));
-  const [prodSlug, setProdSlug] = useState(() => readDraft("luxe_cms_prod_slug", ""));
-  const [prodSellingPrice, setProdSellingPrice] = useState(() => readDraft("luxe_cms_prod_price", 4500));
-  const [prodCostPrice, setProdCostPrice] = useState(() => readDraft("luxe_cms_prod_cost", 2600));
-  const [prodStatus, setProdStatus] = useState<"published" | "draft">(() => readDraft("luxe_cms_prod_status", "published"));
-  const [prodDynamicAttrs, setProdDynamicAttrs] = useState<Record<string, string>>(() => readDraft("luxe_cms_prod_dyn_attrs", {}));
-  const [prodVariantStock, setProdVariantStock] = useState(() => readDraft("luxe_cms_prod_stock", 5));
-  const [editingProduct, setEditingProduct] = useState<any | null>(null);
+  const [productEditorOpen, setProductEditorOpen] = useState(false);
+  const [productEditorTarget, setProductEditorTarget] = useState<any | null>(null);
   const [productToDelete, setProductToDelete] = useState<any | null>(null);
   const [forceDeleteProduct, setForceDeleteProduct] = useState(false);
   const [productFilterTab, setProductFilterTab] = useState<"all" | "published" | "draft" | "archived" | "low_stock">("all");
   const [deletingProduct, setDeletingProduct] = useState(false);
 
-  function handleGenerateAutoSku() {
-    const cat = categories.find((c) => c.id === Number(prodCategoryId));
-    let prefix = "LUX";
-    if (cat?.slug) {
-      if (cat.slug.includes("sac") || cat.slug.includes("maroquinerie")) prefix = "LUX-BAG";
-      else if (cat.slug.includes("chaussure") || cat.slug.includes("soulier")) prefix = "LUX-SHO";
-      else if (cat.slug.includes("beaute") || cat.slug.includes("maquillage") || cat.slug.includes("parfum")) prefix = "LUX-BEA";
-      else if (cat.slug.includes("accessoire") || cat.slug.includes("chale")) prefix = "LUX-ACC";
-      else prefix = `LUX-${cat.slug.slice(0, 3).toUpperCase()}`;
-    }
-    const randomNum = Math.floor(100 + Math.random() * 900);
-    const newSku = `${prefix}-${randomNum}`;
-    setProdSku(newSku);
-    notifyClientSuccess("SKU Généré", `Référence attribuée : ${newSku}`);
+  function openProductEditor(product: any | null, categoryId?: number) {
+    setProductEditorTarget(product);
+    if (categoryId) setProdCategoryId(categoryId);
+    setProductEditorOpen(true);
   }
 
   // Order Filter State
@@ -330,15 +311,7 @@ export default function App() {
   useEffect(() => {
     writeDraft("luxe_cms_prod_search", prodSearch);
     writeDraft("luxe_cms_prod_cat_id", prodCategoryId);
-    writeDraft("luxe_cms_prod_name_fr", prodNameFr);
-    writeDraft("luxe_cms_prod_sku", prodSku);
-    writeDraft("luxe_cms_prod_slug", prodSlug);
-    writeDraft("luxe_cms_prod_price", prodSellingPrice);
-    writeDraft("luxe_cms_prod_cost", prodCostPrice);
-    writeDraft("luxe_cms_prod_status", prodStatus);
-    writeDraft("luxe_cms_prod_dyn_attrs", prodDynamicAttrs);
-    writeDraft("luxe_cms_prod_stock", prodVariantStock);
-  }, [prodSearch, prodCategoryId, prodNameFr, prodSku, prodSlug, prodSellingPrice, prodCostPrice, prodStatus, prodDynamicAttrs, prodVariantStock]);
+  }, [prodSearch, prodCategoryId]);
 
   useEffect(() => {
     const tabOrder: CmsTab[] = ["dashboard", "products", "categories", "inventory", "orders", "delivery_wilayas", "content", "backups"];
@@ -466,95 +439,6 @@ export default function App() {
       notifyClientSuccess("Mot de passe réinitialisé", okMsg, true);
     } catch (err: any) {
       const tr = notifyClientError(err, "Vérification du code de récupération refusée");
-      setError(tr.message);
-    }
-  }
-
-  async function handleCreateProduct(e: React.FormEvent) {
-    e.preventDefault();
-    setError("");
-    setSuccessMsg("");
-    if (!prodNameFr.trim() || !prodSku.trim()) {
-      notifyClientWarning("Champs produit requis", "Veuillez renseigner la désignation du produit (FR) et sa référence SKU unique.");
-      return;
-    }
-    if (Number(prodSellingPrice) <= 0 || Number(prodCostPrice) < 0) {
-      notifyClientWarning("Prix invalide", "Le prix de vente en DA doit être strictement positif et le coût d'achat ne peut pas être négatif.");
-      return;
-    }
-    try {
-      const selectedCat = categories.find((c) => c.id === Number(prodCategoryId));
-      const variantAxes = (selectedCat?.attributes || []).filter((a: any) => a.is_variant_axis);
-      const defaultAttrs: Record<string, string> = {};
-      variantAxes.forEach((ax: any) => {
-        defaultAttrs[ax.attr_key] = ax.options?.[0]?.value || "Standard";
-      });
-
-      await DesktopCmsApi.createProduct({
-        category_id: Number(prodCategoryId),
-        slug:
-          prodSlug.trim() ||
-          prodNameFr
-            .toLowerCase()
-            .replace(/[^a-z0-9]+/g, "-")
-            .replace(/^-|-$/g, ""),
-        sku: prodSku.trim(),
-        name_fr: prodNameFr.trim(),
-        purchase_cost_dzd: Number(prodCostPrice),
-        selling_price_dzd: Number(prodSellingPrice),
-        status: prodStatus,
-        dynamic_attributes: prodDynamicAttrs,
-        variants: [
-          {
-            sku: `${prodSku.trim()}-STD`,
-            title: Object.values(defaultAttrs).join(" / ") || "Standard",
-            stock_qty: Math.max(0, Number(prodVariantStock) || 0),
-            attributes: defaultAttrs,
-          },
-        ],
-      });
-      const okMsg = `Produit "${prodNameFr}" créé et synchronisé sur la boutique.`;
-      setSuccessMsg(okMsg);
-      notifyClientSuccess("Produit ajouté au catalogue", okMsg);
-      setProdNameFr("");
-      setProdSku("");
-      setProdSlug("");
-      setProdDynamicAttrs({});
-      await loadAllWorkspaceData();
-    } catch (err: any) {
-      const tr = notifyClientError(err, "Création du produit impossible");
-      setError(tr.message);
-    }
-  }
-
-  async function handleSaveEditedProduct(e: React.FormEvent) {
-    e.preventDefault();
-    if (!editingProduct) return;
-    setError("");
-    if (!editingProduct.name_fr?.trim() || Number(editingProduct.selling_price_dzd) <= 0) {
-      notifyClientWarning("Champs produit invalides", "Veuillez vérifier le nom et le prix de vente (DA) du produit.");
-      return;
-    }
-    try {
-      await DesktopCmsApi.updateProduct(editingProduct.id, {
-        name_fr: editingProduct.name_fr.trim(),
-        sku: editingProduct.sku?.trim() || undefined,
-        category_id: editingProduct.category_id ? Number(editingProduct.category_id) : undefined,
-        brand_id: editingProduct.brand_id ? Number(editingProduct.brand_id) : undefined,
-        main_image_url: editingProduct.main_image_url || undefined,
-        selling_price_dzd: Number(editingProduct.selling_price_dzd),
-        purchase_cost_dzd: Number(editingProduct.purchase_cost_dzd || 0),
-        status: editingProduct.status,
-        dynamic_attributes: editingProduct.attributes || undefined,
-        expected_version: Number(editingProduct.version || 1),
-      });
-      const okMsg = `Produit #${editingProduct.id} mis à jour avec contrôle de concurrence optimiste.`;
-      setSuccessMsg(okMsg);
-      notifyClientSuccess("Fiche produit enregistrée", okMsg);
-      setEditingProduct(null);
-      await loadAllWorkspaceData();
-    } catch (err: any) {
-      const tr = notifyClientError(err, "Conflit ou erreur lors de la mise à jour du produit");
       setError(tr.message);
     }
   }
@@ -940,93 +824,6 @@ export default function App() {
       await loadAllWorkspaceData();
     } catch (err: any) {
       const tr = notifyClientError(err, "Mise à jour groupée impossible");
-      setError(tr.message);
-    }
-  }
-
-  async function handleGenerateVariantMatrix(productId: number) {
-    setError("");
-    const colors = matrixColorCsv.split(",").map((s) => s.trim()).filter(Boolean);
-    const sizes = matrixSizeCsv.split(",").map((s) => s.trim()).filter(Boolean);
-    if (colors.length === 0 || sizes.length === 0) {
-      notifyClientWarning("Axes de variantes requis", "Veuillez indiquer au moins une couleur et une taille séparées par des virgules.");
-      return;
-    }
-    try {
-      await DesktopCmsApi.generateVariants(productId, {
-        axes: { color: colors, size: sizes },
-        default_stock: 4,
-      });
-      const okMsg = `Matrice de variantes (${colors.length}×${sizes.length}) générée pour le produit #${productId}.`;
-      setSuccessMsg(okMsg);
-      notifyClientSuccess("Matrice de variantes générée", okMsg);
-      await loadAllWorkspaceData();
-    } catch (err: any) {
-      const tr = notifyClientError(err, "Génération des variantes impossible");
-      setError(tr.message);
-    }
-  }
-
-  async function handleUploadLocalProductMedia(e: React.ChangeEvent<HTMLInputElement>) {
-    const file = e.target.files?.[0];
-    if (!file) return;
-    if (!["image/jpeg", "image/png", "image/webp"].includes(file.type)) {
-      notifyClientWarning("Format d'image non supporté", "Veuillez sélectionner une image au format JPEG (.jpg), PNG (.png) ou WEBP (.webp).");
-      return;
-    }
-    if (file.size > 5 * 1024 * 1024) {
-      notifyClientWarning("Image trop volumineuse", "La taille de l'image ne doit pas dépasser 5 Mo.");
-      return;
-    }
-    setError("");
-    try {
-      const uploaded = await DesktopCmsApi.uploadMediaFile(file);
-      setNewImageUrl(uploaded.url);
-      setBannerImageUrl(uploaded.url);
-      notifyClientSuccess("Image téléversée sur le serveur", `Fichier vérifié et enregistré : ${uploaded.url}`);
-    } catch (err: any) {
-      const tr = notifyClientError(err, "Téléversement de l'image refusé");
-      setError(tr.message);
-    }
-  }
-
-  async function handleAddProductGalleryImage(productId: number) {
-    if (!newImageUrl.trim()) {
-      notifyClientWarning("URL d'image requise", "Veuillez téléverser une image ou saisir son chemin avant de l'ajouter à la galerie.");
-      return;
-    }
-    setError("");
-    try {
-      const img = await DesktopCmsApi.addProductImage(productId, {
-        image_url: newImageUrl.trim(),
-        alt_text: "Mus Luxury Gallery",
-        display_order: 1,
-        set_as_primary: true,
-      });
-      await DesktopCmsApi.reorderProductImages(productId, {
-        orders: [{ image_id: img.id, display_order: 1 }],
-        primary_image_url: newImageUrl.trim(),
-      });
-      const okMsg = `Image ajoutée et ordonnée pour le produit #${productId}.`;
-      setSuccessMsg(okMsg);
-      notifyClientSuccess("Galerie produit mise à jour", okMsg);
-      await loadAllWorkspaceData();
-    } catch (err: any) {
-      const tr = notifyClientError(err, "Ajout de l'image à la galerie impossible");
-      setError(tr.message);
-    }
-  }
-
-  async function handleRemoveProductGalleryImage(imageId: number) {
-    setError("");
-    try {
-      await DesktopCmsApi.deleteProductImage(imageId);
-      const okMsg = `Image #${imageId} supprimée de la galerie.`;
-      setSuccessMsg(okMsg);
-      notifyClientSuccess("Image retirée", okMsg);
-      await loadAllWorkspaceData();
-    } catch (err: any) {
-      const tr = notifyClientError(err, "Suppression de l'image impossible");
       setError(tr.message);
     }
   }

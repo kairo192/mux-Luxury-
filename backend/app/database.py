@@ -209,6 +209,42 @@ def db_session(commit: bool = False):
         conn.close()
 
 
+# Columns introduced after the first schema release. They are added in place with
+# ALTER TABLE so an existing store database upgrades without a destructive rebuild.
+_ADDITIVE_COLUMNS = [
+    ("product_variants", "purchase_cost_dzd", "INTEGER"),
+    ("product_variants", "weight_grams", "INTEGER"),
+    ("product_variants", "low_stock_threshold", "INTEGER NOT NULL DEFAULT 3"),
+    ("products", "weight_grams", "INTEGER"),
+    ("products", "dimensions_cm", "VARCHAR(60)"),
+    ("products", "tags", "VARCHAR(400)"),
+]
+
+
+def _existing_columns(conn, table: str) -> set:
+    if isinstance(conn, PostgresCompatConnection):
+        cur = conn.cursor()
+        cur.execute(
+            "SELECT column_name FROM information_schema.columns WHERE table_name = ?",
+            (table,),
+        )
+        return {r["column_name"] for r in cur.fetchall()}
+    rows = conn.execute(f"PRAGMA table_info({table})").fetchall()
+    return {r["name"] for r in rows}
+
+
+def ensure_schema_columns(conn) -> None:
+    """Idempotently adds post-release columns to an existing database."""
+    for table, column, ddl in _ADDITIVE_COLUMNS:
+        try:
+            existing = _existing_columns(conn, table)
+        except Exception:
+            continue
+        if not existing or column in existing:
+            continue
+        conn.execute(f"ALTER TABLE {table} ADD COLUMN {column} {ddl}")
+
+
 def init_db() -> None:
     conn = get_connection()
     try:
@@ -219,6 +255,7 @@ def init_db() -> None:
             with open(SCHEMA_PATH, "r", encoding="utf-8") as f:
                 conn.executescript(f.read())
             conn.execute("PRAGMA foreign_keys = ON;")
+        ensure_schema_columns(conn)
         conn.commit()
     finally:
         conn.close()

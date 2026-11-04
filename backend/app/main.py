@@ -131,6 +131,17 @@ def require_permission(perm: str):
         return admin
     return dep
 
+def require_any_permission(perms: List[str]):
+    def dep(admin: dict = Depends(get_current_admin)) -> dict:
+        granted = admin.get("perms", [])
+        if not any(p in granted for p in perms):
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail=f"Insufficient permissions: one of {perms} required"
+            )
+        return admin
+    return dep
+
 def log_audit(conn, admin_user_id: Optional[int], action: str, entity_type: str, entity_id: str, details: dict):
     conn.execute(
         "INSERT INTO audit_logs (admin_user_id, action, entity_type, entity_id, details_json) VALUES (?, ?, ?, ?, ?)",
@@ -196,9 +207,12 @@ class VariantInput(BaseModel):
     sku: str
     barcode: Optional[str] = None
     title: str
-    price_override_dzd: Optional[int] = None
+    price_override_dzd: Optional[int] = Field(None, ge=0)
     stock_qty: int = Field(0, ge=0)
     image_url: Optional[str] = None
+    purchase_cost_dzd: Optional[int] = Field(None, ge=0)
+    weight_grams: Optional[int] = Field(None, ge=0)
+    low_stock_threshold: int = Field(3, ge=0)
     attributes: Dict[str, str] = {}
 
 class ProductCreate(BaseModel):
@@ -211,23 +225,97 @@ class ProductCreate(BaseModel):
     name_ar: Optional[str] = ""
     name_en: Optional[str] = ""
     description_fr: Optional[str] = ""
+    description_ar: Optional[str] = ""
+    description_en: Optional[str] = ""
     main_image_url: Optional[str] = "/assets/prod_sac_chanel_hd.jpg"
     purchase_cost_dzd: int = Field(0, ge=0)
     selling_price_dzd: int = Field(..., ge=0)
-    previous_price_dzd: Optional[int] = None
+    previous_price_dzd: Optional[int] = Field(None, ge=0)
     discount_percent: int = Field(0, ge=0, le=95)
     status: str = Field("draft", regex=r"^(draft|published|archived)$")
     is_featured: bool = False
     is_new_arrival: bool = False
     seo_title: Optional[str] = None
     seo_description: Optional[str] = None
+    weight_grams: Optional[int] = Field(None, ge=0)
+    dimensions_cm: Optional[str] = None
+    tags: Optional[str] = None
     dynamic_attributes: Dict[str, Any] = {}
     variants: List[VariantInput] = []
 
 class VariantMatrixRequest(BaseModel):
     axes: Dict[str, List[str]] # e.g. {"color": ["Noir", "Blanc"], "size": ["40", "41"]}
     default_stock: int = Field(3, ge=0)
-    price_override_dzd: Optional[int] = None
+    price_override_dzd: Optional[int] = Field(None, ge=0)
+    low_stock_threshold: int = Field(3, ge=0)
+
+class VariantCreateInput(BaseModel):
+    sku: Optional[str] = None
+    barcode: Optional[str] = None
+    title: Optional[str] = None
+    price_override_dzd: Optional[int] = Field(None, ge=0)
+    stock_qty: int = Field(0, ge=0)
+    image_url: Optional[str] = None
+    purchase_cost_dzd: Optional[int] = Field(None, ge=0)
+    weight_grams: Optional[int] = Field(None, ge=0)
+    low_stock_threshold: int = Field(3, ge=0)
+    is_active: bool = True
+    attributes: Dict[str, str] = {}
+
+class VariantUpdateInput(BaseModel):
+    sku: Optional[str] = None
+    barcode: Optional[str] = None
+    title: Optional[str] = None
+    price_override_dzd: Optional[int] = Field(None, ge=0)
+    clear_price_override: bool = False
+    stock_qty: Optional[int] = Field(None, ge=0)
+    image_url: Optional[str] = None
+    purchase_cost_dzd: Optional[int] = Field(None, ge=0)
+    weight_grams: Optional[int] = Field(None, ge=0)
+    low_stock_threshold: Optional[int] = Field(None, ge=0)
+    is_active: Optional[bool] = None
+    attributes: Optional[Dict[str, str]] = None
+
+class VariantBulkUpdateInput(BaseModel):
+    variant_ids: List[int] = Field(..., min_items=1, max_items=500)
+    set_stock_qty: Optional[int] = Field(None, ge=0)
+    adjust_stock_qty: Optional[int] = None
+    set_price_override_dzd: Optional[int] = Field(None, ge=0)
+    clear_price_override: bool = False
+    is_active: Optional[bool] = None
+    reason: str = Field("cms_bulk_update", min_length=3, max_length=120)
+
+class CategoryAttributeUpdate(BaseModel):
+    label_fr: Optional[str] = None
+    label_ar: Optional[str] = None
+    label_en: Optional[str] = None
+    input_type: Optional[str] = None
+    unit: Optional[str] = None
+    is_required: Optional[bool] = None
+    default_value: Optional[str] = None
+    allow_multiple: Optional[bool] = None
+    is_visible_on_storefront: Optional[bool] = None
+    is_filterable: Optional[bool] = None
+    is_variant_axis: Optional[bool] = None
+    display_order: Optional[int] = Field(None, ge=0)
+
+    @validator("input_type")
+    def validate_optional_input_type(cls, v):
+        if v is not None and v not in SUPPORTED_ATTRIBUTE_TYPES:
+            raise ValueError(f"Unsupported input_type '{v}'. Allowed: {SUPPORTED_ATTRIBUTE_TYPES}")
+        return v
+
+class AttributeOptionUpsert(BaseModel):
+    value: str = Field(..., min_length=1, max_length=140)
+    label_fr: Optional[str] = None
+    label_ar: Optional[str] = ""
+    label_en: Optional[str] = ""
+    color_hex: Optional[str] = Field(None, regex=r"^#[0-9a-fA-F]{6}$")
+    display_order: int = Field(1, ge=0)
+
+class CategoryReorderInput(BaseModel):
+    items: List[Dict[str, int]] = Field(..., min_items=1, max_items=300)
+
 
 class OrderItemInput(BaseModel):
     variant_id: int
@@ -284,7 +372,7 @@ def serialize_category(conn, row: dict) -> dict:
     for a in cur.fetchall():
         ad = dict(a)
         cur.execute(
-            "SELECT value, label_fr, label_ar, label_en, color_hex, display_order FROM category_attribute_options WHERE attribute_id = ? ORDER BY display_order ASC",
+            "SELECT id, value, label_fr, label_ar, label_en, color_hex, display_order FROM category_attribute_options WHERE attribute_id = ? ORDER BY display_order ASC",
             (ad["id"],)
         )
         ad["options"] = [dict(o) for o in cur.fetchall()]
@@ -433,6 +521,9 @@ def serialize_products_batch(conn, product_rows: List[dict], include_private: bo
         for v in p_vars:
             v["attributes"] = vav_by_vid.get(v["id"], {})
             v["effective_price_dzd"] = v["price_override_dzd"] if v["price_override_dzd"] is not None else p["selling_price_dzd"]
+            v["is_active"] = bool(v.get("is_active", 1))
+            threshold = v.get("low_stock_threshold")
+            v["is_low_stock"] = int(v["stock_qty"]) <= int(threshold if threshold is not None else 3)
             total_stock += v["stock_qty"]
 
         p["variants"] = p_vars
@@ -447,6 +538,193 @@ def serialize_products_batch(conn, product_rows: List[dict], include_private: bo
 def serialize_product(conn, row: dict, include_private: bool = False) -> dict:
     res = serialize_products_batch(conn, [row], include_private=include_private)
     return res[0] if res else dict(row)
+
+# --- Variant + attribute validation helpers (shared by all variant mutation endpoints) ---
+
+def normalize_variant_sku(value: Optional[str]) -> str:
+    return re.sub(r"\s+", "-", str(value or "").strip())
+
+def build_variant_signature(attributes: Dict[str, str], sku_fallback: str = "") -> str:
+    if attributes:
+        return "|".join(f"{k}:{attributes[k]}" for k in sorted(attributes.keys()))
+    return f"sku:{sku_fallback}"
+
+def load_category_attributes_with_options(conn, category_id: int) -> Dict[str, dict]:
+    cur = conn.cursor()
+    cur.execute("SELECT * FROM category_attributes WHERE category_id = ?", (category_id,))
+    attrs = {r["attr_key"]: dict(r) for r in cur.fetchall()}
+    if not attrs:
+        return attrs
+    attr_ids = [a["id"] for a in attrs.values()]
+    placeholders = ",".join("?" for _ in attr_ids)
+    cur.execute(
+        f"SELECT attribute_id, value FROM category_attribute_options WHERE attribute_id IN ({placeholders})",
+        attr_ids,
+    )
+    options_by_attr: Dict[int, set] = {}
+    for row in cur.fetchall():
+        options_by_attr.setdefault(row["attribute_id"], set()).add(str(row["value"]).strip())
+    for attr in attrs.values():
+        attr["option_values"] = options_by_attr.get(attr["id"], set())
+    return attrs
+
+def validate_variant_attributes(
+    cat_attrs: Dict[str, dict],
+    attributes: Dict[str, str],
+    allow_empty: bool = True,
+    allow_custom_values: bool = False,
+) -> Dict[str, str]:
+    """
+    Rejects unknown attributes, non-axis attributes and (unless custom values are allowed)
+    option values that do not belong to the category definition. Returns the trimmed map.
+    """
+    axes = {k: a for k, a in cat_attrs.items() if a.get("is_variant_axis")}
+    cleaned: Dict[str, str] = {}
+    for raw_key, raw_val in (attributes or {}).items():
+        key = str(raw_key).strip()
+        if key not in cat_attrs:
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail=f"Unknown attribute '{key}' for this category",
+            )
+        if key not in axes:
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail=f"Attribute '{key}' is not configured as a variant axis for this category",
+            )
+        val = str(raw_val).strip()
+        if not val:
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail=f"Empty value for variant attribute '{key}'",
+            )
+        allowed = cat_attrs[key].get("option_values") or set()
+        if allowed and val not in allowed and not allow_custom_values:
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail=f"Invalid value '{val}' for attribute '{key}'. Allowed values: {', '.join(sorted(allowed))}",
+            )
+        cleaned[key] = val
+    if not cleaned and axes and not allow_empty:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="At least one variant attribute value is required for this category",
+        )
+    return cleaned
+
+def ensure_variant_attribute_options(conn, cat_attrs: Dict[str, dict], attributes: Dict[str, str]) -> None:
+    """
+    Registers a custom axis value as a reusable option so dropdowns, filters and the CMS
+    stay consistent. Existing options are untouched.
+    """
+    cur = conn.cursor()
+    for key, val in attributes.items():
+        attr = cat_attrs.get(key)
+        if not attr:
+            continue
+        allowed = attr.get("option_values") or set()
+        if val in allowed:
+            continue
+        cur.execute(
+            "SELECT COALESCE(MAX(display_order), 0) AS mx FROM category_attribute_options WHERE attribute_id = ?",
+            (attr["id"],),
+        )
+        next_order = int(cur.fetchone()["mx"] or 0) + 1
+        cur.execute(
+            """INSERT INTO category_attribute_options
+               (attribute_id, value, label_fr, label_ar, label_en, display_order)
+               VALUES (?, ?, ?, '', '', ?)""",
+            (attr["id"], val, val, next_order),
+        )
+        allowed.add(val)
+        attr["option_values"] = allowed
+
+def assert_variant_sku_available(conn, sku: str, exclude_variant_id: Optional[int] = None) -> None:
+    if not sku:
+        raise HTTPException(status_code=422, detail="Variant SKU cannot be empty")
+    cur = conn.cursor()
+    if exclude_variant_id is None:
+        cur.execute("SELECT id FROM product_variants WHERE sku = ?", (sku,))
+    else:
+        cur.execute("SELECT id FROM product_variants WHERE sku = ? AND id != ?", (sku, exclude_variant_id))
+    if cur.fetchone():
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=f"Variant SKU '{sku}' already exists",
+        )
+
+def assert_variant_signature_available(
+    conn,
+    product_id: int,
+    signature: str,
+    exclude_variant_id: Optional[int] = None,
+) -> None:
+    cur = conn.cursor()
+    if exclude_variant_id is None:
+        cur.execute(
+            "SELECT id FROM product_variants WHERE product_id = ? AND combination_signature = ?",
+            (product_id, signature),
+        )
+    else:
+        cur.execute(
+            "SELECT id FROM product_variants WHERE product_id = ? AND combination_signature = ? AND id != ?",
+            (product_id, signature, exclude_variant_id),
+        )
+    if cur.fetchone():
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="A variant with this color/size/attribute combination already exists for this product",
+        )
+
+def replace_variant_attribute_values(conn, variant_id: int, cat_attrs: Dict[str, dict], attributes: Dict[str, str]) -> None:
+    cur = conn.cursor()
+    cur.execute("DELETE FROM variant_attribute_values WHERE variant_id = ?", (variant_id,))
+    for key, val in attributes.items():
+        cur.execute(
+            "INSERT INTO variant_attribute_values (variant_id, attribute_id, option_value) VALUES (?, ?, ?)",
+            (variant_id, cat_attrs[key]["id"], val),
+        )
+
+def auto_variant_sku(conn, product_sku: str, attributes: Dict[str, str], signature: str) -> str:
+    if attributes:
+        parts = [re.sub(r"[^A-Z0-9]", "", str(attributes[k]).upper())[:4] for k in sorted(attributes)]
+        base = f"{product_sku}-{'-'.join(parts)}"
+    else:
+        base = f"{product_sku}-STD"
+    cur = conn.cursor()
+    cur.execute("SELECT id FROM product_variants WHERE sku = ?", (base,))
+    if cur.fetchone():
+        base = f"{base}-{hashlib.sha256(signature.encode('utf-8')).hexdigest()[:4].upper()}"
+    return base
+
+def serialize_variant_row(conn, variant_id: int) -> dict:
+    cur = conn.cursor()
+    cur.execute(
+        """SELECT pv.*, p.selling_price_dzd, p.sku AS product_sku
+           FROM product_variants pv
+           JOIN products p ON p.id = pv.product_id
+           WHERE pv.id = ?""",
+        (variant_id,),
+    )
+    row = cur.fetchone()
+    if not row:
+        raise HTTPException(status_code=404, detail="Variant not found")
+    out = dict(row)
+    cur.execute(
+        """SELECT ca.attr_key, vav.option_value
+           FROM variant_attribute_values vav
+           JOIN category_attributes ca ON ca.id = vav.attribute_id
+           WHERE vav.variant_id = ?""",
+        (variant_id,),
+    )
+    out["attributes"] = {r["attr_key"]: r["option_value"] for r in cur.fetchall()}
+    out["effective_price_dzd"] = (
+        out["price_override_dzd"] if out["price_override_dzd"] is not None else out["selling_price_dzd"]
+    )
+    out["is_active"] = bool(out["is_active"])
+    threshold = out.get("low_stock_threshold")
+    out["is_low_stock"] = int(out["stock_qty"]) <= int(threshold if threshold is not None else 3)
+    return out
 
 # ============================================================================
 # PUBLIC STOREFRONT ENDPOINTS (/api/v1/*)
@@ -1210,8 +1488,16 @@ def delete_category_attribute(
             )
 
         if force_migrate and total_usage > 0:
+            cur.execute("SELECT DISTINCT variant_id FROM variant_attribute_values WHERE attribute_id = ?", (attr_id,))
+            affected_variants = [r["variant_id"] for r in cur.fetchall()]
             cur.execute("DELETE FROM product_attribute_values WHERE attribute_id = ?", (attr_id,))
             cur.execute("DELETE FROM variant_attribute_values WHERE attribute_id = ?", (attr_id,))
+            # Variant combination signatures are derived from the remaining axes.
+            for variant_id in affected_variants:
+                try:
+                    recompute_variant_signature(conn, variant_id)
+                except Exception:
+                    pass
 
         cur.execute("DELETE FROM category_attributes WHERE id = ?", (attr_id,))
         log_audit(conn, int(admin["sub"]), "delete_category_attribute", "category_attribute", str(attr_id), {"force_migrate": force_migrate})
@@ -1255,28 +1541,46 @@ def create_dynamic_product(
                 status_code=status.HTTP_409_CONFLICT,
                 detail=f"Product with slug '{payload.slug}' or SKU '{payload.sku}' already exists"
             )
+
+        # Validate every variant (axis membership + option values) and catch duplicates
+        # inside the same payload before touching the database, so clients get a clean 409/422.
+        cat_attrs_full = load_category_attributes_with_options(conn, payload.category_id)
+        validated_variants = []
+        seen_skus = set()
+        seen_signatures = set()
         for v in payload.variants:
-            cur.execute("SELECT id FROM product_variants WHERE sku = ?", (v.sku,))
-            if cur.fetchone():
-                raise HTTPException(
-                    status_code=status.HTTP_409_CONFLICT,
-                    detail=f"Variant SKU '{v.sku}' already exists"
-                )
+            v_sku = normalize_variant_sku(v.sku)
+            if not v_sku:
+                raise HTTPException(status_code=422, detail="Variant SKU cannot be empty")
+            if v_sku in seen_skus:
+                raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=f"Duplicate variant SKU '{v_sku}' in payload")
+            seen_skus.add(v_sku)
+            v_attrs = validate_variant_attributes(cat_attrs_full, v.attributes, allow_custom_values=True)
+            ensure_variant_attribute_options(conn, cat_attrs_full, v_attrs)
+            sig = build_variant_signature(v_attrs, v_sku)
+            if sig in seen_signatures:
+                raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Duplicate variant combination in payload")
+            seen_signatures.add(sig)
+            assert_variant_sku_available(conn, v_sku)
+            validated_variants.append((v, v_sku, v_attrs, sig))
 
         cur.execute(
             """INSERT INTO products
                (category_id, brand_id, slug, sku, barcode, name_fr, name_ar, name_en,
-                description_fr, main_image_url, purchase_cost_dzd, selling_price_dzd,
-                previous_price_dzd, discount_percent, status, is_featured, is_new_arrival,
-                seo_title, seo_description)
-               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                description_fr, description_ar, description_en, main_image_url,
+                purchase_cost_dzd, selling_price_dzd, previous_price_dzd, discount_percent,
+                status, is_featured, is_new_arrival, seo_title, seo_description,
+                weight_grams, dimensions_cm, tags)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
             (
                 payload.category_id, payload.brand_id, payload.slug, payload.sku, payload.barcode,
                 payload.name_fr, payload.name_ar, payload.name_en, payload.description_fr,
-                payload.main_image_url, payload.purchase_cost_dzd, payload.selling_price_dzd,
+                payload.description_ar, payload.description_en, payload.main_image_url,
+                payload.purchase_cost_dzd, payload.selling_price_dzd,
                 payload.previous_price_dzd, payload.discount_percent, payload.status,
                 1 if payload.is_featured else 0, 1 if payload.is_new_arrival else 0,
-                payload.seo_title, payload.seo_description
+                payload.seo_title, payload.seo_description,
+                payload.weight_grams, payload.dimensions_cm, payload.tags
             )
         )
         prod_id = cur.lastrowid
@@ -1288,21 +1592,20 @@ def create_dynamic_product(
                     (prod_id, cat_attrs[akey]["id"], str(aval))
                 )
 
-        for v in payload.variants:
-            sig = "|".join(f"{k}:{v.attributes[k]}" for k in sorted(v.attributes.keys())) or f"sku:{v.sku}"
+        for v, v_sku, v_attrs, sig in validated_variants:
             cur.execute(
                 """INSERT INTO product_variants
-                   (product_id, sku, barcode, title, price_override_dzd, stock_qty, image_url, combination_signature)
-                   VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
-                (prod_id, v.sku, v.barcode, v.title, v.price_override_dzd, v.stock_qty, v.image_url or payload.main_image_url, sig)
+                   (product_id, sku, barcode, title, price_override_dzd, stock_qty, image_url,
+                    purchase_cost_dzd, weight_grams, low_stock_threshold, is_active, combination_signature)
+                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                (
+                    prod_id, v_sku, v.barcode, v.title, v.price_override_dzd, v.stock_qty,
+                    v.image_url or payload.main_image_url, v.purchase_cost_dzd, v.weight_grams,
+                    v.low_stock_threshold, 1, sig,
+                )
             )
             vid = cur.lastrowid
-            for k, opt_val in v.attributes.items():
-                if k in cat_attrs:
-                    cur.execute(
-                        "INSERT INTO variant_attribute_values (variant_id, attribute_id, option_value) VALUES (?, ?, ?)",
-                        (vid, cat_attrs[k]["id"], opt_val)
-                    )
+            replace_variant_attribute_values(conn, vid, cat_attrs_full, v_attrs)
 
         log_audit(conn, int(admin["sub"]), "create_product", "product", str(prod_id), {"sku": payload.sku, "status": payload.status})
         cur.execute("SELECT * FROM products WHERE id = ?", (prod_id,))
@@ -1330,13 +1633,24 @@ def generate_product_variants_matrix(
         for k in axis_keys:
             if k not in cat_attrs or not cat_attrs[k]["is_variant_axis"]:
                 raise HTTPException(status_code=400, detail=f"Attribute '{k}' is not configured as a variant axis for this category")
+            if not payload.axes[k]:
+                raise HTTPException(status_code=400, detail=f"Axis '{k}' has no values")
+
+        # Reject axis values that are not part of the category's configured options.
+        cat_attrs_full = load_category_attributes_with_options(conn, prod["category_id"])
+        for k in axis_keys:
+            for raw_val in payload.axes[k]:
+                cleaned_axis_value = validate_variant_attributes(
+                    cat_attrs_full, {k: raw_val}, allow_custom_values=True
+                )
+                ensure_variant_attribute_options(conn, cat_attrs_full, cleaned_axis_value)
 
         value_lists = [payload.axes[k] for k in axis_keys]
         created = []
         skipped_duplicates = 0
         for combo in itertools.product(*value_lists):
             combo_map = dict(zip(axis_keys, combo))
-            sig = "|".join(f"{k}:{combo_map[k]}" for k in axis_keys)
+            sig = build_variant_signature(combo_map)
             cur.execute(
                 "SELECT id FROM product_variants WHERE product_id = ? AND combination_signature = ?",
                 (product_id, sig)
@@ -1354,9 +1668,13 @@ def generate_product_variants_matrix(
             v_title = " / ".join(str(v) for v in combo)
             cur.execute(
                 """INSERT INTO product_variants
-                   (product_id, sku, title, price_override_dzd, stock_qty, image_url, combination_signature)
-                   VALUES (?, ?, ?, ?, ?, ?, ?)""",
-                (product_id, v_sku, v_title, payload.price_override_dzd, payload.default_stock, prod["main_image_url"], sig)
+                   (product_id, sku, title, price_override_dzd, stock_qty, image_url,
+                    low_stock_threshold, combination_signature)
+                   VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
+                (
+                    product_id, v_sku, v_title, payload.price_override_dzd, payload.default_stock,
+                    prod["main_image_url"], payload.low_stock_threshold, sig,
+                )
             )
             vid = cur.lastrowid
             for k, val in combo_map.items():
@@ -1368,6 +1686,465 @@ def generate_product_variants_matrix(
 
         log_audit(conn, int(admin["sub"]), "generate_variants", "product", str(product_id), {"created_count": len(created)})
         return {"created": created, "skipped_duplicates": skipped_duplicates}
+
+# --- ADMIN VARIANT MANAGEMENT (create / edit / delete / bulk) ---
+
+def recompute_variant_signature(conn, variant_id: int) -> str:
+    cur = conn.cursor()
+    cur.execute(
+        """SELECT ca.attr_key, vav.option_value
+           FROM variant_attribute_values vav
+           JOIN category_attributes ca ON ca.id = vav.attribute_id
+           WHERE vav.variant_id = ?""",
+        (variant_id,),
+    )
+    attrs = {r["attr_key"]: r["option_value"] for r in cur.fetchall()}
+    cur.execute("SELECT sku FROM product_variants WHERE id = ?", (variant_id,))
+    row = cur.fetchone()
+    sig = build_variant_signature(attrs, row["sku"] if row else "")
+    cur.execute("UPDATE product_variants SET combination_signature = ? WHERE id = ?", (sig, variant_id))
+    return sig
+
+@app.post("/api/v1/admin/products/{product_id}/variants", status_code=201)
+def admin_create_variant(
+    product_id: int,
+    payload: VariantCreateInput,
+    admin: dict = Depends(require_permission("products:write"))
+):
+    with db_session(commit=True) as conn:
+        if not conn.in_transaction:
+            conn.execute("BEGIN IMMEDIATE")
+        cur = conn.cursor()
+        cur.execute("SELECT * FROM products WHERE id = ?", (product_id,))
+        prod = cur.fetchone()
+        if not prod:
+            raise HTTPException(status_code=404, detail="Product not found")
+
+        cat_attrs = load_category_attributes_with_options(conn, prod["category_id"])
+        attrs = validate_variant_attributes(cat_attrs, payload.attributes, allow_custom_values=True)
+        ensure_variant_attribute_options(conn, cat_attrs, attrs)
+        sku = normalize_variant_sku(payload.sku) if payload.sku else auto_variant_sku(
+            conn, prod["sku"], attrs, build_variant_signature(attrs)
+        )
+        assert_variant_sku_available(conn, sku)
+        sig = build_variant_signature(attrs, sku)
+        assert_variant_signature_available(conn, product_id, sig)
+
+        title = (payload.title or "").strip() or (" / ".join(attrs[k] for k in sorted(attrs)) if attrs else "Standard")
+        cur.execute(
+            """INSERT INTO product_variants
+               (product_id, sku, barcode, title, price_override_dzd, stock_qty, image_url,
+                purchase_cost_dzd, weight_grams, low_stock_threshold, is_active, combination_signature)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+            (
+                product_id, sku, payload.barcode, title, payload.price_override_dzd, payload.stock_qty,
+                payload.image_url or prod["main_image_url"], payload.purchase_cost_dzd,
+                payload.weight_grams, payload.low_stock_threshold, 1 if payload.is_active else 0, sig,
+            )
+        )
+        variant_id = cur.lastrowid
+        replace_variant_attribute_values(conn, variant_id, cat_attrs, attrs)
+        if payload.stock_qty > 0:
+            cur.execute(
+                """INSERT INTO inventory_movements
+                   (variant_id, admin_user_id, change_qty, previous_qty, new_qty, reason)
+                   VALUES (?, ?, ?, ?, ?, ?)""",
+                (variant_id, int(admin["sub"]), payload.stock_qty, 0, payload.stock_qty, "variant_created"),
+            )
+        log_audit(conn, int(admin["sub"]), "create_variant", "product_variant", str(variant_id), {
+            "product_id": product_id, "sku": sku, "signature": sig, "stock_qty": payload.stock_qty,
+        })
+        return serialize_variant_row(conn, variant_id)
+
+@app.put("/api/v1/admin/variants/{variant_id}")
+def admin_update_variant(
+    variant_id: int,
+    payload: VariantUpdateInput,
+    admin: dict = Depends(require_permission("products:write"))
+):
+    with db_session(commit=True) as conn:
+        if not conn.in_transaction:
+            conn.execute("BEGIN IMMEDIATE")
+        cur = conn.cursor()
+        cur.execute(
+            """SELECT pv.*, p.category_id AS product_category_id, p.selling_price_dzd, p.sku AS product_sku
+               FROM product_variants pv
+               JOIN products p ON p.id = pv.product_id
+               WHERE pv.id = ?""",
+            (variant_id,),
+        )
+        variant = cur.fetchone()
+        if not variant:
+            raise HTTPException(status_code=404, detail="Variant not found")
+
+        fields: Dict[str, Any] = {}
+        if payload.sku is not None:
+            sku = normalize_variant_sku(payload.sku)
+            assert_variant_sku_available(conn, sku, exclude_variant_id=variant_id)
+            fields["sku"] = sku
+        if payload.barcode is not None:
+            fields["barcode"] = payload.barcode.strip() or None
+        if payload.title is not None:
+            title = payload.title.strip()
+            if not title:
+                raise HTTPException(status_code=422, detail="Variant title cannot be empty")
+            fields["title"] = title
+        if payload.clear_price_override:
+            fields["price_override_dzd"] = None
+        elif payload.price_override_dzd is not None:
+            fields["price_override_dzd"] = payload.price_override_dzd
+        if payload.image_url is not None:
+            fields["image_url"] = payload.image_url.strip() or None
+        if payload.purchase_cost_dzd is not None:
+            fields["purchase_cost_dzd"] = payload.purchase_cost_dzd
+        if payload.weight_grams is not None:
+            fields["weight_grams"] = payload.weight_grams
+        if payload.low_stock_threshold is not None:
+            fields["low_stock_threshold"] = payload.low_stock_threshold
+        if payload.is_active is not None:
+            fields["is_active"] = 1 if payload.is_active else 0
+
+        previous_stock = int(variant["stock_qty"])
+        stock_change = 0
+        if payload.stock_qty is not None and int(payload.stock_qty) != previous_stock:
+            stock_change = int(payload.stock_qty) - previous_stock
+            fields["stock_qty"] = int(payload.stock_qty)
+
+        validated_attrs = None
+        cat_attrs = None
+        if payload.attributes is not None:
+            cat_attrs = load_category_attributes_with_options(conn, variant["product_category_id"])
+            validated_attrs = validate_variant_attributes(
+                cat_attrs, payload.attributes, allow_custom_values=True
+            )
+            ensure_variant_attribute_options(conn, cat_attrs, validated_attrs)
+            sig = build_variant_signature(validated_attrs, fields.get("sku", variant["sku"]))
+            assert_variant_signature_available(
+                conn, variant["product_id"], sig, exclude_variant_id=variant_id
+            )
+            fields["combination_signature"] = sig
+
+        if fields:
+            assignments = ", ".join(f"{column} = ?" for column in fields.keys())
+            cur.execute(
+                f"UPDATE product_variants SET {assignments} WHERE id = ?",
+                [*fields.values(), variant_id],
+            )
+        if validated_attrs is not None and cat_attrs is not None:
+            replace_variant_attribute_values(conn, variant_id, cat_attrs, validated_attrs)
+        if stock_change:
+            cur.execute(
+                """INSERT INTO inventory_movements
+                   (variant_id, admin_user_id, change_qty, previous_qty, new_qty, reason)
+                   VALUES (?, ?, ?, ?, ?, ?)""",
+                (
+                    variant_id, int(admin["sub"]), stock_change, previous_stock,
+                    previous_stock + stock_change, "variant_edit",
+                )
+            )
+        log_audit(conn, int(admin["sub"]), "update_variant", "product_variant", str(variant_id), {
+            "changed_fields": sorted(fields.keys()),
+            "stock_change": stock_change,
+        })
+        return serialize_variant_row(conn, variant_id)
+
+@app.delete("/api/v1/admin/variants/{variant_id}")
+def admin_delete_variant(
+    variant_id: int,
+    admin: dict = Depends(require_permission("products:write"))
+):
+    with db_session(commit=True) as conn:
+        if not conn.in_transaction:
+            conn.execute("BEGIN IMMEDIATE")
+        cur = conn.cursor()
+        cur.execute("SELECT * FROM product_variants WHERE id = ?", (variant_id,))
+        variant = cur.fetchone()
+        if not variant:
+            raise HTTPException(status_code=404, detail="Variant not found")
+
+        cur.execute("SELECT COUNT(*) AS cnt FROM order_items WHERE variant_id = ?", (variant_id,))
+        used_in_orders = int(cur.fetchone()["cnt"] or 0)
+        if used_in_orders > 0:
+            cur.execute("UPDATE product_variants SET is_active = 0 WHERE id = ?", (variant_id,))
+            log_audit(conn, int(admin["sub"]), "deactivate_variant", "product_variant", str(variant_id), {
+                "sku": variant["sku"], "order_lines": used_in_orders,
+            })
+            return {
+                "deleted": False,
+                "deactivated": True,
+                "variant_id": variant_id,
+                "reason": f"Variant is referenced by {used_in_orders} historical order line(s) and was deactivated instead of deleted.",
+            }
+
+        cur.execute("DELETE FROM variant_attribute_values WHERE variant_id = ?", (variant_id,))
+        cur.execute("DELETE FROM product_variants WHERE id = ?", (variant_id,))
+        log_audit(conn, int(admin["sub"]), "delete_variant", "product_variant", str(variant_id), {
+            "sku": variant["sku"],
+        })
+        return {"deleted": True, "deactivated": False, "variant_id": variant_id}
+
+@app.post("/api/v1/admin/variants/bulk-update")
+def admin_bulk_update_variants(
+    payload: VariantBulkUpdateInput,
+    admin: dict = Depends(require_permission("products:write"))
+):
+    with db_session(commit=True) as conn:
+        if not conn.in_transaction:
+            conn.execute("BEGIN IMMEDIATE")
+        cur = conn.cursor()
+        updated = 0
+        missing_ids = []
+        stock_updates = 0
+        for variant_id in dict.fromkeys(payload.variant_ids):
+            cur.execute("SELECT * FROM product_variants WHERE id = ?", (variant_id,))
+            variant = cur.fetchone()
+            if not variant:
+                missing_ids.append(variant_id)
+                continue
+
+            fields: Dict[str, Any] = {}
+            previous_stock = int(variant["stock_qty"])
+            new_stock = previous_stock
+            if payload.set_stock_qty is not None:
+                new_stock = int(payload.set_stock_qty)
+            elif payload.adjust_stock_qty is not None:
+                new_stock = previous_stock + int(payload.adjust_stock_qty)
+            if new_stock < 0:
+                raise HTTPException(
+                    status_code=400,
+                    detail=f"Stock for variant '{variant['sku']}' cannot become negative (requested {new_stock})",
+                )
+            if new_stock != previous_stock:
+                fields["stock_qty"] = new_stock
+            if payload.clear_price_override:
+                fields["price_override_dzd"] = None
+            elif payload.set_price_override_dzd is not None:
+                fields["price_override_dzd"] = payload.set_price_override_dzd
+            if payload.is_active is not None:
+                fields["is_active"] = 1 if payload.is_active else 0
+
+            if not fields:
+                continue
+            assignments = ", ".join(f"{column} = ?" for column in fields.keys())
+            cur.execute(
+                f"UPDATE product_variants SET {assignments} WHERE id = ?",
+                [*fields.values(), variant_id],
+            )
+            updated += 1
+            if new_stock != previous_stock:
+                stock_updates += 1
+                cur.execute(
+                    """INSERT INTO inventory_movements
+                       (variant_id, admin_user_id, change_qty, previous_qty, new_qty, reason)
+                       VALUES (?, ?, ?, ?, ?, ?)""",
+                    (
+                        variant_id, int(admin["sub"]), new_stock - previous_stock,
+                        previous_stock, new_stock, payload.reason,
+                    )
+                )
+
+        log_audit(conn, int(admin["sub"]), "bulk_update_variants", "product_variant", "bulk", {
+            "requested": len(payload.variant_ids), "updated": updated, "stock_updates": stock_updates,
+        })
+        return {"updated_count": updated, "stock_updates": stock_updates, "missing_ids": missing_ids}
+
+# --- ADMIN CATEGORY / ATTRIBUTE MANAGEMENT ---
+
+@app.get("/api/v1/admin/categories")
+def admin_list_categories(
+    include_archived: bool = Query(True),
+    admin: dict = Depends(require_any_permission(["categories:write", "products:write"]))
+):
+    with db_session() as conn:
+        cur = conn.cursor()
+        if include_archived:
+            cur.execute("SELECT * FROM categories ORDER BY display_order ASC, id ASC")
+        else:
+            cur.execute("SELECT * FROM categories WHERE deleted_at IS NULL ORDER BY display_order ASC, id ASC")
+        return {"items": [serialize_category(conn, dict(r)) for r in cur.fetchall()]}
+
+@app.put("/api/v1/admin/categories-reorder")
+def admin_reorder_categories(
+    payload: CategoryReorderInput,
+    admin: dict = Depends(require_permission("categories:write"))
+):
+    with db_session(commit=True) as conn:
+        cur = conn.cursor()
+        updated = 0
+        for item in payload.items:
+            try:
+                category_id = int(item.get("id", 0))
+                display_order = int(item.get("display_order", 0))
+            except (TypeError, ValueError):
+                continue
+            if category_id <= 0:
+                continue
+            cur.execute(
+                "UPDATE categories SET display_order = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?",
+                (display_order, category_id),
+            )
+            updated += cur.rowcount
+        log_audit(conn, int(admin["sub"]), "reorder_categories", "category", "bulk", {"updated": updated})
+        return {"updated_count": updated}
+
+@app.put("/api/v1/admin/category-attributes/{attr_id}")
+def admin_update_category_attribute(
+    attr_id: int,
+    payload: CategoryAttributeUpdate,
+    admin: dict = Depends(require_permission("categories:write"))
+):
+    with db_session(commit=True) as conn:
+        cur = conn.cursor()
+        cur.execute("SELECT * FROM category_attributes WHERE id = ?", (attr_id,))
+        attr = cur.fetchone()
+        if not attr:
+            raise HTTPException(status_code=404, detail="Attribute not found")
+
+        provided = payload.dict(exclude_unset=True)
+        fields: Dict[str, Any] = {}
+        for key in (
+            "label_fr", "label_ar", "label_en", "input_type", "unit", "default_value",
+            "display_order",
+        ):
+            if key in provided and provided[key] is not None:
+                fields[key] = provided[key]
+        for key in ("is_required", "allow_multiple", "is_visible_on_storefront", "is_filterable", "is_variant_axis"):
+            if key in provided and provided[key] is not None:
+                fields[key] = 1 if provided[key] else 0
+        if "label_fr" in fields and not str(fields["label_fr"]).strip():
+            raise HTTPException(status_code=422, detail="French label cannot be empty")
+
+        if fields:
+            assignments = ", ".join(f"{column} = ?" for column in fields.keys())
+            cur.execute(
+                f"UPDATE category_attributes SET {assignments} WHERE id = ?",
+                [*fields.values(), attr_id],
+            )
+            log_audit(conn, int(admin["sub"]), "update_category_attribute", "category_attribute", str(attr_id), {
+                "changed_fields": sorted(fields.keys()),
+            })
+        cur.execute("SELECT * FROM categories WHERE id = ?", (attr["category_id"],))
+        return serialize_category(conn, dict(cur.fetchone()))
+
+@app.post("/api/v1/admin/category-attributes/{attr_id}/options", status_code=201)
+def admin_create_attribute_option(
+    attr_id: int,
+    payload: AttributeOptionUpsert,
+    admin: dict = Depends(require_permission("categories:write"))
+):
+    with db_session(commit=True) as conn:
+        cur = conn.cursor()
+        cur.execute("SELECT * FROM category_attributes WHERE id = ?", (attr_id,))
+        if not cur.fetchone():
+            raise HTTPException(status_code=404, detail="Attribute not found")
+        value = payload.value.strip()
+        cur.execute(
+            "SELECT id FROM category_attribute_options WHERE attribute_id = ? AND value = ?",
+            (attr_id, value),
+        )
+        if cur.fetchone():
+            raise HTTPException(status_code=409, detail=f"Option '{value}' already exists on this attribute")
+        cur.execute(
+            """INSERT INTO category_attribute_options
+               (attribute_id, value, label_fr, label_ar, label_en, color_hex, display_order)
+               VALUES (?, ?, ?, ?, ?, ?, ?)""",
+            (
+                attr_id, value, payload.label_fr or value, payload.label_ar or "",
+                payload.label_en or "", payload.color_hex, payload.display_order,
+            )
+        )
+        option_id = cur.lastrowid
+        log_audit(conn, int(admin["sub"]), "create_attribute_option", "category_attribute_option", str(option_id), {
+            "attribute_id": attr_id, "value": value,
+        })
+        return {
+            "id": option_id, "attribute_id": attr_id, "value": value,
+            "label_fr": payload.label_fr or value, "label_ar": payload.label_ar or "",
+            "label_en": payload.label_en or "", "color_hex": payload.color_hex,
+            "display_order": payload.display_order,
+        }
+
+@app.put("/api/v1/admin/attribute-options/{option_id}")
+def admin_update_attribute_option(
+    option_id: int,
+    payload: AttributeOptionUpsert,
+    admin: dict = Depends(require_permission("categories:write"))
+):
+    with db_session(commit=True) as conn:
+        if not conn.in_transaction:
+            conn.execute("BEGIN IMMEDIATE")
+        cur = conn.cursor()
+        cur.execute("SELECT * FROM category_attribute_options WHERE id = ?", (option_id,))
+        option = cur.fetchone()
+        if not option:
+            raise HTTPException(status_code=404, detail="Option not found")
+        new_value = payload.value.strip()
+        if new_value != option["value"]:
+            cur.execute(
+                "SELECT id FROM category_attribute_options WHERE attribute_id = ? AND value = ? AND id != ?",
+                (option["attribute_id"], new_value, option_id),
+            )
+            if cur.fetchone():
+                raise HTTPException(status_code=409, detail=f"Option '{new_value}' already exists on this attribute")
+            # Keep existing variants consistent: rename the stored option value and
+            # recompute each affected variant's combination signature.
+            cur.execute(
+                "SELECT DISTINCT variant_id FROM variant_attribute_values WHERE attribute_id = ? AND option_value = ?",
+                (option["attribute_id"], option["value"]),
+            )
+            affected_variants = [r["variant_id"] for r in cur.fetchall()]
+            cur.execute(
+                "UPDATE variant_attribute_values SET option_value = ? WHERE attribute_id = ? AND option_value = ?",
+                (new_value, option["attribute_id"], option["value"]),
+            )
+            for variant_id in affected_variants:
+                recompute_variant_signature(conn, variant_id)
+        cur.execute(
+            """UPDATE category_attribute_options
+               SET value = ?, label_fr = ?, label_ar = ?, label_en = ?, color_hex = ?, display_order = ?
+               WHERE id = ?""",
+            (
+                new_value, payload.label_fr or new_value, payload.label_ar or "",
+                payload.label_en or "", payload.color_hex, payload.display_order, option_id,
+            )
+        )
+        log_audit(conn, int(admin["sub"]), "update_attribute_option", "category_attribute_option", str(option_id), {
+            "attribute_id": option["attribute_id"], "old_value": option["value"], "new_value": new_value,
+        })
+        return {
+            "id": option_id, "attribute_id": option["attribute_id"], "value": new_value,
+            "label_fr": payload.label_fr or new_value, "label_ar": payload.label_ar or "",
+            "label_en": payload.label_en or "", "color_hex": payload.color_hex,
+            "display_order": payload.display_order,
+        }
+
+@app.delete("/api/v1/admin/attribute-options/{option_id}")
+def admin_delete_attribute_option(
+    option_id: int,
+    admin: dict = Depends(require_permission("categories:write"))
+):
+    with db_session(commit=True) as conn:
+        cur = conn.cursor()
+        cur.execute("SELECT * FROM category_attribute_options WHERE id = ?", (option_id,))
+        option = cur.fetchone()
+        if not option:
+            raise HTTPException(status_code=404, detail="Option not found")
+        cur.execute(
+            """SELECT COUNT(*) AS cnt FROM variant_attribute_values
+               WHERE attribute_id = ? AND option_value = ?""",
+            (option["attribute_id"], option["value"]),
+        )
+        in_use = int(cur.fetchone()["cnt"] or 0)
+        if in_use > 0:
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail=f"Option '{option['value']}' is used by {in_use} variant(s). Rename or remove those variants first.",
+            )
+        cur.execute("DELETE FROM category_attribute_options WHERE id = ?", (option_id,))
+        log_audit(conn, int(admin["sub"]), "delete_attribute_option", "category_attribute_option", str(option_id), {
+            "attribute_id": option["attribute_id"], "value": option["value"],
+        })
+        return {"deleted": True, "option_id": option_id}
 
 # --- ADMIN ORDERS & STOCK RESTORATION ---
 
@@ -1836,10 +2613,14 @@ class ProductConcurrencyUpdate(BaseModel):
     name_ar: Optional[str] = None
     name_en: Optional[str] = None
     description_fr: Optional[str] = None
+    description_ar: Optional[str] = None
+    description_en: Optional[str] = None
     purchase_cost_dzd: Optional[int] = Field(None, ge=0)
     previous_price_dzd: Optional[int] = Field(None, ge=0)
     discount_percent: Optional[int] = Field(None, ge=0, le=95)
     sku: Optional[str] = None
+    slug: Optional[str] = Field(None, regex=r"^[a-z0-9-]{2,160}$")
+    barcode: Optional[str] = None
     brand_id: Optional[int] = None
     category_id: Optional[int] = None
     main_image_url: Optional[str] = None
@@ -1848,6 +2629,9 @@ class ProductConcurrencyUpdate(BaseModel):
     is_new_arrival: Optional[bool] = None
     seo_title: Optional[str] = None
     seo_description: Optional[str] = None
+    weight_grams: Optional[int] = Field(None, ge=0)
+    dimensions_cm: Optional[str] = None
+    tags: Optional[str] = None
     dynamic_attributes: Optional[Dict[str, Any]] = None
 
 class CouponCreateInput(BaseModel):
@@ -2198,6 +2982,13 @@ def update_product_with_conflict_detection(
                     status_code=status.HTTP_409_CONFLICT,
                     detail=f"Product SKU '{payload.sku}' is already used by another product"
                 )
+        if payload.slug and payload.slug != prod["slug"]:
+            cur.execute("SELECT id FROM products WHERE slug = ? AND id != ?", (payload.slug, product_id))
+            if cur.fetchone():
+                raise HTTPException(
+                    status_code=status.HTTP_409_CONFLICT,
+                    detail=f"Product slug '{payload.slug}' is already used by another product"
+                )
         new_version = current_version + 1
         cur.execute(
             """UPDATE products
@@ -2206,10 +2997,14 @@ def update_product_with_conflict_detection(
                    name_ar = COALESCE(?, name_ar),
                    name_en = COALESCE(?, name_en),
                    description_fr = COALESCE(?, description_fr),
+                   description_ar = COALESCE(?, description_ar),
+                   description_en = COALESCE(?, description_en),
                    purchase_cost_dzd = COALESCE(?, purchase_cost_dzd),
                    previous_price_dzd = COALESCE(?, previous_price_dzd),
                    discount_percent = COALESCE(?, discount_percent),
                    sku = COALESCE(?, sku),
+                   slug = COALESCE(?, slug),
+                   barcode = COALESCE(?, barcode),
                    brand_id = COALESCE(?, brand_id),
                    category_id = COALESCE(?, category_id),
                    main_image_url = COALESCE(?, main_image_url),
@@ -2218,6 +3013,9 @@ def update_product_with_conflict_detection(
                    is_new_arrival = COALESCE(?, is_new_arrival),
                    seo_title = COALESCE(?, seo_title),
                    seo_description = COALESCE(?, seo_description),
+                   weight_grams = COALESCE(?, weight_grams),
+                   dimensions_cm = COALESCE(?, dimensions_cm),
+                   tags = COALESCE(?, tags),
                    version = ?,
                    updated_at = CURRENT_TIMESTAMP
                WHERE id = ? AND version = ?""",
@@ -2227,10 +3025,14 @@ def update_product_with_conflict_detection(
                 payload.name_ar,
                 payload.name_en,
                 payload.description_fr,
+                payload.description_ar,
+                payload.description_en,
                 payload.purchase_cost_dzd,
                 payload.previous_price_dzd,
                 payload.discount_percent,
                 payload.sku,
+                payload.slug,
+                payload.barcode,
                 payload.brand_id,
                 payload.category_id,
                 payload.main_image_url,
@@ -2239,6 +3041,9 @@ def update_product_with_conflict_detection(
                 (1 if payload.is_new_arrival else 0) if payload.is_new_arrival is not None else None,
                 payload.seo_title,
                 payload.seo_description,
+                payload.weight_grams,
+                payload.dimensions_cm,
+                payload.tags,
                 new_version,
                 product_id,
                 current_version,

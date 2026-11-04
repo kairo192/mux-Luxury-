@@ -253,3 +253,4 @@ with open(sf_path, "w", encoding="utf-8", newline="\r\n") as f:
     f.write(code)
 
 print("Saved all storefront optimizations successfully!")
+

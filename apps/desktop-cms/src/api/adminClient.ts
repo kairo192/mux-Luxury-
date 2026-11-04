@@ -235,6 +235,8 @@ export const DesktopCmsApi = {
 
   // Dynamic Categories & 14-Type Attribute Builder
   listCategories: () => adminFetch("/categories"),
+  listAdminCategories: (includeArchived = true) =>
+    adminFetch(`/admin/categories?include_archived=${includeArchived}`),
   createCategory: (payload: unknown) =>
     adminFetch("/admin/categories", { method: "POST", body: JSON.stringify(payload) }),
   updateCategory: (categoryId: number, payload: unknown) =>
@@ -243,10 +245,26 @@ export const DesktopCmsApi = {
     adminFetch(`/admin/categories/${categoryId}`, { method: "DELETE" }),
   deleteCategory: (categoryId: number, hard = false) =>
     adminFetch(`/admin/categories/${categoryId}?hard_delete=${hard}`, { method: "DELETE" }),
+  reorderCategories: (items: Array<{ id: number; display_order: number }>) =>
+    adminFetch("/admin/categories-reorder", {
+      method: "PUT",
+      body: JSON.stringify({ items }),
+    }),
   addCategoryAttribute: (payload: unknown) =>
     adminFetch("/admin/category-attributes", { method: "POST", body: JSON.stringify(payload) }),
+  updateCategoryAttribute: (attrId: number, payload: unknown) =>
+    adminFetch(`/admin/category-attributes/${attrId}`, { method: "PUT", body: JSON.stringify(payload) }),
   deleteCategoryAttribute: (attrId: number, forceMigrate = false) =>
     adminFetch(`/admin/category-attributes/${attrId}?force_migrate=${forceMigrate}`, { method: "DELETE" }),
+  createAttributeOption: (attrId: number, payload: unknown) =>
+    adminFetch(`/admin/category-attributes/${attrId}/options`, {
+      method: "POST",
+      body: JSON.stringify(payload),
+    }),
+  updateAttributeOption: (optionId: number, payload: unknown) =>
+    adminFetch(`/admin/attribute-options/${optionId}`, { method: "PUT", body: JSON.stringify(payload) }),
+  deleteAttributeOption: (optionId: number) =>
+    adminFetch(`/admin/attribute-options/${optionId}`, { method: "DELETE" }),
 
   // Brands & Products & Variant Matrix
   listBrands: () => adminFetch("/brands"),
@@ -278,6 +296,32 @@ export const DesktopCmsApi = {
     adminFetch(`/admin/products/${productId}/generate-variants`, {
       method: "POST",
       body: JSON.stringify(payload),
+    }),
+
+  // Variant CRUD (real color/size combination management)
+  createVariant: (productId: number, payload: unknown) =>
+    adminFetch(`/admin/products/${productId}/variants`, {
+      method: "POST",
+      body: JSON.stringify(payload),
+      headers: { "Idempotency-Key": `variant-create-${productId}-${Date.now()}` },
+    }),
+  updateVariant: (variantId: number, payload: unknown) =>
+    adminFetch(`/admin/variants/${variantId}`, { method: "PUT", body: JSON.stringify(payload) }),
+  deleteVariant: (variantId: number) =>
+    adminFetch(`/admin/variants/${variantId}`, { method: "DELETE" }),
+  bulkUpdateVariants: (payload: {
+    variant_ids: number[];
+    set_stock_qty?: number;
+    adjust_stock_qty?: number;
+    set_price_override_dzd?: number;
+    clear_price_override?: boolean;
+    is_active?: boolean;
+    reason?: string;
+  }) =>
+    adminFetch("/admin/variants/bulk-update", {
+      method: "POST",
+      body: JSON.stringify(payload),
+      headers: { "Idempotency-Key": `variant-bulk-${Date.now()}` },
     }),
 
   // Inventory Management

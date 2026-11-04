@@ -27,3 +27,4 @@ with open(p, "w", encoding="utf-8", newline="\r\n") as f:
     f.write(code)
 
 print("Updated database.py with dynamic path and performance PRAGMAs!")
+

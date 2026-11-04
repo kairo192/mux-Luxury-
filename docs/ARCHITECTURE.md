@@ -56,7 +56,7 @@ The Mus Luxury (`luxe-ecommerce`) platform is engineered around a strict 3-tier 
 11. `product_attribute_values` — Non-variant dynamic specification values per product.
 12. `product_variants` — Purchasable SKU variants with `stock_qty >= 0` constraint and optional `price_override_dzd`.
 13. `variant_attribute_values` — Variant axis values (`Couleur`, `Taille`, `Pointure`, `Calibre`, etc.).
-14. `delivery_zones` — All 69 Algerian Wilayas (`01 Adrar` through `69 El Abiodh Sidi Cheikh`).
+14. `delivery_zones` - All 69 Algerian Wilayas (`01 Adrar` through `69 El Abiodh Sidi Cheikh`) with their full official commune lists (1,541 communes, loi n° 26-06).
 15. `delivery_rates` — Per-Wilaya `home` (À Domicile) and `stop_desk` (Bureau Relais) tariffs in DA.
 16. `customers` — Guest checkout contact and lifetime spend aggregation.
 17. `orders` — Authoritative COD orders with `idempotency_hash` and `stock_deducted` state flag.

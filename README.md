@@ -1,6 +1,6 @@
 # Mus Luxury (`LUXE`) — E-Commerce Platform & Dynamic CMS
 
-Production-oriented e-commerce platform built for **Mus Luxury (`LUXE`)** targeting the Algerian market (`DZD / DA`), featuring mobile-first **Guest Checkout (Cash on Delivery across 58 Wilayas)**, **FR / AR (RTL) / EN** localization, a **Dynamic Category & Attribute Builder**, real **Variant-Level Inventory**, and a **Tauri 2 Desktop CMS**.
+Production-oriented e-commerce platform built for **Mus Luxury (`LUXE`)** targeting the Algerian market (`DZD / DA`), featuring mobile-first **Guest Checkout (Cash on Delivery across all 69 Wilayas and their 1,541 communes)**, **FR / AR (RTL) / EN** localization, a **Dynamic Category & Attribute Builder**, real **Variant-Level Inventory**, and a **Tauri 2 Desktop CMS**.
 
 ---
 
@@ -17,7 +17,7 @@ Production-oriented e-commerce platform built for **Mus Luxury (`LUXE`)** target
 | **White** | `#FFFFFF` | Product cards, forms, modals |
 
 - **Typography**: `Playfair Display` (serif headings), `Montserrat` (FR/EN interface), `Cairo` (Arabic RTL interface).
-- **Authentic Assets**: Uses the owner's supplied **Mus Luxury** neon/gold insignia (`storefront/public/assets/mus_luxury_logo.png`) and product photography.
+- **Authentic Assets**: Uses the owner's supplied **Mus Luxury** neon/gold insignia (`apps/storefront/public/assets/mus_luxury_logo.png`) and product photography.
 
 ---
 
@@ -25,22 +25,26 @@ Production-oriented e-commerce platform built for **Mus Luxury (`LUXE`)** target
 
 ```
 luxe-ecommerce/
-├── .github/workflows/ci.yml       # Automated GitHub Actions CI (Backend + Security + Frontend)
-├── .env.example                   # Environment template (no secrets committed)
-├── docker-compose.yml             # Production stack (PostgreSQL 16 + FastAPI + Storefront + Nginx)
-├── backend/                       # Python 3.11 + FastAPI + PostgreSQL/SQLite REST API (/api/v1/)
+├── .github/workflows/            # CI (backend tests, storefront/CMS builds, Windows Tauri build)
+├── .env.example                  # Environment template (no secrets committed)
+├── docker-compose.yml            # Production stack (PostgreSQL 16 + FastAPI + Storefront + Nginx)
+├── backend/                      # Python 3.11 + FastAPI + PostgreSQL/SQLite REST API (/api/v1/)
 │   ├── app/
-│   │   ├── main.py                # Versioned public & RBAC-protected admin endpoints
-│   │   ├── security.py            # PBKDF2/Argon2 hashing, signed tokens, rate limiting, MIME checks
-│   │   ├── database.py            # Relational connection & transaction management
-│   │   └── seed.py                # 9 initial dynamic categories, attributes, products & Algerian Wilayas
+│   │   ├── main.py               # Public storefront & RBAC-protected admin endpoints
+│   │   ├── security.py           # PBKDF2 hashing, signed tokens, HMAC signing, rate limiting, MIME checks
+│   │   ├── database.py           # Dual SQLite / PostgreSQL 16 connection & transaction adapter
+│   │   ├── whatsapp.py           # Meta WhatsApp Cloud API OTP recovery, alerts & deep links
+│   │   └── seed.py               # 9 initial dynamic categories, attributes, products & Algerian Wilayas
 │   ├── migrations/
-│   │   └── 001_initial_schema.sql # 22 normalized relational tables
-│   └── tests/
-│       └── test_luxe_api.py       # Automated test suite (Auth, RBAC, Dynamic Categories, Variants, Orders)
-├── storefront/                    # React 18 + TypeScript + Vite + Tailwind CSS Public Storefront
-├── desktop-cms/                   # Tauri 2 + React + TypeScript Windows Desktop CMS (HTTPS API client)
-└── infra/nginx/nginx.conf         # Reverse proxy, rate limiting & security headers
+│   │   ├── 001_initial_schema.sql          # SQLite schema (28 normalized tables)
+│   │   └── 001_initial_schema_postgres.sql # PostgreSQL 16 schema (parity)
+│   └── tests/                    # Automated API, security, schema-parity & wiring suites
+├── apps/
+│   ├── storefront/               # Live boutique: index.html (vanilla JS + compiled Tailwind) via Vite
+│   │   └── src/                  # Earlier React module — type-checked only, not mounted (see its README)
+│   └── desktop-cms/              # Tauri 2 + React + TypeScript Windows Desktop CMS (HTTPS API client)
+├── infrastructure/               # Nginx config, backup/restore & Algerian VPS deploy scripts
+└── docs/                         # Architecture, API inventory, security, deployment & test reports
 ```
 
 ---

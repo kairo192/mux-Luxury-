@@ -27,7 +27,7 @@ with open(out_gz, "wb") as f:
 fi
 
 echo "[2/4] Archiving product images and media..."
-tar -czf "$MEDIA_ARCHIVE" -C "$UPLOAD_DIR" .
+tar --force-local -czf "$MEDIA_ARCHIVE" -C "$UPLOAD_DIR" .
 
 if [ -n "${BACKUP_ENCRYPTION_KEY:-}" ] && [[ "${BACKUP_ENCRYPTION_KEY}" != \<CHANGE_ME* ]] && [[ "${BACKUP_ENCRYPTION_KEY}" != CHANGE_ME* ]]; then
   echo "[3/4] Encrypting archives with AES-256-CBC (PBKDF2)..."

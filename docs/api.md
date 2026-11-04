@@ -4,7 +4,7 @@
 - `GET /api/v1/store/layout` — Configuration complète du site (bannières, sections actives, personnalisation des cartes produits, catégories).
 - `GET /api/v1/categories` & `GET /api/v1/categories/{slug}` — Catégories dynamiques et leurs attributs filtrables.
 - `GET /api/v1/products` & `GET /api/v1/products/{slug}` — Catalogue produits (sans `purchase_cost_dzd`) et stock par variante.
-- `GET /api/v1/delivery-zones` — Les 58 Wilayas d'Algérie, communes et tarifs Domicile / Stop-Desk.
+- `GET /api/v1/delivery-zones` - Les 69 Wilayas d'Algérie, leurs 1 541 communes et tarifs Domicile / Stop-Desk.
 - `POST /api/v1/orders` — Guest Checkout (calcul serveur des prix, coupons et frais de livraison Wilaya).
 - `GET /api/v1/orders/track?reference=...&phone=...` — Suivi sécurisé de commande sans compte.
 

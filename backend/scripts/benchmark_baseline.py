@@ -33,3 +33,4 @@ for ep in endpoints:
     print(f"  Content-Encoding: {headers.get('content-encoding', 'none (uncompressed)')}")
     print(f"  Cache-Control: {headers.get('cache-control', 'none')}")
     print(f"  ETag: {headers.get('etag', 'none')}")
+

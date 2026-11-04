@@ -56,3 +56,4 @@ with db_session() as conn:
     print("\nSample queries:")
     for q in queries[:10]:
         print("  -", q[:100])
+

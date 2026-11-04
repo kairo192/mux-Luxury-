@@ -1,22 +1,33 @@
 import io
 import os
+import shutil
 import tempfile
 import unittest
+
+for _gp in [
+    r"C:\Users\MOURAD\AppData\Local\Programs\Git\bin",
+    r"C:\Users\MOURAD\AppData\Local\Programs\Git\usr\bin",
+    r"C:\Program Files\Git\bin",
+    r"C:\Program Files\Git\usr\bin",
+]:
+    if os.path.isdir(_gp) and _gp not in os.environ.get("PATH", ""):
+        os.environ["PATH"] = f"{_gp}{os.pathsep}{os.environ.get('PATH', '')}"
 
 # Configure isolated test environment & SQLite database before importing app
 TEST_DB_FD, TEST_DB_PATH = tempfile.mkstemp(suffix=".sqlite3")
 os.close(TEST_DB_FD)
 os.environ["APP_ENV"] = "test"
-os.environ["LUXE_DB_ENGINE"] = "sqlite"
-os.environ["LUXE_SQLITE_PATH"] = TEST_DB_PATH
-os.environ["SECRET_KEY"] = "test_only_ephemeral_secret_key_for_unit_test_suite_2026_0123456789"
-os.environ["BACKUP_ENCRYPTION_KEY"] = "test_only_ephemeral_backup_encryption_key_2026_0123456789abcdef"
-os.environ["WHATSAPP_CLOUD_API_TOKEN"] = "EAATest_Sandbox_Token_For_Automated_Suite"
-os.environ["WHATSAPP_PHONE_NUMBER_ID"] = "109283746519283"
-os.environ["WHATSAPP_SANDBOX_MODE"] = "true"
-os.environ["WHATSAPP_TEST_CAPTURE"] = "1"
-os.environ["WHATSAPP_WEBHOOK_VERIFY_TOKEN"] = "mus_luxury_wa_webhook_verify_2026_secret"
-os.environ["WHATSAPP_APP_SECRET"] = "meta_app_secret_test_key_2026" 
+if os.environ.get("LUXE_DB_ENGINE") != "postgres":
+    os.environ["LUXE_DB_ENGINE"] = "sqlite"
+    os.environ["LUXE_SQLITE_PATH"] = TEST_DB_PATH
+os.environ.setdefault("SECRET_KEY", "test_only_ephemeral_secret_key_for_unit_test_suite_2026_0123456789")
+os.environ.setdefault("BACKUP_ENCRYPTION_KEY", "test_only_ephemeral_backup_encryption_key_2026_0123456789abcdef")
+os.environ.setdefault("WHATSAPP_CLOUD_API_TOKEN", "EAATest_Sandbox_Token_For_Automated_Suite")
+os.environ.setdefault("WHATSAPP_PHONE_NUMBER_ID", "109283746519283")
+os.environ.setdefault("WHATSAPP_SANDBOX_MODE", "true")
+os.environ.setdefault("WHATSAPP_TEST_CAPTURE", "1")
+os.environ.setdefault("WHATSAPP_WEBHOOK_VERIFY_TOKEN", "mus_luxury_wa_webhook_verify_2026_secret")
+os.environ.setdefault("WHATSAPP_APP_SECRET", "meta_app_secret_test_key_2026") 
 
 from fastapi.testclient import TestClient
 from app.main import app
@@ -26,8 +37,15 @@ from app.security import reset_rate_limits
 class TestLuxeEcommercePlatform(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
-        if os.path.exists(TEST_DB_PATH):
-            os.remove(TEST_DB_PATH)
+        if os.environ.get("LUXE_DB_ENGINE") == "postgres":
+            from app.database import get_connection
+            conn = get_connection()
+            conn.execute("DROP SCHEMA public CASCADE; CREATE SCHEMA public;")
+            conn.commit()
+            conn.close()
+        else:
+            if os.path.exists(TEST_DB_PATH):
+                os.remove(TEST_DB_PATH)
         seed_initial_data()
         cls.client = TestClient(app)
 
@@ -1502,6 +1520,10 @@ class TestLuxeEcommercePlatform(unittest.TestCase):
         import subprocess
         repo_root = os.path.dirname(os.path.dirname(os.path.dirname(__file__)))
 
+        p_env = "/usr/share/nodejs/@babel/preset-env" if os.path.exists("/usr/share/nodejs/@babel/preset-env") else "@babel/preset-env"
+        p_react = "/usr/share/nodejs/@babel/preset-react" if os.path.exists("/usr/share/nodejs/@babel/preset-react") else "@babel/preset-react"
+        p_ts = "/usr/share/nodejs/@babel/preset-typescript" if os.path.exists("/usr/share/nodejs/@babel/preset-typescript") else "@babel/preset-typescript"
+
         # 1. Compile all Windows Desktop CMS & Public Storefront .ts/.tsx files via Babel TypeScript + React presets
         js_check = """
 const fs = require("fs");
@@ -1527,9 +1549,9 @@ for (const f of files) {
   const out = babel.transformSync(src, {
     filename: full,
     presets: [
-      ["/usr/share/nodejs/@babel/preset-env", { targets: { esmodules: true } }],
-      ["/usr/share/nodejs/@babel/preset-react", { runtime: "automatic" }],
-      ["/usr/share/nodejs/@babel/preset-typescript", { isTSX: f.endsWith(".tsx"), allExtensions: true }],
+      ["PRESET_ENV", { targets: { esmodules: true } }],
+      ["PRESET_REACT", { runtime: "automatic" }],
+      "PRESET_TS",
     ],
   });
   if (!out || !out.code || out.code.length < 50) {
@@ -1537,9 +1559,9 @@ for (const f of files) {
   }
 }
 console.log("ALL_TSX_COMPILED_OK");
-"""
+""".replace("PRESET_ENV", p_env).replace("PRESET_REACT", p_react).replace("PRESET_TS", p_ts)
         env = os.environ.copy()
-        env["NODE_PATH"] = "/usr/share/nodejs"
+        env["NODE_PATH"] = f"/usr/share/nodejs{os.pathsep}{os.path.join(str(repo_root), 'node_modules')}"
         res = subprocess.run(["node", "-e", js_check], cwd=repo_root, env=env, capture_output=True, text=True)
         self.assertEqual(res.returncode, 0, f"TypeScript/React compilation failed: {res.stderr}")
         self.assertIn("ALL_TSX_COMPILED_OK", res.stdout)
@@ -1564,11 +1586,11 @@ console.log("ALL_TSX_COMPILED_OK");
         methods = _re.findall(r"^\s*([a-zA-Z0-9_]+):\s*(?:async\s*)?\(", ac_text, _re.M)
         self.assertGreaterEqual(len(methods), 34)
 
-        ui_text = (
-            __import__("pathlib").Path(os.path.join(repo_root, "apps", "desktop-cms", "src", "App.tsx")).read_text(encoding="utf-8")
-            + __import__("pathlib").Path(os.path.join(repo_root, "apps", "desktop-cms", "src", "pages", "CategoryBuilderPage.tsx")).read_text(encoding="utf-8")
-            + __import__("pathlib").Path(os.path.join(repo_root, "apps", "desktop-cms", "src", "pages", "DeliveryWilayasPage.tsx")).read_text(encoding="utf-8")
-        )
+        pages_dir = os.path.join(repo_root, "apps", "desktop-cms", "src", "pages")
+        ui_parts = [__import__("pathlib").Path(os.path.join(repo_root, "apps", "desktop-cms", "src", "App.tsx")).read_text(encoding="utf-8")]
+        for p in __import__("pathlib").Path(pages_dir).glob("*.tsx"):
+            ui_parts.append(p.read_text(encoding="utf-8"))
+        ui_text = "".join(ui_parts)
         missing = [m for m in methods if f"DesktopCmsApi.{m}" not in ui_text]
         self.assertEqual(missing, [], f"Unwired DesktopCmsApi methods in Desktop CMS UI: {missing}")
 
@@ -2008,10 +2030,11 @@ console.log("ALL_TSX_COMPILED_OK");
     def test_49_sqlite_wal_concurrency_and_seeded_static_pages_availability(self):
         from app.database import db_session
         with db_session() as conn:
-            journal = conn.execute("PRAGMA journal_mode;").fetchone()[0].lower()
-            fk = conn.execute("PRAGMA foreign_keys;").fetchone()[0]
-            self.assertIn(journal, ("wal", "memory"))
-            self.assertEqual(fk, 1)
+            if os.environ.get("LUXE_DB_ENGINE") != "postgres":
+                journal = conn.execute("PRAGMA journal_mode;").fetchone()[0].lower()
+                fk = conn.execute("PRAGMA foreign_keys;").fetchone()[0]
+                self.assertIn(journal, ("wal", "memory"))
+                self.assertEqual(fk, 1)
 
         # Verify all 4 official Mus Luxury static pages (about, faq, returns, terms) are seeded and published
         r_pages = self.client.get("/api/v1/pages")
@@ -2055,6 +2078,9 @@ console.log("ALL_TSX_COMPILED_OK");
         from pathlib import Path
         repo_root = Path(__file__).resolve().parents[2]
 
+        p_env = "/usr/share/nodejs/@babel/preset-env" if os.path.exists("/usr/share/nodejs/@babel/preset-env") else "@babel/preset-env"
+        p_ts = "/usr/share/nodejs/@babel/preset-typescript" if os.path.exists("/usr/share/nodejs/@babel/preset-typescript") else "@babel/preset-typescript"
+
         js_runner = """
 const fs = require("fs");
 const path = require("path");
@@ -2065,10 +2091,10 @@ const src = fs.readFileSync(file, "utf8");
 const compiled = babel.transformSync(src, {
   filename: file,
   presets: [
-    ["/usr/share/nodejs/@babel/preset-env", { targets: { node: "current" }, modules: "commonjs" }],
-    ["/usr/share/nodejs/@babel/preset-typescript", { isTSX: false }],
+    ["PRESET_ENV", { targets: { node: "current" }, modules: "commonjs" }],
+    "PRESET_TS",
   ],
-}).code;
+}).code;""".replace("PRESET_ENV", p_env).replace("PRESET_TS", p_ts) + """
 
 const mod = { exports: {} };
 const fn = new Function("exports", "require", "module", compiled);
@@ -2140,7 +2166,7 @@ if (captured.length !== 3 || !captured[0].showModalBox || !captured[1].showModal
 console.log("CLIENT_NOTIFIER_ALL_TESTS_PASSED");
 """;
         env = os.environ.copy()
-        env["NODE_PATH"] = "/usr/share/nodejs"
+        env["NODE_PATH"] = f"/usr/share/nodejs{os.pathsep}{repo_root / 'node_modules'}"
         res = subprocess.run(["node", "-e", js_runner], cwd=str(repo_root), env=env, capture_output=True, text=True)
         self.assertEqual(res.returncode, 0, f"clientNotifier runtime test failed: {res.stderr}")
         self.assertIn("CLIENT_NOTIFIER_ALL_TESTS_PASSED", res.stdout)
@@ -2428,6 +2454,9 @@ console.log("CLIENT_NOTIFIER_ALL_TESTS_PASSED");
         from pathlib import Path
         repo_root = Path(__file__).resolve().parents[2]
 
+        p_env = "/usr/share/nodejs/@babel/preset-env" if os.path.exists("/usr/share/nodejs/@babel/preset-env") else "@babel/preset-env"
+        p_ts = "/usr/share/nodejs/@babel/preset-typescript" if os.path.exists("/usr/share/nodejs/@babel/preset-typescript") else "@babel/preset-typescript"
+
         js_runner = """
 const fs = require("fs");
 const path = require("path");
@@ -2438,10 +2467,10 @@ const src = fs.readFileSync(file, "utf8");
 const compiled = babel.transformSync(src, {
   filename: file,
   presets: [
-    ["/usr/share/nodejs/@babel/preset-env", { targets: { node: "current" }, modules: "commonjs" }],
-    ["/usr/share/nodejs/@babel/preset-typescript", { isTSX: false }],
+    ["PRESET_ENV", { targets: { node: "current" }, modules: "commonjs" }],
+    "PRESET_TS",
   ],
-}).code;
+}).code;""".replace("PRESET_ENV", p_env).replace("PRESET_TS", p_ts) + """
 
 const store = {};
 global.sessionStorage = {
@@ -2481,7 +2510,7 @@ flushOfflineMutationQueue(async () => true).then((res) => {
 });
 """;
         env = os.environ.copy()
-        env["NODE_PATH"] = "/usr/share/nodejs"
+        env["NODE_PATH"] = f"/usr/share/nodejs{os.pathsep}{repo_root / 'node_modules'}"
         res = subprocess.run(["node", "-e", js_runner], cwd=str(repo_root), env=env, capture_output=True, text=True)
         self.assertEqual(res.returncode, 0, f"networkQueue test failed: {res.stderr}")
         self.assertIn("NETWORK_QUEUE_ALL_TESTS_PASSED", res.stdout)
@@ -3089,8 +3118,10 @@ flushOfflineMutationQueue(async () => true).then((res) => {
         os.remove(prod_db)
         old_env = os.environ.get("APP_ENV")
         old_db = os.environ.get("LUXE_SQLITE_PATH")
+        old_engine = os.environ.get("LUXE_DB_ENGINE")
         try:
             os.environ["APP_ENV"] = "production"
+            os.environ["LUXE_DB_ENGINE"] = "sqlite"
             os.environ["LUXE_SQLITE_PATH"] = prod_db
             import app.database as _db_mod
             orig_db_path = _db_mod.DB_PATH
@@ -3110,10 +3141,21 @@ flushOfflineMutationQueue(async () => true).then((res) => {
         finally:
             if old_env is not None:
                 os.environ["APP_ENV"] = old_env
+            else:
+                os.environ.pop("APP_ENV", None)
             if old_db is not None:
                 os.environ["LUXE_SQLITE_PATH"] = old_db
+            else:
+                os.environ.pop("LUXE_SQLITE_PATH", None)
+            if old_engine is not None:
+                os.environ["LUXE_DB_ENGINE"] = old_engine
+            else:
+                os.environ.pop("LUXE_DB_ENGINE", None)
             if os.path.exists(prod_db):
-                os.remove(prod_db)
+                try:
+                    os.remove(prod_db)
+                except Exception:
+                    pass
 
         # 2. Verify get_secret_key() raises RuntimeError in production when SECRET_KEY is missing or placeholder
         old_sk = os.environ.get("SECRET_KEY")
@@ -3306,7 +3348,7 @@ for (const f of ["apps/desktop-cms/src/App.tsx", "apps/storefront/src/App.tsx"])
 console.log("JSX_AST_CLEAN");
 """
         env = os.environ.copy()
-        env["NODE_PATH"] = "/usr/share/nodejs"
+        env["NODE_PATH"] = f"/usr/share/nodejs{os.pathsep}{repo_root / 'node_modules'}"
         res = subprocess.run(["node", "-e", js_ast_check], cwd=str(repo_root), env=env, capture_output=True, text=True)
         self.assertEqual(res.returncode, 0, res.stderr)
         self.assertIn("JSX_AST_CLEAN", res.stdout)

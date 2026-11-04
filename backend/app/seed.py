@@ -3,6 +3,7 @@ import hashlib
 import json
 import time
 from .config import app_env, is_production
+from .algeria_communes import COMMUNES_BY_WILAYA
 from .database import db_session, init_db
 from .security import hash_password
 
@@ -13,79 +14,142 @@ SUPPORTED_ATTRIBUTE_TYPES = [
 ]
 
 ALGERIA_69_WILAYAS = [
-    ("01", "Adrar", "أدرار", ["Adrar", "Reggane", "Timimoun"], 900, 600, "48h - 72h"),
-    ("02", "Chlef", "الشلف", ["Chlef", "Ténès", "Oued Fodda"], 600, 400, "24h - 48h"),
-    ("03", "Laghouat", "الأغواط", ["Laghouat", "Aflou"], 750, 500, "48h"),
-    ("04", "Oum El Bouaghi", "أم البواقي", ["Oum El Bouaghi", "Aïn Beïda", "Aïn M'lila"], 650, 450, "24h - 48h"),
-    ("05", "Batna", "باتنة", ["Batna", "Barika", "Aïn Touta"], 650, 450, "24h - 48h"),
-    ("06", "Béjaïa", "بجاية", ["Béjaïa", "Akbou", "El Kseur", "Tichy"], 650, 450, "24h - 48h"),
-    ("07", "Biskra", "بسكرة", ["Biskra", "Tolga", "Ouled Djellal"], 700, 450, "48h"),
-    ("08", "Béchar", "بشار", ["Béchar", "Kenadsa"], 850, 550, "48h - 72h"),
-    ("09", "Blida", "البليدة", ["Ouled Yaïch", "Blida", "Boufarik", "Beni Mered"], 500, 350, "24h"),
-    ("10", "Bouira", "البويرة", ["Bouira", "Lakhdaria", "Sour El Ghozlane"], 600, 400, "24h - 48h"),
-    ("11", "Tamanrasset", "تمنراست", ["Tamanrasset", "In Salah"], 1100, 750, "72h"),
-    ("12", "Tébessa", "تبسة", ["Tébessa", "Bir El Ater", "Cheria"], 700, 450, "48h"),
-    ("13", "Tlemcen", "تلمسان", ["Tlemcen", "Maghnia", "Mansourah", "Remchi"], 700, 450, "48h"),
-    ("14", "Tiaret", "تيارت", ["Tiaret", "Frenda", "Sougueur"], 650, 450, "24h - 48h"),
-    ("15", "Tizi Ouzou", "تيزي وزو", ["Tizi Ouzou", "Azazga", "Draâ Ben Khedda"], 600, 400, "24h - 48h"),
-    ("16", "Alger", "الجزائر", ["Alger Centre", "Hydra", "Bab Ezzouar", "Chéraga", "Dély Ibrahim", "Kouba"], 400, 300, "24h"),
-    ("17", "Djelfa", "الجلفة", ["Djelfa", "Aïn Oussera", "Messaad"], 700, 450, "48h"),
-    ("18", "Jijel", "جيجل", ["Jijel", "Taher", "El Milia"], 650, 450, "24h - 48h"),
-    ("19", "Sétif", "سطيف", ["Sétif", "El Eulma", "Aïn Oulmene"], 600, 400, "24h - 48h"),
-    ("20", "Saïda", "سعيدة", ["Saïda", "Aïn El Hadjar"], 700, 450, "48h"),
-    ("21", "Skikda", "سكيكدة", ["Skikda", "Azzaba", "Collo"], 650, 450, "24h - 48h"),
-    ("22", "Sidi Bel Abbès", "سيدي بلعباس", ["Sidi Bel Abbès", "Telagh"], 650, 450, "24h - 48h"),
-    ("23", "Annaba", "عنابة", ["Annaba", "El Bouni", "Sidi Amar"], 650, 450, "24h - 48h"),
-    ("24", "Guelma", "قالمة", ["Guelma", "Oued Zenati"], 650, 450, "48h"),
-    ("25", "Constantine", "قسنطينة", ["Constantine", "El Khroub", "Ali Mendjeli", "Hamma Bouziane"], 600, 400, "24h - 48h"),
-    ("26", "Médéa", "المدية", ["Médéa", "Berrouaghia", "Ksar El Boukhari"], 550, 350, "24h"),
-    ("27", "Mostaganem", "مستغانم", ["Mostaganem", "Sidi Ali"], 650, 450, "24h - 48h"),
-    ("28", "M'Sila", "المسيلة", ["M'Sila", "Bou Saâda"], 650, 450, "24h - 48h"),
-    ("29", "Mascara", "معسكر", ["Mascara", "Sig", "Mohammadia"], 650, 450, "24h - 48h"),
-    ("30", "Ouargla", "ورقلة", ["Ouargla", "Hassi Messaoud", "Touggourt"], 900, 600, "48h - 72h"),
-    ("31", "Oran", "وهران", ["Oran Centre", "Bir El Djir", "Es Senia", "Arzew"], 600, 400, "24h - 48h"),
-    ("32", "El Bayadh", "البيض", ["El Bayadh", "Bougtob"], 800, 550, "48h"),
-    ("33", "Illizi", "إليزي", ["Illizi", "In Amenas"], 1100, 750, "72h"),
-    ("34", "Bordj Bou Arréridj", "برج بوعريريج", ["Bordj Bou Arréridj", "Ras El Oued"], 600, 400, "24h - 48h"),
-    ("35", "Boumerdès", "بومرداس", ["Boumerdès", "Boudouaou", "Bordj Menaïel"], 500, 350, "24h"),
-    ("36", "El Tarf", "الطارف", ["El Tarf", "El Kala"], 700, 450, "48h"),
-    ("37", "Tindouf", "تندوف", ["Tindouf"], 1100, 750, "72h"),
-    ("38", "Tissemsilt", "تيسمسيلت", ["Tissemsilt", "Theniet El Had"], 650, 450, "48h"),
-    ("39", "El Oued", "الوادي", ["El Oued", "Guemar"], 800, 550, "48h"),
-    ("40", "Khenchela", "خنشلة", ["Khenchela", "Kais"], 700, 450, "48h"),
-    ("41", "Souk Ahras", "سوق أهراس", ["Souk Ahras", "Sedrata"], 700, 450, "48h"),
-    ("42", "Tipaza", "تيبازة", ["Tipaza", "Koléa", "Cherchell"], 500, 350, "24h"),
-    ("43", "Mila", "ميلة", ["Mila", "Chelghoum Laïd", "Ferdjioua"], 650, 450, "24h - 48h"),
-    ("44", "Aïn Defla", "عين الدفلى", ["Aïn Defla", "Khemis Miliana"], 600, 400, "24h - 48h"),
-    ("45", "Naâma", "النعامة", ["Naâma", "Mécheria", "Aïn Sefra"], 800, 550, "48h"),
-    ("46", "Aïn Témouchent", "عين تموشنت", ["Aïn Témouchent", "Beni Saf", "Hammam Bou Hadjar"], 650, 450, "24h - 48h"),
-    ("47", "Ghardaïa", "غرداية", ["Ghardaïa", "Metlili", "El Guerrara"], 800, 550, "48h"),
-    ("48", "Relizane", "غليزان", ["Relizane", "Oued Rhiou"], 650, 450, "24h - 48h"),
-    ("49", "Timimoun", "تيميمون", ["Timimoun", "Aougrout"], 950, 650, "48h - 72h"),
-    ("50", "Bordj Badji Mokhtar", "برج باجي مختار", ["Bordj Badji Mokhtar"], 1150, 800, "72h"),
-    ("51", "Ouled Djellal", "أولاد جلال", ["Ouled Djellal", "Sidi Khaled"], 750, 500, "48h"),
-    ("52", "Béni Abbès", "بني عباس", ["Béni Abbès", "Kerzaz"], 950, 650, "48h - 72h"),
-    ("53", "In Salah", "عين صالح", ["In Salah", "Foggaret Ezzaouia"], 1050, 700, "72h"),
-    ("54", "In Guezzam", "عين قزام", ["In Guezzam"], 1150, 800, "72h"),
-    ("55", "Touggourt", "تقرت", ["Touggourt", "Témacine", "Megarine"], 850, 550, "48h"),
-    ("56", "Djanet", "جانت", ["Djanet"], 1150, 800, "72h"),
-    ("57", "El M'Ghair", "المغير", ["El M'Ghair", "Djamaa"], 800, 550, "48h"),
-    ("58", "El Meniaa", "المنيعة", ["El Meniaa", "Hassi Gara"], 850, 550, "48h"),
-    ("59", "Aflou", "آفلو", ["Aflou", "Sidi Bouzid", "Sebgag"], 750, 500, "48h"),
-    ("60", "Barika", "بريكة", ["Barika", "M'Doukal", "Bitam"], 650, 450, "24h - 48h"),
-    ("61", "El Kantara", "القنطرة", ["El Kantara", "Aïn Zaatout"], 700, 450, "48h"),
-    ("62", "Bir El Ater", "بئر العاتر", ["Bir El Ater", "El Ogla El Malha"], 700, 450, "48h"),
-    ("63", "El Aricha", "العريشة", ["El Aricha", "El Gor"], 750, 500, "48h"),
-    ("64", "Ksar Chellala", "قصر الشلالة", ["Ksar Chellala", "Serghine", "Zmalet El Emir Abdelkader"], 650, 450, "24h - 48h"),
-    ("65", "Aïn Oussera", "عين وسارة", ["Aïn Oussera", "Guernini"], 600, 400, "24h - 48h"),
-    ("66", "Messaad", "مسعد", ["Messaad", "Deldoul", "Selmana"], 700, 450, "48h"),
-    ("67", "Ksar El Boukhari", "قصر البخاري", ["Ksar El Boukhari", "Meftaha", "Saneg"], 550, 350, "24h"),
-    ("68", "Bou Saâda", "بوسعادة", ["Bou Saâda", "El Hamel", "Oultem"], 650, 450, "24h - 48h"),
-    ("69", "El Abiodh Sidi Cheikh", "الأبيض سيدي الشيخ", ["El Abiodh Sidi Cheikh", "El Bnoud"], 850, 550, "48h")
+    ("01", "Adrar", "أدرار", COMMUNES_BY_WILAYA["01"], 900, 600, "48h - 72h"),
+    ("02", "Chlef", "الشلف", COMMUNES_BY_WILAYA["02"], 600, 400, "24h - 48h"),
+    ("03", "Laghouat", "الأغواط", COMMUNES_BY_WILAYA["03"], 750, 500, "48h"),
+    ("04", "Oum El Bouaghi", "أم البواقي", COMMUNES_BY_WILAYA["04"], 650, 450, "24h - 48h"),
+    ("05", "Batna", "باتنة", COMMUNES_BY_WILAYA["05"], 650, 450, "24h - 48h"),
+    ("06", "Béjaïa", "بجاية", COMMUNES_BY_WILAYA["06"], 650, 450, "24h - 48h"),
+    ("07", "Biskra", "بسكرة", COMMUNES_BY_WILAYA["07"], 700, 450, "48h"),
+    ("08", "Béchar", "بشار", COMMUNES_BY_WILAYA["08"], 850, 550, "48h - 72h"),
+    ("09", "Blida", "البليدة", COMMUNES_BY_WILAYA["09"], 500, 350, "24h"),
+    ("10", "Bouira", "البويرة", COMMUNES_BY_WILAYA["10"], 600, 400, "24h - 48h"),
+    ("11", "Tamanrasset", "تمنراست", COMMUNES_BY_WILAYA["11"], 1100, 750, "72h"),
+    ("12", "Tébessa", "تبسة", COMMUNES_BY_WILAYA["12"], 700, 450, "48h"),
+    ("13", "Tlemcen", "تلمسان", COMMUNES_BY_WILAYA["13"], 700, 450, "48h"),
+    ("14", "Tiaret", "تيارت", COMMUNES_BY_WILAYA["14"], 650, 450, "24h - 48h"),
+    ("15", "Tizi Ouzou", "تيزي وزو", COMMUNES_BY_WILAYA["15"], 600, 400, "24h - 48h"),
+    ("16", "Alger", "الجزائر", COMMUNES_BY_WILAYA["16"], 400, 300, "24h"),
+    ("17", "Djelfa", "الجلفة", COMMUNES_BY_WILAYA["17"], 700, 450, "48h"),
+    ("18", "Jijel", "جيجل", COMMUNES_BY_WILAYA["18"], 650, 450, "24h - 48h"),
+    ("19", "Sétif", "سطيف", COMMUNES_BY_WILAYA["19"], 600, 400, "24h - 48h"),
+    ("20", "Saïda", "سعيدة", COMMUNES_BY_WILAYA["20"], 700, 450, "48h"),
+    ("21", "Skikda", "سكيكدة", COMMUNES_BY_WILAYA["21"], 650, 450, "24h - 48h"),
+    ("22", "Sidi Bel Abbès", "سيدي بلعباس", COMMUNES_BY_WILAYA["22"], 650, 450, "24h - 48h"),
+    ("23", "Annaba", "عنابة", COMMUNES_BY_WILAYA["23"], 650, 450, "24h - 48h"),
+    ("24", "Guelma", "قالمة", COMMUNES_BY_WILAYA["24"], 650, 450, "48h"),
+    ("25", "Constantine", "قسنطينة", COMMUNES_BY_WILAYA["25"], 600, 400, "24h - 48h"),
+    ("26", "Médéa", "المدية", COMMUNES_BY_WILAYA["26"], 550, 350, "24h"),
+    ("27", "Mostaganem", "مستغانم", COMMUNES_BY_WILAYA["27"], 650, 450, "24h - 48h"),
+    ("28", "M'Sila", "المسيلة", COMMUNES_BY_WILAYA["28"], 650, 450, "24h - 48h"),
+    ("29", "Mascara", "معسكر", COMMUNES_BY_WILAYA["29"], 650, 450, "24h - 48h"),
+    ("30", "Ouargla", "ورقلة", COMMUNES_BY_WILAYA["30"], 900, 600, "48h - 72h"),
+    ("31", "Oran", "وهران", COMMUNES_BY_WILAYA["31"], 600, 400, "24h - 48h"),
+    ("32", "El Bayadh", "البيض", COMMUNES_BY_WILAYA["32"], 800, 550, "48h"),
+    ("33", "Illizi", "إليزي", COMMUNES_BY_WILAYA["33"], 1100, 750, "72h"),
+    ("34", "Bordj Bou Arréridj", "برج بوعريريج", COMMUNES_BY_WILAYA["34"], 600, 400, "24h - 48h"),
+    ("35", "Boumerdès", "بومرداس", COMMUNES_BY_WILAYA["35"], 500, 350, "24h"),
+    ("36", "El Tarf", "الطارف", COMMUNES_BY_WILAYA["36"], 700, 450, "48h"),
+    ("37", "Tindouf", "تندوف", COMMUNES_BY_WILAYA["37"], 1100, 750, "72h"),
+    ("38", "Tissemsilt", "تيسمسيلت", COMMUNES_BY_WILAYA["38"], 650, 450, "48h"),
+    ("39", "El Oued", "الوادي", COMMUNES_BY_WILAYA["39"], 800, 550, "48h"),
+    ("40", "Khenchela", "خنشلة", COMMUNES_BY_WILAYA["40"], 700, 450, "48h"),
+    ("41", "Souk Ahras", "سوق أهراس", COMMUNES_BY_WILAYA["41"], 700, 450, "48h"),
+    ("42", "Tipaza", "تيبازة", COMMUNES_BY_WILAYA["42"], 500, 350, "24h"),
+    ("43", "Mila", "ميلة", COMMUNES_BY_WILAYA["43"], 650, 450, "24h - 48h"),
+    ("44", "Aïn Defla", "عين الدفلى", COMMUNES_BY_WILAYA["44"], 600, 400, "24h - 48h"),
+    ("45", "Naâma", "النعامة", COMMUNES_BY_WILAYA["45"], 800, 550, "48h"),
+    ("46", "Aïn Témouchent", "عين تموشنت", COMMUNES_BY_WILAYA["46"], 650, 450, "24h - 48h"),
+    ("47", "Ghardaïa", "غرداية", COMMUNES_BY_WILAYA["47"], 800, 550, "48h"),
+    ("48", "Relizane", "غليزان", COMMUNES_BY_WILAYA["48"], 650, 450, "24h - 48h"),
+    ("49", "Timimoun", "تيميمون", COMMUNES_BY_WILAYA["49"], 950, 650, "48h - 72h"),
+    ("50", "Bordj Badji Mokhtar", "برج باجي مختار", COMMUNES_BY_WILAYA["50"], 1150, 800, "72h"),
+    ("51", "Ouled Djellal", "أولاد جلال", COMMUNES_BY_WILAYA["51"], 750, 500, "48h"),
+    ("52", "Béni Abbès", "بني عباس", COMMUNES_BY_WILAYA["52"], 950, 650, "48h - 72h"),
+    ("53", "In Salah", "عين صالح", COMMUNES_BY_WILAYA["53"], 1050, 700, "72h"),
+    ("54", "In Guezzam", "عين قزام", COMMUNES_BY_WILAYA["54"], 1150, 800, "72h"),
+    ("55", "Touggourt", "تقرت", COMMUNES_BY_WILAYA["55"], 850, 550, "48h"),
+    ("56", "Djanet", "جانت", COMMUNES_BY_WILAYA["56"], 1150, 800, "72h"),
+    ("57", "El M'Ghair", "المغير", COMMUNES_BY_WILAYA["57"], 800, 550, "48h"),
+    ("58", "El Meniaa", "المنيعة", COMMUNES_BY_WILAYA["58"], 850, 550, "48h"),
+    ("59", "Aflou", "آفلو", COMMUNES_BY_WILAYA["59"], 750, 500, "48h"),
+    ("60", "Barika", "بريكة", COMMUNES_BY_WILAYA["60"], 650, 450, "24h - 48h"),
+    ("61", "El Kantara", "القنطرة", COMMUNES_BY_WILAYA["61"], 700, 450, "48h"),
+    ("62", "Bir El Ater", "بئر العاتر", COMMUNES_BY_WILAYA["62"], 700, 450, "48h"),
+    ("63", "El Aricha", "العريشة", COMMUNES_BY_WILAYA["63"], 750, 500, "48h"),
+    ("64", "Ksar Chellala", "قصر الشلالة", COMMUNES_BY_WILAYA["64"], 650, 450, "24h - 48h"),
+    ("65", "Aïn Oussera", "عين وسارة", COMMUNES_BY_WILAYA["65"], 600, 400, "24h - 48h"),
+    ("66", "Messaad", "مسعد", COMMUNES_BY_WILAYA["66"], 700, 450, "48h"),
+    ("67", "Ksar El Boukhari", "قصر البخاري", COMMUNES_BY_WILAYA["67"], 550, 350, "24h"),
+    ("68", "Bou Saâda", "بوسعادة", COMMUNES_BY_WILAYA["68"], 650, 450, "24h - 48h"),
+    ("69", "El Abiodh Sidi Cheikh", "الأبيض سيدي الشيخ", COMMUNES_BY_WILAYA["69"], 850, 550, "48h")
 ]
+
+COMMUNES_CATALOG_SETTING = "internal_communes_catalog_version"
+COMMUNES_CATALOG_VERSION = "loi-26-06-1541-communes"
+
+
+def sync_wilaya_communes(force: bool = False) -> int:
+    """Backfill the full official commune lists into an existing database.
+
+    ``seed_initial_data()`` returns early once the database is seeded, so a
+    deployment created before the complete official lists existed would keep
+    its short sample lists forever. This runs on startup and writes the 1,541
+    communes of loi n° 26-06 into ``delivery_zones.communes_json``.
+
+    The backfill is recorded in ``store_settings`` under an internal key, so it
+    happens once per catalog version: commune lists later trimmed or extended
+    from the Desktop CMS are left untouched on subsequent restarts. Pass
+    ``force=True`` (or bump ``COMMUNES_CATALOG_VERSION``) to run it again.
+
+    Returns the number of zones that were updated.
+    """
+    updated = 0
+    with db_session(commit=True) as conn:
+        cur = conn.cursor()
+        if not force:
+            cur.execute(
+                "SELECT setting_value FROM store_settings WHERE setting_key = ?",
+                (COMMUNES_CATALOG_SETTING,),
+            )
+            marker = cur.fetchone()
+            if marker is not None and marker["setting_value"] == COMMUNES_CATALOG_VERSION:
+                return 0
+
+        cur.execute("SELECT id, wilaya_code, communes_json FROM delivery_zones")
+        rows = {row["wilaya_code"]: row for row in cur.fetchall()}
+        if not rows:
+            # Fresh database: the normal seed inserts the full lists itself.
+            return 0
+
+        for code, _name_fr, _name_ar, communes, _home, _desk, _est in ALGERIA_69_WILAYAS:
+            row = rows.get(code)
+            if row is None:
+                continue
+            try:
+                current = json.loads(row["communes_json"] or "[]")
+            except (TypeError, ValueError):
+                current = []
+            if isinstance(current, list) and len(current) >= len(communes):
+                continue
+            cur.execute(
+                "UPDATE delivery_zones SET communes_json = ? WHERE id = ?",
+                (json.dumps(communes, ensure_ascii=False), row["id"]),
+            )
+            updated += 1
+
+        cur.execute(
+            """INSERT INTO store_settings (setting_key, setting_value, updated_at)
+               VALUES (?, ?, CURRENT_TIMESTAMP)
+               ON CONFLICT(setting_key) DO UPDATE SET setting_value = ?, updated_at = CURRENT_TIMESTAMP""",
+            (COMMUNES_CATALOG_SETTING, COMMUNES_CATALOG_VERSION, COMMUNES_CATALOG_VERSION),
+        )
+    return updated
+
 
 def seed_initial_data() -> None:
     init_db()
+    sync_wilaya_communes()
     with db_session(commit=True) as conn:
         cur = conn.cursor()
         cur.execute("SELECT COUNT(*) AS cnt FROM roles")
@@ -343,7 +407,7 @@ def seed_initial_data() -> None:
         ])
         ln_uv_attr = add_attr("les-lunettes", "uv_protection", "Protection UV", "حماية الأشعة", "UV Protection", "short_text", req=1, filt=1, var=0, order=2)
 
-        # 7. Seed All 58 Algerian Wilayas & Delivery Rates
+        # 7. Seed All 69 Algerian Wilayas (full official commune lists) & Delivery Rates
         for code, w_fr, w_ar, communes, home_fee, desk_fee, est in ALGERIA_69_WILAYAS:
             cur.execute(
                 "INSERT INTO delivery_zones (wilaya_code, wilaya_name_fr, wilaya_name_ar, communes_json, is_active) VALUES (?, ?, ?, ?, 1)",

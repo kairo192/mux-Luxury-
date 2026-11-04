@@ -351,3 +351,4 @@ with db_session(commit=True) as conn:
     cur.execute("SELECT COUNT(*) FROM product_variants WHERE is_active = 1")
     vars_final = cur.fetchone()[0]
     print(f"Catalog ready: {cats_final} categories, {prods_final} products, {vars_final} variants in DB!")
+
