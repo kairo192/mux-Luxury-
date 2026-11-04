@@ -3006,7 +3006,7 @@
                 ${prodAxisValues
                   .map((val) => {
                     const isSel = currentSelectedVal === val;
-                    const hex = COLOR_SWATCH_HEX[val] || "#063D2E";
+                    const hex = COLOR_SWATCH_HEX[val] || (axisAttr.rawOptions && axisAttr.rawOptions.find(o => o.value === val)?.color_hex) || "#063D2E";
                     return `
                       <button
                         type="button"
@@ -4192,16 +4192,24 @@
             name_en: c.name_en || c.name_fr,
             description_fr: c.description_fr || "",
             image: c.image_url || ASSET_MAP.cat_sacs,
-            attributes: (c.attributes || []).map((a) => ({
-              key: a.attr_key,
-              label_fr: a.label_fr,
-              label_ar: a.label_ar || a.label_fr,
-              label_en: a.label_en || a.label_fr,
-              type: a.input_type,
-              variant: Boolean(a.is_variant_axis),
-              filterable: Boolean(a.is_filterable),
-              options: (a.options || []).map((o) => o.value),
-            })),
+            attributes: (c.attributes || []).map((a) => {
+              (a.options || []).forEach((opt) => {
+                if (opt.value && opt.color_hex) {
+                  COLOR_SWATCH_HEX[opt.value] = opt.color_hex;
+                }
+              });
+              return {
+                key: a.attr_key,
+                label_fr: a.label_fr,
+                label_ar: a.label_ar || a.label_fr,
+                label_en: a.label_en || a.label_fr,
+                type: a.input_type,
+                variant: Boolean(a.is_variant_axis),
+                filterable: Boolean(a.is_filterable),
+                options: (a.options || []).map((o) => o.value),
+                rawOptions: a.options || [],
+              };
+            }),
           }));
         }
         if (prodRes && Array.isArray(prodRes.items)) {
