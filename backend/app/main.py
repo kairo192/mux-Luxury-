@@ -196,7 +196,7 @@ class CategoryCreate(BaseModel):
     description_ar: Optional[str] = ""
     description_en: Optional[str] = ""
     image_url: Optional[str] = "/assets/cat_sacs.jpg"
-    banner_url: Optional[str] = "/assets/hero_banner_mus.jpg"
+    banner_url: Optional[str] = "/assets/hero_bag_clean.jpg"
     parent_id: Optional[int] = None
     display_order: int = 10
     is_active: bool = True
@@ -2433,7 +2433,7 @@ class BannerCreateUpdate(BaseModel):
     subtitle_fr: Optional[str] = ""
     cta_text_fr: Optional[str] = "Découvrir"
     cta_link: Optional[str] = "/categories/sacs"
-    image_url: str = "/assets/hero_banner_mus.jpg"
+    image_url: str = "/assets/hero_bag_clean.jpg"
     is_active: bool = True
     display_order: int = 1
 

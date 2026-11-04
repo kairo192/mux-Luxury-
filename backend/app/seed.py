@@ -308,7 +308,7 @@ def seed_initial_data() -> None:
                 """INSERT INTO categories
                    (slug, name_fr, name_ar, name_en, description_fr, image_url, banner_url, display_order, is_active, show_on_homepage)
                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, 1, 1)""",
-                (slug, n_fr, n_ar, n_en, desc_fr, img, "/assets/hero_banner_mus.jpg", order)
+                (slug, n_fr, n_ar, n_en, desc_fr, img, "/assets/hero_bag_clean.jpg", order)
             )
             cat_ids[slug] = cur.lastrowid
 
@@ -573,7 +573,7 @@ def seed_initial_data() -> None:
         banners = [
             ("hero", "Votre style, notre passion", "أسلوبك، شغفنا الدائم", "Your style, our passion",
              "Découvrez les meilleures marques et les plus beaux accessoires en Algérie.",
-             "Voir la boutique", "/categories/sacs", "/assets/hero_banner_mus.jpg", 1, 1),
+             "Voir la boutique", "/categories/sacs", "/assets/hero_bag_clean.jpg", 1, 1),
             ("promo_grid", "CHAUSSURES — Jusqu'à -20%", "أحذية — تخفيض حتى 20%", "SHOES — Up to 20% Off",
              "Baskets & créations urbaines", "Voir la collection", "/categories/chaussures", "/assets/prod_baskets_elegantes.jpg", 1, 2),
         ]

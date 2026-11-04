@@ -68,7 +68,7 @@ with db_session(commit=True) as conn:
                 """INSERT INTO categories
                    (slug, name_fr, name_ar, name_en, description_fr, image_url, banner_url, display_order, is_active, show_on_homepage)
                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, 1, 1)""",
-                (slug, n_fr, n_ar, n_en, desc_fr, img, "/assets/hero_banner_mus.jpg", order)
+                (slug, n_fr, n_ar, n_en, desc_fr, img, "/assets/hero_bag_clean.jpg", order)
             )
 
     cur.execute("SELECT slug, id FROM categories WHERE deleted_at IS NULL")
