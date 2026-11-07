@@ -5098,3 +5098,594 @@ def admin_list_accounting_ledger(
             "entries_count": len(rows),
         }
 
+# ============================================================================
+# POINT OF SALE (POS) — In-store sales, cash register sessions & refunds
+# Backend-authoritative: prices, stock deduction and register math are computed
+# server-side. In-store sales share the catalog and the inventory_movements
+# ledger with online orders but are a distinct transaction type (immediate
+# payment, no delivery). Completed sales are never edited/deleted — corrections
+# go through reversal (refund) transactions.
+# ============================================================================
+
+_POS_PAYMENT_METHODS = {"cash", "card", "transfer", "other"}
+
+_BOUTIQUE_INFO = {
+    "name": "Mus Luxury (LUXE)",
+    "address": "FVX6+GCJ Mus luxury, Ouled Yaïch, Blida (09), Algérie",
+    "phone": "0655534154",
+    "whatsapp": "+213655534154",
+    "currency": "DZD (DA)",
+}
+
+
+class RegisterOpenInput(BaseModel):
+    register_name: str = Field("Caisse principale", min_length=1, max_length=80)
+    opening_float_dzd: int = Field(0, ge=0, le=100_000_000)
+    notes: Optional[str] = Field(None, max_length=1000)
+
+
+class RegisterCloseInput(BaseModel):
+    counted_cash_dzd: int = Field(..., ge=0, le=100_000_000)
+    notes: Optional[str] = Field(None, max_length=1000)
+
+
+class PosSaleItemInput(BaseModel):
+    variant_id: int
+    quantity: int = Field(..., gt=0, le=1000)
+    line_discount_dzd: int = Field(0, ge=0, le=100_000_000)
+
+
+class PosPaymentInput(BaseModel):
+    method: str = Field("cash", regex=r"^(cash|card|transfer|other)$")
+    amount_dzd: int = Field(..., ge=0, le=100_000_000)
+    tendered_dzd: Optional[int] = Field(None, ge=0, le=100_000_000)
+
+
+class PosSaleCreate(BaseModel):
+    items: List[PosSaleItemInput] = Field(..., min_items=1, max_items=200)
+    payments: List[PosPaymentInput] = Field(..., min_items=1, max_items=10)
+    customer_id: Optional[int] = None
+    order_discount_dzd: int = Field(0, ge=0, le=100_000_000)
+    notes: Optional[str] = Field(None, max_length=1000)
+
+
+class PosRefundItemInput(BaseModel):
+    variant_id: int
+    quantity: int = Field(..., gt=0, le=1000)
+
+
+class PosRefundInput(BaseModel):
+    items: List[PosRefundItemInput] = Field(default_factory=list, max_items=200)
+    refund_method: str = Field("cash", regex=r"^(cash|card|transfer|other)$")
+    notes: Optional[str] = Field(None, max_length=1000)
+
+
+def _pos_store_tax_percent(conn) -> int:
+    """Reads a configurable POS tax rate (integer percent) from store_settings; 0 if unset."""
+    try:
+        cur = conn.cursor()
+        cur.execute("SELECT setting_value FROM store_settings WHERE setting_key = ?", ("pos_tax_rate_percent",))
+        row = cur.fetchone()
+        if row and row["setting_value"] is not None:
+            return max(0, min(100, int(str(row["setting_value"]).strip() or 0)))
+    except Exception:
+        pass
+    return 0
+
+
+def _get_open_register(conn):
+    cur = conn.cursor()
+    cur.execute("SELECT * FROM cash_register_sessions WHERE status = 'open' ORDER BY id DESC LIMIT 1")
+    return cur.fetchone()
+
+
+def _pos_sale_payload(conn, sale_id: int) -> dict:
+    cur = conn.cursor()
+    cur.execute("SELECT * FROM pos_sales WHERE id = ?", (sale_id,))
+    s = cur.fetchone()
+    if not s:
+        raise HTTPException(status_code=404, detail="Sale not found")
+    sale = dict(s)
+    cur.execute("SELECT * FROM pos_sale_items WHERE sale_id = ? ORDER BY id", (sale_id,))
+    sale["items"] = [dict(r) for r in cur.fetchall()]
+    cur.execute("SELECT * FROM pos_payments WHERE sale_id = ? ORDER BY id", (sale_id,))
+    sale["payments"] = [dict(r) for r in cur.fetchall()]
+    if sale.get("customer_id"):
+        cur.execute("SELECT id, full_name, phone FROM customers WHERE id = ?", (sale["customer_id"],))
+        c = cur.fetchone()
+        sale["customer"] = dict(c) if c else None
+    else:
+        sale["customer"] = None
+    cur.execute("SELECT full_name FROM admin_users WHERE id = ?", (sale["cashier_admin_id"],))
+    cash = cur.fetchone()
+    sale["cashier_name"] = cash["full_name"] if cash else None
+    sale["boutique_info"] = _BOUTIQUE_INFO
+    return sale
+
+
+def _register_runtime_totals(conn, session_id: int) -> dict:
+    cur = conn.cursor()
+    cur.execute(
+        """SELECT
+             COALESCE(SUM(CASE WHEN sale_type = 'sale'   THEN total_dzd ELSE 0 END), 0) AS sales_total,
+             COALESCE(SUM(CASE WHEN sale_type = 'refund' THEN total_dzd ELSE 0 END), 0) AS refunds_total,
+             COALESCE(SUM(CASE WHEN sale_type = 'sale'   THEN 1 ELSE 0 END), 0)         AS sales_count
+           FROM pos_sales WHERE register_session_id = ?""",
+        (session_id,),
+    )
+    agg = cur.fetchone()
+    cur.execute(
+        """SELECT COALESCE(SUM(CASE WHEN s.sale_type = 'sale' THEN p.amount_dzd ELSE -p.amount_dzd END), 0) AS net_cash
+           FROM pos_payments p JOIN pos_sales s ON s.id = p.sale_id
+           WHERE s.register_session_id = ? AND p.method = 'cash'""",
+        (session_id,),
+    )
+    net_cash = int(cur.fetchone()["net_cash"])
+    return {
+        "sales_total_dzd": int(agg["sales_total"]),
+        "refunds_total_dzd": int(agg["refunds_total"]),
+        "sales_count": int(agg["sales_count"]),
+        "net_cash_dzd": net_cash,
+    }
+
+
+@app.post("/api/v1/admin/pos/register/open", status_code=201)
+def pos_open_register(payload: RegisterOpenInput, admin: dict = Depends(require_permission("register:manage"))):
+    with db_session(commit=True) as conn:
+        if not conn.in_transaction:
+            conn.execute("BEGIN IMMEDIATE")
+        cur = conn.cursor()
+        existing = _get_open_register(conn)
+        if existing:
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail=f"A cash register session (#{existing['id']}) is already open. Close it before opening a new one.",
+            )
+        cur.execute(
+            """INSERT INTO cash_register_sessions
+               (register_name, opened_by_admin_id, opening_float_dzd, status, notes)
+               VALUES (?, ?, ?, 'open', ?)""",
+            (payload.register_name, int(admin["sub"]), payload.opening_float_dzd, payload.notes),
+        )
+        session_id = cur.lastrowid
+        log_audit(conn, int(admin["sub"]), "open_register", "cash_register_session", str(session_id), {
+            "opening_float_dzd": payload.opening_float_dzd, "register_name": payload.register_name,
+        })
+        cur.execute("SELECT * FROM cash_register_sessions WHERE id = ?", (session_id,))
+        return dict(cur.fetchone())
+
+
+@app.get("/api/v1/admin/pos/register/current")
+def pos_current_register(admin: dict = Depends(require_permission("pos:read"))):
+    with db_session() as conn:
+        session = _get_open_register(conn)
+        if not session:
+            return {"open": False, "session": None}
+        sd = dict(session)
+        totals = _register_runtime_totals(conn, sd["id"])
+        sd.update(totals)
+        sd["expected_cash_dzd"] = int(sd["opening_float_dzd"]) + totals["net_cash_dzd"]
+        return {"open": True, "session": sd}
+
+
+@app.post("/api/v1/admin/pos/register/close")
+def pos_close_register(payload: RegisterCloseInput, admin: dict = Depends(require_permission("register:manage"))):
+    with db_session(commit=True) as conn:
+        if not conn.in_transaction:
+            conn.execute("BEGIN IMMEDIATE")
+        cur = conn.cursor()
+        session = _get_open_register(conn)
+        if not session:
+            raise HTTPException(status_code=404, detail="No open cash register session to close")
+        session_id = int(session["id"])
+        totals = _register_runtime_totals(conn, session_id)
+        expected_cash = int(session["opening_float_dzd"]) + totals["net_cash_dzd"]
+        variance = int(payload.counted_cash_dzd) - expected_cash
+        cur.execute(
+            """UPDATE cash_register_sessions
+               SET status = 'closed', closed_by_admin_id = ?, closed_at = CURRENT_TIMESTAMP,
+                   expected_cash_dzd = ?, counted_cash_dzd = ?, variance_dzd = ?,
+                   total_sales_dzd = ?, total_refunds_dzd = ?, sales_count = ?,
+                   notes = COALESCE(?, notes)
+               WHERE id = ? AND status = 'open'""",
+            (int(admin["sub"]), expected_cash, payload.counted_cash_dzd, variance,
+             totals["sales_total_dzd"], totals["refunds_total_dzd"], totals["sales_count"],
+             payload.notes, session_id),
+        )
+        if cur.rowcount == 0:
+            raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Register session already closed")
+        log_audit(conn, int(admin["sub"]), "close_register", "cash_register_session", str(session_id), {
+            "expected_cash_dzd": expected_cash, "counted_cash_dzd": payload.counted_cash_dzd, "variance_dzd": variance,
+        })
+        cur.execute("SELECT * FROM cash_register_sessions WHERE id = ?", (session_id,))
+        return dict(cur.fetchone())
+
+
+@app.get("/api/v1/admin/pos/register/sessions")
+def pos_list_register_sessions(
+    limit: int = Query(50, ge=1, le=200),
+    admin: dict = Depends(require_permission("pos:read")),
+):
+    with db_session() as conn:
+        cur = conn.cursor()
+        cur.execute(
+            """SELECT crs.*, ao.full_name AS opened_by_name, ac.full_name AS closed_by_name
+               FROM cash_register_sessions crs
+               LEFT JOIN admin_users ao ON ao.id = crs.opened_by_admin_id
+               LEFT JOIN admin_users ac ON ac.id = crs.closed_by_admin_id
+               ORDER BY crs.id DESC LIMIT ?""",
+            (limit,),
+        )
+        return {"items": [dict(r) for r in cur.fetchall()]}
+
+
+@app.get("/api/v1/admin/pos/lookup")
+def pos_lookup(
+    code: str = Query(..., min_length=1, max_length=120),
+    admin: dict = Depends(require_permission("pos:read")),
+):
+    """Resolve a scanned barcode / typed SKU to a variant, or fall back to a name/SKU search."""
+    term = code.strip()
+    if not term:
+        raise HTTPException(status_code=400, detail="Empty lookup code")
+    with db_session() as conn:
+        cur = conn.cursor()
+        # 1. Exact variant barcode or SKU → single variant
+        cur.execute(
+            """SELECT pv.id AS variant_id, pv.sku, pv.barcode, pv.title AS variant_title,
+                      pv.price_override_dzd, pv.stock_qty, pv.is_active,
+                      p.id AS product_id, p.name_fr AS product_name, p.selling_price_dzd,
+                      p.main_image_url, p.status AS product_status
+               FROM product_variants pv JOIN products p ON p.id = pv.product_id
+               WHERE (pv.barcode = ? OR pv.sku = ?) AND pv.is_active = 1 AND p.deleted_at IS NULL
+               LIMIT 1""",
+            (term, term),
+        )
+        v = cur.fetchone()
+        if v:
+            vd = dict(v)
+            vd["unit_price_dzd"] = int(vd["price_override_dzd"]) if vd["price_override_dzd"] is not None else int(vd["selling_price_dzd"])
+            return {"match_type": "variant", "variant": vd, "results": [vd]}
+
+        # 2. Product-level barcode / SKU → product with its active variants
+        cur.execute(
+            """SELECT id, name_fr, selling_price_dzd, main_image_url, status
+               FROM products WHERE (barcode = ? OR sku = ?) AND deleted_at IS NULL LIMIT 1""",
+            (term, term),
+        )
+        p = cur.fetchone()
+        if p:
+            return {"match_type": "product", "results": [_pos_product_with_variants(conn, dict(p))]}
+
+        # 3. Fallback name / SKU search (search box)
+        like = f"%{term}%"
+        cur.execute(
+            """SELECT id, name_fr, selling_price_dzd, main_image_url, status
+               FROM products
+               WHERE deleted_at IS NULL AND status = 'published'
+                 AND (name_fr LIKE ? OR sku LIKE ? OR name_en LIKE ?)
+               ORDER BY sales_count DESC LIMIT 20""",
+            (like, like, like),
+        )
+        rows = [_pos_product_with_variants(conn, dict(r)) for r in cur.fetchall()]
+        return {"match_type": "search" if rows else "none", "results": rows}
+
+
+def _pos_product_with_variants(conn, product: dict) -> dict:
+    cur = conn.cursor()
+    cur.execute(
+        """SELECT id AS variant_id, sku, barcode, title AS variant_title,
+                  price_override_dzd, stock_qty
+           FROM product_variants WHERE product_id = ? AND is_active = 1 ORDER BY id""",
+        (product["id"],),
+    )
+    variants = []
+    for r in cur.fetchall():
+        vd = dict(r)
+        vd["product_id"] = product["id"]
+        vd["product_name"] = product["name_fr"]
+        vd["main_image_url"] = product.get("main_image_url")
+        vd["unit_price_dzd"] = int(vd["price_override_dzd"]) if vd["price_override_dzd"] is not None else int(product["selling_price_dzd"])
+        variants.append(vd)
+    product["variants"] = variants
+    return product
+
+
+@app.post("/api/v1/admin/pos/sales", status_code=201)
+def pos_create_sale(
+    payload: PosSaleCreate,
+    admin: dict = Depends(require_permission("pos:sell")),
+    idempotency_key: Optional[str] = Header(None, alias="Idempotency-Key"),
+):
+    idem = (idempotency_key or "").strip() or None
+    with db_session(commit=True) as conn:
+        if not conn.in_transaction:
+            conn.execute("BEGIN IMMEDIATE")
+        cur = conn.cursor()
+
+        # Idempotent retry (offline POS may resend): return the already-created sale.
+        if idem:
+            cur.execute("SELECT id FROM pos_sales WHERE idempotency_key = ?", (idem,))
+            dup = cur.fetchone()
+            if dup:
+                return _pos_sale_payload(conn, int(dup["id"]))
+
+        session = _get_open_register(conn)
+        if not session:
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail="No open cash register session. Open the register before selling.",
+            )
+
+        # Validate optional customer
+        if payload.customer_id is not None:
+            cur.execute("SELECT id FROM customers WHERE id = ?", (payload.customer_id,))
+            if not cur.fetchone():
+                raise HTTPException(status_code=404, detail=f"Customer {payload.customer_id} not found")
+
+        # Consolidate duplicate variant lines (sum quantities, sum line discounts)
+        merged: Dict[int, Dict[str, int]] = {}
+        for it in payload.items:
+            m = merged.setdefault(it.variant_id, {"quantity": 0, "line_discount_dzd": 0})
+            m["quantity"] += int(it.quantity)
+            m["line_discount_dzd"] += int(it.line_discount_dzd)
+
+        subtotal_dzd = 0
+        total_line_discount = 0
+        resolved = []
+        for vid, m in merged.items():
+            cur.execute(
+                """SELECT pv.*, p.name_fr AS product_name, p.selling_price_dzd, p.status AS product_status
+                   FROM product_variants pv JOIN products p ON p.id = pv.product_id
+                   WHERE pv.id = ? AND pv.is_active = 1""",
+                (vid,),
+            )
+            v = cur.fetchone()
+            if not v or v["product_status"] == "archived":
+                raise HTTPException(status_code=404, detail=f"Product variant {vid} is unavailable")
+            qty = m["quantity"]
+            if v["stock_qty"] < qty:
+                raise HTTPException(
+                    status_code=status.HTTP_409_CONFLICT,
+                    detail=f"Insufficient stock for '{v['product_name']} ({v['title']})': requested {qty}, available {v['stock_qty']}",
+                )
+            unit_price = int(v["price_override_dzd"]) if v["price_override_dzd"] is not None else int(v["selling_price_dzd"])
+            line_gross = unit_price * qty
+            line_discount = min(int(m["line_discount_dzd"]), line_gross)
+            line_total = line_gross - line_discount
+            subtotal_dzd += line_gross
+            total_line_discount += line_discount
+            resolved.append((v, qty, unit_price, line_discount, line_total))
+
+        order_discount = min(int(payload.order_discount_dzd), subtotal_dzd - total_line_discount)
+        discount_dzd = total_line_discount + order_discount
+        net_before_tax = subtotal_dzd - discount_dzd
+        tax_percent = _pos_store_tax_percent(conn)
+        tax_dzd = (net_before_tax * tax_percent) // 100
+        total_dzd = net_before_tax + tax_dzd
+
+        # Payments must settle the total exactly (cash change handled via tendered)
+        paid = sum(int(pm.amount_dzd) for pm in payload.payments)
+        if paid != total_dzd:
+            raise HTTPException(
+                status_code=422,
+                detail=f"Payments ({paid} DA) must equal sale total ({total_dzd} DA)",
+            )
+
+        sale_ref = ""
+        sale_id = None
+        for _attempt in range(3):
+            sale_ref = f"POS-{int(time.time()) % 100000:05d}-{secrets.token_hex(3).upper()}"
+            try:
+                cur.execute(
+                    """INSERT INTO pos_sales
+                       (sale_reference, register_session_id, cashier_admin_id, customer_id, sale_type,
+                        subtotal_dzd, discount_dzd, tax_dzd, total_dzd, status, idempotency_key, notes)
+                       VALUES (?, ?, ?, ?, 'sale', ?, ?, ?, ?, 'completed', ?, ?)""",
+                    (sale_ref, int(session["id"]), int(admin["sub"]), payload.customer_id,
+                     subtotal_dzd, discount_dzd, tax_dzd, total_dzd, idem, payload.notes),
+                )
+                sale_id = cur.lastrowid
+                break
+            except Exception:
+                if _attempt == 2:
+                    raise
+
+        for v, qty, unit_price, line_discount, line_total in resolved:
+            cur.execute(
+                """INSERT INTO pos_sale_items
+                   (sale_id, product_id, variant_id, product_name, variant_title, sku,
+                    unit_price_dzd, line_discount_dzd, quantity, line_total_dzd)
+                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                (sale_id, v["product_id"], v["id"], v["product_name"], v["title"], v["sku"],
+                 unit_price, line_discount, qty, line_total),
+            )
+            cur.execute(
+                "UPDATE product_variants SET stock_qty = stock_qty - ? WHERE id = ? AND is_active = 1 AND stock_qty >= ?",
+                (qty, v["id"], qty),
+            )
+            if cur.rowcount == 0:
+                raise HTTPException(status_code=status.HTTP_409_CONFLICT,
+                                    detail=f"Insufficient stock for '{v['product_name']} ({v['title']})'")
+            cur.execute("SELECT stock_qty FROM product_variants WHERE id = ?", (v["id"],))
+            new_qty = int(cur.fetchone()["stock_qty"])
+            prev_qty = new_qty + qty
+            cur.execute("UPDATE products SET sales_count = sales_count + ? WHERE id = ?", (qty, v["product_id"]))
+            cur.execute(
+                """INSERT INTO inventory_movements
+                   (variant_id, pos_sale_id, admin_user_id, change_qty, previous_qty, new_qty, reason)
+                   VALUES (?, ?, ?, ?, ?, ?, 'pos_sale')""",
+                (v["id"], sale_id, int(admin["sub"]), -qty, prev_qty, new_qty),
+            )
+
+        for pm in payload.payments:
+            change = 0
+            if pm.method == "cash" and pm.tendered_dzd is not None:
+                change = max(0, int(pm.tendered_dzd) - int(pm.amount_dzd))
+            cur.execute(
+                """INSERT INTO pos_payments (sale_id, method, amount_dzd, tendered_dzd, change_dzd)
+                   VALUES (?, ?, ?, ?, ?)""",
+                (sale_id, pm.method, int(pm.amount_dzd), pm.tendered_dzd, change),
+            )
+
+        log_audit(conn, int(admin["sub"]), "pos_sale", "pos_sale", str(sale_id), {
+            "sale_reference": sale_ref, "total_dzd": total_dzd, "items": len(resolved),
+        })
+        return _pos_sale_payload(conn, int(sale_id))
+
+
+@app.get("/api/v1/admin/pos/sales")
+def pos_list_sales(
+    limit: int = Query(50, ge=1, le=200),
+    session_id: Optional[int] = Query(None),
+    admin: dict = Depends(require_permission("pos:read")),
+):
+    with db_session() as conn:
+        cur = conn.cursor()
+        if session_id is not None:
+            cur.execute(
+                "SELECT * FROM pos_sales WHERE register_session_id = ? ORDER BY id DESC LIMIT ?",
+                (session_id, limit),
+            )
+        else:
+            cur.execute("SELECT * FROM pos_sales ORDER BY id DESC LIMIT ?", (limit,))
+        return {"items": [dict(r) for r in cur.fetchall()]}
+
+
+@app.get("/api/v1/admin/pos/sales/{sale_id}")
+def pos_get_sale(sale_id: int, admin: dict = Depends(require_permission("pos:read"))):
+    with db_session() as conn:
+        return _pos_sale_payload(conn, sale_id)
+
+
+@app.post("/api/v1/admin/pos/sales/{sale_id}/refund", status_code=201)
+def pos_refund_sale(
+    sale_id: int,
+    payload: PosRefundInput,
+    admin: dict = Depends(require_permission("pos:refund")),
+):
+    with db_session(commit=True) as conn:
+        if not conn.in_transaction:
+            conn.execute("BEGIN IMMEDIATE")
+        cur = conn.cursor()
+        cur.execute("SELECT * FROM pos_sales WHERE id = ?", (sale_id,))
+        orig = cur.fetchone()
+        if not orig:
+            raise HTTPException(status_code=404, detail="Sale not found")
+        if orig["sale_type"] != "sale":
+            raise HTTPException(status_code=400, detail="Only sales can be refunded")
+        if orig["status"] in ("refunded", "voided"):
+            raise HTTPException(status_code=409, detail=f"Sale already {orig['status']}")
+
+        session = _get_open_register(conn)
+        if not session:
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail="No open cash register session. Open the register before refunding.",
+            )
+
+        # Sold quantities per variant on the original sale
+        cur.execute(
+            "SELECT variant_id, product_id, product_name, variant_title, sku, unit_price_dzd, quantity "
+            "FROM pos_sale_items WHERE sale_id = ?",
+            (sale_id,),
+        )
+        sold = {int(r["variant_id"]): dict(r) for r in cur.fetchall()}
+        # Already-refunded quantities (from prior partial refunds reversing this sale)
+        cur.execute(
+            """SELECT psi.variant_id AS vid, COALESCE(SUM(psi.quantity), 0) AS q
+               FROM pos_sale_items psi JOIN pos_sales ps ON ps.id = psi.sale_id
+               WHERE ps.sale_type = 'refund' AND ps.reverses_sale_id = ?
+               GROUP BY psi.variant_id""",
+            (sale_id,),
+        )
+        refunded_qty = {int(r["vid"]): int(r["q"]) for r in cur.fetchall()}
+
+        # Determine refund lines: explicit subset, or all remaining when none given
+        if payload.items:
+            requested = {}
+            for it in payload.items:
+                requested[it.variant_id] = requested.get(it.variant_id, 0) + int(it.quantity)
+        else:
+            requested = {vid: (sold[vid]["quantity"] - refunded_qty.get(vid, 0)) for vid in sold}
+            requested = {vid: q for vid, q in requested.items() if q > 0}
+
+        if not requested:
+            raise HTTPException(status_code=400, detail="Nothing left to refund on this sale")
+
+        refund_lines = []
+        refund_subtotal = 0
+        for vid, qty in requested.items():
+            if vid not in sold:
+                raise HTTPException(status_code=400, detail=f"Variant {vid} was not part of sale #{sale_id}")
+            remaining = sold[vid]["quantity"] - refunded_qty.get(vid, 0)
+            if qty > remaining:
+                raise HTTPException(
+                    status_code=400,
+                    detail=f"Cannot refund {qty} of variant {vid}: only {remaining} remain refundable",
+                )
+            unit_price = int(sold[vid]["unit_price_dzd"])
+            line_total = unit_price * qty
+            refund_subtotal += line_total
+            refund_lines.append((sold[vid], qty, unit_price, line_total))
+
+        ref = ""
+        refund_id = None
+        for _attempt in range(3):
+            ref = f"RMA-{int(time.time()) % 100000:05d}-{secrets.token_hex(3).upper()}"
+            try:
+                cur.execute(
+                    """INSERT INTO pos_sales
+                       (sale_reference, register_session_id, cashier_admin_id, customer_id, sale_type,
+                        reverses_sale_id, subtotal_dzd, discount_dzd, tax_dzd, total_dzd, status, notes)
+                       VALUES (?, ?, ?, ?, 'refund', ?, ?, 0, 0, ?, 'completed', ?)""",
+                    (ref, int(session["id"]), int(admin["sub"]), orig["customer_id"], sale_id,
+                     refund_subtotal, refund_subtotal, payload.notes),
+                )
+                refund_id = cur.lastrowid
+                break
+            except Exception:
+                if _attempt == 2:
+                    raise
+
+        for line, qty, unit_price, line_total in refund_lines:
+            cur.execute(
+                """INSERT INTO pos_sale_items
+                   (sale_id, product_id, variant_id, product_name, variant_title, sku,
+                    unit_price_dzd, line_discount_dzd, quantity, line_total_dzd)
+                   VALUES (?, ?, ?, ?, ?, ?, ?, 0, ?, ?)""",
+                (refund_id, line["product_id"], line["variant_id"], line["product_name"],
+                 line["variant_title"], line["sku"], unit_price, qty, line_total),
+            )
+            # Restock the returned units
+            cur.execute("UPDATE product_variants SET stock_qty = stock_qty + ? WHERE id = ?", (qty, line["variant_id"]))
+            cur.execute("SELECT stock_qty FROM product_variants WHERE id = ?", (line["variant_id"],))
+            new_qty = int(cur.fetchone()["stock_qty"])
+            prev_qty = new_qty - qty
+            cur.execute("UPDATE products SET sales_count = MAX(0, sales_count - ?) WHERE id = ?", (qty, line["product_id"]))
+            cur.execute(
+                """INSERT INTO inventory_movements
+                   (variant_id, pos_sale_id, admin_user_id, change_qty, previous_qty, new_qty, reason)
+                   VALUES (?, ?, ?, ?, ?, ?, 'pos_refund')""",
+                (line["variant_id"], refund_id, int(admin["sub"]), qty, prev_qty, new_qty),
+            )
+
+        cur.execute(
+            "INSERT INTO pos_payments (sale_id, method, amount_dzd, change_dzd) VALUES (?, ?, ?, 0)",
+            (refund_id, payload.refund_method, refund_subtotal),
+        )
+
+        # Update original sale status: fully vs partially refunded
+        total_refunded_after = {vid: refunded_qty.get(vid, 0) for vid in sold}
+        for line, qty, _u, _lt in refund_lines:
+            total_refunded_after[line["variant_id"]] = total_refunded_after.get(line["variant_id"], 0) + qty
+        fully = all(total_refunded_after.get(vid, 0) >= sold[vid]["quantity"] for vid in sold)
+        new_status = "refunded" if fully else "partially_refunded"
+        cur.execute("UPDATE pos_sales SET status = ? WHERE id = ?", (new_status, sale_id))
+
+        log_audit(conn, int(admin["sub"]), "pos_refund", "pos_sale", str(refund_id), {
+            "refund_reference": ref, "reverses_sale_id": sale_id,
+            "refund_total_dzd": refund_subtotal, "original_new_status": new_status,
+        })
+        return _pos_sale_payload(conn, int(refund_id))
+

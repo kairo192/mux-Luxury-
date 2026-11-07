@@ -470,4 +470,48 @@ export const DesktopCmsApi = {
   getProductsProfitability: () => adminFetch("/admin/accounting/products-profitability"),
   getAccountingLedger: (limit = 100) =>
     adminFetch(`/admin/accounting/ledger?limit=${limit}`),
+
+  // POS: Cash register sessions
+  posRegisterCurrent: () => adminFetch("/admin/pos/register/current"),
+  posRegisterOpen: (opening_float_dzd: number, register_name?: string, notes?: string) =>
+    adminFetch("/admin/pos/register/open", {
+      method: "POST",
+      body: JSON.stringify({ opening_float_dzd, register_name, notes }),
+    }),
+  posRegisterClose: (counted_cash_dzd: number, notes?: string) =>
+    adminFetch("/admin/pos/register/close", {
+      method: "POST",
+      body: JSON.stringify({ counted_cash_dzd, notes }),
+    }),
+  posListSessions: (limit = 50) => adminFetch(`/admin/pos/register/sessions?limit=${limit}`),
+
+  // POS: Barcode / SKU lookup and in-store sales
+  posLookup: (code: string) => adminFetch(`/admin/pos/lookup?code=${encodeURIComponent(code)}`),
+  posCreateSale: (
+    payload: {
+      items: Array<{ variant_id: number; quantity: number; line_discount_dzd?: number }>;
+      payments: Array<{ method: string; amount_dzd: number; tendered_dzd?: number }>;
+      customer_id?: number | null;
+      order_discount_dzd?: number;
+      notes?: string;
+    },
+    idempotencyKey: string
+  ) =>
+    adminFetch("/admin/pos/sales", {
+      method: "POST",
+      body: JSON.stringify(payload),
+      headers: { "Idempotency-Key": idempotencyKey },
+    }),
+  posListSales: (limit = 50, sessionId?: number) =>
+    adminFetch(`/admin/pos/sales?limit=${limit}${sessionId ? `&session_id=${sessionId}` : ""}`),
+  posGetSale: (saleId: number) => adminFetch(`/admin/pos/sales/${saleId}`),
+  posRefundSale: (
+    saleId: number,
+    payload: { items?: Array<{ variant_id: number; quantity: number }>; refund_method?: string; notes?: string }
+  ) =>
+    adminFetch(`/admin/pos/sales/${saleId}/refund`, {
+      method: "POST",
+      body: JSON.stringify(payload),
+      headers: { "Idempotency-Key": `pos-refund-${saleId}-${Date.now()}` },
+    }),
 };

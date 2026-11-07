@@ -507,3 +507,76 @@ CREATE INDEX IF NOT EXISTS idx_orders_idempotency_hash ON orders(idempotency_has
 CREATE INDEX IF NOT EXISTS idx_orders_customer_phone ON orders(customer_phone);
 CREATE INDEX IF NOT EXISTS idx_delivery_rates_zone_id ON delivery_rates(zone_id);
 CREATE INDEX IF NOT EXISTS idx_delivery_rates_zone_method ON delivery_rates(zone_id, delivery_method);
+
+-- ============================================================================
+-- 30. POS: Cash Register Sessions (per-shift open / close / reconcile)
+-- ============================================================================
+CREATE TABLE IF NOT EXISTS cash_register_sessions (
+    id SERIAL PRIMARY KEY,
+    register_name VARCHAR(80) NOT NULL DEFAULT 'Caisse principale',
+    opened_by_admin_id INTEGER NOT NULL REFERENCES admin_users(id),
+    closed_by_admin_id INTEGER REFERENCES admin_users(id),
+    opening_float_dzd INTEGER NOT NULL DEFAULT 0 CHECK (opening_float_dzd >= 0),
+    expected_cash_dzd INTEGER,
+    counted_cash_dzd INTEGER,
+    variance_dzd INTEGER,
+    total_sales_dzd INTEGER NOT NULL DEFAULT 0,
+    total_refunds_dzd INTEGER NOT NULL DEFAULT 0,
+    sales_count INTEGER NOT NULL DEFAULT 0,
+    status VARCHAR(16) NOT NULL DEFAULT 'open',
+    opened_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    closed_at TIMESTAMP,
+    notes TEXT
+);
+CREATE INDEX IF NOT EXISTS idx_register_sessions_status ON cash_register_sessions(status, opened_at);
+
+-- ============================================================================
+-- 31. POS: In-store Sales (immediate payment, distinct from online COD orders)
+-- ============================================================================
+CREATE TABLE IF NOT EXISTS pos_sales (
+    id SERIAL PRIMARY KEY,
+    sale_reference VARCHAR(40) NOT NULL UNIQUE,
+    register_session_id INTEGER REFERENCES cash_register_sessions(id),
+    cashier_admin_id INTEGER NOT NULL REFERENCES admin_users(id),
+    customer_id INTEGER REFERENCES customers(id),
+    sale_type VARCHAR(16) NOT NULL DEFAULT 'sale',
+    reverses_sale_id INTEGER REFERENCES pos_sales(id),
+    subtotal_dzd INTEGER NOT NULL DEFAULT 0,
+    discount_dzd INTEGER NOT NULL DEFAULT 0,
+    tax_dzd INTEGER NOT NULL DEFAULT 0,
+    total_dzd INTEGER NOT NULL DEFAULT 0,
+    status VARCHAR(20) NOT NULL DEFAULT 'completed',
+    idempotency_key VARCHAR(128),
+    notes TEXT,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_pos_sales_idem ON pos_sales(idempotency_key) WHERE idempotency_key IS NOT NULL;
+CREATE INDEX IF NOT EXISTS idx_pos_sales_session ON pos_sales(register_session_id, created_at);
+CREATE INDEX IF NOT EXISTS idx_pos_sales_created ON pos_sales(created_at);
+
+CREATE TABLE IF NOT EXISTS pos_sale_items (
+    id SERIAL PRIMARY KEY,
+    sale_id INTEGER NOT NULL REFERENCES pos_sales(id) ON DELETE CASCADE,
+    product_id INTEGER NOT NULL REFERENCES products(id),
+    variant_id INTEGER NOT NULL REFERENCES product_variants(id),
+    product_name VARCHAR(220) NOT NULL,
+    variant_title VARCHAR(180) NOT NULL,
+    sku VARCHAR(120) NOT NULL,
+    unit_price_dzd INTEGER NOT NULL,
+    line_discount_dzd INTEGER NOT NULL DEFAULT 0,
+    quantity INTEGER NOT NULL CHECK (quantity > 0),
+    line_total_dzd INTEGER NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_pos_sale_items_sale ON pos_sale_items(sale_id);
+CREATE INDEX IF NOT EXISTS idx_pos_sale_items_variant ON pos_sale_items(variant_id);
+
+CREATE TABLE IF NOT EXISTS pos_payments (
+    id SERIAL PRIMARY KEY,
+    sale_id INTEGER NOT NULL REFERENCES pos_sales(id) ON DELETE CASCADE,
+    method VARCHAR(32) NOT NULL DEFAULT 'cash',
+    amount_dzd INTEGER NOT NULL,
+    tendered_dzd INTEGER,
+    change_dzd INTEGER NOT NULL DEFAULT 0,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+CREATE INDEX IF NOT EXISTS idx_pos_payments_sale ON pos_payments(sale_id);

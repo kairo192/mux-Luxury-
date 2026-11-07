@@ -218,6 +218,8 @@ _ADDITIVE_COLUMNS = [
     ("products", "weight_grams", "INTEGER"),
     ("products", "dimensions_cm", "VARCHAR(60)"),
     ("products", "tags", "VARCHAR(400)"),
+    # POS: link stock movements to in-store sales (shared inventory ledger)
+    ("inventory_movements", "pos_sale_id", "INTEGER"),
 ]
 
 

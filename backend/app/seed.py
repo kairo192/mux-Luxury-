@@ -147,11 +147,63 @@ def sync_wilaya_communes(force: bool = False) -> int:
     return updated
 
 
+# POS/ERP operational RBAC added after the first schema release. Applied idempotently on
+# every boot so already-seeded stores gain the new permissions, cashier role and grants
+# without a destructive re-seed.
+_OPERATIONAL_PERMISSIONS = [
+    ("pos:sell", "Create in-store POS sales"),
+    ("pos:refund", "Refund or void completed POS sales"),
+    ("pos:read", "View POS sales and cash register sessions"),
+    ("register:manage", "Open, close and reconcile cash register sessions"),
+]
+_OPERATIONAL_ROLES = [
+    ("cashier", "Cashier — Operate the POS, sell, and manage the cash register"),
+]
+_OPERATIONAL_GRANTS = {
+    "super_admin": ["pos:sell", "pos:refund", "pos:read", "register:manage"],
+    "admin": ["pos:sell", "pos:refund", "pos:read", "register:manage"],
+    "cashier": ["dashboard:read", "pos:sell", "pos:read", "register:manage"],
+}
+
+
+def ensure_operational_rbac(conn) -> None:
+    """Idempotently upsert POS permissions, the cashier role and their grants."""
+    cur = conn.cursor()
+    # Nothing to do before the base roles/permissions have been seeded at all.
+    cur.execute("SELECT COUNT(*) AS cnt FROM permissions")
+    if int(cur.fetchone()["cnt"]) == 0:
+        return
+
+    for code, desc in _OPERATIONAL_PERMISSIONS:
+        cur.execute("INSERT OR IGNORE INTO permissions (code, description) VALUES (?, ?)", (code, desc))
+    for name, desc in _OPERATIONAL_ROLES:
+        cur.execute("INSERT OR IGNORE INTO roles (name, description) VALUES (?, ?)", (name, desc))
+
+    cur.execute("SELECT id, name FROM roles")
+    role_ids = {r["name"]: r["id"] for r in cur.fetchall()}
+    cur.execute("SELECT id, code FROM permissions")
+    perm_ids = {r["code"]: r["id"] for r in cur.fetchall()}
+
+    for role_name, perm_codes in _OPERATIONAL_GRANTS.items():
+        rid = role_ids.get(role_name)
+        if rid is None:
+            continue
+        for pcode in perm_codes:
+            pid = perm_ids.get(pcode)
+            if pid is None:
+                continue
+            cur.execute(
+                "INSERT OR IGNORE INTO role_permissions (role_id, permission_id) VALUES (?, ?)",
+                (rid, pid),
+            )
+
+
 def seed_initial_data() -> None:
     init_db()
     sync_wilaya_communes()
     with db_session(commit=True) as conn:
         cur = conn.cursor()
+        ensure_operational_rbac(conn)
         cur.execute("SELECT COUNT(*) AS cnt FROM roles")
         if cur.fetchone()["cnt"] > 0:
             return
@@ -163,6 +215,7 @@ def seed_initial_data() -> None:
             ("product_manager", "Product Manager — Categories, dynamic attributes, products & images"),
             ("order_manager", "Order Manager — Orders, customer contacts & shipping statuses"),
             ("inventory_manager", "Inventory Manager — Variant stock levels & stock movement logs"),
+            ("cashier", "Cashier — Operate the POS, sell, and manage the cash register"),
             ("readonly", "Read-Only Employee — View dashboard, catalog & order summaries only"),
         ]
         role_ids = {}
@@ -179,6 +232,10 @@ def seed_initial_data() -> None:
             ("content:write", "Manage banners, product card customization, coupons & pages"),
             ("backups:write", "Trigger and restore backups"),
             ("settings:write", "Manage store settings, WhatsApp API config, and admin users"),
+            ("pos:sell", "Create in-store POS sales"),
+            ("pos:refund", "Refund or void completed POS sales"),
+            ("pos:read", "View POS sales and cash register sessions"),
+            ("register:manage", "Open, close and reconcile cash register sessions"),
         ]
         perm_ids = {}
         for code, desc in perms:
@@ -187,10 +244,11 @@ def seed_initial_data() -> None:
 
         role_perm_map = {
             "super_admin": list(perm_ids.keys()),
-            "admin": ["dashboard:read", "products:write", "categories:write", "inventory:write", "orders:write", "content:write"],
+            "admin": ["dashboard:read", "products:write", "categories:write", "inventory:write", "orders:write", "content:write", "pos:sell", "pos:refund", "pos:read", "register:manage"],
             "product_manager": ["dashboard:read", "products:write"],
             "order_manager": ["dashboard:read", "orders:write"],
             "inventory_manager": ["dashboard:read", "inventory:write", "products:write"],
+            "cashier": ["dashboard:read", "pos:sell", "pos:read", "register:manage"],
             "readonly": ["dashboard:read"],
         }
         for rname, p_list in role_perm_map.items():
