@@ -58,12 +58,14 @@ import {
   Tag,
   Check,
   Filter,
+  ScanLine,
 } from "lucide-react";
 import { RevenueTrendChart, OrderStatusDistributionChart, InventoryHealthWidget } from "./components/CmsCharts";
 import { DesktopCmsApi, restoreSessionFromOsKeychain } from "./api/adminClient";
 import { CategoryBuilderPage } from "./pages/CategoryBuilderPage";
 import { DeliveryWilayasPage } from "./pages/DeliveryWilayasPage";
 import { PurchasesPage } from "./pages/PurchasesPage";
+import { PosPage } from "./pages/PosPage";
 import { ExpensesPage } from "./pages/ExpensesPage";
 import { TreasuryPage } from "./pages/TreasuryPage";
 import { AccountingPage } from "./pages/AccountingPage";
@@ -71,6 +73,7 @@ import { ProductEditor } from "./components/ProductEditor";
 
 type CmsTab =
   | "dashboard"
+  | "pos"
   | "products"
   | "categories"
   | "purchases"
@@ -1373,6 +1376,7 @@ export default function App() {
       <nav className="bg-[#063D2E] text-[#E8D4A5] px-6 py-2.5 flex flex-wrap gap-1.5 text-xs font-bold border-b border-[#D4AF62]/30 shadow-inner">
         {[
           { id: "dashboard", label: "1. Tableau de Bord", icon: LayoutDashboard },
+          { id: "pos", label: "★ Caisse POS", icon: ScanLine },
           { id: "products", label: "2. Produits & Prix", icon: ShoppingBag },
           { id: "categories", label: "3. Catégories & Attributs", icon: Tags },
           { id: "purchases", label: "4. Achats & Fournisseurs", icon: PackageCheck },
@@ -1688,6 +1692,11 @@ export default function App() {
           </div>
         )}
 
+        </div>
+
+        {/* TAB: POINT OF SALE (POS) — in-store cash register & sales (KEEP-ALIVE) */}
+        <div className={activeTab === "pos" ? "block" : "hidden"}>
+          <PosPage onInventoryUpdated={loadAllWorkspaceData} />
         </div>
 
         {/* TAB 2: PRODUCTS & DYNAMIC CATEGORY ATTRIBUTES (KEEP-ALIVE) */}
