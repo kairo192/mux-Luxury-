@@ -1134,8 +1134,17 @@ const ReceiptModal: React.FC<{ sale: any; onClose: () => void; onPrint: () => vo
         <div id="pos-receipt" className="p-6 font-mono text-sm text-gray-800">
           <div className="text-center mb-2">
             <div className="font-bold text-base">{b.name || "Mus Luxury"}</div>
+            {b.legal_name && b.legal_name !== b.name && <div className="text-xs">{b.legal_name}</div>}
             {b.address && <div className="text-xs">{b.address}</div>}
             {b.phone && <div className="text-xs">Tél: {b.phone}</div>}
+            {(b.nif || b.nis || b.rc || b.article) && (
+              <div className="text-xs mt-1">
+                {b.nif && <div>NIF: {b.nif}</div>}
+                {b.nis && <div>NIS: {b.nis}</div>}
+                {b.rc && <div>RC: {b.rc}</div>}
+                {b.article && <div>Art.: {b.article}</div>}
+              </div>
+            )}
           </div>
           <div className="border-t border-dashed my-2" />
           <div>Reçu: {sale.sale_reference}</div>
@@ -1187,7 +1196,7 @@ const ReceiptModal: React.FC<{ sale: any; onClose: () => void; onPrint: () => vo
               <span>{fmt((sale.payments || []).reduce((s: number, p: any) => s + (p.change_dzd || 0), 0))}</span>
             </div>
           )}
-          <div className="text-center mt-4 text-xs">Merci de votre visite — {b.name || "Mus Luxury"}</div>
+          <div className="text-center mt-4 text-xs">{b.footer_line || `Merci de votre visite — ${b.name || "Mus Luxury"}`}</div>
         </div>
         <div className="p-4 border-t flex gap-2 print:hidden">
           <button type="button" onClick={onPrint} className="flex-1 h-14 rounded-2xl bg-[#063D2E] text-[#D4AF62] font-bold flex items-center justify-center gap-2 active:scale-95">

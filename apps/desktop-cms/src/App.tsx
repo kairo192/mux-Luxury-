@@ -74,6 +74,7 @@ import { UsersRolesPage } from "./pages/UsersRolesPage";
 import { CustomersPage } from "./pages/CustomersPage";
 import { InventoryCountPage } from "./pages/InventoryCountPage";
 import { SalesReportPage } from "./pages/SalesReportPage";
+import { FiscalSettingsPage } from "./pages/FiscalSettingsPage";
 import { BarcodeLabelModal } from "./components/BarcodeLabelModal";
 import { StockWriteOffModal } from "./components/StockWriteOffModal";
 import { ExpensesPage } from "./pages/ExpensesPage";
@@ -100,6 +101,7 @@ type CmsTab =
   | "users"
   | "inventory_count"
   | "sales_report"
+  | "fiscal"
   | "backups";
 
 export default function App() {
@@ -1411,7 +1413,8 @@ export default function App() {
           { id: "users", label: "14. Utilisateurs & Rôles", icon: Users },
           { id: "inventory_count", label: "15. Inventaire physique", icon: Boxes },
           { id: "sales_report", label: "16. Rapport de ventes", icon: FileText },
-          { id: "backups", label: "17. Sauvegardes & Sécurité", icon: ShieldCheck },
+          { id: "fiscal", label: "17. Fiscalité & identité", icon: Landmark },
+          { id: "backups", label: "18. Sauvegardes & Sécurité", icon: ShieldCheck },
         ].map((t) => {
           const Icon = t.icon;
           const isActive = activeTab === t.id;
@@ -2526,6 +2529,9 @@ export default function App() {
 
         {/* TAB: SALES REPORT (KEEP-ALIVE) */}
         <div className={activeTab === "sales_report" ? "block" : "hidden"}><SalesReportPage /></div>
+
+        {/* TAB: FISCAL SETTINGS (KEEP-ALIVE) */}
+        <div className={activeTab === "fiscal" ? "block" : "hidden"}><FiscalSettingsPage /></div>
 
         {/* TAB 7: STORE CONTENT, COUPONS, STATIC PAGES & REAL SOCIAL/LOCATION SETTINGS (KEEP-ALIVE) */}
         <div className={activeTab === "content" ? "block" : "hidden"}>

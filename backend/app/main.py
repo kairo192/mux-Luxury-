@@ -5179,6 +5179,29 @@ def _get_open_register(conn):
     return cur.fetchone()
 
 
+def _boutique_info_from_settings(conn) -> dict:
+    """Prefer configured fiscal settings; fall back to defaults so receipts always render."""
+    try:
+        f = _read_fiscal_settings(conn)
+    except Exception:
+        return _BOUTIQUE_INFO
+    legal = (f.get("fiscal_legal_name") or "").strip()
+    commercial = (f.get("fiscal_commercial_name") or "").strip()
+    return {
+        "name": commercial or legal or _BOUTIQUE_INFO["name"],
+        "legal_name": legal or commercial or _BOUTIQUE_INFO["name"],
+        "address": (f.get("fiscal_address") or "").strip() or _BOUTIQUE_INFO["address"],
+        "phone": (f.get("fiscal_phone") or "").strip() or _BOUTIQUE_INFO["phone"],
+        "whatsapp": _BOUTIQUE_INFO["whatsapp"],
+        "currency": _BOUTIQUE_INFO["currency"],
+        "nif": f.get("fiscal_nif") or "",
+        "nis": f.get("fiscal_nis") or "",
+        "rc": f.get("fiscal_rc") or "",
+        "article": f.get("fiscal_article") or "",
+        "footer_line": (f.get("receipt_footer_line") or "").strip(),
+    }
+
+
 def _pos_sale_payload(conn, sale_id: int) -> dict:
     cur = conn.cursor()
     cur.execute("SELECT * FROM pos_sales WHERE id = ?", (sale_id,))
@@ -5199,7 +5222,7 @@ def _pos_sale_payload(conn, sale_id: int) -> dict:
     cur.execute("SELECT full_name FROM admin_users WHERE id = ?", (sale["cashier_admin_id"],))
     cash = cur.fetchone()
     sale["cashier_name"] = cash["full_name"] if cash else None
-    sale["boutique_info"] = _BOUTIQUE_INFO
+    sale["boutique_info"] = _boutique_info_from_settings(conn)
     return sale
 
 
@@ -5882,7 +5905,7 @@ def admin_variant_label(
         price = int(d["price_override_dzd"]) if d["price_override_dzd"] is not None else int(d["selling_price_dzd"])
         sym = detect_symbology(d["barcode"]) if d["barcode"] else None
         return {
-            "store_name": _BOUTIQUE_INFO["name"],
+            "store_name": _boutique_info_from_settings(conn)["name"],
             "variant_id": d["variant_id"],
             "product_name": d["product_name"],
             "variant_title": d["variant_title"],
@@ -7259,6 +7282,95 @@ def _sales_report_data(conn, date_from: str, date_to: str) -> dict:
         "top_products": top_products,
         "payment_breakdown": payment_breakdown,
     }
+
+
+# ============================================================================
+# FISCAL SETTINGS — configurable tax rate, legal identity and receipt prefixes.
+# Stored in the existing store_settings table under `fiscal_*` keys so legacy
+# endpoints and backups keep working. Internal keys like session_revoked_ns:*
+# remain protected by the existing settings-write guard; this endpoint only
+# reads/writes the explicit fiscal allow-list below.
+# ============================================================================
+
+_FISCAL_KEYS: Dict[str, Dict[str, Any]] = {
+    "fiscal_legal_name":       {"max": 200, "default": "Mus Luxury (LUXE)"},
+    "fiscal_commercial_name":  {"max": 200, "default": "Mus Luxury"},
+    "fiscal_address":          {"max": 400, "default": "FVX6+GCJ Mus luxury, Ouled Yaïch, Blida (09), Algérie"},
+    "fiscal_phone":            {"max": 40,  "default": "0655534154"},
+    "fiscal_nif":              {"max": 40,  "default": ""},  # Numéro d'Identification Fiscale
+    "fiscal_nis":              {"max": 40,  "default": ""},  # Numéro d'Identification Statistique
+    "fiscal_rc":               {"max": 40,  "default": ""},  # Registre de Commerce
+    "fiscal_article":          {"max": 40,  "default": ""},  # Article d'imposition
+    "receipt_prefix_pos":      {"max": 10,  "default": "POS"},
+    "receipt_prefix_refund":   {"max": 10,  "default": "RMA"},
+    "receipt_prefix_inventory":{"max": 10,  "default": "INV"},
+    "receipt_footer_line":     {"max": 200, "default": "Merci de votre visite — Mus Luxury"},
+}
+
+
+class FiscalSettingsInput(BaseModel):
+    pos_tax_rate_percent: Optional[int] = Field(None, ge=0, le=100)
+    settings: Optional[Dict[str, str]] = None  # fiscal_* keys only
+
+    @validator("settings")
+    def _check_keys(cls, v):
+        if v is None:
+            return v
+        for k, val in v.items():
+            if k not in _FISCAL_KEYS:
+                raise ValueError(f"Clé fiscale inconnue: {k}")
+            if val is not None and len(str(val)) > _FISCAL_KEYS[k]["max"]:
+                raise ValueError(f"Valeur trop longue pour {k} (max {_FISCAL_KEYS[k]['max']})")
+        return v
+
+
+def _read_fiscal_settings(conn) -> dict:
+    cur = conn.cursor()
+    keys = list(_FISCAL_KEYS.keys()) + ["pos_tax_rate_percent"]
+    placeholders = ",".join(["?"] * len(keys))
+    cur.execute(f"SELECT setting_key, setting_value FROM store_settings WHERE setting_key IN ({placeholders})", tuple(keys))
+    stored = {r["setting_key"]: r["setting_value"] for r in cur.fetchall()}
+    out: Dict[str, Any] = {}
+    for k, meta in _FISCAL_KEYS.items():
+        out[k] = stored.get(k, meta["default"])
+    try:
+        out["pos_tax_rate_percent"] = int(stored.get("pos_tax_rate_percent") or 0)
+    except (TypeError, ValueError):
+        out["pos_tax_rate_percent"] = 0
+    return out
+
+
+def _upsert_setting(cur, key: str, value: str) -> None:
+    cur.execute(
+        """INSERT INTO store_settings (setting_key, setting_value, updated_at)
+           VALUES (?, ?, CURRENT_TIMESTAMP)
+           ON CONFLICT(setting_key) DO UPDATE SET setting_value = excluded.setting_value, updated_at = CURRENT_TIMESTAMP""",
+        (key, value),
+    )
+
+
+@app.get("/api/v1/admin/fiscal/settings")
+def admin_get_fiscal_settings(admin: dict = Depends(require_any_permission(["settings:write", "dashboard:read"]))):
+    with db_session() as conn:
+        return _read_fiscal_settings(conn)
+
+
+@app.put("/api/v1/admin/fiscal/settings")
+def admin_update_fiscal_settings(payload: FiscalSettingsInput, admin: dict = Depends(require_permission("settings:write"))):
+    with db_session(commit=True) as conn:
+        if not conn.in_transaction:
+            conn.execute("BEGIN IMMEDIATE")
+        cur = conn.cursor()
+        changed: Dict[str, Any] = {}
+        if payload.pos_tax_rate_percent is not None:
+            _upsert_setting(cur, "pos_tax_rate_percent", str(payload.pos_tax_rate_percent))
+            changed["pos_tax_rate_percent"] = payload.pos_tax_rate_percent
+        if payload.settings:
+            for k, v in payload.settings.items():
+                _upsert_setting(cur, k, "" if v is None else str(v))
+                changed[k] = v
+        log_audit(conn, int(admin["sub"]), "update_fiscal_settings", "store_settings", "fiscal", {"keys": sorted(changed.keys())})
+        return _read_fiscal_settings(conn)
 
 
 @app.get("/api/v1/admin/reports/sales")

@@ -353,6 +353,11 @@ export const DesktopCmsApi = {
   cancelInventoryCount: (countId: number) =>
     adminFetch(`/admin/inventory/counts/${countId}/cancel`, { method: "POST" }),
 
+  // Fiscal settings (tax rate, legal identity, receipt text)
+  getFiscalSettings: () => adminFetch("/admin/fiscal/settings"),
+  updateFiscalSettings: (payload: { pos_tax_rate_percent?: number; settings?: Record<string, string> }) =>
+    adminFetch("/admin/fiscal/settings", { method: "PUT", body: JSON.stringify(payload) }),
+
   // Typed stock write-offs (damage, loss, supplier return, etc.)
   listWriteOffReasons: () => adminFetch("/admin/inventory/write-off-reasons"),
   stockWriteOff: (variant_id: number, quantity: number, reason: string, notes?: string) =>
