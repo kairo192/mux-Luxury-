@@ -206,6 +206,8 @@ CREATE TABLE IF NOT EXISTS customers (
     wilaya_code VARCHAR(4) NOT NULL,
     commune VARCHAR(120) NOT NULL,
     address TEXT NOT NULL,
+    email VARCHAR(255),
+    notes TEXT,
     orders_count INTEGER NOT NULL DEFAULT 0,
     total_spent_dzd INTEGER NOT NULL DEFAULT 0,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
@@ -580,3 +582,52 @@ CREATE TABLE IF NOT EXISTS pos_payments (
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 CREATE INDEX IF NOT EXISTS idx_pos_payments_sale ON pos_payments(sale_id);
+
+-- ============================================================================
+-- 32. DEVICES & HARDWARE registry (status never fabricated)
+-- ============================================================================
+CREATE TABLE IF NOT EXISTS devices (
+    id SERIAL PRIMARY KEY,
+    name VARCHAR(120) NOT NULL,
+    device_type VARCHAR(32) NOT NULL,
+    connection_type VARCHAR(32) NOT NULL,
+    config_json TEXT NOT NULL DEFAULT '{}',
+    capabilities_json TEXT NOT NULL DEFAULT '[]',
+    location VARCHAR(120),
+    is_default INTEGER NOT NULL DEFAULT 0,
+    status VARCHAR(16) NOT NULL DEFAULT 'unknown',
+    last_error TEXT,
+    last_test_at TIMESTAMP,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+CREATE INDEX IF NOT EXISTS idx_devices_type ON devices(device_type, is_default);
+
+-- ============================================================================
+-- 33. INVENTORY COUNTS — physical stock-taking sessions
+-- ============================================================================
+CREATE TABLE IF NOT EXISTS inventory_counts (
+    id SERIAL PRIMARY KEY,
+    reference VARCHAR(40) NOT NULL UNIQUE,
+    name VARCHAR(160) NOT NULL DEFAULT 'Inventaire',
+    status VARCHAR(16) NOT NULL DEFAULT 'open',
+    opened_by_admin_id INTEGER NOT NULL REFERENCES admin_users(id),
+    applied_by_admin_id INTEGER REFERENCES admin_users(id),
+    opened_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    applied_at TIMESTAMP,
+    total_lines INTEGER NOT NULL DEFAULT 0,
+    total_variance_abs INTEGER NOT NULL DEFAULT 0,
+    notes TEXT
+);
+CREATE INDEX IF NOT EXISTS idx_inventory_counts_status ON inventory_counts(status, opened_at);
+
+CREATE TABLE IF NOT EXISTS inventory_count_items (
+    id SERIAL PRIMARY KEY,
+    count_id INTEGER NOT NULL REFERENCES inventory_counts(id) ON DELETE CASCADE,
+    variant_id INTEGER NOT NULL REFERENCES product_variants(id),
+    expected_qty INTEGER NOT NULL,
+    counted_qty INTEGER NOT NULL,
+    counted_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE(count_id, variant_id)
+);
+CREATE INDEX IF NOT EXISTS idx_inventory_count_items_count ON inventory_count_items(count_id);

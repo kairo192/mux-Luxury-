@@ -59,6 +59,8 @@ import {
   Check,
   Filter,
   ScanLine,
+  HardDrive,
+  Users,
 } from "lucide-react";
 import { RevenueTrendChart, OrderStatusDistributionChart, InventoryHealthWidget } from "./components/CmsCharts";
 import { DesktopCmsApi, restoreSessionFromOsKeychain } from "./api/adminClient";
@@ -66,6 +68,13 @@ import { CategoryBuilderPage } from "./pages/CategoryBuilderPage";
 import { DeliveryWilayasPage } from "./pages/DeliveryWilayasPage";
 import { PurchasesPage } from "./pages/PurchasesPage";
 import { PosPage } from "./pages/PosPage";
+import { DevicesPage } from "./pages/DevicesPage";
+import { BusinessDashboardPage } from "./pages/BusinessDashboardPage";
+import { UsersRolesPage } from "./pages/UsersRolesPage";
+import { CustomersPage } from "./pages/CustomersPage";
+import { InventoryCountPage } from "./pages/InventoryCountPage";
+import { SalesReportPage } from "./pages/SalesReportPage";
+import { BarcodeLabelModal } from "./components/BarcodeLabelModal";
 import { ExpensesPage } from "./pages/ExpensesPage";
 import { TreasuryPage } from "./pages/TreasuryPage";
 import { AccountingPage } from "./pages/AccountingPage";
@@ -73,6 +82,7 @@ import { ProductEditor } from "./components/ProductEditor";
 
 type CmsTab =
   | "dashboard"
+  | "business"
   | "pos"
   | "products"
   | "categories"
@@ -84,6 +94,11 @@ type CmsTab =
   | "accounting"
   | "delivery_wilayas"
   | "content"
+  | "devices"
+  | "customers"
+  | "users"
+  | "inventory_count"
+  | "sales_report"
   | "backups";
 
 export default function App() {
@@ -108,6 +123,7 @@ export default function App() {
     return unsub;
   }, []);
   const [activeTab, setActiveTab] = useState<CmsTab>(() => readDraft("luxe_cms_active_tab", "dashboard"));
+  const [barcodeVariantId, setBarcodeVariantId] = useState<number | null>(null);
 
   // First-Time Owner Initialization Fields
   const [ownerName, setOwnerName] = useState("");
@@ -1376,6 +1392,7 @@ export default function App() {
       <nav className="bg-[#063D2E] text-[#E8D4A5] px-6 py-2.5 flex flex-wrap gap-1.5 text-xs font-bold border-b border-[#D4AF62]/30 shadow-inner">
         {[
           { id: "dashboard", label: "1. Tableau de Bord", icon: LayoutDashboard },
+          { id: "business", label: "★ Synthèse Magasin", icon: TrendingUp },
           { id: "pos", label: "★ Caisse POS", icon: ScanLine },
           { id: "products", label: "2. Produits & Prix", icon: ShoppingBag },
           { id: "categories", label: "3. Catégories & Attributs", icon: Tags },
@@ -1387,7 +1404,12 @@ export default function App() {
           { id: "accounting", label: "9. Comptabilité & Marges", icon: TrendingUp },
           { id: "delivery_wilayas", label: "10. Livraison 69 Wilayas", icon: Truck },
           { id: "content", label: "11. Boutique & Vitrine", icon: Palette },
-          { id: "backups", label: "12. Sauvegardes & Sécurité", icon: ShieldCheck },
+          { id: "devices", label: "12. Appareils & Matériel", icon: HardDrive },
+          { id: "customers", label: "13. Clients", icon: Users },
+          { id: "users", label: "14. Utilisateurs & Rôles", icon: Users },
+          { id: "inventory_count", label: "15. Inventaire physique", icon: Boxes },
+          { id: "sales_report", label: "16. Rapport de ventes", icon: FileText },
+          { id: "backups", label: "17. Sauvegardes & Sécurité", icon: ShieldCheck },
         ].map((t) => {
           const Icon = t.icon;
           const isActive = activeTab === t.id;
@@ -1693,6 +1715,9 @@ export default function App() {
         )}
 
         </div>
+
+        {/* TAB: BUSINESS SUMMARY (POS + online, real records) (KEEP-ALIVE) */}
+        <div className={activeTab === "business" ? "block" : "hidden"}><BusinessDashboardPage /></div>
 
         {/* TAB: POINT OF SALE (POS) — in-store cash register & sales (KEEP-ALIVE) */}
         <div className={activeTab === "pos" ? "block" : "hidden"}>
@@ -2175,11 +2200,17 @@ export default function App() {
                       <div>
                         <div className="font-bold text-[#063D2E]">{p.name_fr} — {v.title}</div>
                         <div className="font-mono text-gray-500">SKU: {v.sku} • Stock actuel: <strong>{v.stock_qty}</strong></div>
+                        <div className="font-mono text-gray-400 text-[11px]">
+                          {v.barcode ? `⌗ ${v.barcode}` : "⌗ aucun code-barres"}
+                        </div>
                       </div>
                       <div className="flex items-center gap-1.5">
                         <button type="button" onClick={() => handleAdjustStock(v.id, -1)} className="px-2.5 py-1 rounded bg-gray-100 font-bold">-1</button>
                         <button type="button" onClick={() => handleAdjustStock(v.id, 1)} className="px-2.5 py-1 rounded bg-emerald-100 text-emerald-900 font-bold">+1</button>
                         <button type="button" onClick={() => handleAdjustStock(v.id, 5)} className="px-2.5 py-1 rounded bg-[#063D2E] text-[#D4AF62] font-bold">+5</button>
+                        <button type="button" onClick={() => setBarcodeVariantId(v.id)} title="Code-barres & étiquette" className="px-2.5 py-1 rounded bg-[#D4AF62]/20 text-[#7a5c16] font-bold flex items-center gap-1">
+                          <ScanLine className="w-3.5 h-3.5" /> Étiquette
+                        </button>
                       </div>
                     </div>
                   ))
@@ -2470,6 +2501,21 @@ export default function App() {
         {/* TAB 10: 69 WILAYAS DELIVERY TARIFFS (KEEP-ALIVE — NEVER UNMOUNTS) */}
         <div className={activeTab === "delivery_wilayas" ? "block" : "hidden"}><DeliveryWilayasPage /></div>
 
+        {/* TAB: DEVICES & HARDWARE (KEEP-ALIVE) */}
+        <div className={activeTab === "devices" ? "block" : "hidden"}><DevicesPage /></div>
+
+        {/* TAB: CUSTOMERS (KEEP-ALIVE) */}
+        <div className={activeTab === "customers" ? "block" : "hidden"}><CustomersPage /></div>
+
+        {/* TAB: USERS & ROLES (KEEP-ALIVE) */}
+        <div className={activeTab === "users" ? "block" : "hidden"}><UsersRolesPage /></div>
+
+        {/* TAB: PHYSICAL INVENTORY (KEEP-ALIVE) */}
+        <div className={activeTab === "inventory_count" ? "block" : "hidden"}><InventoryCountPage onInventoryUpdated={loadAllWorkspaceData} /></div>
+
+        {/* TAB: SALES REPORT (KEEP-ALIVE) */}
+        <div className={activeTab === "sales_report" ? "block" : "hidden"}><SalesReportPage /></div>
+
         {/* TAB 7: STORE CONTENT, COUPONS, STATIC PAGES & REAL SOCIAL/LOCATION SETTINGS (KEEP-ALIVE) */}
         <div className={activeTab === "content" ? "block" : "hidden"}>
           <div className="space-y-6 text-xs">
@@ -2703,6 +2749,13 @@ export default function App() {
             await loadAllWorkspaceData();
           }}
         />
+        {barcodeVariantId !== null && (
+          <BarcodeLabelModal
+            variantId={barcodeVariantId}
+            onClose={() => setBarcodeVariantId(null)}
+            onChanged={loadAllWorkspaceData}
+          />
+        )}
     </main>
     </div>
   );

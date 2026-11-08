@@ -206,6 +206,8 @@ CREATE TABLE IF NOT EXISTS customers (
     wilaya_code VARCHAR(4) NOT NULL,
     commune VARCHAR(120) NOT NULL,
     address TEXT NOT NULL,
+    email VARCHAR(255),
+    notes TEXT,
     orders_count INTEGER NOT NULL DEFAULT 0,
     total_spent_dzd INTEGER NOT NULL DEFAULT 0,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
@@ -571,6 +573,59 @@ CREATE TABLE IF NOT EXISTS pos_payments (
 );
 CREATE INDEX IF NOT EXISTS idx_pos_payments_sale ON pos_payments(sale_id);
 
+-- ============================================================================
+-- 32. DEVICES & HARDWARE: honest registry of store peripherals. Actual USB/ESC-POS
+-- control happens through a local bridge; status here is never fabricated — it is
+-- 'unknown' until a real test (server-side network probe or a client-reported result).
+-- ============================================================================
+CREATE TABLE IF NOT EXISTS devices (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    name VARCHAR(120) NOT NULL,
+    device_type VARCHAR(32) NOT NULL,       -- receipt_printer, label_printer, barcode_scanner, cash_drawer, customer_display, other
+    connection_type VARCHAR(32) NOT NULL,   -- usb, network, windows, serial, hid_keyboard, browser
+    config_json TEXT NOT NULL DEFAULT '{}',
+    capabilities_json TEXT NOT NULL DEFAULT '[]',
+    location VARCHAR(120),
+    is_default INTEGER NOT NULL DEFAULT 0,
+    status VARCHAR(16) NOT NULL DEFAULT 'unknown', -- unknown, ok, error, offline
+    last_error TEXT,
+    last_test_at TIMESTAMP,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+CREATE INDEX IF NOT EXISTS idx_devices_type ON devices(device_type, is_default);
+
 -- POS sales reuse the shared inventory_movements ledger. The pos_sale_id link column
 -- is added idempotently via ensure_schema_columns() in database.py so existing stores
 -- upgrade without a destructive rebuild.
+
+-- ============================================================================
+-- 33. INVENTORY COUNTS — physical stock-taking sessions. Counted quantities are
+-- compared against the system stock; applying the session writes real variance
+-- movements to inventory_movements (completed sales/orders are never edited).
+-- ============================================================================
+CREATE TABLE IF NOT EXISTS inventory_counts (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    reference VARCHAR(40) NOT NULL UNIQUE,
+    name VARCHAR(160) NOT NULL DEFAULT 'Inventaire',
+    status VARCHAR(16) NOT NULL DEFAULT 'open', -- open, applied, cancelled
+    opened_by_admin_id INTEGER NOT NULL REFERENCES admin_users(id),
+    applied_by_admin_id INTEGER REFERENCES admin_users(id),
+    opened_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    applied_at TIMESTAMP,
+    total_lines INTEGER NOT NULL DEFAULT 0,
+    total_variance_abs INTEGER NOT NULL DEFAULT 0,
+    notes TEXT
+);
+CREATE INDEX IF NOT EXISTS idx_inventory_counts_status ON inventory_counts(status, opened_at);
+
+CREATE TABLE IF NOT EXISTS inventory_count_items (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    count_id INTEGER NOT NULL REFERENCES inventory_counts(id) ON DELETE CASCADE,
+    variant_id INTEGER NOT NULL REFERENCES product_variants(id),
+    expected_qty INTEGER NOT NULL,  -- system stock at the moment the line was added/refreshed
+    counted_qty INTEGER NOT NULL,
+    counted_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE(count_id, variant_id)
+);
+CREATE INDEX IF NOT EXISTS idx_inventory_count_items_count ON inventory_count_items(count_id);

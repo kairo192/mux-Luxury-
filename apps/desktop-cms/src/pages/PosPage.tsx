@@ -18,8 +18,18 @@ import {
   CreditCard,
   Wallet,
   Delete,
+  History,
 } from "lucide-react";
 import { DesktopCmsApi } from "../api/adminClient";
+import {
+  subscribePosQueue,
+  enqueuePosSale,
+  syncPosQueue,
+  removeSyncedItems,
+  getPosQueue,
+  type PosQueueItem,
+} from "../utils/posOfflineQueue";
+import { Wifi, WifiOff, CloudUpload, CloudOff, User, UserPlus, UserCheck } from "lucide-react";
 
 // ---------------------------------------------------------------------------
 // POS — Touch-first cashier workspace.
@@ -152,6 +162,26 @@ export const PosPage: React.FC<{ onInventoryUpdated?: () => void }> = ({ onInven
   const [receipt, setReceipt] = useState<any | null>(null);
   const [recentSales, setRecentSales] = useState<any[]>([]);
   const [refundTarget, setRefundTarget] = useState<any | null>(null);
+  const [sessionsHistory, setSessionsHistory] = useState<any[] | null>(null);
+
+  // Customer attach
+  const [customer, setCustomer] = useState<{ id: number; full_name: string; phone: string } | null>(null);
+  const [showCustomer, setShowCustomer] = useState(false);
+  const [custQuery, setCustQuery] = useState("");
+  const [custResults, setCustResults] = useState<any[]>([]);
+  const [custNewName, setCustNewName] = useState("");
+  const [custNewPhone, setCustNewPhone] = useState("");
+
+  // Offline-first state
+  const [online, setOnline] = useState<boolean>(typeof navigator !== "undefined" ? navigator.onLine !== false : true);
+  const [queue, setQueue] = useState<PosQueueItem[]>([]);
+  const [syncing, setSyncing] = useState(false);
+  const [showConflicts, setShowConflicts] = useState(false);
+  const queueCounts = {
+    pending: queue.filter((i) => i.status === "pending").length,
+    conflict: queue.filter((i) => i.status === "conflict").length,
+    failed: queue.filter((i) => i.status === "failed").length,
+  };
 
   const loadRegister = useCallback(async () => {
     try {
@@ -191,6 +221,50 @@ export const PosPage: React.FC<{ onInventoryUpdated?: () => void }> = ({ onInven
     setError(msg);
     setTimeout(() => setError(null), 6000);
   };
+
+  // ------------------------------------------------------------ offline sync
+  const runSync = useCallback(async (silent = false) => {
+    if (getPosQueue().filter((i) => i.status === "pending" || i.status === "failed").length === 0) return;
+    setSyncing(true);
+    try {
+      const summary = await syncPosQueue((ops) => DesktopCmsApi.posSync(ops) as any);
+      if (summary) {
+        removeSyncedItems();
+        if (!silent) {
+          const parts: string[] = [];
+          if (summary.created) parts.push(`${summary.created} synchronisée(s)`);
+          if (summary.duplicate) parts.push(`${summary.duplicate} déjà connue(s)`);
+          if (summary.conflict) parts.push(`${summary.conflict} conflit(s)`);
+          flashSuccess(`Synchronisation : ${parts.join(", ") || "rien à faire"}`);
+        }
+        loadRegister();
+        loadRecentSales();
+        onInventoryUpdated?.();
+      }
+    } finally {
+      setSyncing(false);
+    }
+  }, [loadRegister, loadRecentSales, onInventoryUpdated]);
+
+  useEffect(() => {
+    const unsub = subscribePosQueue(setQueue);
+    const goOnline = () => {
+      setOnline(true);
+      runSync(true);
+    };
+    const goOffline = () => setOnline(false);
+    window.addEventListener("online", goOnline);
+    window.addEventListener("offline", goOffline);
+    // Attempt a sync on mount in case sales are pending from a previous run.
+    runSync(true);
+    return () => {
+      unsub();
+      window.removeEventListener("online", goOnline);
+      window.removeEventListener("offline", goOffline);
+    };
+  }, [runSync]);
+
+  const isNetworkError = (e: any) => !navigator.onLine || e?.status === 0 || e?.code === "NETWORK_ERROR" || e?.status === undefined;
 
   // ------------------------------------------------------------ register
   const handleOpenRegister = async () => {
@@ -321,6 +395,42 @@ export const PosPage: React.FC<{ onInventoryUpdated?: () => void }> = ({ onInven
     setOrderDiscount("");
     setTendered("0");
     setPayMethod("cash");
+    setCustomer(null);
+  };
+
+  // ------------------------------------------------------------ customer
+  const searchCustomer = async () => {
+    const q = custQuery.trim();
+    if (!q) return;
+    try {
+      const d = await DesktopCmsApi.searchCustomers(q);
+      setCustResults(d.items || []);
+    } catch (e: any) {
+      flashError(e?.userMessage || "Recherche client échouée");
+    }
+  };
+
+  const pickCustomer = (c: any) => {
+    setCustomer({ id: c.id, full_name: c.full_name, phone: c.phone });
+    setShowCustomer(false);
+    setCustQuery("");
+    setCustResults([]);
+  };
+
+  const createCustomer = async () => {
+    if (custNewName.trim().length < 2 || custNewPhone.trim().length < 6) {
+      return flashError("Nom et téléphone requis");
+    }
+    try {
+      const c = await DesktopCmsApi.createCustomer({ full_name: custNewName.trim(), phone: custNewPhone.trim() });
+      setCustomer({ id: c.id, full_name: c.full_name, phone: c.phone });
+      setShowCustomer(false);
+      setCustNewName("");
+      setCustNewPhone("");
+      flashSuccess(`Client ${c.full_name} rattaché`);
+    } catch (e: any) {
+      flashError(e?.userMessage || "Création client refusée");
+    }
   };
 
   // ------------------------------------------------------------ checkout
@@ -332,18 +442,19 @@ export const PosPage: React.FC<{ onInventoryUpdated?: () => void }> = ({ onInven
     }
     setBusy(true);
     const idemKey = `pos-sale-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+    const payload = {
+      items: cart.map((l) => ({ variant_id: l.variant_id, quantity: l.quantity, line_discount_dzd: l.line_discount_dzd || 0 })),
+      payments: [
+        {
+          method: payMethod,
+          amount_dzd: total,
+          tendered_dzd: payMethod === "cash" && tenderedNum > 0 ? tenderedNum : undefined,
+        },
+      ],
+      order_discount_dzd: orderDisc,
+      customer_id: customer?.id ?? null,
+    };
     try {
-      const payload = {
-        items: cart.map((l) => ({ variant_id: l.variant_id, quantity: l.quantity, line_discount_dzd: l.line_discount_dzd || 0 })),
-        payments: [
-          {
-            method: payMethod,
-            amount_dzd: total,
-            tendered_dzd: payMethod === "cash" && tenderedNum > 0 ? tenderedNum : undefined,
-          },
-        ],
-        order_discount_dzd: orderDisc,
-      };
       const sale = await DesktopCmsApi.posCreateSale(payload, idemKey);
       setReceipt(sale);
       clearCart();
@@ -353,7 +464,36 @@ export const PosPage: React.FC<{ onInventoryUpdated?: () => void }> = ({ onInven
       loadRecentSales();
       onInventoryUpdated?.();
     } catch (e: any) {
-      flashError(e?.userMessage || "Vente refusée");
+      if (isNetworkError(e)) {
+        // Offline: never lose the sale. Queue it durably for later idempotent sync.
+        const item = enqueuePosSale(payload, total, session?.id ?? null);
+        setReceipt({
+          offline: true,
+          sale_reference: item.client_txn_id,
+          created_at: item.created_at,
+          sale_type: "sale",
+          subtotal_dzd: subtotal,
+          discount_dzd: lineDiscounts + orderDisc,
+          tax_dzd: 0,
+          total_dzd: total,
+          items: cart.map((l) => ({
+            id: l.variant_id,
+            quantity: l.quantity,
+            product_name: l.product_name,
+            variant_title: l.variant_title,
+            line_total_dzd: l.unit_price_dzd * l.quantity - Math.min(l.line_discount_dzd, l.unit_price_dzd * l.quantity),
+          })),
+          payments: [{ id: 1, method: payMethod, amount_dzd: total, change_dzd: change }],
+          customer: customer ? { full_name: customer.full_name, phone: customer.phone } : null,
+          boutique_info: {},
+        });
+        clearCart();
+        setShowPay(false);
+        setOnline(false);
+        flashSuccess("Hors ligne : vente enregistrée localement, elle sera synchronisée au retour du réseau.");
+      } else {
+        flashError(e?.userMessage || "Vente refusée");
+      }
     } finally {
       setBusy(false);
       scanRef.current?.focus();
@@ -374,6 +514,17 @@ export const PosPage: React.FC<{ onInventoryUpdated?: () => void }> = ({ onInven
       flashError(e?.userMessage || "Remboursement refusé");
     } finally {
       setBusy(false);
+    }
+  };
+
+  const openSessionsHistory = async () => {
+    setSessionsHistory([]);
+    try {
+      const d = await DesktopCmsApi.posListSessions(30);
+      setSessionsHistory(d.items || []);
+    } catch (e: any) {
+      flashError(e?.userMessage || "Historique indisponible");
+      setSessionsHistory(null);
     }
   };
 
@@ -401,6 +552,47 @@ export const PosPage: React.FC<{ onInventoryUpdated?: () => void }> = ({ onInven
         </div>
       )}
 
+      {/* ================= SYNC STATUS BAR ================= */}
+      {(!online || queueCounts.pending > 0 || queueCounts.conflict > 0 || queueCounts.failed > 0) && (
+        <div
+          className={`p-3 rounded-2xl flex flex-wrap items-center justify-between gap-2 border-2 ${
+            !online
+              ? "bg-amber-50 border-amber-200 text-amber-800"
+              : queueCounts.conflict > 0
+              ? "bg-red-50 border-red-200 text-red-800"
+              : "bg-sky-50 border-sky-200 text-sky-800"
+          }`}
+        >
+          <div className="flex items-center gap-2 font-bold">
+            {online ? <Wifi className="w-5 h-5" /> : <WifiOff className="w-5 h-5" />}
+            <span>{online ? "En ligne" : "Hors ligne"}</span>
+            {(queueCounts.pending > 0 || queueCounts.failed > 0) && (
+              <span className="font-mono">· {queueCounts.pending + queueCounts.failed} vente(s) en attente</span>
+            )}
+            {queueCounts.conflict > 0 && (
+              <button type="button" onClick={() => setShowConflicts(true)} className="underline font-mono">
+                · {queueCounts.conflict} conflit(s) à traiter
+              </button>
+            )}
+          </div>
+          <div className="flex items-center gap-2">
+            {queueCounts.conflict > 0 && (
+              <button type="button" onClick={() => setShowConflicts(true)} className="h-10 px-3 rounded-xl bg-white/60 font-bold flex items-center gap-1.5 active:scale-95">
+                <CloudOff className="w-4 h-4" /> Voir conflits
+              </button>
+            )}
+            <button
+              type="button"
+              disabled={syncing || !online || queueCounts.pending + queueCounts.failed === 0}
+              onClick={() => runSync(false)}
+              className="h-10 px-4 rounded-xl bg-[#063D2E] text-[#D4AF62] font-bold flex items-center gap-1.5 disabled:opacity-40 active:scale-95"
+            >
+              {syncing ? <RefreshCw className="w-4 h-4 animate-spin" /> : <CloudUpload className="w-4 h-4" />} Synchroniser
+            </button>
+          </div>
+        </div>
+      )}
+
       {/* ================= REGISTER CLOSED: open screen ================= */}
       {!session ? (
         <div className="max-w-sm mx-auto bg-white p-6 rounded-3xl border border-[#D4AF62]/40 shadow-sm mt-4">
@@ -424,6 +616,13 @@ export const PosPage: React.FC<{ onInventoryUpdated?: () => void }> = ({ onInven
           >
             <Unlock className="w-6 h-6" /> Ouvrir la caisse
           </button>
+          <button
+            type="button"
+            onClick={openSessionsHistory}
+            className="mt-2 w-full h-11 rounded-2xl border-2 border-[#063D2E]/10 text-[#063D2E] font-bold flex items-center justify-center gap-2 active:scale-95"
+          >
+            <History className="w-5 h-5" /> Historique des caisses
+          </button>
         </div>
       ) : (
         <>
@@ -443,13 +642,22 @@ export const PosPage: React.FC<{ onInventoryUpdated?: () => void }> = ({ onInven
                 <Stat label="Caisse attendue" value={fmt(session.expected_cash_dzd || 0)} gold />
               </div>
             </div>
-            <button
-              type="button"
-              onClick={() => setShowClose(true)}
-              className="h-12 px-5 rounded-2xl bg-[#D4AF62] text-[#02291F] font-bold flex items-center gap-2 active:scale-95"
-            >
-              <Lock className="w-5 h-5" /> Clôturer
-            </button>
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                onClick={openSessionsHistory}
+                className="h-12 px-4 rounded-2xl bg-white/10 hover:bg-white/20 text-[#E8D4A5] font-bold flex items-center gap-2 active:scale-95"
+              >
+                <History className="w-5 h-5" /> Historique
+              </button>
+              <button
+                type="button"
+                onClick={() => setShowClose(true)}
+                className="h-12 px-5 rounded-2xl bg-[#D4AF62] text-[#02291F] font-bold flex items-center gap-2 active:scale-95"
+              >
+                <Lock className="w-5 h-5" /> Clôturer
+              </button>
+            </div>
           </div>
 
           {/* ================= WORKSPACE ================= */}
@@ -573,6 +781,19 @@ export const PosPage: React.FC<{ onInventoryUpdated?: () => void }> = ({ onInven
                   </button>
                 )}
               </div>
+
+              {/* Customer attach row */}
+              <button
+                type="button"
+                onClick={() => setShowCustomer(true)}
+                className="w-full px-4 py-2.5 flex items-center justify-between border-b border-gray-100 hover:bg-[#FCFBF8] active:scale-[0.99]"
+              >
+                <span className="flex items-center gap-2 font-bold text-[#063D2E]">
+                  {customer ? <UserCheck className="w-4 h-4 text-emerald-600" /> : <User className="w-4 h-4 text-gray-400" />}
+                  {customer ? `${customer.full_name}` : "Client de passage"}
+                </span>
+                <span className="text-[11px] text-gray-400 font-mono">{customer ? customer.phone : "Rattacher un client →"}</span>
+              </button>
 
               <div className="flex-1 overflow-auto p-3 space-y-2 min-h-[220px] max-h-[46vh]">
                 {cart.length === 0 && (
@@ -774,6 +995,105 @@ export const PosPage: React.FC<{ onInventoryUpdated?: () => void }> = ({ onInven
         </Sheet>
       )}
 
+      {/* ================= SESSIONS HISTORY ================= */}
+      {sessionsHistory !== null && (
+        <Sheet onClose={() => setSessionsHistory(null)} title="Historique des caisses">
+          <div className="space-y-2 max-h-[60vh] overflow-auto">
+            {sessionsHistory.length === 0 && <div className="text-gray-400 py-6 text-center">Aucune session.</div>}
+            {sessionsHistory.map((s) => (
+              <div key={s.id} className="p-3 rounded-2xl border border-gray-100 bg-[#FCFBF8]">
+                <div className="flex items-center justify-between">
+                  <span className="font-bold text-[#063D2E]">#{s.id} · {s.register_name}</span>
+                  <span className={`px-2 py-0.5 rounded-lg text-xs font-bold ${s.status === "open" ? "bg-emerald-100 text-emerald-700" : "bg-gray-200 text-gray-600"}`}>
+                    {s.status === "open" ? "Ouverte" : "Clôturée"}
+                  </span>
+                </div>
+                <div className="text-gray-500 mt-1 grid grid-cols-2 gap-x-3 gap-y-0.5 font-mono text-[11px]">
+                  <span>Fond: {fmt(s.opening_float_dzd)}</span>
+                  <span>Ventes: {fmt(s.total_sales_dzd || 0)}</span>
+                  {s.status === "closed" && <span>Attendu: {fmt(s.expected_cash_dzd || 0)}</span>}
+                  {s.status === "closed" && <span>Compté: {fmt(s.counted_cash_dzd || 0)}</span>}
+                  {s.status === "closed" && (
+                    <span className={`col-span-2 font-bold ${(s.variance_dzd || 0) === 0 ? "text-emerald-600" : "text-amber-700"}`}>
+                      Écart: {(s.variance_dzd || 0) >= 0 ? "+" : ""}{fmt(s.variance_dzd || 0)}
+                    </span>
+                  )}
+                </div>
+                {s.opened_by_name && <div className="text-gray-400 text-[11px] mt-1">Ouverte par {s.opened_by_name}{s.closed_by_name ? ` · clôturée par ${s.closed_by_name}` : ""}</div>}
+              </div>
+            ))}
+          </div>
+        </Sheet>
+      )}
+
+      {/* ================= CUSTOMER ATTACH ================= */}
+      {showCustomer && (
+        <Sheet onClose={() => setShowCustomer(false)} title="Rattacher un client">
+          {customer && (
+            <div className="mb-3 p-3 rounded-2xl bg-emerald-50 border-2 border-emerald-200 flex items-center justify-between">
+              <span className="font-bold text-emerald-800 flex items-center gap-2"><UserCheck className="w-4 h-4" /> {customer.full_name} · {customer.phone}</span>
+              <button type="button" onClick={() => setCustomer(null)} className="text-emerald-700 font-bold text-sm underline">Retirer</button>
+            </div>
+          )}
+          <form onSubmit={(e) => { e.preventDefault(); searchCustomer(); }} className="flex gap-2 mb-2">
+            <input
+              value={custQuery}
+              onChange={(e) => setCustQuery(e.target.value)}
+              placeholder="Nom ou téléphone…"
+              className="flex-1 h-12 px-3 rounded-2xl border-2 border-gray-200 focus:border-[#063D2E] outline-none"
+              autoFocus
+            />
+            <button type="submit" className="h-12 px-4 rounded-2xl bg-[#063D2E] text-[#D4AF62] font-bold active:scale-95">Chercher</button>
+          </form>
+          <div className="space-y-1 max-h-48 overflow-auto mb-3">
+            {custResults.map((c) => (
+              <button key={c.id} type="button" onClick={() => pickCustomer(c)} className="w-full text-left p-2.5 rounded-xl border border-gray-100 hover:bg-[#FCFBF8] flex items-center justify-between active:scale-[0.99]">
+                <span className="font-bold text-[#063D2E]">{c.full_name}</span>
+                <span className="font-mono text-gray-500 text-[11px]">{c.phone}</span>
+              </button>
+            ))}
+          </div>
+          <div className="border-t pt-3">
+            <div className="font-bold text-[#063D2E] mb-2 flex items-center gap-2"><UserPlus className="w-4 h-4" /> Nouveau client</div>
+            <div className="grid grid-cols-2 gap-2">
+              <input value={custNewName} onChange={(e) => setCustNewName(e.target.value)} placeholder="Nom complet" className="h-12 px-3 rounded-2xl border-2 border-gray-200" />
+              <input value={custNewPhone} onChange={(e) => setCustNewPhone(e.target.value)} placeholder="Téléphone" className="h-12 px-3 rounded-2xl border-2 border-gray-200 font-mono" />
+            </div>
+            <button type="button" onClick={createCustomer} className="mt-2 w-full h-12 rounded-2xl bg-[#D4AF62] text-[#02291F] font-bold active:scale-95">
+              Créer et rattacher
+            </button>
+          </div>
+        </Sheet>
+      )}
+
+      {/* ================= OFFLINE CONFLICTS ================= */}
+      {showConflicts && (
+        <Sheet onClose={() => setShowConflicts(false)} title="Ventes en conflit">
+          <p className="text-gray-600 mb-3">
+            Ces ventes hors-ligne ont été refusées par le serveur (souvent un stock déjà vendu en ligne). Elles ne sont pas perdues — traitez-les manuellement.
+          </p>
+          <div className="space-y-2 max-h-[55vh] overflow-auto">
+            {queue.filter((i) => i.status === "conflict").length === 0 && (
+              <div className="text-gray-400 py-6 text-center">Aucun conflit.</div>
+            )}
+            {queue
+              .filter((i) => i.status === "conflict")
+              .map((i) => (
+                <div key={i.client_txn_id} className="p-3 rounded-2xl border-2 border-red-100 bg-red-50/40">
+                  <div className="flex items-center justify-between">
+                    <span className="font-mono font-bold text-[#063D2E]">{fmt(i.total_dzd)}</span>
+                    <span className="text-xs text-gray-400">{new Date(i.created_at).toLocaleString("fr-DZ")}</span>
+                  </div>
+                  <div className="text-red-600 text-[13px] mt-1">{i.error}</div>
+                  <div className="text-gray-500 text-[11px] mt-1">
+                    {i.payload.items.map((it) => `${it.quantity}× #${it.variant_id}`).join(", ")}
+                  </div>
+                </div>
+              ))}
+          </div>
+        </Sheet>
+      )}
+
       {/* ================= RECEIPT ================= */}
       {receipt && <ReceiptModal sale={receipt} onClose={() => setReceipt(null)} onPrint={printReceipt} />}
     </div>
@@ -821,6 +1141,8 @@ const ReceiptModal: React.FC<{ sale: any; onClose: () => void; onPrint: () => vo
           <div>Reçu: {sale.sale_reference}</div>
           <div>{new Date(sale.created_at).toLocaleString("fr-DZ")}</div>
           {sale.cashier_name && <div>Caissier: {sale.cashier_name}</div>}
+          {sale.customer && <div>Client: {sale.customer.full_name}</div>}
+          {sale.offline && <div className="font-bold text-amber-700">** HORS LIGNE — à synchroniser **</div>}
           {sale.sale_type === "refund" && <div className="font-bold text-red-700">** REMBOURSEMENT **</div>}
           <div className="border-t border-dashed my-2" />
           {(sale.items || []).map((it: any) => (

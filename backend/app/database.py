@@ -220,6 +220,9 @@ _ADDITIVE_COLUMNS = [
     ("products", "tags", "VARCHAR(400)"),
     # POS: link stock movements to in-store sales (shared inventory ledger)
     ("inventory_movements", "pos_sale_id", "INTEGER"),
+    # Customer management: optional contact + CRM notes (walk-in friendly)
+    ("customers", "email", "VARCHAR(255)"),
+    ("customers", "notes", "TEXT"),
 ]
 
 

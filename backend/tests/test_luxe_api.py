@@ -1586,10 +1586,13 @@ console.log("ALL_TSX_COMPILED_OK");
         methods = _re.findall(r"^\s*([a-zA-Z0-9_]+):\s*(?:async\s*)?\(", ac_text, _re.M)
         self.assertGreaterEqual(len(methods), 34)
 
-        pages_dir = os.path.join(repo_root, "apps", "desktop-cms", "src", "pages")
-        ui_parts = [__import__("pathlib").Path(os.path.join(repo_root, "apps", "desktop-cms", "src", "App.tsx")).read_text(encoding="utf-8")]
-        for p in __import__("pathlib").Path(pages_dir).glob("*.tsx"):
-            ui_parts.append(p.read_text(encoding="utf-8"))
+        src_dir = os.path.join(repo_root, "apps", "desktop-cms", "src")
+        ui_parts = [__import__("pathlib").Path(os.path.join(src_dir, "App.tsx")).read_text(encoding="utf-8")]
+        for sub in ("pages", "components"):
+            sub_dir = os.path.join(src_dir, sub)
+            if os.path.isdir(sub_dir):
+                for p in __import__("pathlib").Path(sub_dir).glob("*.tsx"):
+                    ui_parts.append(p.read_text(encoding="utf-8"))
         ui_text = "".join(ui_parts)
         missing = [m for m in methods if f"DesktopCmsApi.{m}" not in ui_text]
         self.assertEqual(missing, [], f"Unwired DesktopCmsApi methods in Desktop CMS UI: {missing}")

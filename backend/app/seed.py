@@ -155,14 +155,16 @@ _OPERATIONAL_PERMISSIONS = [
     ("pos:refund", "Refund or void completed POS sales"),
     ("pos:read", "View POS sales and cash register sessions"),
     ("register:manage", "Open, close and reconcile cash register sessions"),
+    ("devices:read", "View registered store devices and their status"),
+    ("devices:write", "Register, configure, test and remove store devices"),
 ]
 _OPERATIONAL_ROLES = [
     ("cashier", "Cashier — Operate the POS, sell, and manage the cash register"),
 ]
 _OPERATIONAL_GRANTS = {
-    "super_admin": ["pos:sell", "pos:refund", "pos:read", "register:manage"],
-    "admin": ["pos:sell", "pos:refund", "pos:read", "register:manage"],
-    "cashier": ["dashboard:read", "pos:sell", "pos:read", "register:manage"],
+    "super_admin": ["pos:sell", "pos:refund", "pos:read", "register:manage", "devices:read", "devices:write"],
+    "admin": ["pos:sell", "pos:refund", "pos:read", "register:manage", "devices:read", "devices:write"],
+    "cashier": ["dashboard:read", "pos:sell", "pos:read", "register:manage", "devices:read"],
 }
 
 
@@ -236,6 +238,8 @@ def seed_initial_data() -> None:
             ("pos:refund", "Refund or void completed POS sales"),
             ("pos:read", "View POS sales and cash register sessions"),
             ("register:manage", "Open, close and reconcile cash register sessions"),
+            ("devices:read", "View registered store devices and their status"),
+            ("devices:write", "Register, configure, test and remove store devices"),
         ]
         perm_ids = {}
         for code, desc in perms:
@@ -244,11 +248,11 @@ def seed_initial_data() -> None:
 
         role_perm_map = {
             "super_admin": list(perm_ids.keys()),
-            "admin": ["dashboard:read", "products:write", "categories:write", "inventory:write", "orders:write", "content:write", "pos:sell", "pos:refund", "pos:read", "register:manage"],
+            "admin": ["dashboard:read", "products:write", "categories:write", "inventory:write", "orders:write", "content:write", "pos:sell", "pos:refund", "pos:read", "register:manage", "devices:read", "devices:write"],
             "product_manager": ["dashboard:read", "products:write"],
             "order_manager": ["dashboard:read", "orders:write"],
             "inventory_manager": ["dashboard:read", "inventory:write", "products:write"],
-            "cashier": ["dashboard:read", "pos:sell", "pos:read", "register:manage"],
+            "cashier": ["dashboard:read", "pos:sell", "pos:read", "register:manage", "devices:read"],
             "readonly": ["dashboard:read"],
         }
         for rname, p_list in role_perm_map.items():

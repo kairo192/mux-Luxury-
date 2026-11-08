@@ -230,6 +230,7 @@ export const DesktopCmsApi = {
 
   // Dashboard & Delta Synchronization
   getDashboard: () => adminFetch("/admin/dashboard"),
+  getBusinessDashboard: () => adminFetch("/admin/dashboard/business"),
   deltaSync: (sinceOrderId = 0, sinceMovementId = 0) =>
     adminFetch(`/admin/sync/delta?since_order_id=${sinceOrderId}&since_movement_id=${sinceMovementId}`),
 
@@ -333,6 +334,25 @@ export const DesktopCmsApi = {
   listInventoryMovements: (variantId?: number) =>
     adminFetch(`/admin/inventory/movements${variantId ? `?variant_id=${variantId}` : ""}`),
 
+  // Physical inventory counts & reconciliation
+  listInventoryCounts: (limit = 30) =>
+    adminFetch(`/admin/inventory/counts?limit=${limit}`),
+  openInventoryCount: (payload: { name?: string; notes?: string } = {}) =>
+    adminFetch("/admin/inventory/counts", { method: "POST", body: JSON.stringify(payload) }),
+  getInventoryCount: (countId: number) =>
+    adminFetch(`/admin/inventory/counts/${countId}`),
+  upsertInventoryCountLine: (countId: number, variant_id: number, counted_qty: number) =>
+    adminFetch(`/admin/inventory/counts/${countId}/lines`, {
+      method: "PUT",
+      body: JSON.stringify({ variant_id, counted_qty }),
+    }),
+  deleteInventoryCountLine: (countId: number, lineId: number) =>
+    adminFetch(`/admin/inventory/counts/${countId}/lines/${lineId}`, { method: "DELETE" }),
+  applyInventoryCount: (countId: number) =>
+    adminFetch(`/admin/inventory/counts/${countId}/apply`, { method: "POST" }),
+  cancelInventoryCount: (countId: number) =>
+    adminFetch(`/admin/inventory/counts/${countId}/cancel`, { method: "POST" }),
+
   // Order Management, Invoices & CSV Export
   listOrders: (status?: string) =>
     adminFetch(`/admin/orders${status ? `?status=${status}` : ""}`),
@@ -344,7 +364,17 @@ export const DesktopCmsApi = {
   getOrderInvoice: (orderId: number) => adminFetch(`/admin/orders/${orderId}/invoice`),
   exportOrdersCsv: () => adminFetch("/admin/orders/export.csv"),
   listCustomers: () => adminFetch("/admin/customers"),
+  searchCustomers: (q: string) => adminFetch(`/admin/customers/search?q=${encodeURIComponent(q)}`),
+  getCustomer: (customerId: number) => adminFetch(`/admin/customers/${customerId}`),
+  createCustomer: (payload: { full_name: string; phone: string; email?: string | null; wilaya_code?: string | null; commune?: string | null; address?: string | null; notes?: string | null }) =>
+    adminFetch("/admin/customers", { method: "POST", body: JSON.stringify(payload) }),
+  updateCustomer: (customerId: number, payload: unknown) =>
+    adminFetch(`/admin/customers/${customerId}`, { method: "PUT", body: JSON.stringify(payload) }),
   getReports: () => adminFetch("/admin/reports"),
+  getSalesReport: (from: string, to: string) =>
+    adminFetch(`/admin/reports/sales?from=${encodeURIComponent(from)}&to=${encodeURIComponent(to)}`),
+  salesReportCsvUrl: (from: string, to: string) =>
+    `${getApiBaseUrl()}/admin/reports/sales.csv?from=${encodeURIComponent(from)}&to=${encodeURIComponent(to)}`,
 
   // Anti-Retour COD (Customer Phone Return-Rate Scoring & Blacklist)
   checkPhoneCodRisk: (phone: string) =>
@@ -504,6 +534,20 @@ export const DesktopCmsApi = {
     }),
   posListSales: (limit = 50, sessionId?: number) =>
     adminFetch(`/admin/pos/sales?limit=${limit}${sessionId ? `&session_id=${sessionId}` : ""}`),
+  posSync: (
+    operations: Array<{
+      client_txn_id: string;
+      type: "sale";
+      register_session_id?: number | null;
+      created_at_client?: string;
+      payload: unknown;
+    }>
+  ) =>
+    adminFetch("/admin/pos/sync", {
+      method: "POST",
+      body: JSON.stringify({ operations }),
+      headers: { "Idempotency-Key": `pos-sync-${Date.now()}` },
+    }),
   posGetSale: (saleId: number) => adminFetch(`/admin/pos/sales/${saleId}`),
   posRefundSale: (
     saleId: number,
@@ -514,4 +558,38 @@ export const DesktopCmsApi = {
       body: JSON.stringify(payload),
       headers: { "Idempotency-Key": `pos-refund-${saleId}-${Date.now()}` },
     }),
+
+  // Barcode & product identification
+  validateBarcode: (code: string) => adminFetch(`/admin/barcodes/validate?code=${encodeURIComponent(code)}`),
+  assignVariantBarcode: (variantId: number, barcode?: string) =>
+    adminFetch(`/admin/variants/${variantId}/assign-barcode`, {
+      method: "POST",
+      body: JSON.stringify({ barcode: barcode ?? null }),
+    }),
+  clearVariantBarcode: (variantId: number) =>
+    adminFetch(`/admin/variants/${variantId}/barcode`, { method: "DELETE" }),
+  getVariantLabel: (variantId: number) => adminFetch(`/admin/variants/${variantId}/label`),
+
+  // Users, roles & permissions
+  listRoles: () => adminFetch("/admin/roles"),
+  listUsers: () => adminFetch("/admin/users"),
+  createUser: (payload: { email: string; full_name: string; phone?: string | null; role_id: number; password: string }) =>
+    adminFetch("/admin/users", { method: "POST", body: JSON.stringify(payload) }),
+  updateUser: (userId: number, payload: { full_name?: string; phone?: string | null; role_id?: number; is_active?: boolean }) =>
+    adminFetch(`/admin/users/${userId}`, { method: "PUT", body: JSON.stringify(payload) }),
+  resetUserPassword: (userId: number, new_password: string) =>
+    adminFetch(`/admin/users/${userId}/reset-password`, { method: "POST", body: JSON.stringify({ new_password }) }),
+
+  // Devices & hardware management
+  listDevices: () => adminFetch("/admin/devices"),
+  createDevice: (payload: unknown) =>
+    adminFetch("/admin/devices", { method: "POST", body: JSON.stringify(payload) }),
+  updateDevice: (deviceId: number, payload: unknown) =>
+    adminFetch(`/admin/devices/${deviceId}`, { method: "PUT", body: JSON.stringify(payload) }),
+  deleteDevice: (deviceId: number) =>
+    adminFetch(`/admin/devices/${deviceId}`, { method: "DELETE" }),
+  setDefaultDevice: (deviceId: number) =>
+    adminFetch(`/admin/devices/${deviceId}/set-default`, { method: "POST" }),
+  testDevice: (deviceId: number, payload?: { success?: boolean; error?: string; capabilities?: string[] }) =>
+    adminFetch(`/admin/devices/${deviceId}/test`, { method: "POST", body: JSON.stringify(payload || {}) }),
 };
