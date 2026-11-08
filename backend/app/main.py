@@ -4569,6 +4569,52 @@ def admin_delete_supplier(
 # --- PURCHASING & PURCHASE ORDERS ENDPOINTS ---
 
 @app.get("/api/v1/admin/purchases")
+# Must be registered BEFORE the generic /purchases list route so FastAPI matches
+# the more specific path first when the list route reuses the "/purchases" prefix.
+@app.get("/api/v1/admin/purchases/{po_id}/document")
+def admin_get_purchase_order_document(
+    po_id: int,
+    admin: dict = Depends(require_permission("dashboard:read")),
+):
+    """A4 purchase order document (bon de commande fournisseur): full supplier
+    identity, boutique header, itemised table with quantities ordered vs
+    received, and the money/payment summary."""
+    with db_session() as conn:
+        cur = conn.cursor()
+        cur.execute(
+            """SELECT po.*, s.name AS supplier_name, s.company_name AS supplier_company,
+                      s.contact_person AS supplier_contact, s.phone AS supplier_phone,
+                      s.email AS supplier_email, s.address AS supplier_address, s.tax_id AS supplier_tax_id,
+                      au.full_name AS created_by_name
+               FROM purchase_orders po
+               JOIN suppliers s ON s.id = po.supplier_id
+               LEFT JOIN admin_users au ON au.id = po.created_by
+               WHERE po.id = ?""",
+            (po_id,),
+        )
+        po = cur.fetchone()
+        if not po:
+            raise HTTPException(status_code=404, detail="Bon de commande introuvable")
+        d = dict(po)
+        cur.execute(
+            """SELECT poi.*,
+                      pv.sku AS variant_sku, pv.title AS variant_title_live,
+                      p.name_fr AS product_name_live
+               FROM purchase_order_items poi
+               LEFT JOIN product_variants pv ON pv.id = poi.variant_id
+               LEFT JOIN products p ON p.id = poi.product_id
+               WHERE poi.purchase_order_id = ? ORDER BY poi.id""",
+            (po_id,),
+        )
+        d["items"] = [dict(r) for r in cur.fetchall()]
+        d["total_items_ordered"] = sum(int(it["quantity_ordered"]) for it in d["items"])
+        d["total_items_received"] = sum(int(it["quantity_received"]) for it in d["items"])
+        d["outstanding_dzd"] = int(d["total_cost_dzd"]) - int(d["paid_amount_dzd"])
+        d["boutique_info"] = _boutique_info_from_settings(conn)
+        d["document_title"] = "Bon de commande fournisseur"
+        return d
+
+
 def admin_list_purchases(admin: dict = Depends(require_permission("dashboard:read"))):
     with db_session() as conn:
         cur = conn.cursor()
