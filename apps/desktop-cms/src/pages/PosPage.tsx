@@ -29,6 +29,8 @@ import {
   getPosQueue,
   type PosQueueItem,
 } from "../utils/posOfflineQueue";
+import { InvoiceModal } from "../components/InvoiceModal";
+import { FileText as FileTextIcon } from "lucide-react";
 import { Wifi, WifiOff, CloudUpload, CloudOff, User, UserPlus, UserCheck } from "lucide-react";
 
 // ---------------------------------------------------------------------------
@@ -163,6 +165,7 @@ export const PosPage: React.FC<{ onInventoryUpdated?: () => void }> = ({ onInven
   const [recentSales, setRecentSales] = useState<any[]>([]);
   const [refundTarget, setRefundTarget] = useState<any | null>(null);
   const [sessionsHistory, setSessionsHistory] = useState<any[] | null>(null);
+  const [invoiceSaleId, setInvoiceSaleId] = useState<number | null>(null);
 
   // Customer attach
   const [customer, setCustomer] = useState<{ id: number; full_name: string; phone: string } | null>(null);
@@ -752,6 +755,14 @@ export const PosPage: React.FC<{ onInventoryUpdated?: () => void }> = ({ onInven
                         >
                           <Printer className="w-5 h-5" />
                         </button>
+                        <button
+                          type="button"
+                          onClick={() => setInvoiceSaleId(s.id)}
+                          className="w-11 h-11 rounded-xl flex items-center justify-center text-gray-500 hover:text-[#063D2E] hover:bg-gray-100 active:scale-95"
+                          title="Facture A4"
+                        >
+                          <FileTextIcon className="w-5 h-5" />
+                        </button>
                         {s.sale_type === "sale" && s.status !== "refunded" && (
                           <button
                             type="button"
@@ -1096,6 +1107,9 @@ export const PosPage: React.FC<{ onInventoryUpdated?: () => void }> = ({ onInven
 
       {/* ================= RECEIPT ================= */}
       {receipt && <ReceiptModal sale={receipt} onClose={() => setReceipt(null)} onPrint={printReceipt} />}
+
+      {/* ================= INVOICE A4 ================= */}
+      {invoiceSaleId !== null && <InvoiceModal saleId={invoiceSaleId} onClose={() => setInvoiceSaleId(null)} />}
     </div>
   );
 };

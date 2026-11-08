@@ -5656,6 +5656,25 @@ def pos_get_sale(sale_id: int, admin: dict = Depends(require_permission("pos:rea
         return _pos_sale_payload(conn, sale_id)
 
 
+@app.get("/api/v1/admin/pos/sales/{sale_id}/invoice")
+def pos_get_sale_invoice(sale_id: int, admin: dict = Depends(require_permission("pos:read"))):
+    """Formal invoice payload (as opposed to the compact receipt): includes the
+    full boutique legal identity, line-item breakdown with unit prices and VAT,
+    and the customer record when attached. The CMS renders this as an A4 page
+    the owner prints on a regular printer for business customers."""
+    with db_session() as conn:
+        sale = _pos_sale_payload(conn, sale_id)
+        # Compute the tax rate from stored tax_dzd vs the taxable base, so historical
+        # invoices keep their original rate even if the current setting changes.
+        taxable = int(sale["subtotal_dzd"]) - int(sale["discount_dzd"])
+        tax_dzd = int(sale["tax_dzd"])
+        tax_percent = round((tax_dzd / taxable) * 100, 2) if (taxable > 0 and tax_dzd > 0) else 0
+        sale["tax_percent"] = tax_percent
+        sale["is_business_invoice"] = bool(sale.get("customer"))
+        sale["document_title"] = "Facture" if sale["sale_type"] == "sale" else "Avoir (remboursement)"
+        return sale
+
+
 @app.post("/api/v1/admin/pos/sales/{sale_id}/refund", status_code=201)
 def pos_refund_sale(
     sale_id: int,

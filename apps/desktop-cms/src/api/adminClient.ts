@@ -581,6 +581,7 @@ export const DesktopCmsApi = {
       headers: { "Idempotency-Key": `pos-sync-${Date.now()}` },
     }),
   posGetSale: (saleId: number) => adminFetch(`/admin/pos/sales/${saleId}`),
+  posGetSaleInvoice: (saleId: number) => adminFetch(`/admin/pos/sales/${saleId}/invoice`),
   posRefundSale: (
     saleId: number,
     payload: { items?: Array<{ variant_id: number; quantity: number }>; refund_method?: string; notes?: string }
