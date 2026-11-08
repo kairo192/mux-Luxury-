@@ -77,6 +77,7 @@ import { SalesReportPage } from "./pages/SalesReportPage";
 import { FiscalSettingsPage } from "./pages/FiscalSettingsPage";
 import { AuditLogPage } from "./pages/AuditLogPage";
 import { SuppliersPage } from "./pages/SuppliersPage";
+import { LowStockPage } from "./pages/LowStockPage";
 import { BarcodeLabelModal } from "./components/BarcodeLabelModal";
 import { StockWriteOffModal } from "./components/StockWriteOffModal";
 import { ExpensesPage } from "./pages/ExpensesPage";
@@ -106,6 +107,7 @@ type CmsTab =
   | "fiscal"
   | "audit"
   | "suppliers"
+  | "low_stock"
   | "backups";
 
 export default function App() {
@@ -1420,7 +1422,8 @@ export default function App() {
           { id: "fiscal", label: "17. Fiscalité & identité", icon: Landmark },
           { id: "audit", label: "18. Journal d'audit", icon: CheckSquare },
           { id: "suppliers", label: "19. Fournisseurs", icon: Truck },
-          { id: "backups", label: "20. Sauvegardes & Sécurité", icon: ShieldCheck },
+          { id: "low_stock", label: "20. Alertes stock", icon: AlertTriangle },
+          { id: "backups", label: "21. Sauvegardes & Sécurité", icon: ShieldCheck },
         ].map((t) => {
           const Icon = t.icon;
           const isActive = activeTab === t.id;
@@ -2544,6 +2547,9 @@ export default function App() {
 
         {/* TAB: SUPPLIERS (KEEP-ALIVE) */}
         <div className={activeTab === "suppliers" ? "block" : "hidden"}><SuppliersPage /></div>
+
+        {/* TAB: LOW STOCK (KEEP-ALIVE) */}
+        <div className={activeTab === "low_stock" ? "block" : "hidden"}><LowStockPage /></div>
 
         {/* TAB 7: STORE CONTENT, COUPONS, STATIC PAGES & REAL SOCIAL/LOCATION SETTINGS (KEEP-ALIVE) */}
         <div className={activeTab === "content" ? "block" : "hidden"}>

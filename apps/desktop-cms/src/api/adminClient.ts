@@ -333,6 +333,8 @@ export const DesktopCmsApi = {
     }),
   listInventoryMovements: (variantId?: number) =>
     adminFetch(`/admin/inventory/movements${variantId ? `?variant_id=${variantId}` : ""}`),
+  getLowStockReport: (includeOutOfStock = true) =>
+    adminFetch(`/admin/inventory/low-stock?include_out_of_stock=${includeOutOfStock ? "true" : "false"}&limit=200`),
 
   // Physical inventory counts & reconciliation
   listInventoryCounts: (limit = 30) =>

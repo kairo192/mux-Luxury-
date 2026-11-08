@@ -7448,6 +7448,82 @@ def admin_update_fiscal_settings(payload: FiscalSettingsInput, admin: dict = Dep
         return _read_fiscal_settings(conn)
 
 
+# ============================================================================
+# LOW STOCK ALERTS — actionable reorder view with incoming-stock awareness.
+# For each variant at or below its low_stock_threshold we show the current
+# stock, the quantity on order (from non-cancelled purchase orders that are
+# not fully received) and the typical 30-day velocity. The CMS uses this to
+# help the owner decide what to reorder and how much.
+# ============================================================================
+
+
+@app.get("/api/v1/admin/inventory/low-stock")
+def admin_low_stock_report(
+    include_out_of_stock: bool = Query(True),
+    limit: int = Query(100, ge=1, le=500),
+    admin: dict = Depends(require_permission("inventory:write")),
+):
+    thirty_days_ago = (datetime.now(timezone.utc) - timedelta(days=30)).strftime("%Y-%m-%d %H:%M:%S")
+    with db_session() as conn:
+        cur = conn.cursor()
+        cur.execute(
+            f"""SELECT pv.id AS variant_id, pv.sku, pv.title AS variant_title, pv.stock_qty,
+                       pv.low_stock_threshold,
+                       p.id AS product_id, p.name_fr AS product_name,
+                       COALESCE(pv.purchase_cost_dzd, p.purchase_cost_dzd, 0) AS unit_cost_dzd,
+                       (SELECT COALESCE(SUM(poi.quantity_ordered - poi.quantity_received), 0)
+                          FROM purchase_order_items poi JOIN purchase_orders po ON po.id = poi.purchase_order_id
+                          WHERE poi.variant_id = pv.id
+                            AND po.status NOT IN ('cancelled','received')
+                            AND poi.quantity_ordered > poi.quantity_received) AS on_order_qty
+                FROM product_variants pv
+                JOIN products p ON p.id = pv.product_id
+                WHERE pv.is_active = 1 AND p.deleted_at IS NULL
+                  AND pv.stock_qty <= pv.low_stock_threshold
+                  {'' if include_out_of_stock else 'AND pv.stock_qty > 0'}
+                ORDER BY pv.stock_qty ASC, pv.id
+                LIMIT ?""",
+            (limit,),
+        )
+        rows = [dict(r) for r in cur.fetchall()]
+        for row in rows:
+            # 30-day velocity = units sold across both channels in last 30 days
+            cur.execute(
+                """SELECT (
+                      SELECT COALESCE(SUM(oi.quantity), 0)
+                      FROM order_items oi JOIN orders o ON o.id = oi.order_id
+                      WHERE oi.variant_id = ? AND o.status != 'cancelled' AND o.created_at >= ?
+                   ) + (
+                      SELECT COALESCE(SUM(psi.quantity), 0)
+                      FROM pos_sale_items psi JOIN pos_sales ps ON ps.id = psi.sale_id
+                      WHERE psi.variant_id = ? AND ps.sale_type = 'sale' AND ps.created_at >= ?
+                   ) - (
+                      SELECT COALESCE(SUM(psi.quantity), 0)
+                      FROM pos_sale_items psi JOIN pos_sales ps ON ps.id = psi.sale_id
+                      WHERE psi.variant_id = ? AND ps.sale_type = 'refund' AND ps.created_at >= ?
+                   ) AS v""",
+                (row["variant_id"], thirty_days_ago, row["variant_id"], thirty_days_ago, row["variant_id"], thirty_days_ago),
+            )
+            row["velocity_30d"] = int(cur.fetchone()["v"])
+            # Suggested reorder = roughly 2 months of velocity, minus current + on_order, at least target threshold + 1
+            target = max(int(row["low_stock_threshold"]) + 1, row["velocity_30d"] * 2)
+            row["suggested_reorder_qty"] = max(0, target - int(row["stock_qty"]) - int(row["on_order_qty"]))
+            row["on_order_qty"] = int(row["on_order_qty"])
+            row["unit_cost_dzd"] = int(row["unit_cost_dzd"])
+
+        out_of_stock = sum(1 for r in rows if r["stock_qty"] == 0)
+        low_stock = len(rows) - out_of_stock
+        total_reorder_value = sum(r["suggested_reorder_qty"] * r["unit_cost_dzd"] for r in rows)
+        return {
+            "items": rows,
+            "summary": {
+                "out_of_stock_count": out_of_stock,
+                "low_stock_count": low_stock,
+                "total_suggested_reorder_value_dzd": total_reorder_value,
+            },
+        }
+
+
 @app.get("/api/v1/admin/reports/sales")
 def admin_sales_report(
     date_from: str = Query(..., alias="from"),
