@@ -4279,29 +4279,35 @@ def api_readiness_check():
 
 @app.get("/api/v1/admin/audit-logs")
 def admin_list_audit_logs(
-    limit: int = Query(40, ge=1, le=200),
+    limit: int = Query(50, ge=1, le=500),
     action_filter: Optional[str] = Query(None, alias="action"),
+    entity_type: Optional[str] = Query(None),
+    admin_user_id: Optional[int] = Query(None),
+    q: Optional[str] = Query(None, max_length=120),
     admin: dict = Depends(require_permission("settings:write")),
 ):
+    where = []
+    params: List[Any] = []
+    if action_filter:
+        where.append("al.action = ?"); params.append(action_filter.strip())
+    if entity_type:
+        where.append("al.entity_type = ?"); params.append(entity_type.strip())
+    if admin_user_id is not None:
+        where.append("al.admin_user_id = ?"); params.append(admin_user_id)
+    if q:
+        like = f"%{q.strip()}%"
+        where.append("(al.action LIKE ? OR al.entity_id LIKE ? OR al.details_json LIKE ?)")
+        params.extend([like, like, like])
+    where_sql = (" WHERE " + " AND ".join(where)) if where else ""
+    sql = (
+        "SELECT al.*, au.email AS admin_email, au.full_name AS admin_name "
+        "FROM audit_logs al LEFT JOIN admin_users au ON au.id = al.admin_user_id"
+        f"{where_sql} ORDER BY al.id DESC LIMIT ?"
+    )
+    params.append(limit)
     with db_session() as conn:
         cur = conn.cursor()
-        if action_filter:
-            cur.execute(
-                """SELECT al.*, au.email AS admin_email, au.full_name AS admin_name
-                   FROM audit_logs al
-                   LEFT JOIN admin_users au ON au.id = al.admin_user_id
-                   WHERE al.action = ?
-                   ORDER BY al.id DESC LIMIT ?""",
-                (action_filter.strip(), limit),
-            )
-        else:
-            cur.execute(
-                """SELECT al.*, au.email AS admin_email, au.full_name AS admin_name
-                   FROM audit_logs al
-                   LEFT JOIN admin_users au ON au.id = al.admin_user_id
-                   ORDER BY al.id DESC LIMIT ?""",
-                (limit,),
-            )
+        cur.execute(sql, tuple(params))
         items = []
         for r in cur.fetchall():
             d = dict(r)
@@ -4311,6 +4317,28 @@ def admin_list_audit_logs(
                 d["details"] = {}
             items.append(d)
         return {"items": items, "count": len(items)}
+
+
+@app.get("/api/v1/admin/audit-logs/facets")
+def admin_audit_log_facets(admin: dict = Depends(require_permission("settings:write"))):
+    """Distinct actions and entity types for building the filter UI (last ~5000 rows)."""
+    with db_session() as conn:
+        cur = conn.cursor()
+        cur.execute(
+            """SELECT action, entity_type, COUNT(*) AS c
+               FROM audit_logs
+               WHERE id > (SELECT COALESCE(MAX(id), 0) - 5000 FROM audit_logs)
+               GROUP BY action, entity_type"""
+        )
+        actions_set: Dict[str, int] = {}
+        entities_set: Dict[str, int] = {}
+        for r in cur.fetchall():
+            actions_set[r["action"]] = actions_set.get(r["action"], 0) + int(r["c"])
+            entities_set[r["entity_type"]] = entities_set.get(r["entity_type"], 0) + int(r["c"])
+        return {
+            "actions": [{"code": k, "count": v} for k, v in sorted(actions_set.items())],
+            "entity_types": [{"code": k, "count": v} for k, v in sorted(entities_set.items())],
+        }
 # ============================================================================
 # ERP MODULES: PURCHASING, SUPPLIERS, EXPENSES, TREASURY & ACCOUNTING LEDGER
 # ============================================================================

@@ -75,6 +75,7 @@ import { CustomersPage } from "./pages/CustomersPage";
 import { InventoryCountPage } from "./pages/InventoryCountPage";
 import { SalesReportPage } from "./pages/SalesReportPage";
 import { FiscalSettingsPage } from "./pages/FiscalSettingsPage";
+import { AuditLogPage } from "./pages/AuditLogPage";
 import { BarcodeLabelModal } from "./components/BarcodeLabelModal";
 import { StockWriteOffModal } from "./components/StockWriteOffModal";
 import { ExpensesPage } from "./pages/ExpensesPage";
@@ -102,6 +103,7 @@ type CmsTab =
   | "inventory_count"
   | "sales_report"
   | "fiscal"
+  | "audit"
   | "backups";
 
 export default function App() {
@@ -274,7 +276,7 @@ export default function App() {
         DesktopCmsApi.listCodBlacklist().catch(() => ({ items: [] })),
         DesktopCmsApi.getKeychainStatus().catch(() => null),
         DesktopCmsApi.listCommunicationsOutbox().catch(() => ({ items: [] })),
-        DesktopCmsApi.listAuditLogs(30).catch(() => ({ items: [] })),
+        DesktopCmsApi.listAuditLogs({ limit: 30 }).catch(() => ({ items: [] })),
         DesktopCmsApi.checkReadiness().catch(() => ({ ready: true })),
         DesktopCmsApi.listCoupons().catch(() => ({ items: [] })),
       ]);
@@ -1414,7 +1416,8 @@ export default function App() {
           { id: "inventory_count", label: "15. Inventaire physique", icon: Boxes },
           { id: "sales_report", label: "16. Rapport de ventes", icon: FileText },
           { id: "fiscal", label: "17. Fiscalité & identité", icon: Landmark },
-          { id: "backups", label: "18. Sauvegardes & Sécurité", icon: ShieldCheck },
+          { id: "audit", label: "18. Journal d'audit", icon: CheckSquare },
+          { id: "backups", label: "19. Sauvegardes & Sécurité", icon: ShieldCheck },
         ].map((t) => {
           const Icon = t.icon;
           const isActive = activeTab === t.id;
@@ -2532,6 +2535,9 @@ export default function App() {
 
         {/* TAB: FISCAL SETTINGS (KEEP-ALIVE) */}
         <div className={activeTab === "fiscal" ? "block" : "hidden"}><FiscalSettingsPage /></div>
+
+        {/* TAB: AUDIT LOG (KEEP-ALIVE) */}
+        <div className={activeTab === "audit" ? "block" : "hidden"}><AuditLogPage /></div>
 
         {/* TAB 7: STORE CONTENT, COUPONS, STATIC PAGES & REAL SOCIAL/LOCATION SETTINGS (KEEP-ALIVE) */}
         <div className={activeTab === "content" ? "block" : "hidden"}>

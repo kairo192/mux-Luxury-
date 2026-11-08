@@ -469,7 +469,19 @@ export const DesktopCmsApi = {
     adminFetch(`/admin/pages/${slug}`, { method: "PUT", body: JSON.stringify(payload) }),
 
   // Backups, Audit History & Isolated Restoration Verification
-  listAuditLogs: (limit = 40) => adminFetch(`/admin/audit-logs?limit=${limit}`),
+  listAuditLogs: (
+    opts: { limit?: number; action?: string; entity_type?: string; admin_user_id?: number; q?: string } = {}
+  ) => {
+    const qs = new URLSearchParams();
+    if (opts.limit) qs.set("limit", String(opts.limit));
+    if (opts.action) qs.set("action", opts.action);
+    if (opts.entity_type) qs.set("entity_type", opts.entity_type);
+    if (opts.admin_user_id !== undefined) qs.set("admin_user_id", String(opts.admin_user_id));
+    if (opts.q) qs.set("q", opts.q);
+    const q = qs.toString();
+    return adminFetch(`/admin/audit-logs${q ? `?${q}` : ""}`);
+  },
+  getAuditLogFacets: () => adminFetch("/admin/audit-logs/facets"),
   checkReadiness: () => adminFetch("/ready"),
   listBackups: () => adminFetch("/admin/backups"),
   triggerBackup: () => adminFetch("/admin/backups", { method: "POST" }),
