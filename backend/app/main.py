@@ -7572,6 +7572,131 @@ def admin_low_stock_report(
 
 
 # ============================================================================
+# TREASURY REPORT — date-ranged cash flow by account & source, plus CSV export.
+# ============================================================================
+
+
+def _treasury_report_data(conn, date_from: str, date_to: str) -> dict:
+    cur = conn.cursor()
+    start = f"{date_from} 00:00:00"
+    end = f"{date_to} 23:59:59"
+
+    # Per-source inflow/outflow by account
+    cur.execute(
+        """SELECT account_type, movement_type, source_type,
+                  COUNT(*) AS c,
+                  COALESCE(SUM(amount_dzd), 0) AS total
+           FROM cash_movements
+           WHERE created_at BETWEEN ? AND ?
+           GROUP BY account_type, movement_type, source_type
+           ORDER BY total DESC""",
+        (start, end),
+    )
+    rows = [dict(r) for r in cur.fetchall()]
+
+    # Per-account summary + net
+    accounts: Dict[str, Dict[str, int]] = {}
+    for r in rows:
+        a = accounts.setdefault(r["account_type"], {"inflow": 0, "outflow": 0})
+        if r["movement_type"] in ("inflow", "deposit"):
+            a["inflow"] += int(r["total"])
+        elif r["movement_type"] in ("outflow", "withdrawal"):
+            a["outflow"] += int(r["total"])
+
+    # Per-day net (for a mini-trend)
+    cur.execute(
+        """SELECT substr(created_at, 1, 10) AS day,
+                  COALESCE(SUM(CASE WHEN movement_type IN ('inflow','deposit') THEN amount_dzd ELSE -amount_dzd END), 0) AS net
+           FROM cash_movements
+           WHERE created_at BETWEEN ? AND ?
+           GROUP BY day ORDER BY day""",
+        (start, end),
+    )
+    by_day = [{"day": r["day"], "net_dzd": int(r["net"])} for r in cur.fetchall()]
+
+    # List of movements for the detail table and CSV
+    cur.execute(
+        """SELECT cm.*, au.full_name AS admin_name
+           FROM cash_movements cm
+           LEFT JOIN admin_users au ON au.id = cm.recorded_by
+           WHERE cm.created_at BETWEEN ? AND ?
+           ORDER BY cm.id DESC LIMIT 2000""",
+        (start, end),
+    )
+    items = [dict(r) for r in cur.fetchall()]
+
+    total_in = sum(a["inflow"] for a in accounts.values())
+    total_out = sum(a["outflow"] for a in accounts.values())
+    return {
+        "period": {"from": date_from, "to": date_to},
+        "totals": {
+            "count": len(items),
+            "inflow_dzd": total_in,
+            "outflow_dzd": total_out,
+            "net_dzd": total_in - total_out,
+        },
+        "by_account": [
+            {"account_type": acc, "inflow_dzd": v["inflow"], "outflow_dzd": v["outflow"], "net_dzd": v["inflow"] - v["outflow"]}
+            for acc, v in accounts.items()
+        ],
+        "by_source": rows,
+        "by_day": by_day,
+        "items": items,
+    }
+
+
+@app.get("/api/v1/admin/reports/treasury")
+def admin_treasury_report(
+    date_from: str = Query(..., alias="from"),
+    date_to: str = Query(..., alias="to"),
+    admin: dict = Depends(require_permission("dashboard:read")),
+):
+    date_from = _parse_date_or_422(date_from, "from")
+    date_to = _parse_date_or_422(date_to, "to")
+    if date_from > date_to:
+        raise HTTPException(status_code=422, detail="from doit être <= to")
+    with db_session() as conn:
+        return _treasury_report_data(conn, date_from, date_to)
+
+
+@app.get("/api/v1/admin/reports/treasury.csv")
+def admin_treasury_report_csv(
+    date_from: str = Query(..., alias="from"),
+    date_to: str = Query(..., alias="to"),
+    admin: dict = Depends(require_permission("dashboard:read")),
+):
+    date_from = _parse_date_or_422(date_from, "from")
+    date_to = _parse_date_or_422(date_to, "to")
+    if date_from > date_to:
+        raise HTTPException(status_code=422, detail="from doit être <= to")
+    with db_session() as conn:
+        data = _treasury_report_data(conn, date_from, date_to)
+
+    buf = io.StringIO()
+    writer = csv.writer(buf)
+    def _s(v: Any) -> str:
+        s = str(v if v is not None else "")
+        if s and s[0] in ("=", "+", "-", "@"):
+            s = "'" + s
+        return s
+
+    writer.writerow(["date", "account", "movement_type", "source_type", "source_reference", "description", "amount_dzd", "admin"])
+    for it in data["items"]:
+        writer.writerow([
+            _s(it["created_at"]), _s(it["account_type"]), _s(it["movement_type"]), _s(it["source_type"]),
+            _s(it.get("source_reference") or ""), _s(it["description"]), it["amount_dzd"], _s(it.get("admin_name") or ""),
+        ])
+    writer.writerow([])
+    t = data["totals"]
+    writer.writerow(["TOTAL", "", "", "", "", f"net={t['net_dzd']}", f"in={t['inflow_dzd']} out={t['outflow_dzd']}", ""])
+    return Response(
+        content=buf.getvalue(),
+        media_type="text/csv; charset=utf-8",
+        headers={"Content-Disposition": f'attachment; filename="treasury_{date_from}_{date_to}.csv"'},
+    )
+
+
+# ============================================================================
 # INVENTORY MOVEMENTS REPORT — date-ranged movements list with CSV export.
 # Returns the raw ledger entries plus a per-reason summary so the owner can
 # spot anomalies (unusual damaged / refund / write-off spikes).

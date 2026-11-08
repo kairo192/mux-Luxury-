@@ -81,6 +81,7 @@ import { SuppliersPage } from "./pages/SuppliersPage";
 import { LowStockPage } from "./pages/LowStockPage";
 import { ExpenseReportPage } from "./pages/ExpenseReportPage";
 import { InventoryMovementsReportPage } from "./pages/InventoryMovementsReportPage";
+import { TreasuryReportPage } from "./pages/TreasuryReportPage";
 import { BarcodeLabelModal } from "./components/BarcodeLabelModal";
 import { StockWriteOffModal } from "./components/StockWriteOffModal";
 import { ExpensesPage } from "./pages/ExpensesPage";
@@ -113,6 +114,7 @@ type CmsTab =
   | "low_stock"
   | "expense_report"
   | "stock_movements"
+  | "treasury_report"
   | "backups";
 
 export default function App() {
@@ -1431,7 +1433,8 @@ export default function App() {
           { id: "low_stock", label: "20. Alertes stock", icon: AlertTriangle },
           { id: "expense_report", label: "21. Rapport dépenses", icon: Receipt },
           { id: "stock_movements", label: "22. Rapport mouvements stock", icon: Boxes },
-          { id: "backups", label: "23. Sauvegardes & Sécurité", icon: ShieldCheck },
+          { id: "treasury_report", label: "23. Rapport trésorerie", icon: Landmark },
+          { id: "backups", label: "24. Sauvegardes & Sécurité", icon: ShieldCheck },
         ].map((t) => {
           const Icon = t.icon;
           const isActive = activeTab === t.id;
@@ -2572,6 +2575,9 @@ export default function App() {
 
         {/* TAB: STOCK MOVEMENTS REPORT (KEEP-ALIVE) */}
         <div className={activeTab === "stock_movements" ? "block" : "hidden"}><InventoryMovementsReportPage /></div>
+
+        {/* TAB: TREASURY REPORT (KEEP-ALIVE) */}
+        <div className={activeTab === "treasury_report" ? "block" : "hidden"}><TreasuryReportPage /></div>
 
         {/* TAB 7: STORE CONTENT, COUPONS, STATIC PAGES & REAL SOCIAL/LOCATION SETTINGS (KEEP-ALIVE) */}
         <div className={activeTab === "content" ? "block" : "hidden"}>
