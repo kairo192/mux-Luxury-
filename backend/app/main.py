@@ -4403,8 +4403,55 @@ class CashMovementCreateInput(BaseModel):
 def admin_list_suppliers(admin: dict = Depends(require_permission("dashboard:read"))):
     with db_session() as conn:
         cur = conn.cursor()
-        cur.execute("SELECT * FROM suppliers ORDER BY id DESC")
+        # Join per-supplier aggregate stats from purchase_orders so the UI can
+        # show outstanding balances and activity without N+1 extra calls.
+        cur.execute(
+            """SELECT s.*,
+                      (SELECT COUNT(*) FROM purchase_orders po WHERE po.supplier_id = s.id) AS purchase_orders_count,
+                      (SELECT COALESCE(SUM(total_cost_dzd), 0) FROM purchase_orders po WHERE po.supplier_id = s.id AND po.status != 'cancelled') AS total_purchased_dzd,
+                      (SELECT COALESCE(SUM(total_cost_dzd - paid_amount_dzd), 0) FROM purchase_orders po
+                        WHERE po.supplier_id = s.id AND po.status NOT IN ('draft', 'cancelled') AND po.total_cost_dzd > po.paid_amount_dzd) AS outstanding_dzd
+               FROM suppliers s ORDER BY s.is_active DESC, s.id DESC"""
+        )
         return {"items": [dict(r) for r in cur.fetchall()]}
+
+
+@app.get("/api/v1/admin/suppliers/{supplier_id}")
+def admin_get_supplier_detail(
+    supplier_id: int,
+    admin: dict = Depends(require_permission("dashboard:read")),
+):
+    with db_session() as conn:
+        cur = conn.cursor()
+        cur.execute("SELECT * FROM suppliers WHERE id = ?", (supplier_id,))
+        s = cur.fetchone()
+        if not s:
+            raise HTTPException(status_code=404, detail="Fournisseur introuvable")
+        d = dict(s)
+        cur.execute(
+            """SELECT id, reference, status, payment_status, subtotal_dzd, shipping_dzd, tax_dzd,
+                      total_cost_dzd, paid_amount_dzd, expected_date, received_at, created_at
+               FROM purchase_orders WHERE supplier_id = ? ORDER BY id DESC LIMIT 50""",
+            (supplier_id,),
+        )
+        d["recent_purchase_orders"] = [dict(r) for r in cur.fetchall()]
+        cur.execute(
+            """SELECT COUNT(*) AS c,
+                      COALESCE(SUM(total_cost_dzd), 0) AS total,
+                      COALESCE(SUM(paid_amount_dzd), 0) AS paid,
+                      COALESCE(SUM(CASE WHEN status NOT IN ('draft','cancelled') AND total_cost_dzd > paid_amount_dzd
+                                        THEN total_cost_dzd - paid_amount_dzd ELSE 0 END), 0) AS outstanding
+               FROM purchase_orders WHERE supplier_id = ? AND status != 'cancelled'""",
+            (supplier_id,),
+        )
+        agg = cur.fetchone()
+        d["stats"] = {
+            "purchase_orders_count": int(agg["c"]),
+            "total_purchased_dzd": int(agg["total"]),
+            "total_paid_dzd": int(agg["paid"]),
+            "outstanding_dzd": int(agg["outstanding"]),
+        }
+        return d
 
 @app.post("/api/v1/admin/suppliers", status_code=201)
 def admin_create_supplier(

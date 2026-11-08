@@ -490,6 +490,7 @@ export const DesktopCmsApi = {
 
   // ERP: Suppliers & Purchasing
   listSuppliers: () => adminFetch("/admin/suppliers"),
+  getSupplier: (supplierId: number) => adminFetch(`/admin/suppliers/${supplierId}`),
   createSupplier: (payload: unknown) =>
     adminFetch("/admin/suppliers", { method: "POST", body: JSON.stringify(payload) }),
   updateSupplier: (supplierId: number, payload: unknown) =>
