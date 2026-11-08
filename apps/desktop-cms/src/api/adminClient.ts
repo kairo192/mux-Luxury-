@@ -395,6 +395,10 @@ export const DesktopCmsApi = {
     adminFetch(`/admin/reports/expenses?from=${encodeURIComponent(from)}&to=${encodeURIComponent(to)}`),
   expenseReportCsvUrl: (from: string, to: string) =>
     `${getApiBaseUrl()}/admin/reports/expenses.csv?from=${encodeURIComponent(from)}&to=${encodeURIComponent(to)}`,
+  getInventoryMovementsReport: (from: string, to: string, variantId?: number) =>
+    adminFetch(`/admin/reports/inventory-movements?from=${encodeURIComponent(from)}&to=${encodeURIComponent(to)}${variantId ? `&variant_id=${variantId}` : ""}`),
+  inventoryMovementsCsvUrl: (from: string, to: string, variantId?: number) =>
+    `${getApiBaseUrl()}/admin/reports/inventory-movements.csv?from=${encodeURIComponent(from)}&to=${encodeURIComponent(to)}${variantId ? `&variant_id=${variantId}` : ""}`,
 
   // Anti-Retour COD (Customer Phone Return-Rate Scoring & Blacklist)
   checkPhoneCodRisk: (phone: string) =>

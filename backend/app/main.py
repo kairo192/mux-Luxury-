@@ -7572,6 +7572,123 @@ def admin_low_stock_report(
 
 
 # ============================================================================
+# INVENTORY MOVEMENTS REPORT — date-ranged movements list with CSV export.
+# Returns the raw ledger entries plus a per-reason summary so the owner can
+# spot anomalies (unusual damaged / refund / write-off spikes).
+# ============================================================================
+
+
+def _inventory_movements_data(conn, date_from: str, date_to: str, variant_id: Optional[int] = None) -> dict:
+    cur = conn.cursor()
+    start = f"{date_from} 00:00:00"
+    end = f"{date_to} 23:59:59"
+    params: List[Any] = [start, end]
+    where = ["im.created_at BETWEEN ? AND ?"]
+    if variant_id is not None:
+        where.append("im.variant_id = ?")
+        params.append(variant_id)
+    where_sql = " AND ".join(where)
+
+    cur.execute(
+        f"""SELECT im.*, pv.sku, pv.title AS variant_title, p.name_fr AS product_name,
+                   au.full_name AS admin_name
+            FROM inventory_movements im
+            JOIN product_variants pv ON pv.id = im.variant_id
+            JOIN products p ON p.id = pv.product_id
+            LEFT JOIN admin_users au ON au.id = im.admin_user_id
+            WHERE {where_sql}
+            ORDER BY im.id DESC
+            LIMIT 2000""",
+        tuple(params),
+    )
+    items = [dict(r) for r in cur.fetchall()]
+
+    # Per-reason summary (net change + absolute units moved)
+    cur.execute(
+        f"""SELECT reason,
+                   COUNT(*) AS c,
+                   COALESCE(SUM(change_qty), 0) AS net,
+                   COALESCE(SUM(ABS(change_qty)), 0) AS gross
+            FROM inventory_movements im
+            WHERE {where_sql}
+            GROUP BY reason
+            ORDER BY gross DESC""",
+        tuple(params),
+    )
+    by_reason = [{"reason": r["reason"], "count": int(r["c"]),
+                  "net_change": int(r["net"]), "gross_units": int(r["gross"])} for r in cur.fetchall()]
+
+    total_units_in = sum(it["change_qty"] for it in items if it["change_qty"] > 0)
+    total_units_out = sum(-it["change_qty"] for it in items if it["change_qty"] < 0)
+    return {
+        "period": {"from": date_from, "to": date_to},
+        "variant_id": variant_id,
+        "totals": {
+            "count": len(items),
+            "units_in": total_units_in,
+            "units_out": total_units_out,
+            "net_change": total_units_in - total_units_out,
+        },
+        "by_reason": by_reason,
+        "items": items,
+    }
+
+
+@app.get("/api/v1/admin/reports/inventory-movements")
+def admin_inventory_movements_report(
+    date_from: str = Query(..., alias="from"),
+    date_to: str = Query(..., alias="to"),
+    variant_id: Optional[int] = Query(None),
+    admin: dict = Depends(require_permission("inventory:write")),
+):
+    date_from = _parse_date_or_422(date_from, "from")
+    date_to = _parse_date_or_422(date_to, "to")
+    if date_from > date_to:
+        raise HTTPException(status_code=422, detail="from doit être <= to")
+    with db_session() as conn:
+        return _inventory_movements_data(conn, date_from, date_to, variant_id)
+
+
+@app.get("/api/v1/admin/reports/inventory-movements.csv")
+def admin_inventory_movements_report_csv(
+    date_from: str = Query(..., alias="from"),
+    date_to: str = Query(..., alias="to"),
+    variant_id: Optional[int] = Query(None),
+    admin: dict = Depends(require_permission("inventory:write")),
+):
+    date_from = _parse_date_or_422(date_from, "from")
+    date_to = _parse_date_or_422(date_to, "to")
+    if date_from > date_to:
+        raise HTTPException(status_code=422, detail="from doit être <= to")
+    with db_session() as conn:
+        data = _inventory_movements_data(conn, date_from, date_to, variant_id)
+
+    buf = io.StringIO()
+    writer = csv.writer(buf)
+    def _s(v: Any) -> str:
+        s = str(v if v is not None else "")
+        if s and s[0] in ("=", "+", "-", "@"):
+            s = "'" + s
+        return s
+
+    writer.writerow(["date", "sku", "product_name", "variant_title", "change_qty", "previous_qty", "new_qty", "reason", "admin"])
+    for it in data["items"]:
+        writer.writerow([
+            _s(it["created_at"]), _s(it["sku"]), _s(it["product_name"]), _s(it["variant_title"]),
+            it["change_qty"], it["previous_qty"], it["new_qty"],
+            _s(it["reason"]), _s(it.get("admin_name") or ""),
+        ])
+    writer.writerow([])
+    t = data["totals"]
+    writer.writerow(["TOTAL", "", "", "", t["net_change"], "", "", f"{t['count']} mouvements", ""])
+    return Response(
+        content=buf.getvalue(),
+        media_type="text/csv; charset=utf-8",
+        headers={"Content-Disposition": f'attachment; filename="inventory_{date_from}_{date_to}.csv"'},
+    )
+
+
+# ============================================================================
 # EXPENSE REPORTS — date-ranged breakdown by category + CSV export for accounting.
 # ============================================================================
 
