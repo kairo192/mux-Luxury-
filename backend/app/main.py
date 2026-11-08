@@ -7524,6 +7524,115 @@ def admin_low_stock_report(
         }
 
 
+# ============================================================================
+# EXPENSE REPORTS — date-ranged breakdown by category + CSV export for accounting.
+# ============================================================================
+
+
+def _expenses_report_data(conn, date_from: str, date_to: str) -> dict:
+    cur = conn.cursor()
+    # Per-category totals
+    cur.execute(
+        """SELECT category, payment_method, COUNT(*) AS c, COALESCE(SUM(amount_dzd), 0) AS total
+           FROM expenses WHERE expense_date BETWEEN ? AND ?
+           GROUP BY category, payment_method""",
+        (date_from, date_to),
+    )
+    by_cat: Dict[str, Dict[str, Any]] = {}
+    for r in cur.fetchall():
+        d = by_cat.setdefault(r["category"], {"category": r["category"], "count": 0, "total_dzd": 0, "by_method": {}})
+        d["count"] += int(r["c"])
+        d["total_dzd"] += int(r["total"])
+        d["by_method"][r["payment_method"]] = d["by_method"].get(r["payment_method"], 0) + int(r["total"])
+
+    # Per-day totals (small table for a chart or a quick glance)
+    cur.execute(
+        """SELECT expense_date AS day, COALESCE(SUM(amount_dzd), 0) AS total
+           FROM expenses WHERE expense_date BETWEEN ? AND ?
+           GROUP BY expense_date ORDER BY expense_date""",
+        (date_from, date_to),
+    )
+    by_day = [{"day": r["day"], "total_dzd": int(r["total"])} for r in cur.fetchall()]
+
+    # Recent items (for the detail list, capped)
+    cur.execute(
+        """SELECT id, description, category, amount_dzd, expense_date, payment_method,
+                  recipient, receipt_reference, payment_status, created_at
+           FROM expenses WHERE expense_date BETWEEN ? AND ?
+           ORDER BY expense_date DESC, id DESC LIMIT 200""",
+        (date_from, date_to),
+    )
+    items = [dict(r) for r in cur.fetchall()]
+
+    total = sum(c["total_dzd"] for c in by_cat.values())
+    pending = sum(
+        int(it["amount_dzd"]) for it in items if it.get("payment_status") == "pending"
+    )
+    return {
+        "period": {"from": date_from, "to": date_to},
+        "totals": {
+            "total_dzd": total,
+            "count": len(items),
+            "pending_dzd": pending,
+            "categories_count": len(by_cat),
+        },
+        "by_category": sorted(by_cat.values(), key=lambda c: c["total_dzd"], reverse=True),
+        "by_day": by_day,
+        "items": items,
+    }
+
+
+@app.get("/api/v1/admin/reports/expenses")
+def admin_expense_report(
+    date_from: str = Query(..., alias="from"),
+    date_to: str = Query(..., alias="to"),
+    admin: dict = Depends(require_permission("dashboard:read")),
+):
+    date_from = _parse_date_or_422(date_from, "from")
+    date_to = _parse_date_or_422(date_to, "to")
+    if date_from > date_to:
+        raise HTTPException(status_code=422, detail="from doit être <= to")
+    with db_session() as conn:
+        return _expenses_report_data(conn, date_from, date_to)
+
+
+@app.get("/api/v1/admin/reports/expenses.csv")
+def admin_expense_report_csv(
+    date_from: str = Query(..., alias="from"),
+    date_to: str = Query(..., alias="to"),
+    admin: dict = Depends(require_permission("dashboard:read")),
+):
+    date_from = _parse_date_or_422(date_from, "from")
+    date_to = _parse_date_or_422(date_to, "to")
+    if date_from > date_to:
+        raise HTTPException(status_code=422, detail="from doit être <= to")
+    with db_session() as conn:
+        data = _expenses_report_data(conn, date_from, date_to)
+
+    buf = io.StringIO()
+    writer = csv.writer(buf)
+    def _s(v: Any) -> str:
+        s = str(v if v is not None else "")
+        if s and s[0] in ("=", "+", "-", "@"):
+            s = "'" + s
+        return s
+
+    writer.writerow(["date", "category", "description", "recipient", "payment_method", "payment_status", "amount_dzd", "receipt_reference"])
+    for it in data["items"]:
+        writer.writerow([
+            _s(it["expense_date"]), _s(it["category"]), _s(it["description"]), _s(it.get("recipient") or ""),
+            _s(it["payment_method"]), _s(it["payment_status"]), it["amount_dzd"], _s(it.get("receipt_reference") or ""),
+        ])
+    writer.writerow([])
+    writer.writerow(["TOTAL", "", "", "", "", "", data["totals"]["total_dzd"], ""])
+
+    return Response(
+        content=buf.getvalue(),
+        media_type="text/csv; charset=utf-8",
+        headers={"Content-Disposition": f'attachment; filename="expenses_{date_from}_{date_to}.csv"'},
+    )
+
+
 @app.get("/api/v1/admin/reports/sales")
 def admin_sales_report(
     date_from: str = Query(..., alias="from"),

@@ -390,6 +390,10 @@ export const DesktopCmsApi = {
     adminFetch(`/admin/reports/sales?from=${encodeURIComponent(from)}&to=${encodeURIComponent(to)}`),
   salesReportCsvUrl: (from: string, to: string) =>
     `${getApiBaseUrl()}/admin/reports/sales.csv?from=${encodeURIComponent(from)}&to=${encodeURIComponent(to)}`,
+  getExpenseReport: (from: string, to: string) =>
+    adminFetch(`/admin/reports/expenses?from=${encodeURIComponent(from)}&to=${encodeURIComponent(to)}`),
+  expenseReportCsvUrl: (from: string, to: string) =>
+    `${getApiBaseUrl()}/admin/reports/expenses.csv?from=${encodeURIComponent(from)}&to=${encodeURIComponent(to)}`,
 
   // Anti-Retour COD (Customer Phone Return-Rate Scoring & Blacklist)
   checkPhoneCodRisk: (phone: string) =>
