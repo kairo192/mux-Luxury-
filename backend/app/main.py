@@ -7069,6 +7069,83 @@ def admin_apply_count(count_id: int, admin: dict = Depends(require_permission("i
 
 
 # ============================================================================
+# STOCK WRITE-OFFS — typed, audit-trailed adjustments for damage, loss or
+# supplier returns. Unlike the generic /variants/{id}/adjust-stock these carry
+# a strict reason so reporting, shrinkage analysis and audit stay clean. Writes
+# a real movement to inventory_movements and never edits past sales.
+# ============================================================================
+
+_WRITEOFF_REASONS = {"damaged", "lost", "return_to_supplier", "promotional_giveaway", "stocktake_correction"}
+
+
+class WriteOffInput(BaseModel):
+    variant_id: int
+    quantity: int = Field(..., gt=0, le=1_000_000)
+    reason: str
+    notes: Optional[str] = Field(None, max_length=500)
+
+    @validator("reason")
+    def _reason(cls, v):
+        if v not in _WRITEOFF_REASONS:
+            raise ValueError(f"Motif invalide. Autorisés: {sorted(_WRITEOFF_REASONS)}")
+        return v
+
+
+@app.get("/api/v1/admin/inventory/write-off-reasons")
+def admin_writeoff_reasons(admin: dict = Depends(require_permission("inventory:write"))):
+    labels = {
+        "damaged": "Produit endommagé",
+        "lost": "Perte / vol",
+        "return_to_supplier": "Retour fournisseur",
+        "promotional_giveaway": "Cadeau / promo",
+        "stocktake_correction": "Correction d'inventaire",
+    }
+    return {"items": [{"code": c, "label": labels[c]} for c in sorted(_WRITEOFF_REASONS)]}
+
+
+@app.post("/api/v1/admin/inventory/write-off", status_code=201)
+def admin_stock_write_off(payload: WriteOffInput, admin: dict = Depends(require_permission("inventory:write"))):
+    with db_session(commit=True) as conn:
+        if not conn.in_transaction:
+            conn.execute("BEGIN IMMEDIATE")
+        cur = conn.cursor()
+        cur.execute("SELECT id, sku, stock_qty FROM product_variants WHERE id = ?", (payload.variant_id,))
+        v = cur.fetchone()
+        if not v:
+            raise HTTPException(status_code=404, detail="Variante introuvable")
+        if int(v["stock_qty"]) < payload.quantity:
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail=f"Stock insuffisant ({v['stock_qty']} dispo, {payload.quantity} demandé)",
+            )
+        # Atomic deduct
+        cur.execute(
+            "UPDATE product_variants SET stock_qty = stock_qty - ? WHERE id = ? AND stock_qty >= ?",
+            (payload.quantity, payload.variant_id, payload.quantity),
+        )
+        if cur.rowcount == 0:
+            raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Stock a changé, réessayez")
+        cur.execute("SELECT stock_qty FROM product_variants WHERE id = ?", (payload.variant_id,))
+        new_q = int(cur.fetchone()["stock_qty"])
+        prev_q = new_q + payload.quantity
+        cur.execute(
+            """INSERT INTO inventory_movements
+               (variant_id, admin_user_id, change_qty, previous_qty, new_qty, reason)
+               VALUES (?, ?, ?, ?, ?, ?)""",
+            (payload.variant_id, int(admin["sub"]), -payload.quantity, prev_q, new_q, f"writeoff_{payload.reason}"),
+        )
+        log_audit(conn, int(admin["sub"]), "stock_write_off", "product_variant", str(payload.variant_id), {
+            "sku": v["sku"], "quantity": payload.quantity, "reason": payload.reason,
+            "previous_qty": prev_q, "new_qty": new_q, "notes": payload.notes or "",
+        })
+        return {
+            "variant_id": payload.variant_id, "sku": v["sku"],
+            "previous_qty": prev_q, "new_qty": new_q,
+            "reason": payload.reason, "quantity": payload.quantity,
+        }
+
+
+# ============================================================================
 # SALES REPORTS — date-ranged reporting for the owner/accountant.
 # All figures are derived from real records (orders + pos_sales/items).
 # Revenue is net of in-store refunds. Online cancelled orders are excluded.

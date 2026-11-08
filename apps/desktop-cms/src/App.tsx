@@ -75,6 +75,7 @@ import { CustomersPage } from "./pages/CustomersPage";
 import { InventoryCountPage } from "./pages/InventoryCountPage";
 import { SalesReportPage } from "./pages/SalesReportPage";
 import { BarcodeLabelModal } from "./components/BarcodeLabelModal";
+import { StockWriteOffModal } from "./components/StockWriteOffModal";
 import { ExpensesPage } from "./pages/ExpensesPage";
 import { TreasuryPage } from "./pages/TreasuryPage";
 import { AccountingPage } from "./pages/AccountingPage";
@@ -124,6 +125,7 @@ export default function App() {
   }, []);
   const [activeTab, setActiveTab] = useState<CmsTab>(() => readDraft("luxe_cms_active_tab", "dashboard"));
   const [barcodeVariantId, setBarcodeVariantId] = useState<number | null>(null);
+  const [writeOffTarget, setWriteOffTarget] = useState<{ variantId: number; sku: string; productName: string; variantTitle: string; currentStock: number } | null>(null);
 
   // First-Time Owner Initialization Fields
   const [ownerName, setOwnerName] = useState("");
@@ -2211,6 +2213,15 @@ export default function App() {
                         <button type="button" onClick={() => setBarcodeVariantId(v.id)} title="Code-barres & étiquette" className="px-2.5 py-1 rounded bg-[#D4AF62]/20 text-[#7a5c16] font-bold flex items-center gap-1">
                           <ScanLine className="w-3.5 h-3.5" /> Étiquette
                         </button>
+                        <button
+                          type="button"
+                          disabled={v.stock_qty <= 0}
+                          onClick={() => setWriteOffTarget({ variantId: v.id, sku: v.sku, productName: p.name_fr, variantTitle: v.title, currentStock: v.stock_qty })}
+                          title="Sortie de stock (endommagé, perte, retour fournisseur…)"
+                          className="px-2.5 py-1 rounded bg-red-100 text-red-700 font-bold disabled:opacity-40"
+                        >
+                          Sortie
+                        </button>
                       </div>
                     </div>
                   ))
@@ -2754,6 +2765,13 @@ export default function App() {
             variantId={barcodeVariantId}
             onClose={() => setBarcodeVariantId(null)}
             onChanged={loadAllWorkspaceData}
+          />
+        )}
+        {writeOffTarget && (
+          <StockWriteOffModal
+            {...writeOffTarget}
+            onClose={() => setWriteOffTarget(null)}
+            onDone={loadAllWorkspaceData}
           />
         )}
     </main>

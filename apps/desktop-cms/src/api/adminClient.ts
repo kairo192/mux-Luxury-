@@ -353,6 +353,14 @@ export const DesktopCmsApi = {
   cancelInventoryCount: (countId: number) =>
     adminFetch(`/admin/inventory/counts/${countId}/cancel`, { method: "POST" }),
 
+  // Typed stock write-offs (damage, loss, supplier return, etc.)
+  listWriteOffReasons: () => adminFetch("/admin/inventory/write-off-reasons"),
+  stockWriteOff: (variant_id: number, quantity: number, reason: string, notes?: string) =>
+    adminFetch("/admin/inventory/write-off", {
+      method: "POST",
+      body: JSON.stringify({ variant_id, quantity, reason, notes }),
+    }),
+
   // Order Management, Invoices & CSV Export
   listOrders: (status?: string) =>
     adminFetch(`/admin/orders${status ? `?status=${status}` : ""}`),
