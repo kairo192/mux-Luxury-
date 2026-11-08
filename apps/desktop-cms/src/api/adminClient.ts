@@ -377,6 +377,7 @@ export const DesktopCmsApi = {
       body: JSON.stringify({ status, internal_notes }),
     }),
   getOrderInvoice: (orderId: number) => adminFetch(`/admin/orders/${orderId}/invoice`),
+  getOrderDeliveryNote: (orderId: number) => adminFetch(`/admin/orders/${orderId}/delivery-note`),
   exportOrdersCsv: () => adminFetch("/admin/orders/export.csv"),
   listCustomers: () => adminFetch("/admin/customers"),
   searchCustomers: (q: string) => adminFetch(`/admin/customers/search?q=${encodeURIComponent(q)}`),

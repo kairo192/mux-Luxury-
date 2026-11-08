@@ -66,6 +66,7 @@ import { RevenueTrendChart, OrderStatusDistributionChart, InventoryHealthWidget 
 import { DesktopCmsApi, restoreSessionFromOsKeychain } from "./api/adminClient";
 import { CategoryBuilderPage } from "./pages/CategoryBuilderPage";
 import { DeliveryWilayasPage } from "./pages/DeliveryWilayasPage";
+import { DeliveryNoteModal } from "./components/DeliveryNoteModal";
 import { PurchasesPage } from "./pages/PurchasesPage";
 import { PosPage } from "./pages/PosPage";
 import { DevicesPage } from "./pages/DevicesPage";
@@ -136,6 +137,7 @@ export default function App() {
   const [activeTab, setActiveTab] = useState<CmsTab>(() => readDraft("luxe_cms_active_tab", "dashboard"));
   const [barcodeVariantId, setBarcodeVariantId] = useState<number | null>(null);
   const [writeOffTarget, setWriteOffTarget] = useState<{ variantId: number; sku: string; productName: string; variantTitle: string; currentStock: number } | null>(null);
+  const [deliveryNoteOrderId, setDeliveryNoteOrderId] = useState<number | null>(null);
 
   // First-Time Owner Initialization Fields
   const [ownerName, setOwnerName] = useState("");
@@ -2341,7 +2343,15 @@ export default function App() {
                         onClick={() => handleOpenInvoice(o.id)}
                         className="px-3 py-1.5 rounded-lg bg-[#063D2E] text-[#D4AF62] font-bold"
                       >
-                        Facture / Bon de livraison
+                        Facture
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setDeliveryNoteOrderId(o.id)}
+                        className="px-3 py-1.5 rounded-lg bg-[#D4AF62] text-[#02291F] font-bold"
+                        title="Bon de livraison (document pour le livreur)"
+                      >
+                        Bon de livraison
                       </button>
                       <button
                         type="button"
@@ -2803,6 +2813,9 @@ export default function App() {
             onClose={() => setWriteOffTarget(null)}
             onDone={loadAllWorkspaceData}
           />
+        )}
+        {deliveryNoteOrderId !== null && (
+          <DeliveryNoteModal orderId={deliveryNoteOrderId} onClose={() => setDeliveryNoteOrderId(null)} />
         )}
     </main>
     </div>

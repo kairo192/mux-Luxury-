@@ -3928,6 +3928,34 @@ def admin_export_orders_csv(admin: dict = Depends(require_permission("orders:wri
             headers={"Content-Disposition": "attachment; filename=mus_luxury_orders.csv"}
         )
 
+@app.get("/api/v1/admin/orders/{order_id}/delivery-note")
+def admin_get_order_delivery_note(
+    order_id: int,
+    admin: dict = Depends(require_permission("orders:write"))
+):
+    """Delivery note (bon de livraison): shipping-focused document without any
+    financial detail beyond COD amount. Handed to the courier / stapled on the
+    parcel so the recipient can verify their items match."""
+    with db_session() as conn:
+        cur = conn.cursor()
+        cur.execute("SELECT * FROM orders WHERE id = ?", (order_id,))
+        o = cur.fetchone()
+        if not o:
+            raise HTTPException(status_code=404, detail="Order not found")
+        od = dict(o)
+        cur.execute(
+            """SELECT oi.product_name, oi.variant_title, oi.sku, oi.quantity
+               FROM order_items oi WHERE oi.order_id = ? ORDER BY oi.id""",
+            (order_id,),
+        )
+        od["items"] = [dict(r) for r in cur.fetchall()]
+        od["total_items"] = sum(int(it["quantity"]) for it in od["items"])
+        od["boutique_info"] = _boutique_info_from_settings(conn)
+        od["document_title"] = "Bon de livraison"
+        od["cod_amount_dzd"] = int(od["total_dzd"]) if od["payment_method"] == "cod" else 0
+        return od
+
+
 @app.get("/api/v1/admin/orders/{order_id}/invoice")
 def admin_get_order_invoice(
     order_id: int,
