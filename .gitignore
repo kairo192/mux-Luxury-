@@ -15,6 +15,13 @@
 **/.env.production
 !**/.env.example
 
+# Catch anything that *looks* like an env file, regardless of where it sits
+# (e.g. `scratch/production.env` from backend/scripts/generate_production_env.py).
+# The directory itself stays tracked so existing helper scripts remain.
+*.env
+!.env.example
+!*.env.example
+
 # 2. Cryptographic Keys, Certificates & WireGuard Private Keys
 *.pem
 *.key

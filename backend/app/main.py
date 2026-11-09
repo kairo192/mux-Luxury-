@@ -25,8 +25,9 @@ from .security import (
     get_real_client_ip,
     create_access_token,
     decode_access_token,
-    decrypt_backup_bytes,
-    encrypt_backup_bytes,
+    # decrypt_backup_bytes / encrypt_backup_bytes — no longer used by the
+    # HTTP surface after the admin-facing backup endpoints were removed.
+    # Still available in app.security for the infrastructure scripts.
     hash_password as _hash_pw_init,
     revoke_token,
     validate_uploaded_image,
@@ -2300,7 +2301,8 @@ def _resolve_writable_dir(env_key: str, local_subdir: str) -> str:
     return local_default
 
 UPLOAD_STORAGE_DIR = _resolve_writable_dir("UPLOAD_DIR", "uploads")
-BACKUP_STORAGE_DIR = _resolve_writable_dir("BACKUP_DIR", "backups")
+# BACKUP_STORAGE_DIR removed with the admin-facing /admin/backups endpoints;
+# the shell backup script owns its own directory via $BACKUP_DIR directly.
 
 MAX_UPLOAD_IMAGE_BYTES = 5 * 1024 * 1024
 
@@ -2341,117 +2343,18 @@ def serve_uploaded_image(filename: str):
         },
     )
 
-@app.get("/api/v1/admin/backups")
-def list_backups(admin: dict = Depends(require_permission("backups:write"))):
-    with db_session() as conn:
-        cur = conn.cursor()
-        cur.execute("SELECT * FROM backup_records ORDER BY id DESC")
-        return {"items": [dict(r) for r in cur.fetchall()]}
-
-@app.post("/api/v1/admin/backups", status_code=201)
-def trigger_manual_backup(admin: dict = Depends(require_permission("backups:write"))):
-    with db_session(commit=True) as conn:
-        cur = conn.cursor()
-        sql_dump = "\n".join(conn.iterdump())
-        compressed_bytes = gzip.compress(sql_dump.encode("utf-8"))
-        encrypted_bytes = encrypt_backup_bytes(compressed_bytes)
-        checksum = hashlib.sha256(encrypted_bytes).hexdigest()
-        fname = f"luxe_backup_{int(time.time())}_{secrets.token_hex(3)}.sql.gz"
-        fpath = os.path.join(BACKUP_STORAGE_DIR, fname)
-        with open(fpath, "wb") as bf:
-            bf.write(encrypted_bytes)
-        real_size = len(encrypted_bytes)
-
-        cur.execute(
-            """INSERT INTO backup_records
-               (filename, backup_type, size_bytes, sha256_checksum, status, triggered_by)
-               VALUES (?, 'full', ?, ?, 'verified', ?)""",
-            (fname, real_size, checksum, int(admin["sub"]))
-        )
-        bid = cur.lastrowid
-        log_audit(conn, int(admin["sub"]), "trigger_backup", "backup", str(bid), {"filename": fname, "sha256": checksum, "size_bytes": real_size})
-        cur.execute("SELECT * FROM backup_records WHERE id = ?", (bid,))
-        return dict(cur.fetchone())
-
-@app.post("/api/v1/admin/backups/{backup_id}/verify-restore")
-def verify_backup_restoration_isolated(
-    backup_id: int,
-    admin: dict = Depends(require_permission("backups:write"))
-):
-    """
-    Performs a non-destructive isolated restoration test (Section 7):
-    1. Verifies the backup archive exists on disk and matches its recorded SHA-256 checksum.
-    2. Decompresses the SQL dump and restores it into an isolated temporary SQLite database.
-    3. Queries the restored tables (products, categories, orders, delivery_zones) to verify readability.
-    """
-    with db_session(commit=True) as conn:
-        cur = conn.cursor()
-        cur.execute("SELECT * FROM backup_records WHERE id = ?", (backup_id,))
-        bkp = cur.fetchone()
-        if not bkp:
-            raise HTTPException(status_code=404, detail="Backup record not found")
-
-        raw_fname = str(bkp["filename"] or "")
-        if not raw_fname or os.path.basename(raw_fname) != raw_fname:
-            raise HTTPException(status_code=400, detail="Invalid backup filename")
-        fpath = os.path.abspath(os.path.join(BACKUP_STORAGE_DIR, raw_fname))
-        if not fpath.startswith(os.path.abspath(BACKUP_STORAGE_DIR) + os.sep):
-            raise HTTPException(status_code=400, detail="Backup path traversal blocked")
-        if not os.path.isfile(fpath):
-            raise HTTPException(status_code=404, detail="Backup file missing from storage directory")
-
-        with open(fpath, "rb") as bf:
-            stored_bytes = bf.read()
-
-        actual_sha256 = hashlib.sha256(stored_bytes).hexdigest()
-        if not hmac.compare_digest(actual_sha256, bkp["sha256_checksum"]):
-            cur.execute("UPDATE backup_records SET status = 'failed' WHERE id = ?", (backup_id,))
-            raise HTTPException(status_code=400, detail="Backup integrity check failed: SHA-256 mismatch")
-
-        try:
-            compressed_bytes = decrypt_backup_bytes(stored_bytes)
-            sql_script = gzip.decompress(compressed_bytes).decode("utf-8")
-        except Exception as exc:
-            raise HTTPException(status_code=400, detail=f"Backup decryption or decompression failed: {exc}")
-        with tempfile.TemporaryDirectory() as tmpdir:
-            temp_db_path = os.path.join(tmpdir, "isolated_restore_test.db")
-            temp_conn = sqlite3.connect(temp_db_path)
-            try:
-                temp_conn.executescript(sql_script)
-                tcur = temp_conn.cursor()
-                tcur.execute("SELECT COUNT(*) FROM products")
-                restored_products = tcur.fetchone()[0]
-                tcur.execute("SELECT COUNT(*) FROM categories")
-                restored_categories = tcur.fetchone()[0]
-                tcur.execute("SELECT COUNT(*) FROM orders")
-                restored_orders = tcur.fetchone()[0]
-                tcur.execute("SELECT COUNT(*) FROM delivery_zones")
-                restored_wilayas = tcur.fetchone()[0]
-            finally:
-                temp_conn.close()
-
-        log_audit(conn, int(admin["sub"]), "verify_backup_restore", "backup", str(backup_id), {
-            "restored_products": restored_products,
-            "restored_categories": restored_categories,
-            "restored_orders": restored_orders,
-            "restored_wilayas": restored_wilayas,
-        })
-        return {
-            "backup_id": backup_id,
-            "filename": bkp["filename"],
-            "sha256_verified": True,
-            "isolated_restore_success": True,
-            "restored_counts": {
-                "products": restored_products,
-                "categories": restored_categories,
-                "orders": restored_orders,
-                "delivery_zones": restored_wilayas,
-            }
-        }
+# ---------------------------------------------------------------------------
+# ADMIN-FACING BACKUP ENDPOINTS — REMOVED (owner request)
+# The three endpoints formerly here (`/admin/backups` GET/POST and
+# `/admin/backups/{id}/verify-restore`) are gone from the HTTP surface.
+# Backups still run — automatically — but as operational infrastructure:
+#   - Nightly encrypted dump by cron (infrastructure/backups/backup_postgres_and_media.sh)
+#   - Pre-migration dump by release-deploy.sh before every CD deploy
+#   - Manual restore via infrastructure/backups/restore_backup.sh
+# The CMS no longer exposes a 'Backups' page; operators manage them over SSH.
+# ---------------------------------------------------------------------------
 
 
-
-# ============================================================================
 # PUBLIC STOREFRONT LAYOUT ENDPOINT & DESKTOP CMS WEBSITE CONTROL ENDPOINTS
 # The Tauri 2 Desktop CMS controls 100% of the public website via these APIs.
 # ============================================================================
@@ -2679,214 +2582,21 @@ from .whatsapp import (
     list_recent_whatsapp_outbox,
     normalize_algerian_phone,
     get_whatsapp_config,
-    dispatch_whatsapp_recovery_otp,
+    # dispatch_whatsapp_recovery_otp intentionally no longer imported —
+    # admin password recovery over WhatsApp was removed per owner request.
     verify_whatsapp_webhook_signature,
 )
 
-@app.get("/api/v1/admin/auth/recovery/status")
-def get_admin_recovery_status():
-    """
-    Returns WhatsApp Business Cloud API readiness and recovery channels status
-    without exposing any secret tokens.
-    """
-    cfg = get_whatsapp_config()
-    return {
-        "whatsapp_cloud_api_configured": cfg["is_configured"],
-        "sandbox_mode": cfg["sandbox_mode"],
-        "api_version": cfg["api_version"],
-        "template_name": cfg["template_name"],
-        "offline_emergency_enabled": True,
-        "supported_channels": ["whatsapp_cloud_api", "offline_emergency"],
-        "boutique_whatsapp_e164": "+213655534154",
-        "boutique_whatsapp_local": "0655534154",
-    }
-
-@app.post("/api/v1/admin/auth/recovery/request")
-def request_admin_password_recovery(payload: RecoveryRequestInput, request: Request):
-    """
-    Initiates administrator password recovery via the official WhatsApp Business Cloud API
-    or validates readiness for Offline Emergency Code verification.
-    Strict Rule (Section 6): If WhatsApp API credentials are not configured on the server,
-    explicitly report 503 Service Unavailable — never silently simulate message delivery.
-    Supports both international (+213...) and local Algerian (05/06/07...) phone formats,
-    matching either primary `phone` or `emergency_phone`.
-    """
-    client_ip = get_real_client_ip(request)
-    check_rate_limit(f"recovery_req:{client_ip}", max_requests=3, window_seconds=300)
-
-    cfg = get_whatsapp_config()
-    if payload.channel == "whatsapp_cloud_api" and not cfg["is_configured"]:
-        raise HTTPException(
-            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-            detail="Official WhatsApp Business Cloud API is not configured on this server (missing WHATSAPP_CLOUD_API_TOKEN / WHATSAPP_PHONE_NUMBER_ID). Use an administrator-generated offline emergency recovery code instead."
-        )
-
-    e164_phone, local_phone, _ = normalize_algerian_phone(payload.phone)
-    with db_session(commit=True) as conn:
-        cur = conn.cursor()
-        cur.execute(
-            """SELECT * FROM admin_users
-               WHERE (phone IN (?, ?) OR emergency_phone IN (?, ?))
-                 AND is_active = 1 AND whatsapp_verified = 1""",
-            (e164_phone, local_phone, e164_phone, local_phone)
-        )
-        user = cur.fetchone()
-
-        if payload.channel == "offline_emergency":
-            if user:
-                log_audit(conn, user["id"], "offline_emergency_recovery_initiated", "admin_user", str(user["id"]), {"channel": "offline_emergency"})
-            return {
-                "status": "recovery_initiated",
-                "channel": "offline_emergency",
-                "message": "Saisissez votre code de secours hors-ligne à usage unique et votre nouveau mot de passe."
-            }
-
-        # Do not reveal whether an arbitrary phone number is registered
-        if user and payload.channel == "whatsapp_cloud_api":
-            otp = f"{secrets.randbelow(900000) + 100000}"
-            otp_hash = hashlib.sha256(otp.encode("utf-8")).hexdigest()
-            expires_at = int(time.time()) + 300  # 5 minutes expiry
-
-            # Invalidate any older unused WhatsApp OTP codes for this user before issuing a new one
-            cur.execute(
-                "UPDATE admin_recovery_codes SET is_used = 1 WHERE admin_user_id = ? AND channel = 'whatsapp_cloud_api' AND is_used = 0",
-                (user["id"],)
-            )
-            cur.execute(
-                """INSERT INTO admin_recovery_codes (admin_user_id, phone, code_hash, channel, max_attempts, expires_at)
-                   VALUES (?, ?, ?, 'whatsapp_cloud_api', 3, ?)""",
-                (user["id"], e164_phone, otp_hash, expires_at)
-            )
-            try:
-                dispatch_info = dispatch_whatsapp_recovery_otp(e164_phone, otp, expires_minutes=5)
-                log_audit(
-                    conn,
-                    user["id"],
-                    "whatsapp_recovery_requested",
-                    "admin_user",
-                    str(user["id"]),
-                    {"channel": payload.channel, "mode": dispatch_info.get("mode"), "message_id": dispatch_info.get("message_id")},
-                )
-            except RuntimeError as exc:
-                log_audit(conn, user["id"], "whatsapp_recovery_dispatch_error", "admin_user", str(user["id"]), {"error": str(exc)[:200]})
-                if not config.is_production():
-                    raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail=str(exc))
-
-            resp = {
-                "status": "recovery_initiated",
-                "channel": "whatsapp_cloud_api",
-                "expires_in_seconds": 300,
-                "message": "If this verified administrator number is eligible, a single-use verification code has been dispatched.",
-            }
-            if (not config.is_production()) and cfg["test_capture"]:
-                resp["test_otp"] = otp
-            return resp
-
-        return {
-            "status": "recovery_initiated",
-            "channel": payload.channel,
-            "expires_in_seconds": 300,
-            "message": "If this verified administrator number is eligible, a single-use verification code has been dispatched.",
-        }
-
-@app.post("/api/v1/admin/auth/recovery/verify")
-def verify_admin_password_recovery(payload: RecoveryVerifyInput, request: Request):
-    client_ip = get_real_client_ip(request)
-    check_rate_limit(f"recovery_verify:{client_ip}", max_requests=5, window_seconds=300)
-
-    e164_phone, local_phone, _ = normalize_algerian_phone(payload.phone)
-    submitted_hash = hashlib.sha256(payload.verification_code.strip().encode("utf-8")).hexdigest()
-    now_ts = int(time.time())
-
-    with db_session(commit=True) as conn:
-        cur = conn.cursor()
-        cur.execute(
-            """SELECT * FROM admin_users
-               WHERE (phone IN (?, ?) OR emergency_phone IN (?, ?))
-                 AND is_active = 1""",
-            (e164_phone, local_phone, e164_phone, local_phone)
-        )
-        user = cur.fetchone()
-        if not user:
-            raise HTTPException(status_code=400, detail="Invalid or expired verification code")
-
-        cur.execute(
-            """SELECT * FROM admin_recovery_codes
-               WHERE admin_user_id = ? AND is_used = 0 AND expires_at >= ?
-               ORDER BY id DESC LIMIT 10""",
-            (user["id"], now_ts)
-        )
-        active_codes = cur.fetchall()
-        matched_code = None
-        for c in active_codes:
-            if c["attempts"] >= c["max_attempts"]:
-                continue
-            if hmac.compare_digest(c["code_hash"], submitted_hash):
-                matched_code = c
-                break
-            else:
-                cur.execute("UPDATE admin_recovery_codes SET attempts = attempts + 1 WHERE id = ?", (c["id"],))
-
-        if not matched_code:
-            log_audit(conn, user["id"], "password_recovery_failed", "admin_user", str(user["id"]), {"phone": e164_phone})
-            raise HTTPException(status_code=400, detail="Invalid or expired verification code")
-
-        # Mark single-use code as used, update password with PBKDF2-HMAC-SHA256, and revoke existing tokens
-        cur.execute("UPDATE admin_recovery_codes SET is_used = 1, attempts = attempts + 1 WHERE id = ?", (matched_code["id"],))
-        new_hash = hash_password(payload.new_password)
-        cur.execute(
-            "UPDATE admin_users SET password_hash = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?",
-            (new_hash, user["id"])
-        )
-        revoke_all_user_sessions(int(user["id"]), conn)
-
-        # If an offline_emergency code was consumed, automatically provision a replacement single-use emergency code
-        replacement_emergency_code = None
-        if matched_code["channel"] == "offline_emergency":
-            replacement_emergency_code = f"LUXE-EMERG-{secrets.token_hex(4).upper()}"
-            repl_hash = hashlib.sha256(replacement_emergency_code.encode("utf-8")).hexdigest()
-            cur.execute(
-                """INSERT INTO admin_recovery_codes (admin_user_id, phone, code_hash, channel, max_attempts, expires_at)
-                   VALUES (?, ?, ?, 'offline_emergency', 3, ?)""",
-                (user["id"], user["emergency_phone"] or user["phone"], repl_hash, int(time.time()) + 86400 * 365)
-            )
-
-        log_audit(conn, user["id"], "password_recovered_and_rotated", "admin_user", str(user["id"]), {"channel": matched_code["channel"]})
-        result = {"status": "password_updated", "sessions_revoked": True, "channel_used": matched_code["channel"]}
-        if replacement_emergency_code:
-            result["replacement_emergency_code"] = replacement_emergency_code
-        return result
-
-@app.post("/api/v1/admin/auth/recovery/rotate-emergency-code")
-def rotate_admin_emergency_recovery_code(admin: dict = Depends(require_permission("settings:write"))):
-    """
-    Generates a fresh single-use offline emergency recovery code for the authenticated administrator
-    and invalidates previous unused offline emergency codes.
-    """
-    admin_id = int(admin["sub"])
-    new_code = f"LUXE-EMERG-{secrets.token_hex(6).upper()}"
-    new_hash = hashlib.sha256(new_code.encode("utf-8")).hexdigest()
-    with db_session(commit=True) as conn:
-        cur = conn.cursor()
-        cur.execute("SELECT phone, emergency_phone FROM admin_users WHERE id = ?", (admin_id,))
-        u = cur.fetchone()
-        target_phone = (u["emergency_phone"] or u["phone"]) if u else "+213655534154"
-        cur.execute(
-            "UPDATE admin_recovery_codes SET is_used = 1 WHERE admin_user_id = ? AND channel = 'offline_emergency' AND is_used = 0",
-            (admin_id,)
-        )
-        cur.execute(
-            """INSERT INTO admin_recovery_codes (admin_user_id, phone, code_hash, channel, max_attempts, expires_at)
-               VALUES (?, ?, ?, 'offline_emergency', 3, ?)""",
-            (admin_id, target_phone, new_hash, int(time.time()) + 86400 * 365)
-        )
-        log_audit(conn, admin_id, "rotate_emergency_recovery_code", "admin_user", str(admin_id), {})
-        return {
-            "status": "rotated",
-            "emergency_code": new_code,
-            "expires_in_days": 365,
-            "notice": "Conservez ce code hors-ligne en lieu sûr. Seul son hash SHA-256 est stocké en base."
-        }
+# ---------------------------------------------------------------------------
+# WHATSAPP-BASED ADMIN PASSWORD RECOVERY — REMOVED (owner request)
+# The four endpoints formerly here (`/admin/auth/recovery/status|request|
+# verify|rotate-emergency-code`) are gone. Owner-side password reset is
+# now a server-side CLI operation only:
+#     python3 backend/scripts/emergency_reset_owner.py \
+#         --email admin@musluxury.dz --new-password '<new>'
+# Run from the VPS over SSH as the deploy user. The WhatsApp module itself
+# (customer order notifications + webhook) stays in place.
+# ---------------------------------------------------------------------------
 
 MAX_WEBHOOK_BODY_BYTES = 64 * 1024
 MAX_WEBHOOK_STATUSES_PER_CALL = 50
