@@ -272,14 +272,14 @@ def seed_initial_data() -> None:
             cur.execute(
                 """INSERT INTO admin_users (email, full_name, phone, emergency_phone, whatsapp_verified, totp_enabled, password_hash, role_id, is_active)
                    VALUES (?, ?, ?, ?, 1, 1, ?, ?, 1)""",
-                ("admin@musluxury.dz", "Mustapha Harbit (Owner)", "+213550000001", "+213655534154", hash_password(admin_pw), role_ids["super_admin"])
+                ("admin@mus-luxury.com", "Mustapha Harbit (Owner)", "+213550000001", "+213655534154", hash_password(admin_pw), role_ids["super_admin"])
             )
             owner_id = cur.lastrowid
 
             cur.execute(
                 """INSERT INTO admin_users (email, full_name, phone, whatsapp_verified, totp_enabled, password_hash, role_id, is_active)
                    VALUES (?, ?, ?, 1, 0, ?, ?, 1)""",
-                ("editor@musluxury.dz", "Sarah (Product Manager)", "+213550000002", hash_password(editor_pw), role_ids["product_manager"])
+                ("editor@mus-luxury.com", "Sarah (Product Manager)", "+213550000002", hash_password(editor_pw), role_ids["product_manager"])
             )
 
             if not is_production():

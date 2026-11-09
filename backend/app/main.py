@@ -53,12 +53,6 @@ _DEFAULT_CORS_ORIGINS = [
     "http://tauri.localhost",
     "https://tauri.localhost",
     "tauri://localhost",
-    "https://musluxury.dz",
-    "https://www.musluxury.dz",
-    "https://api.musluxury.dz",
-    "https://mus-luxury.dz",
-    "https://www.mus-luxury.dz",
-    "https://api.mus-luxury.dz",
     "https://mus-luxury.com",
     "https://www.mus-luxury.com",
     "https://api.mus-luxury.com",
@@ -2589,7 +2583,7 @@ from .whatsapp import (
 # verify|rotate-emergency-code`) are gone. Owner-side password reset is
 # now a server-side CLI operation only:
 #     python3 backend/scripts/emergency_reset_owner.py \
-#         --email admin@musluxury.dz --new-password '<new>'
+#         --email admin@mus-luxury.com --new-password '<new>'
 # Run from the VPS over SSH as the deploy user. The WhatsApp module itself
 # (customer order notifications + webhook) stays in place.
 # ---------------------------------------------------------------------------

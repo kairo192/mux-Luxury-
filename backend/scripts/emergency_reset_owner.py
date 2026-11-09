@@ -2,7 +2,7 @@
 """
 Mus Luxury (LUXE) — Server-Side CLI Emergency Owner Password & Recovery Code Reset Utility.
 Usage on VPS or Docker container:
-  python3 backend/scripts/emergency_reset_owner.py --email admin@musluxury.dz --new-password "NewStrongPassword2026!"
+  python3 backend/scripts/emergency_reset_owner.py --email admin@mus-luxury.com --new-password "NewStrongPassword2026!"
 """
 import argparse
 import hashlib
@@ -58,7 +58,7 @@ def reset_owner_credentials(email: str, new_password: str) -> dict:
 if __name__ == "__main__":
     import getpass
     parser = argparse.ArgumentParser(description="Emergency Owner Password Reset")
-    parser.add_argument("--email", default="admin@musluxury.dz", help="Administrator email")
+    parser.add_argument("--email", default="admin@mus-luxury.com", help="Administrator email")
     parser.add_argument("--new-password", required=False, default=None, help="New password (omit to prompt securely via getpass)")
     args = parser.parse_args()
     pw = args.new_password or getpass.getpass("Enter new administrator password (>= 10 chars): ")
