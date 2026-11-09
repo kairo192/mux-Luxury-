@@ -8,12 +8,21 @@ edition = "2021"
 [build-dependencies]
 tauri-build = { version = "2.0.0", features = [] }
 
+[features]
+default = ["with-printers"]
+# System printer discovery + raw write via CUPS / Windows Spooler.
+# Disable this feature when cross-compiling on a host that lacks the native
+# print backend; the hardware module still works against raw device paths
+# (e.g. /dev/usb/lp0 or LPT1:) with the feature off.
+with-printers = ["dep:printers"]
+
 [dependencies]
 tauri = { version = "2.0.0", features = [] }
 tauri-plugin-store = "2.0.0"
 tauri-plugin-updater = "2.0.0"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
+printers = { version = "2", optional = true }
 
 [target.'cfg(windows)'.dependencies]
 keyring = { version = "3", features = ["windows-native"] }

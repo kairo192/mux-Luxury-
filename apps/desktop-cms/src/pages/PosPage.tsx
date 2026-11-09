@@ -30,8 +30,16 @@ import {
   type PosQueueItem,
 } from "../utils/posOfflineQueue";
 import { InvoiceModal } from "../components/InvoiceModal";
-import { FileText as FileTextIcon } from "lucide-react";
+import { PrinterSettingsModal } from "../components/PrinterSettingsModal";
+import { FileText as FileTextIcon, Settings as SettingsIcon } from "lucide-react";
 import { Wifi, WifiOff, CloudUpload, CloudOff, User, UserPlus, UserCheck } from "lucide-react";
+import {
+  isHardwareConfigured,
+  printSaleReceipt,
+  loadHardwareSettings,
+  openCashDrawer as kickDrawer,
+} from "../utils/posHardware";
+import { useBarcodeScanner } from "../utils/useBarcodeScanner";
 
 // ---------------------------------------------------------------------------
 // POS — Touch-first cashier workspace.
@@ -180,6 +188,7 @@ export const PosPage: React.FC<{ onInventoryUpdated?: () => void }> = ({ onInven
   const [queue, setQueue] = useState<PosQueueItem[]>([]);
   const [syncing, setSyncing] = useState(false);
   const [showConflicts, setShowConflicts] = useState(false);
+  const [showPrinterSettings, setShowPrinterSettings] = useState(false);
   const queueCounts = {
     pending: queue.filter((i) => i.status === "pending").length,
     conflict: queue.filter((i) => i.status === "conflict").length,
@@ -466,6 +475,17 @@ export const PosPage: React.FC<{ onInventoryUpdated?: () => void }> = ({ onInven
       loadRegister();
       loadRecentSales();
       onInventoryUpdated?.();
+      // Fire-and-forget: print on the thermal printer + kick the drawer if the
+      // sale included cash. Errors are shown but never block the sale itself.
+      if (isHardwareConfigured()) {
+        printSaleReceipt(sale as any).then((r) => {
+          if (!r.ok) flashError(`Imprimante : ${r.error}`);
+        }).catch(() => { /* fire-and-forget */ });
+      } else if (payMethod === "cash") {
+        // Printer not set up — still try to kick the drawer so cash can be put in.
+        // Only if the Tauri runtime / a device path is available at all.
+        kickDrawer(loadHardwareSettings()).then(() => {}).catch(() => {});
+      }
     } catch (e: any) {
       if (isNetworkError(e)) {
         // Offline: never lose the sale. Queue it durably for later idempotent sync.
@@ -531,7 +551,48 @@ export const PosPage: React.FC<{ onInventoryUpdated?: () => void }> = ({ onInven
     }
   };
 
-  const printReceipt = () => window.print();
+  // Native ESC/POS print when a thermal printer is configured (settings
+  // modal); otherwise fall back to the browser's print dialog so the
+  // existing on-screen receipt still works in the web preview.
+  const printReceipt = async () => {
+    if (receipt && isHardwareConfigured()) {
+      const r = await printSaleReceipt(receipt as any);
+      if (r.ok) {
+        flashSuccess("Reçu envoyé à l'imprimante");
+      } else {
+        flashError(r.error);
+        window.print();
+      }
+    } else {
+      window.print();
+    }
+  };
+
+  // Barcode scanner HID hook — scans anywhere on the POS screen route to the
+  // same lookup flow as manually typing into the scan box. Disabled while a
+  // blocking modal is open so an accidental scan can't insert into a text
+  // field inside the modal.
+  const scannerEnabled = !showPay && !variantPicker && !showClose && !showPrinterSettings && !refundTarget && !showConflicts && !sessionsHistory && !invoiceSaleId;
+  useBarcodeScanner(async (code) => {
+    const trimmed = code.trim();
+    if (!trimmed) return;
+    setScanCode(trimmed);
+    try {
+      const res = await DesktopCmsApi.posLookup(trimmed);
+      if (res.match_type === "variant") {
+        addVariantToCart(res.variant);
+        setScanCode("");
+      } else if (res.match_type === "product") {
+        setVariantPicker(res.results[0]);
+      } else if (res.match_type === "search" && res.results.length) {
+        setSearchResults(res.results);
+      } else {
+        flashError(`Aucun produit pour « ${trimmed} »`);
+      }
+    } catch (e: any) {
+      flashError(e?.userMessage || "Recherche échouée");
+    }
+  }, { enabled: scannerEnabled && Boolean(session) });
 
   // ------------------------------------------------------------ render
   if (loading) {
@@ -648,6 +709,14 @@ export const PosPage: React.FC<{ onInventoryUpdated?: () => void }> = ({ onInven
             <div className="flex items-center gap-2">
               <button
                 type="button"
+                onClick={() => setShowPrinterSettings(true)}
+                className="h-12 px-4 rounded-2xl bg-white/10 hover:bg-white/20 text-[#E8D4A5] font-bold flex items-center gap-2 active:scale-95"
+                title="Imprimante & tiroir-caisse"
+              >
+                <SettingsIcon className="w-5 h-5" /> Matériel
+              </button>
+              <button
+                type="button"
                 onClick={openSessionsHistory}
                 className="h-12 px-4 rounded-2xl bg-white/10 hover:bg-white/20 text-[#E8D4A5] font-bold flex items-center gap-2 active:scale-95"
               >
@@ -679,6 +748,7 @@ export const PosPage: React.FC<{ onInventoryUpdated?: () => void }> = ({ onInven
                     placeholder="Code-barres, SKU ou nom…"
                     className="flex-1 h-14 px-4 rounded-2xl border-2 border-gray-200 font-mono text-lg focus:border-[#063D2E] outline-none"
                     autoFocus
+                    data-barcode-target="true"
                   />
                   <button type="submit" className="h-14 px-6 rounded-2xl bg-[#063D2E] text-[#D4AF62] font-bold flex items-center gap-2 active:scale-95">
                     <Search className="w-5 h-5" /> Chercher
@@ -1110,6 +1180,13 @@ export const PosPage: React.FC<{ onInventoryUpdated?: () => void }> = ({ onInven
 
       {/* ================= INVOICE A4 ================= */}
       {invoiceSaleId !== null && <InvoiceModal saleId={invoiceSaleId} onClose={() => setInvoiceSaleId(null)} />}
+
+      {/* ================= PRINTER SETTINGS ================= */}
+      <PrinterSettingsModal
+        open={showPrinterSettings}
+        onClose={() => setShowPrinterSettings(false)}
+        onFlash={(kind, msg) => (kind === "ok" ? flashSuccess(msg) : flashError(msg))}
+      />
     </div>
   );
 };

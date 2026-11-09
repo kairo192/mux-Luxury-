@@ -6,7 +6,12 @@
 // 2. Session tokens (`luxe_cms_access_token`) and HMAC signing secrets (`luxe_cms_hmac_secret`)
 //    are bound to the OS Keychain / Windows Credential Manager (`wincred`) via `keyring`
 //    and `tauri-plugin-store`, so no token is ever stored in readable browser localStorage.
+// 3. POS hardware (ESC/POS thermal printer, cash drawer, USB-HID barcode scanner) is
+//    bridged through the `pos_hardware` module — a browser cannot reliably reach these
+//    devices.
 // ============================================================================
+
+mod pos_hardware;
 
 use std::collections::HashMap;
 use std::sync::Mutex;
@@ -83,7 +88,11 @@ fn main() {
             keychain_set_secret,
             keychain_get_secret,
             keychain_delete_secret,
-            keychain_status
+            keychain_status,
+            pos_hardware::pos_list_printers,
+            pos_hardware::pos_print_receipt,
+            pos_hardware::pos_open_cash_drawer,
+            pos_hardware::pos_test_print,
         ])
         .run(tauri::generate_context!())
         .expect("error while running Mus Luxury Desktop CMS");
