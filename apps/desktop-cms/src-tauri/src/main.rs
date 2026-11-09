@@ -104,6 +104,11 @@ fn main() {
             pos_mirror::mirror_status,
             pos_mirror::mirror_clear,
             pos_mirror::mirror_lookup,
+            pos_mirror::pos_queue_enqueue,
+            pos_mirror::pos_queue_list,
+            pos_mirror::pos_queue_upsert_batch,
+            pos_mirror::pos_queue_remove,
+            pos_mirror::pos_queue_clear_synced,
         ])
         .run(tauri::generate_context!())
         .expect("error while running Mus Luxury Desktop CMS");

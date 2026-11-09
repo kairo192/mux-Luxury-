@@ -136,6 +136,26 @@ export default function App() {
         setToastQueue((prev) => prev.filter((t) => t.id !== item.id));
       }, 5500);
     });
+
+    // POS / Server compatibility check on startup
+    DesktopCmsApi.checkPosCompat("1.0.0")
+      .then((compat: any) => {
+        if (compat && compat.supported === false) {
+          notifyClientWarning(
+            "Version POS Obsolète",
+            `Votre version de caisse (v${compat.client_version || "1.0.0"}) n'est plus supportée par le serveur central (version min: v${compat.min_supported_pos_version}). Veuillez mettre à jour l'application.`
+          );
+        } else if (compat && compat.deprecated) {
+          notifyClientWarning(
+            "Mise à jour Recommandée",
+            `Une version plus récente de Mus Luxury Caisse est disponible (v${compat.latest_pos_version}).`
+          );
+        }
+      })
+      .catch(() => {
+        // Offline or unreachable — normal on startup with no network
+      });
+
     return unsub;
   }, []);
   const [activeTab, setActiveTab] = useState<CmsTab>(() => readDraft("luxe_cms_active_tab", "dashboard"));
@@ -404,8 +424,8 @@ export default function App() {
         full_name: ownerName.trim(),
         email: ownerEmail.trim(),
         password: ownerPassword,
-        whatsapp_phone: whatsappPhone.trim(),
-        emergency_phone: emergencyPhone.trim(),
+        whatsapp_phone: whatsappPhone.trim() || undefined,
+        emergency_phone: emergencyPhone.trim() || undefined,
       });
       setRequiresOwnerSetup(false);
       if (res?.user) {

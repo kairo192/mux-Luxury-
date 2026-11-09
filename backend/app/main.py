@@ -54,6 +54,13 @@ _DEFAULT_CORS_ORIGINS = [
     "tauri://localhost",
     "https://musluxury.dz",
     "https://www.musluxury.dz",
+    "https://api.musluxury.dz",
+    "https://mus-luxury.dz",
+    "https://www.mus-luxury.dz",
+    "https://api.mus-luxury.dz",
+    "https://mus-luxury.com",
+    "https://www.mus-luxury.com",
+    "https://api.mus-luxury.com",
 ]
 _EXTRA_CORS = [o.strip() for o in os.getenv("CORS_ORIGINS", "").split(",") if o.strip()]
 ALLOWED_CORS_ORIGINS = list(dict.fromkeys(_DEFAULT_CORS_ORIGINS + _EXTRA_CORS))
@@ -3193,11 +3200,13 @@ class OwnerInitializeInput(BaseModel):
     full_name: str = Field(..., min_length=3, max_length=150)
     email: str = Field(..., min_length=5, max_length=150)
     password: str = Field(..., min_length=10, max_length=128)
-    whatsapp_phone: str = Field(...)
-    emergency_phone: str = Field(...)
+    whatsapp_phone: Optional[str] = None
+    emergency_phone: Optional[str] = None
 
     @validator("whatsapp_phone", "emergency_phone")
     def validate_phones(cls, v):
+        if not v:
+            return None
         cleaned = re.sub(r"[\s\-\.]", "", v)
         if not re.match(r"^(\+213|0)(5|6|7)[0-9]{8}$", cleaned):
             raise ValueError("Invalid Algerian mobile phone number (must start with 05, 06, 07 or +213)")
@@ -3269,13 +3278,14 @@ def initialize_primary_owner(payload: OwnerInitializeInput, request: Request):
         )
         owner_id = cur.lastrowid
 
-        # Seed emergency recovery token tied to secondary emergency phone
+        # Seed emergency recovery token tied to secondary emergency phone (or fallback)
         emergency_code = f"EMERGENCY-{secrets.token_hex(6).upper()}"
         code_hash = hashlib.sha256(emergency_code.encode("utf-8")).hexdigest()
+        recovery_phone = payload.emergency_phone or payload.whatsapp_phone or "+213000000000"
         cur.execute(
             """INSERT INTO admin_recovery_codes (admin_user_id, phone, code_hash, channel, max_attempts, expires_at)
                VALUES (?, ?, ?, 'offline_emergency', 3, ?)""",
-            (owner_id, payload.emergency_phone, code_hash, int(time.time()) + 86400 * 365)
+            (owner_id, recovery_phone, code_hash, int(time.time()) + 86400 * 365)
         )
 
         # Mark system as permanently initialized in database

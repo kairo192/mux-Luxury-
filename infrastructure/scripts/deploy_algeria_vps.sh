@@ -14,7 +14,10 @@ chmod 600 .env || true
 
 echo "[2/5] Ensuring TLS certificates exist in ./infrastructure/nginx/ssl/..."
 mkdir -p ./infrastructure/nginx/ssl
-if [ -f /etc/letsencrypt/live/musluxury.dz/fullchain.pem ] && [ -f /etc/letsencrypt/live/musluxury.dz/privkey.pem ]; then
+if [ -f /etc/letsencrypt/live/mus-luxury.com/fullchain.pem ] && [ -f /etc/letsencrypt/live/mus-luxury.com/privkey.pem ]; then
+  cp /etc/letsencrypt/live/mus-luxury.com/fullchain.pem ./infrastructure/nginx/ssl/fullchain.pem
+  cp /etc/letsencrypt/live/mus-luxury.com/privkey.pem ./infrastructure/nginx/ssl/privkey.pem
+elif [ -f /etc/letsencrypt/live/musluxury.dz/fullchain.pem ] && [ -f /etc/letsencrypt/live/musluxury.dz/privkey.pem ]; then
   cp /etc/letsencrypt/live/musluxury.dz/fullchain.pem ./infrastructure/nginx/ssl/fullchain.pem
   cp /etc/letsencrypt/live/musluxury.dz/privkey.pem ./infrastructure/nginx/ssl/privkey.pem
 elif [ ! -f ./infrastructure/nginx/ssl/fullchain.pem ]; then

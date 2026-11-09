@@ -43,10 +43,80 @@ export interface SyncSummary {
 
 const STORAGE_KEY = "luxe_pos_offline_queue";
 
+interface OfflineQueueRow {
+  client_txn_id: string;
+  type: string;
+  created_at: string;
+  register_session_id?: number | null;
+  payload_json: string;
+  total_dzd: number;
+  status: string;
+  error?: string | null;
+  reason?: string | null;
+  attempts: number;
+  sale_reference?: string | null;
+  updated_at: string;
+}
+
+function itemToRow(item: PosQueueItem): OfflineQueueRow {
+  return {
+    client_txn_id: item.client_txn_id,
+    type: item.type || "sale",
+    created_at: item.created_at,
+    register_session_id: item.register_session_id ?? null,
+    payload_json: JSON.stringify(item.payload),
+    total_dzd: item.total_dzd,
+    status: item.status,
+    error: item.error ?? null,
+    reason: item.reason ?? null,
+    attempts: item.attempts,
+    sale_reference: item.sale_reference ?? null,
+    updated_at: new Date().toISOString(),
+  };
+}
+
+function rowToItem(row: OfflineQueueRow): PosQueueItem {
+  let payload: PosSalePayload;
+  try {
+    payload = JSON.parse(row.payload_json);
+  } catch {
+    payload = { items: [], payments: [] };
+  }
+  return {
+    client_txn_id: row.client_txn_id,
+    type: (row.type as any) || "sale",
+    created_at: row.created_at,
+    register_session_id: row.register_session_id ?? null,
+    payload,
+    total_dzd: row.total_dzd,
+    status: (row.status as PosQueueStatus) || "pending",
+    error: row.error ?? null,
+    reason: row.reason ?? null,
+    attempts: row.attempts,
+    sale_reference: row.sale_reference ?? null,
+  };
+}
+
+async function tauriInvoke<T>(cmd: string, args?: Record<string, unknown>): Promise<T | null> {
+  if (typeof window === "undefined") return null;
+  const isTauri = Boolean((window as any).__TAURI_INTERNALS__);
+  if (!isTauri) return null;
+  try {
+    const { invoke } = await import("@tauri-apps/api/core");
+    return await invoke<T>(cmd, args);
+  } catch (err) {
+    console.warn(`[posOfflineQueue] ${cmd} error:`, err);
+    return null;
+  }
+}
+
 type Listener = (items: PosQueueItem[]) => void;
 const listeners = new Set<Listener>();
 
-function read(): PosQueueItem[] {
+let memoryQueue: PosQueueItem[] = [];
+let queueInitialized = false;
+
+function readLocal(): PosQueueItem[] {
   if (typeof localStorage === "undefined") return [];
   try {
     const raw = localStorage.getItem(STORAGE_KEY);
@@ -56,14 +126,57 @@ function read(): PosQueueItem[] {
   }
 }
 
-function write(items: PosQueueItem[]) {
+function writeLocal(items: PosQueueItem[]) {
   if (typeof localStorage !== "undefined") {
     try {
       localStorage.setItem(STORAGE_KEY, JSON.stringify(items));
     } catch {
-      /* quota — keep in-memory copy via listeners */
+      /* quota */
     }
   }
+}
+
+export async function initPosQueue(): Promise<PosQueueItem[]> {
+  const localItems = readLocal();
+  const rows = await tauriInvoke<OfflineQueueRow[]>("pos_queue_list");
+  if (rows !== null) {
+    // If we had pending items in localStorage, migrate them to SQLite
+    if (localItems.length > 0) {
+      await tauriInvoke("pos_queue_upsert_batch", { items: localItems.map(itemToRow) });
+      try {
+        localStorage.removeItem(STORAGE_KEY);
+      } catch {
+        /* ignore */
+      }
+      const refreshed = await tauriInvoke<OfflineQueueRow[]>("pos_queue_list");
+      memoryQueue = (refreshed || []).map(rowToItem);
+    } else {
+      memoryQueue = rows.map(rowToItem);
+    }
+  } else {
+    memoryQueue = localItems;
+  }
+  queueInitialized = true;
+  listeners.forEach((fn) => fn([...memoryQueue]));
+  return memoryQueue;
+}
+
+// Auto-initialize in background on module load
+if (typeof window !== "undefined") {
+  void initPosQueue();
+}
+
+function read(): PosQueueItem[] {
+  if (!queueInitialized && memoryQueue.length === 0) {
+    memoryQueue = readLocal();
+  }
+  return memoryQueue;
+}
+
+function write(items: PosQueueItem[]) {
+  memoryQueue = items;
+  writeLocal(items);
+  void tauriInvoke("pos_queue_upsert_batch", { items: items.map(itemToRow) });
   listeners.forEach((fn) => fn([...items]));
 }
 
@@ -118,10 +231,12 @@ export function enqueuePosSale(
 }
 
 export function removeSyncedItems(): void {
+  void tauriInvoke("pos_queue_clear_synced");
   write(read().filter((i) => i.status !== "synced"));
 }
 
 export function discardItem(clientTxnId: string): void {
+  void tauriInvoke("pos_queue_remove", { clientTxnId });
   write(read().filter((i) => i.client_txn_id !== clientTxnId));
 }
 

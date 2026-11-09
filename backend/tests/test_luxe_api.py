@@ -1588,10 +1588,10 @@ console.log("ALL_TSX_COMPILED_OK");
 
         src_dir = os.path.join(repo_root, "apps", "desktop-cms", "src")
         ui_parts = [__import__("pathlib").Path(os.path.join(src_dir, "App.tsx")).read_text(encoding="utf-8")]
-        for sub in ("pages", "components"):
+        for sub in ("pages", "components", "utils"):
             sub_dir = os.path.join(src_dir, sub)
             if os.path.isdir(sub_dir):
-                for p in __import__("pathlib").Path(sub_dir).glob("*.tsx"):
+                for p in __import__("pathlib").Path(sub_dir).glob("*.[tj]s*"):
                     ui_parts.append(p.read_text(encoding="utf-8"))
         ui_text = "".join(ui_parts)
         missing = [m for m in methods if f"DesktopCmsApi.{m}" not in ui_text]

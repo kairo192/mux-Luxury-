@@ -27,7 +27,7 @@ fi
 
 DEPLOY_USER="${DEPLOY_USER:-luxe}"
 INSTALL_ROOT="${INSTALL_ROOT:-/opt/luxe}"
-DOMAIN="${DOMAIN:-musluxury.dz}"
+DOMAIN="${DOMAIN:-mus-luxury.com}"
 DEPLOY_PUBLIC_KEY="${DEPLOY_PUBLIC_KEY:-}"
 
 log() { printf '\n==[bootstrap]== %s\n' "$*"; }

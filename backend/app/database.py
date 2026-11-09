@@ -85,8 +85,9 @@ class PostgresCompatCursor:
 
 
 class PostgresCompatConnection:
-    def __init__(self, raw_conn):
+    def __init__(self, raw_conn, pool=None):
         self._conn = raw_conn
+        self._pool = pool
         self.in_transaction = False
 
     def cursor(self) -> PostgresCompatCursor:
@@ -147,7 +148,98 @@ class PostgresCompatConnection:
         self.in_transaction = False
 
     def close(self):
-        self._conn.close()
+        if self._pool is not None:
+            self._pool.release(self._conn)
+        else:
+            self._conn.close()
+
+
+import queue
+import threading
+
+class PostgresConnectionPool:
+    """
+    Lightweight, bounded connection pool for PostgreSQL 16 on 2 GB RAM VPS.
+    Capped at max 15 connections to prevent memory exhaustion and connection spikes.
+    """
+    def __init__(self, max_size: int = 15, timeout: float = 10.0):
+        self.max_size = max_size
+        self.timeout = timeout
+        self._pool = queue.Queue(maxsize=max_size)
+        self._created = 0
+        self._lock = threading.Lock()
+        self._current_url = None
+
+    def get_connection(self, pg_url: str):
+        if self._current_url != pg_url:
+            with self._lock:
+                while not self._pool.empty():
+                    try:
+                        c = self._pool.get_nowait()
+                        c.close()
+                    except Exception:
+                        pass
+                self._created = 0
+                self._current_url = pg_url
+
+        try:
+            conn = self._pool.get_nowait()
+            if getattr(conn, "closed", False):
+                with self._lock:
+                    self._created -= 1
+                return self._create_new(pg_url)
+            return conn
+        except queue.Empty:
+            with self._lock:
+                if self._created < self.max_size:
+                    self._created += 1
+                    try:
+                        return self._create_new_raw(pg_url)
+                    except Exception:
+                        self._created -= 1
+                        raise
+            try:
+                conn = self._pool.get(timeout=self.timeout)
+                if getattr(conn, "closed", False):
+                    with self._lock:
+                        self._created -= 1
+                    return self._create_new(pg_url)
+                return conn
+            except queue.Empty:
+                raise RuntimeError("PostgreSQL connection pool exhausted (timeout waiting for free connection)")
+
+    def _create_new_raw(self, pg_url: str):
+        import psycopg
+        from psycopg.rows import dict_row
+        return psycopg.connect(pg_url, row_factory=dict_row)
+
+    def _create_new(self, pg_url: str):
+        with self._lock:
+            self._created += 1
+            try:
+                return self._create_new_raw(pg_url)
+            except Exception:
+                self._created -= 1
+                raise
+
+    def release(self, raw_conn):
+        if getattr(raw_conn, "closed", False):
+            with self._lock:
+                self._created -= 1
+            return
+        try:
+            raw_conn.rollback()
+            self._pool.put_nowait(raw_conn)
+        except (queue.Full, Exception):
+            try:
+                raw_conn.close()
+            except Exception:
+                pass
+            with self._lock:
+                self._created -= 1
+
+
+_PG_POOL = PostgresConnectionPool(max_size=15, timeout=10.0)
 
 
 def normalize_postgres_url(raw_url: str) -> str:
@@ -175,10 +267,8 @@ def get_connection():
             raise RuntimeError("CRITICAL: LUXE_DB_ENGINE=postgres requires a valid DATABASE_URL")
         pg_url = normalize_postgres_url(raw_db_url)
         try:
-            import psycopg
-            from psycopg.rows import dict_row
-            raw_pg = psycopg.connect(pg_url, row_factory=dict_row)
-            return PostgresCompatConnection(raw_pg)
+            raw_pg = _PG_POOL.get_connection(pg_url)
+            return PostgresCompatConnection(raw_pg, pool=_PG_POOL)
         except Exception as exc:
             raise RuntimeError(f"CRITICAL: PostgreSQL connection failed (silent SQLite fallback is disabled): {exc}") from exc
 

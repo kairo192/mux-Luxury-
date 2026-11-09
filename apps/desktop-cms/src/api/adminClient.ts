@@ -188,8 +188,8 @@ export const DesktopCmsApi = {
     full_name: string;
     email: string;
     password: string;
-    whatsapp_phone: string;
-    emergency_phone: string;
+    whatsapp_phone?: string;
+    emergency_phone?: string;
   }) => {
     const data = await adminFetch("/admin/auth/initialize-owner", {
       method: "POST",
@@ -522,6 +522,10 @@ export const DesktopCmsApi = {
     adminFetch(`/admin/purchases/${poId}/pay?payment_method=${paymentMethod}`, { method: "POST" }),
   getPurchaseOrderLabels: (poId: number) =>
     adminFetch(`/admin/purchases/${poId}/labels`),
+
+  // POS version compatibility probe
+  checkPosCompat: (clientVersion = "1.0.0") =>
+    adminFetch(`/pos/compat?client_version=${encodeURIComponent(clientVersion)}`),
 
   // Catalog mirror (offline POS)
   catalogSnapshot: () => adminFetch(`/admin/pos/catalog/snapshot`),
