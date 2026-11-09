@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from "react";
 import { DesktopCmsApi } from "../api/adminClient";
+import { useT } from "../i18n";
 import {
   RefreshCw,
   Plus,
@@ -41,6 +42,7 @@ const EXPENSE_CATEGORIES = [
 ];
 
 export const ExpensesPage: React.FC = () => {
+  const t = useT();
   const [expenses, setExpenses] = useState<ExpenseItem[]>([]);
   const [loading, setLoading] = useState<boolean>(true);
   const [error, setError] = useState<string | null>(null);
@@ -70,7 +72,7 @@ export const ExpensesPage: React.FC = () => {
       const data = await DesktopCmsApi.listExpenses(selectedCategory === "all" ? undefined : selectedCategory);
       setExpenses(Array.isArray(data) ? data : (data as any)?.items || []);
     } catch (err: unknown) {
-      setError(err instanceof Error ? err.message : "Erreur lors du chargement des dépenses");
+      setError(err instanceof Error ? err.message : t("expenses.err_load_failed"));
     } finally {
       setLoading(false);
     }
@@ -83,12 +85,12 @@ export const ExpensesPage: React.FC = () => {
   const handleCreateExpense = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!formDesc.trim()) {
-      setError("Veuillez saisir une description");
+      setError(t("expenses.err_desc_required"));
       return;
     }
     const parsedAmount = parseInt(formAmount, 10);
     if (isNaN(parsedAmount) || parsedAmount <= 0) {
-      setError("Le montant doit être un entier positif en DZD");
+      setError(t("expenses.err_amount_positive"));
       return;
     }
 
@@ -107,7 +109,7 @@ export const ExpensesPage: React.FC = () => {
         payment_status: formStatus,
       });
 
-      setSuccess("Dépense enregistrée avec succès. Sortie de trésorerie et écriture comptable générées.");
+      setSuccess(t("expenses.success_created"));
       setShowAddModal(false);
       // Reset form
       setFormDesc("");
@@ -117,7 +119,7 @@ export const ExpensesPage: React.FC = () => {
       setFormNotes("");
       loadExpenses();
     } catch (err: unknown) {
-      setError(err instanceof Error ? err.message : "Erreur lors de l'enregistrement de la dépense");
+      setError(err instanceof Error ? err.message : t("expenses.err_create_failed"));
     } finally {
       setSaving(false);
     }
@@ -128,11 +130,11 @@ export const ExpensesPage: React.FC = () => {
     setDeletingExpense(true);
     try {
       await DesktopCmsApi.deleteExpense(expenseToDelete.id);
-      setSuccess(`Dépense "${expenseToDelete.description}" supprimée avec succès`);
+      setSuccess(t("expenses.success_deleted", { name: expenseToDelete.description }));
       setExpenseToDelete(null);
       loadExpenses();
     } catch (err: unknown) {
-      setError(err instanceof Error ? err.message : "Impossible de supprimer la dépense");
+      setError(err instanceof Error ? err.message : t("expenses.err_delete_failed"));
     } finally {
       setDeletingExpense(false);
     }
@@ -161,10 +163,10 @@ export const ExpensesPage: React.FC = () => {
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 pb-4 border-b border-[#063D2E]/10">
         <div>
           <h2 className="text-2xl font-serif font-bold text-[#063D2E] tracking-tight">
-            Gestion des Dépenses & Frais Généraux
+            {t("expenses.title")}
           </h2>
           <p className="text-sm text-gray-500 mt-1">
-            Enregistrement et suivi des charges d'exploitation pour le compte de résultat et la trésorerie.
+            {t("expenses.subtitle")}
           </p>
         </div>
         <div className="flex items-center gap-3">
@@ -173,7 +175,7 @@ export const ExpensesPage: React.FC = () => {
             className="inline-flex items-center gap-1.5 px-4 py-2 text-xs font-semibold rounded-xl border border-[#063D2E]/20 text-[#063D2E] hover:bg-[#063D2E]/5 transition-colors"
           >
             <RefreshCw className="w-3.5 h-3.5 text-[#063D2E]" />
-            <span>Actualiser</span>
+            <span>{t("expenses.btn_refresh")}</span>
           </button>
           <button
             onClick={() => {
@@ -184,7 +186,7 @@ export const ExpensesPage: React.FC = () => {
             className="px-4 py-2 text-xs font-semibold rounded-xl bg-[#063D2E] text-[#D4AF62] hover:bg-[#0A5C45] shadow-xs transition-all flex items-center gap-2"
           >
             <Plus className="w-4 h-4 text-[#D4AF62]" />
-            <span>Nouvelle Dépense</span>
+            <span>{t("expenses.btn_new")}</span>
           </button>
         </div>
       </div>
@@ -216,37 +218,37 @@ export const ExpensesPage: React.FC = () => {
       {/* KPI Cards */}
       <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
         <div className="p-4 bg-white rounded-lg border border-[#063D2E]/10 shadow-sm">
-          <div className="text-xs uppercase tracking-wider text-gray-400 font-semibold">Total Dépenses</div>
+          <div className="text-xs uppercase tracking-wider text-gray-400 font-semibold">{t("expenses.kpi_total")}</div>
           <div className="text-2xl font-bold text-[#063D2E] mt-1">
             {totalAmountDzd.toLocaleString()} <span className="text-sm font-normal text-[#D4AF62]">DZD</span>
           </div>
-          <div className="text-[11px] text-gray-400 mt-1">{expenses.length} dépenses enregistrées</div>
+          <div className="text-[11px] text-gray-400 mt-1">{t("expenses.kpi_total_sub", { count: expenses.length })}</div>
         </div>
 
         <div className="p-4 bg-white rounded-lg border border-[#063D2E]/10 shadow-sm">
-          <div className="text-xs uppercase tracking-wider text-gray-400 font-semibold">Dépenses Réglées</div>
+          <div className="text-xs uppercase tracking-wider text-gray-400 font-semibold">{t("expenses.kpi_paid")}</div>
           <div className="text-2xl font-bold text-emerald-600 mt-1">
             {paidExpensesDzd.toLocaleString()} <span className="text-sm font-normal text-emerald-500">DZD</span>
           </div>
-          <div className="text-[11px] text-gray-400 mt-1">Débitées de la trésorerie</div>
+          <div className="text-[11px] text-gray-400 mt-1">{t("expenses.kpi_paid_sub")}</div>
         </div>
 
         <div className="p-4 bg-white rounded-lg border border-[#063D2E]/10 shadow-sm">
-          <div className="text-xs uppercase tracking-wider text-gray-400 font-semibold">Dépenses En Attente</div>
+          <div className="text-xs uppercase tracking-wider text-gray-400 font-semibold">{t("expenses.kpi_pending")}</div>
           <div className="text-2xl font-bold text-amber-600 mt-1">
             {pendingExpensesDzd.toLocaleString()} <span className="text-sm font-normal text-amber-500">DZD</span>
           </div>
-          <div className="text-[11px] text-gray-400 mt-1">Engagées non encore décaissées</div>
+          <div className="text-[11px] text-gray-400 mt-1">{t("expenses.kpi_pending_sub")}</div>
         </div>
 
         <div className="p-4 bg-white rounded-lg border border-[#063D2E]/10 shadow-sm">
-          <div className="text-xs uppercase tracking-wider text-gray-400 font-semibold">Filtre Catégorie</div>
+          <div className="text-xs uppercase tracking-wider text-gray-400 font-semibold">{t("expenses.filter_category")}</div>
           <select
             value={selectedCategory}
             onChange={(e) => setSelectedCategory(e.target.value)}
             className="w-full mt-2 text-xs border border-gray-200 rounded p-1.5 focus:border-[#063D2E] outline-none"
           >
-            <option value="all">Toutes les catégories</option>
+            <option value="all">{t("expenses.filter_all")}</option>
             {EXPENSE_CATEGORIES.map((cat) => (
               <option key={cat.value} value={cat.value}>
                 {cat.label}
@@ -261,7 +263,7 @@ export const ExpensesPage: React.FC = () => {
         <div className="relative w-full sm:w-80">
           <input
             type="text"
-            placeholder="Rechercher description, bénéficiaire, reçu..."
+            placeholder={t("expenses.search_placeholder")}
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
             className="w-full text-xs pl-8 pr-3 py-2 border border-gray-300 rounded-xl focus:border-[#063D2E] outline-none"
@@ -269,31 +271,31 @@ export const ExpensesPage: React.FC = () => {
           <Search className="w-3.5 h-3.5 absolute left-2.5 top-2.5 text-gray-400" />
         </div>
         <div className="text-xs text-gray-500">
-          Affichage de <span className="font-semibold text-[#063D2E]">{filteredExpenses.length}</span> dépense(s)
+          {t("expenses.count_display", { count: filteredExpenses.length })}
         </div>
       </div>
 
       {/* Expenses Table */}
       <div className="bg-white rounded-2xl border border-[#063D2E]/10 shadow-xs overflow-hidden">
         {loading ? (
-          <div className="p-8 text-center text-xs text-gray-400">Chargement des dépenses en cours...</div>
+          <div className="p-8 text-center text-xs text-gray-400">{t("expenses.loading")}</div>
         ) : filteredExpenses.length === 0 ? (
           <div className="p-8 text-center text-xs text-gray-400">
-            Aucune dépense trouvée pour les critères sélectionnés.
+            {t("expenses.empty")}
           </div>
         ) : (
           <div className="overflow-x-auto">
             <table className="w-full text-left text-xs">
               <thead className="bg-[#063D2E]/5 border-b border-[#063D2E]/10 text-gray-600 uppercase tracking-wider text-[11px]">
                 <tr>
-                  <th className="py-3 px-4">Date</th>
-                  <th className="py-3 px-4">Description</th>
-                  <th className="py-3 px-4">Catégorie</th>
-                  <th className="py-3 px-4">Bénéficiaire / Pièce</th>
-                  <th className="py-3 px-4">Règlement</th>
-                  <th className="py-3 px-4 text-right">Montant (DZD)</th>
-                  <th className="py-3 px-4 text-center">Statut</th>
-                  <th className="py-3 px-4 text-right">Actions</th>
+                  <th className="py-3 px-4">{t("expenses.th_date")}</th>
+                  <th className="py-3 px-4">{t("expenses.th_desc")}</th>
+                  <th className="py-3 px-4">{t("expenses.th_cat")}</th>
+                  <th className="py-3 px-4">{t("expenses.th_beneficiary")}</th>
+                  <th className="py-3 px-4">{t("expenses.th_payment")}</th>
+                  <th className="py-3 px-4 text-right">{t("expenses.th_amount")}</th>
+                  <th className="py-3 px-4 text-center">{t("expenses.th_status")}</th>
+                  <th className="py-3 px-4 text-right">{t("expenses.th_actions")}</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-100">
@@ -322,11 +324,11 @@ export const ExpensesPage: React.FC = () => {
                       </td>
                       <td className="py-3 px-4 text-gray-600 capitalize">
                         {exp.payment_method === "cash"
-                          ? "Espèces"
+                          ? t("expenses.method_cash")
                           : exp.payment_method === "bank"
-                            ? "Virement"
+                            ? t("expenses.method_bank")
                             : exp.payment_method === "check"
-                              ? "Chèque"
+                              ? t("expenses.method_check")
                               : exp.payment_method}
                       </td>
                       <td className="py-3 px-4 text-right font-mono font-bold text-red-600 whitespace-nowrap">
@@ -339,7 +341,7 @@ export const ExpensesPage: React.FC = () => {
                               : "bg-amber-100 text-amber-800"
                             }`}
                         >
-                          {exp.payment_status === "paid" ? "Payé" : "En attente"}
+                          {exp.payment_status === "paid" ? t("expenses.status_paid") : t("expenses.status_pending")}
                         </span>
                       </td>
                       <td className="py-3 px-4 text-right">
@@ -350,7 +352,7 @@ export const ExpensesPage: React.FC = () => {
                           title="Supprimer la dépense"
                         >
                           <Trash2 className="w-3 h-3 text-red-600" />
-                          <span>Supprimer</span>
+                          <span>{t("expenses.btn_delete")}</span>
                         </button>
                       </td>
                     </tr>
@@ -368,7 +370,7 @@ export const ExpensesPage: React.FC = () => {
           <div className="bg-white rounded-lg shadow-xl w-full max-w-lg border border-[#063D2E]/20 overflow-hidden">
             <div className="bg-[#063D2E] px-6 py-4 flex items-center justify-between">
               <h3 className="text-sm font-serif font-bold text-[#D4AF62] uppercase tracking-wider">
-                Enregistrer une Charge / Dépense
+                {t("expenses.modal_add_title")}
               </h3>
               <button
                 onClick={() => setShowAddModal(false)}
@@ -381,12 +383,12 @@ export const ExpensesPage: React.FC = () => {
             <form onSubmit={handleCreateExpense} className="p-6 space-y-4">
               <div>
                 <label className="block text-xs font-semibold text-gray-700 mb-1">
-                  Description / Libellé de la charge *
+                  {t("expenses.modal_desc_label")}
                 </label>
                 <input
                   type="text"
                   required
-                  placeholder="ex: Loyer local commercial Sidi Yahia - Mars 2026"
+                  placeholder={t("expenses.modal_desc_placeholder")}
                   value={formDesc}
                   onChange={(e) => setFormDesc(e.target.value)}
                   className="w-full text-xs p-2 border border-gray-300 rounded focus:border-[#063D2E] outline-none"
@@ -396,7 +398,7 @@ export const ExpensesPage: React.FC = () => {
               <div className="grid grid-cols-2 gap-4">
                 <div>
                   <label className="block text-xs font-semibold text-gray-700 mb-1">
-                    Catégorie de Dépense *
+                    {t("expenses.modal_cat_label")}
                   </label>
                   <select
                     value={formCategory}
@@ -413,7 +415,7 @@ export const ExpensesPage: React.FC = () => {
 
                 <div>
                   <label className="block text-xs font-semibold text-gray-700 mb-1">
-                    Montant (DZD) *
+                    {t("expenses.modal_amount_label")}
                   </label>
                   <input
                     type="number"
@@ -430,7 +432,7 @@ export const ExpensesPage: React.FC = () => {
               <div className="grid grid-cols-2 gap-4">
                 <div>
                   <label className="block text-xs font-semibold text-gray-700 mb-1">
-                    Date de la Dépense *
+                    {t("expenses.modal_date_label")}
                   </label>
                   <input
                     type="date"
@@ -443,17 +445,17 @@ export const ExpensesPage: React.FC = () => {
 
                 <div>
                   <label className="block text-xs font-semibold text-gray-700 mb-1">
-                    Mode de Règlement
+                    {t("expenses.modal_method_label")}
                   </label>
                   <select
                     value={formMethod}
                     onChange={(e) => setFormMethod(e.target.value)}
                     className="w-full text-xs p-2 border border-gray-300 rounded focus:border-[#063D2E] outline-none"
                   >
-                    <option value="cash">Espèces (Caisse boutique)</option>
-                    <option value="bank">Virement bancaire</option>
-                    <option value="check">Chèque de banque</option>
-                    <option value="other">Autre</option>
+                    <option value="cash">{t("expenses.modal_method_cash")}</option>
+                    <option value="bank">{t("expenses.modal_method_bank")}</option>
+                    <option value="check">{t("expenses.modal_method_check")}</option>
+                    <option value="other">{t("expenses.modal_method_other")}</option>
                   </select>
                 </div>
               </div>
@@ -461,11 +463,11 @@ export const ExpensesPage: React.FC = () => {
               <div className="grid grid-cols-2 gap-4">
                 <div>
                   <label className="block text-xs font-semibold text-gray-700 mb-1">
-                    Bénéficiaire / Fournisseur
+                    {t("expenses.modal_beneficiary_label")}
                   </label>
                   <input
                     type="text"
-                    placeholder="ex: Propriétaire, Algérie Télécom..."
+                    placeholder={t("expenses.modal_beneficiary_placeholder")}
                     value={formBeneficiary}
                     onChange={(e) => setFormBeneficiary(e.target.value)}
                     className="w-full text-xs p-2 border border-gray-300 rounded focus:border-[#063D2E] outline-none"
@@ -474,11 +476,11 @@ export const ExpensesPage: React.FC = () => {
 
                 <div>
                   <label className="block text-xs font-semibold text-gray-700 mb-1">
-                    N° Reçu / Facture
+                    {t("expenses.modal_receipt_label")}
                   </label>
                   <input
                     type="text"
-                    placeholder="ex: FACT-2026-039"
+                    placeholder={t("expenses.modal_receipt_placeholder")}
                     value={formReceiptRef}
                     onChange={(e) => setFormReceiptRef(e.target.value)}
                     className="w-full text-xs p-2 border border-gray-300 rounded focus:border-[#063D2E] outline-none font-mono"
@@ -488,7 +490,7 @@ export const ExpensesPage: React.FC = () => {
 
               <div>
                 <label className="block text-xs font-semibold text-gray-700 mb-1">
-                  Statut de Paiement
+                  {t("expenses.modal_status_label")}
                 </label>
                 <div className="flex gap-4">
                   <label className="flex items-center gap-2 text-xs text-gray-700">
@@ -499,7 +501,7 @@ export const ExpensesPage: React.FC = () => {
                       checked={formStatus === "paid"}
                       onChange={() => setFormStatus("paid")}
                     />
-                    Payé immédiatement (Déduit de la caisse/banque)
+                    {t("expenses.modal_status_paid")}
                   </label>
                   <label className="flex items-center gap-2 text-xs text-gray-700">
                     <input
@@ -509,18 +511,18 @@ export const ExpensesPage: React.FC = () => {
                       checked={formStatus === "pending"}
                       onChange={() => setFormStatus("pending")}
                     />
-                    En attente de paiement
+                    {t("expenses.modal_status_pending")}
                   </label>
                 </div>
               </div>
 
               <div>
                 <label className="block text-xs font-semibold text-gray-700 mb-1">
-                  Remarques / Justificatif
+                  {t("expenses.modal_notes_label")}
                 </label>
                 <textarea
                   rows={2}
-                  placeholder="Notes optionnelles..."
+                  placeholder={t("expenses.modal_notes_placeholder")}
                   value={formNotes}
                   onChange={(e) => setFormNotes(e.target.value)}
                   className="w-full text-xs p-2 border border-gray-300 rounded focus:border-[#063D2E] outline-none"
@@ -533,14 +535,14 @@ export const ExpensesPage: React.FC = () => {
                   onClick={() => setShowAddModal(false)}
                   className="px-4 py-2 text-xs font-semibold text-gray-600 hover:bg-gray-100 rounded"
                 >
-                  Annuler
+                  {t("expenses.modal_btn_cancel")}
                 </button>
                 <button
                   type="submit"
                   disabled={saving}
                   className="px-5 py-2 text-xs font-semibold text-[#D4AF62] bg-[#063D2E] hover:bg-[#0A5C45] rounded shadow transition-all disabled:opacity-50"
                 >
-                  {saving ? "Enregistrement..." : "Valider la Dépense"}
+                  {saving ? t("expenses.modal_btn_submitting") : t("expenses.modal_btn_submit")}
                 </button>
               </div>
             </form>
@@ -558,9 +560,9 @@ export const ExpensesPage: React.FC = () => {
                 </div>
                 <div>
                   <h3 className="text-base font-serif font-bold text-white tracking-wide">
-                    Confirmer la Suppression
+                    {t("expenses.modal_del_title")}
                   </h3>
-                  <p className="text-[11px] text-[#E8D4A5]/80">Annulation de charge comptable</p>
+                  <p className="text-[11px] text-[#E8D4A5]/80">{t("expenses.modal_del_subtitle")}</p>
                 </div>
               </div>
               <button
@@ -573,7 +575,7 @@ export const ExpensesPage: React.FC = () => {
             </div>
             <div className="p-6 space-y-4 text-xs">
               <p className="text-gray-700 leading-relaxed">
-                Êtes-vous certain de vouloir supprimer définitivement la dépense suivante ?
+                {t("expenses.modal_del_confirm_msg")}
               </p>
               <div className="p-3.5 rounded-2xl bg-white border border-[#D4AF62]/40 space-y-1.5">
                 <div className="font-bold text-[#063D2E] text-sm">{expenseToDelete.description}</div>
@@ -588,7 +590,7 @@ export const ExpensesPage: React.FC = () => {
               </div>
               <p className="text-[11px] text-amber-800 bg-amber-50 p-2.5 rounded-xl border border-amber-200 flex items-center gap-1.5">
                 <AlertTriangle className="w-4 h-4 text-amber-700 shrink-0" />
-                <span>Cette action est irréversible et recalculera immédiatement le solde net de trésorerie.</span>
+                <span>{t("expenses.modal_del_warning")}</span>
               </p>
               <div className="flex items-center justify-end gap-3 pt-2">
                 <button
@@ -597,7 +599,7 @@ export const ExpensesPage: React.FC = () => {
                   disabled={deletingExpense}
                   className="px-4 py-2 rounded-xl bg-gray-200 hover:bg-gray-300 text-gray-700 font-bold transition"
                 >
-                  Annuler
+                  {t("expenses.modal_btn_cancel")}
                 </button>
                 <button
                   type="button"
@@ -605,7 +607,7 @@ export const ExpensesPage: React.FC = () => {
                   disabled={deletingExpense}
                   className="px-5 py-2 rounded-xl bg-gradient-to-r from-red-600 to-red-700 hover:from-red-700 hover:to-red-800 text-white font-bold shadow-md transition disabled:opacity-50"
                 >
-                  {deletingExpense ? "Suppression..." : "Confirmer la suppression"}
+                  {deletingExpense ? t("expenses.modal_del_btn_deleting") : t("expenses.modal_del_btn_confirm")}
                 </button>
               </div>
             </div>
