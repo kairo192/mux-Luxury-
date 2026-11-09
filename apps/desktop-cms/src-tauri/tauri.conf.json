@@ -13,16 +13,17 @@
     "windows": [
       {
         "label": "main",
-        "title": "Mus Luxury (LUXE) \u2014 Administration & Inventaire",
+        "title": "Mus Luxury (LUXE) — Administration & Inventaire",
         "width": 1440,
         "height": 900,
         "minWidth": 1100,
         "minHeight": 720,
-        "resizable": true
+        "resizable": true,
+        "devtools": true
       }
     ],
     "security": {
-      "csp": "default-src 'self'; connect-src 'self' https://api.musluxury.dz https://musluxury.dz https://api.mus-luxury.com https://mus-luxury.com http://localhost:8000 http://127.0.0.1:8000 ipc: http://ipc.localhost; img-src 'self' data: blob: https://api.musluxury.dz https://musluxury.dz https://api.mus-luxury.com https://mus-luxury.com http://localhost:8000 http://127.0.0.1:8000; style-src 'self' 'unsafe-inline'"
+      "csp": "default-src 'self'; connect-src 'self' https://api.mus-luxury.com https://mus-luxury.com http://localhost:8000 http://127.0.0.1:8000 ipc: http://ipc.localhost; img-src 'self' data: blob: https://api.mus-luxury.com https://mus-luxury.com http://localhost:8000 http://127.0.0.1:8000; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com data;"
     }
   },
   "bundle": {
@@ -33,18 +34,7 @@
       "icons/128x128.png",
       "icons/128x128@2x.png",
       "icons/icon.ico"
-    ],
-    "createUpdaterArtifacts": true
+    ]
   },
-  "plugins": {
-    "updater": {
-      "pubkey": "REPLACE_WITH_BASE64_TAURI_UPDATER_PUBLIC_KEY",
-      "endpoints": [
-        "https://github.com/kairo192/mux-Luxury-/releases/latest/download/latest.json"
-      ],
-      "windows": {
-        "installMode": "passive"
-      }
-    }
-  }
+  "plugins": {}
 }
