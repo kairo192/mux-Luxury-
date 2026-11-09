@@ -1,4 +1,5 @@
 import { readDraft, writeDraft, clearDraft } from "./utils/draftStorage";
+import { useT, LanguageToggle } from "./i18n";
 import {
   ClientNotificationItem,
   notifyClientError,
@@ -118,6 +119,7 @@ type CmsTab =
   | "backups";
 
 export default function App() {
+  const t = useT();
   const [checkingSetup, setCheckingSetup] = useState(true);
   const [requiresOwnerSetup, setRequiresOwnerSetup] = useState(false);
   const [user, setUser] = useState<any | null>(() => readDraft("luxe_cms_user", null));
@@ -168,18 +170,15 @@ export default function App() {
   const [ownerEmail, setOwnerEmail] = useState("");
   const [ownerPassword, setOwnerPassword] = useState("");
   const [ownerConfirm, setOwnerConfirm] = useState("");
-  const [whatsappPhone, setWhatsappPhone] = useState("");
+  // whatsappPhone state removed: the owner-init form no longer takes a
+  // WhatsApp phone because password recovery over WhatsApp was removed.
   const [emergencyPhone, setEmergencyPhone] = useState("");
 
-  // Login & WhatsApp Recovery Fields
+  // Login fields. Password recovery was removed from the CMS; an owner who
+  // forgets the password uses the server-side CLI on the VPS:
+  //   python3 backend/scripts/emergency_reset_owner.py --email X --new-password Y
   const [loginEmail, setLoginEmail] = useState("");
   const [loginPassword, setLoginPassword] = useState("");
-  const [showRecoveryModal, setShowRecoveryModal] = useState(false);
-  const [recPhone, setRecPhone] = useState("");
-  const [recChannel, setRecChannel] = useState<"whatsapp_cloud_api" | "offline_emergency">("whatsapp_cloud_api");
-  const [recCode, setRecCode] = useState("");
-  const [recNewPassword, setRecNewPassword] = useState("");
-  const [recStepInfo, setRecStepInfo] = useState("");
 
   // Workspace Data States
   const [dashboard, setDashboard] = useState<any | null>(null);
@@ -194,12 +193,12 @@ export default function App() {
   const [coupons, setCoupons] = useState<any[]>([]);
   const [homepageSections, setHomepageSections] = useState<any[]>([]);
   const [staticPages, setStaticPages] = useState<any[]>([]);
-  const [backups, setBackups] = useState<any[]>([]);
+  // backups state removed — admin-facing backup page gone.
   const [auditLogs, setAuditLogs] = useState<any[]>([]);
   const [readinessStatus, setReadinessStatus] = useState<any | null>(null);
-  const [recoveryStatus, setRecoveryStatus] = useState<any | null>(null);
+  // recoveryStatus state removed with the WhatsApp password-recovery flow.
   const [healthStatus, setHealthStatus] = useState<any | null>(null);
-  const [restoreReport, setRestoreReport] = useState<any | null>(null);
+  // restoreReport state removed with the admin-facing backup page.
   const [selectedInvoice, setSelectedInvoice] = useState<any | null>(null);
   const [loadingWorkspace, setLoadingWorkspace] = useState(false);
   const [selectedProductIds, setSelectedProductIds] = useState<number[]>([]);
@@ -290,7 +289,7 @@ export default function App() {
     setLoadingWorkspace(true);
     setError("");
     try {
-      const [dashData, repData, brdData, catData, prodData, ordData, custData, movData, layData, bnrData, pgData, bkpData, recData, hltData, blData, kcStatus, outboxData, auditData, readyData, cpnData] = await Promise.all([
+      const [dashData, repData, brdData, catData, prodData, ordData, custData, movData, layData, bnrData, pgData, hltData, blData, kcStatus, outboxData, auditData, readyData, cpnData] = await Promise.all([
         DesktopCmsApi.getDashboard(),
         DesktopCmsApi.getReports().catch(() => null),
         DesktopCmsApi.listBrands().catch(() => ({ items: [] })),
@@ -302,8 +301,7 @@ export default function App() {
         DesktopCmsApi.getStoreLayout().catch(() => ({ homepage_sections: [] })),
         DesktopCmsApi.listBanners().catch(() => ({ items: [] })),
         DesktopCmsApi.listStaticPages().catch(() => ({ items: [] })),
-        DesktopCmsApi.listBackups(),
-        DesktopCmsApi.getRecoveryStatus().catch(() => null),
+        // listBackups & getRecoveryStatus removed — endpoints gone.
         DesktopCmsApi.checkHealth().catch(() => ({ status: "ok" })),
         DesktopCmsApi.listCodBlacklist().catch(() => ({ items: [] })),
         DesktopCmsApi.getKeychainStatus().catch(() => null),
@@ -344,8 +342,6 @@ export default function App() {
         setPageTitleFr(currentPg.title_fr || "");
         setPageContentFr(currentPg.content_fr || "");
       }
-      setBackups(bkpData.items || []);
-      setRecoveryStatus(recData);
       setHealthStatus(hltData);
       if (catData.items?.length && !prodCategoryId) {
         setProdCategoryId(catData.items[0].id);
@@ -424,8 +420,7 @@ export default function App() {
         full_name: ownerName.trim(),
         email: ownerEmail.trim(),
         password: ownerPassword,
-        whatsapp_phone: whatsappPhone.trim() || undefined,
-        emergency_phone: emergencyPhone.trim() || undefined,
+        emergency_phone: emergencyPhone.trim(),
       });
       setRequiresOwnerSetup(false);
       if (res?.user) {
@@ -457,56 +452,8 @@ export default function App() {
     }
   }
 
-  async function handleRequestRecoveryOtp() {
-    setError("");
-    setRecStepInfo("");
-    if (!recPhone.trim()) {
-      notifyClientWarning("Numéro requis", "Veuillez saisir votre numéro de téléphone administrateur (ex: 05XX / 06XX / 07XX...).");
-      return;
-    }
-    try {
-      const res = await DesktopCmsApi.requestPasswordRecovery(recPhone.trim(), recChannel);
-      if (res.test_otp) {
-        setRecCode(res.test_otp);
-        const msg = `Code OTP WhatsApp (Mode Sandbox) généré : ${res.test_otp} (valable 5 min).`;
-        setRecStepInfo(msg);
-        notifyClientSuccess("Code OTP WhatsApp envoyé", msg);
-      } else {
-        const msg = res.message || "Code OTP envoyé sur votre WhatsApp administrateur vérifié.";
-        setRecStepInfo(msg);
-        notifyClientSuccess("Code OTP WhatsApp envoyé", msg);
-      }
-    } catch (err: any) {
-      const tr = notifyClientError(err, "Envoi du code OTP WhatsApp impossible");
-      setError(tr.message);
-    }
-  }
-
-  async function handlePasswordRecoveryVerify(e: React.FormEvent) {
-    e.preventDefault();
-    setError("");
-    if (!recPhone.trim() || !recCode.trim() || recNewPassword.length < 10) {
-      notifyClientWarning(
-        "Données de récupération incomplètes",
-        "Veuillez saisir votre téléphone, le code de vérification et un nouveau mot de passe d'au moins 10 caractères."
-      );
-      return;
-    }
-    try {
-      const res = await DesktopCmsApi.verifyPasswordRecovery(recPhone.trim(), recCode.trim(), recNewPassword);
-      setShowRecoveryModal(false);
-      setRecStepInfo("");
-      const extra = res.replacement_emergency_code
-        ? ` Nouveau code de secours généré : ${res.replacement_emergency_code}`
-        : "";
-      const okMsg = `Mot de passe réinitialisé avec succès.${extra} Connectez-vous avec votre nouveau mot de passe.`;
-      setSuccessMsg(okMsg);
-      notifyClientSuccess("Mot de passe réinitialisé", okMsg, true);
-    } catch (err: any) {
-      const tr = notifyClientError(err, "Vérification du code de récupération refusée");
-      setError(tr.message);
-    }
-  }
+  // Password recovery handlers removed — the owner resets the password via
+  // the server-side CLI described in backend/scripts/emergency_reset_owner.py.
 
   async function handleArchiveProduct(productId: number) {
     setError("");
@@ -806,33 +753,11 @@ export default function App() {
     }
   }
 
-  async function handleTriggerBackup() {
-    setError("");
-    try {
-      const bkp = await DesktopCmsApi.triggerBackup();
-      const okMsg = `Sauvegarde créée et vérifiée : ${bkp.filename} (SHA-256: ${bkp.sha256_checksum.slice(0, 16)}...)`;
-      setSuccessMsg(okMsg);
-      notifyClientSuccess("Sauvegarde complète créée", okMsg, true);
-      await loadAllWorkspaceData();
-    } catch (err: any) {
-      const tr = notifyClientError(err, "Échec de la création de sauvegarde");
-      setError(tr.message);
-    }
-  }
-
-  async function handleVerifyBackupRestore(backupId: number) {
-    setError("");
-    try {
-      const rep = await DesktopCmsApi.verifyBackupRestore(backupId);
-      setRestoreReport(rep);
-      const okMsg = `Test de restauration isolée réussi pour la sauvegarde #${backupId} (${rep.restored_counts?.products || 0} produits, ${rep.restored_counts?.delivery_zones || 69} wilayas vérifiées) !`;
-      setSuccessMsg(okMsg);
-      notifyClientSuccess("Restauration isolée vérifiée", okMsg, true);
-    } catch (err: any) {
-      const tr = notifyClientError(err, "Vérification de la sauvegarde échouée");
-      setError(tr.message);
-    }
-  }
+  // handleTriggerBackup / handleVerifyBackupRestore removed — the admin-facing
+  // backup endpoints are gone. Backups now run as operational infrastructure:
+  //   - nightly encrypted dump by cron
+  //   - pre-deploy dump by infrastructure/scripts/release-deploy.sh
+  // See docs/cicd/ROLLBACK.md for the restore procedure.
 
   async function handleDeltaSync() {
     setError("");
@@ -941,18 +866,7 @@ export default function App() {
     }
   }
 
-  async function handleRotateEmergencyCode() {
-    setError("");
-    try {
-      const res = await DesktopCmsApi.rotateEmergencyCode();
-      const okMsg = `Nouveau Code d'Urgence Hors-Ligne généré : ${res.emergency_code} (Conservez-le en lieu sûr).`;
-      setSuccessMsg(okMsg);
-      notifyClientSuccess("Code d'Urgence régénéré", okMsg, true);
-    } catch (err: any) {
-      const tr = notifyClientError(err, "Rotation du code d'urgence refusée");
-      setError(tr.message);
-    }
-  }
+  // handleRotateEmergencyCode removed with the WhatsApp-recovery flow.
 
   function renderClientNotificationCenter() {
     return (
@@ -1252,18 +1166,13 @@ export default function App() {
               <input type="password" value={ownerConfirm} onChange={(e) => setOwnerConfirm(e.target.value)} required className="w-full px-3 py-2 rounded bg-[#02291F] border border-[#D4AF62]/40" />
             </div>
           </div>
-          <div className="p-3 rounded-xl bg-[#02291F]/80 border border-[#D4AF62]/30 space-y-2 text-xs">
-            <p className="font-bold text-[#D4AF62]">Numéros de contact &amp; vérification de sécurité :</p>
-            <div className="grid grid-cols-2 gap-2">
-              <div>
-                <label className="block text-[11px] mb-0.5">1. WhatsApp Récupération</label>
-                <input value={whatsappPhone} onChange={(e) => setWhatsappPhone(e.target.value)} required placeholder="06XX XX XX XX" className="w-full px-2.5 py-1.5 rounded bg-[#063D2E] border border-[#D4AF62]/40 font-mono text-xs" />
-              </div>
-              <div>
-                <label className="block text-[11px] mb-0.5">2. Numéro Secours / Urgence</label>
-                <input value={emergencyPhone} onChange={(e) => setEmergencyPhone(e.target.value)} required placeholder="+213 5XX XX XX XX" className="w-full px-2.5 py-1.5 rounded bg-[#063D2E] border border-[#D4AF62]/40 font-mono text-xs" />
-              </div>
-            </div>
+          <div className="p-3 rounded-xl bg-[#02291F]/80 border border-[#D4AF62]/30 space-y-1 text-xs">
+            <p className="font-bold text-[#D4AF62]">Numéro de contact :</p>
+            <label className="block text-[11px] mb-0.5">Téléphone propriétaire</label>
+            <input value={emergencyPhone} onChange={(e) => setEmergencyPhone(e.target.value)} required placeholder="+213 5XX XX XX XX" className="w-full px-2.5 py-1.5 rounded bg-[#063D2E] border border-[#D4AF62]/40 font-mono text-xs" />
+            <p className="text-[10px] text-white/50 pt-1">
+              Mot de passe oublié ? Réinitialisation via la console serveur par l'administrateur système.
+            </p>
           </div>
           <button type="submit" className="w-full py-3 rounded-xl bg-[#D4AF62] text-[#02291F] font-extrabold text-sm shadow-xl hover:brightness-105 transition">
             Enregistrer et Sécuriser l'Accès Administrateur
@@ -1294,48 +1203,15 @@ export default function App() {
               <label className="block text-xs font-bold mb-1">Mot de passe</label>
               <input type="password" value={loginPassword} onChange={(e) => setLoginPassword(e.target.value)} required className="w-full px-3 py-2 rounded bg-[#02291F] border border-[#D4AF62]/40 text-sm" />
             </div>
-            <div className="text-right">
-              <button type="button" onClick={() => setShowRecoveryModal(!showRecoveryModal)} className="text-xs text-[#D4AF62] underline hover:text-[#E8D4A5] transition">
-                Mot de passe oublié ? (Récupération sécurisée)
-              </button>
-            </div>
             <button type="submit" className="w-full py-3 rounded-xl bg-[#D4AF62] text-[#02291F] font-extrabold text-sm hover:brightness-105 transition shadow">
               Se connecter au CMS Desktop
             </button>
           </form>
 
-          {showRecoveryModal && (
-            <form onSubmit={handlePasswordRecoveryVerify} className="pt-4 border-t border-[#D4AF62]/30 space-y-3 text-xs">
-              <h3 className="font-bold text-[#D4AF62]">Récupération du Compte Administrateur</h3>
-              {recStepInfo && <div className="p-2.5 rounded bg-emerald-900/90 border border-emerald-400/40 text-emerald-100">{recStepInfo}</div>}
-              <div>
-                <label className="block text-[11px] mb-1 text-[#E8D4A5]">Canal de vérification</label>
-                <select
-                  value={recChannel}
-                  onChange={(e) => setRecChannel(e.target.value as "whatsapp_cloud_api" | "offline_emergency")}
-                  className="w-full px-3 py-2 rounded bg-[#02291F] border border-[#D4AF62]/40 text-white"
-                >
-                  <option value="whatsapp_cloud_api">Code de vérification par WhatsApp (6 chiffres)</option>
-                  <option value="offline_emergency">Code de Secours Administrateur</option>
-                </select>
-              </div>
-              <div className="flex gap-2">
-                <input value={recPhone} onChange={(e) => setRecPhone(e.target.value)} placeholder="Numéro de téléphone (ex: 0655...)" required className="flex-1 px-3 py-2 rounded bg-[#02291F] border border-[#D4AF62]/40 font-mono" />
-                <button
-                  type="button"
-                  onClick={handleRequestRecoveryOtp}
-                  className="px-3 py-2 rounded bg-[#D4AF62] text-[#02291F] font-extrabold whitespace-nowrap hover:brightness-105 transition"
-                >
-                  1. Envoyer le Code
-                </button>
-              </div>
-              <input value={recCode} onChange={(e) => setRecCode(e.target.value)} placeholder="Code de validation à 6 chiffres ou code de secours" required className="w-full px-3 py-2 rounded bg-[#02291F] border border-[#D4AF62]/40 font-mono" />
-              <input type="password" value={recNewPassword} onChange={(e) => setRecNewPassword(e.target.value)} placeholder="Nouveau mot de passe (≥ 10 caractères)" required className="w-full px-3 py-2 rounded bg-[#02291F] border border-[#D4AF62]/40" />
-              <button type="submit" className="w-full py-2.5 rounded-xl bg-emerald-700 hover:bg-emerald-800 text-white font-bold transition">
-                2. Valider le code &amp; Réinitialiser le mot de passe
-              </button>
-            </form>
-          )}
+          <p className="pt-4 text-[11px] text-white/50 text-center">
+            Mot de passe oublié ? La réinitialisation est une opération serveur
+            effectuée par l'administrateur système sur le VPS.
+          </p>
         </div>
       </div>
     );
@@ -1400,17 +1276,19 @@ export default function App() {
               )}
               <span className={`relative inline-flex rounded-full h-2 w-2 ${netTelemetry.online ? "bg-emerald-500" : "bg-red-500"}`}></span>
             </span>
-            <span>{netTelemetry.online ? "Système Connecté • En Ligne" : "Hors-Ligne • Reconnexion..."}</span>
+            <span>{netTelemetry.online ? t("status.online") : t("status.offline")}</span>
           </div>
+
+          <LanguageToggle />
 
           <button
             type="button"
             onClick={handleDeltaSync}
             className="flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl bg-white/10 hover:bg-white/20 text-[#E8D4A5] border border-[#D4AF62]/40 font-bold transition shadow-sm active:scale-95"
-            title="Synchroniser les données avec le serveur central"
+            title={t("common.refresh")}
           >
             <span>↻</span>
-            <span>Actualiser</span>
+            <span>{t("common.refresh")}</span>
           </button>
 
           <button
@@ -1421,7 +1299,7 @@ export default function App() {
             }}
             className="px-3.5 py-1.5 rounded-xl bg-red-900/80 hover:bg-red-800 text-white font-bold transition shadow-sm active:scale-95"
           >
-            Déconnexion
+            {t("topbar.logout")}
           </button>
         </div>
       </header>
@@ -1429,20 +1307,20 @@ export default function App() {
       {/* Navigation Tabs */}
       <nav className="bg-[#063D2E] text-[#E8D4A5] px-6 py-2.5 flex flex-wrap gap-1.5 text-xs font-bold border-b border-[#D4AF62]/30 shadow-inner">
         {[
-          { id: "dashboard", label: "1. Tableau de Bord", icon: LayoutDashboard },
-          { id: "business", label: "★ Synthèse Magasin", icon: TrendingUp },
-          { id: "pos", label: "★ Caisse POS", icon: ScanLine },
-          { id: "products", label: "2. Produits & Prix", icon: ShoppingBag },
-          { id: "categories", label: "3. Catégories & Attributs", icon: Tags },
-          { id: "purchases", label: "4. Achats & Fournisseurs", icon: PackageCheck },
-          { id: "inventory", label: "5. Stocks & Mouvements", icon: Boxes },
-          { id: "orders", label: "6. Commandes & Ventes", icon: FileText },
-          { id: "expenses", label: "7. Dépenses & Charges", icon: Receipt },
-          { id: "treasury", label: "8. Caisse & Trésorerie", icon: Landmark },
-          { id: "accounting", label: "9. Comptabilité & Marges", icon: TrendingUp },
-          { id: "delivery_wilayas", label: "10. Livraison 69 Wilayas", icon: Truck },
-          { id: "content", label: "11. Boutique & Vitrine", icon: Palette },
-          { id: "devices", label: "12. Appareils & Matériel", icon: HardDrive },
+          { id: "dashboard", label: t("sidebar.dashboard"), icon: LayoutDashboard },
+          { id: "business", label: "★ " + t("sidebar.dashboard"), icon: TrendingUp },
+          { id: "pos", label: "★ " + t("sidebar.pos"), icon: ScanLine },
+          { id: "products", label: t("sidebar.products"), icon: ShoppingBag },
+          { id: "categories", label: t("sidebar.categories"), icon: Tags },
+          { id: "purchases", label: t("sidebar.purchases"), icon: PackageCheck },
+          { id: "inventory", label: t("sidebar.inventory"), icon: Boxes },
+          { id: "orders", label: t("sidebar.orders"), icon: FileText },
+          { id: "expenses", label: t("sidebar.expenses"), icon: Receipt },
+          { id: "treasury", label: t("sidebar.treasury"), icon: Landmark },
+          { id: "accounting", label: t("sidebar.accounting"), icon: TrendingUp },
+          { id: "delivery_wilayas", label: t("sidebar.reports"), icon: Truck },
+          { id: "content", label: t("sidebar.settings"), icon: Palette },
+          { id: "devices", label: t("sidebar.devices"), icon: HardDrive },
           { id: "customers", label: "13. Clients", icon: Users },
           { id: "users", label: "14. Utilisateurs & Rôles", icon: Users },
           { id: "inventory_count", label: "15. Inventaire physique", icon: Boxes },
@@ -2727,22 +2605,6 @@ export default function App() {
                 <span>Protection Système Active</span>
               </span>
             </div>
-            <div className="bg-white p-6 rounded-2xl border border-[#D4AF62]/40 flex flex-wrap items-center justify-between gap-4">
-              <div>
-                <h3 className="text-base font-serif font-bold text-[#063D2E]">Canal de Récupération Sécurisé &amp; Code d'Urgence</h3>
-                <p className="text-gray-500">
-                  Canal de vérification : <strong>{recoveryStatus?.whatsapp_cloud_api_configured ? "Actif & Opérationnel" : "Mode Secours"}</strong>
-                </p>
-              </div>
-              <button
-                type="button"
-                onClick={handleRotateEmergencyCode}
-                className="px-4 py-2.5 rounded-xl bg-[#063D2E] text-[#D4AF62] font-bold hover:bg-[#02291F] transition"
-              >
-                Générer un nouveau Code de Secours
-              </button>
-            </div>
-
             <div className="bg-white p-6 rounded-2xl border border-[#D4AF62]/40 space-y-3">
               <div className="flex items-center justify-between">
                 <h3 className="text-base font-serif font-bold text-[#063D2E] flex items-center gap-2">
@@ -2771,51 +2633,9 @@ export default function App() {
               </div>
             </div>
 
-            <div className="bg-white p-6 rounded-2xl border border-[#D4AF62]/40 space-y-4">
-              <div className="flex items-center justify-between">
-                <div>
-                  <h3 className="text-base font-serif font-bold text-[#063D2E]">Sauvegardes Chiffrées &amp; Test de Restauration Isolée</h3>
-                  <p className="text-gray-500">Génère une archive sécurisée et chiffrée (.bak.gz), vérifie son empreinte SHA-256 et teste sa restauration dans un environnement isolé.</p>
-                </div>
-                <button
-                  type="button"
-                  onClick={handleTriggerBackup}
-                  className="px-4 py-2.5 rounded-xl bg-[#D4AF62] text-[#02291F] font-extrabold"
-                >
-                  + Créer une sauvegarde maintenant
-                </button>
-              </div>
-
-              {restoreReport && (
-                <div className="p-4 rounded-xl bg-emerald-50 border border-emerald-300 space-y-1">
-                  <p className="font-bold text-emerald-900 flex items-center gap-1.5">
-                    <CheckCircle2 className="w-4 h-4 text-emerald-700" />
-                    <span>Restauration isolée vérifiée avec succès ({restoreReport.filename})</span>
-                  </p>
-                  <p>
-                    Enregistrements restaurés et vérifiés : Produits: <strong>{restoreReport.restored_counts?.products}</strong> • Catégories: <strong>{restoreReport.restored_counts?.categories}</strong> • Commandes: <strong>{restoreReport.restored_counts?.orders}</strong> • Wilayas: <strong>{restoreReport.restored_counts?.delivery_zones}</strong>
-                  </p>
-                </div>
-              )}
-
-              <div className="space-y-2">
-                {backups.map((b) => (
-                  <div key={b.id} className="p-3 rounded-xl border flex flex-wrap items-center justify-between gap-3">
-                    <div>
-                      <div className="font-mono font-bold text-[#063D2E]">{b.filename} ({b.size_bytes} octets)</div>
-                      <div className="font-mono text-[11px] text-gray-500">SHA-256: {b.sha256_checksum}</div>
-                    </div>
-                    <button
-                      type="button"
-                      onClick={() => handleVerifyBackupRestore(b.id)}
-                      className="px-3 py-1.5 rounded-lg bg-[#063D2E] text-[#D4AF62] font-bold"
-                    >
-                      Tester la restauration isolée
-                    </button>
-                  </div>
-                ))}
-              </div>
-            </div>
+            {/* Backup admin panel removed. Nightly encrypted backups run via
+                cron; pre-deploy dumps run from the CD pipeline. See the
+                docs/cicd/ROLLBACK.md handbook for the restore procedure. */}
           </div>
         </div>
         <ProductEditor

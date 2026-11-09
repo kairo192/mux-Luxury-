@@ -21,6 +21,7 @@ import {
   History,
 } from "lucide-react";
 import { DesktopCmsApi } from "../api/adminClient";
+import { useT } from "../i18n";
 import {
   subscribePosQueue,
   enqueuePosSale,
@@ -153,6 +154,7 @@ const Keypad: React.FC<{
 };
 
 export const PosPage: React.FC<{ onInventoryUpdated?: () => void }> = ({ onInventoryUpdated }) => {
+  const t = useT();
   const [session, setSession] = useState<RegisterSession | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -750,7 +752,7 @@ export const PosPage: React.FC<{ onInventoryUpdated?: () => void }> = ({ onInven
   if (loading) {
     return (
       <div className="flex items-center justify-center py-24 text-base text-gray-500">
-        <RefreshCw className="w-6 h-6 animate-spin mr-3" /> Chargement de la caisse…
+        <RefreshCw className="w-6 h-6 animate-spin mr-3" /> {t("status.loading")}
       </div>
     );
   }
@@ -880,21 +882,21 @@ export const PosPage: React.FC<{ onInventoryUpdated?: () => void }> = ({ onInven
                 className="h-12 px-4 rounded-2xl bg-white/10 hover:bg-white/20 text-[#E8D4A5] font-bold flex items-center gap-2 active:scale-95"
                 title="Imprimante & tiroir-caisse"
               >
-                <SettingsIcon className="w-5 h-5" /> Matériel
+                <SettingsIcon className="w-5 h-5" /> {t("pos.hardware")}
               </button>
               <button
                 type="button"
                 onClick={openSessionsHistory}
                 className="h-12 px-4 rounded-2xl bg-white/10 hover:bg-white/20 text-[#E8D4A5] font-bold flex items-center gap-2 active:scale-95"
               >
-                <History className="w-5 h-5" /> Historique
+                <History className="w-5 h-5" /> {t("pos.history")}
               </button>
               <button
                 type="button"
                 onClick={() => setShowClose(true)}
                 className="h-12 px-5 rounded-2xl bg-[#D4AF62] text-[#02291F] font-bold flex items-center gap-2 active:scale-95"
               >
-                <Lock className="w-5 h-5" /> Clôturer
+                <Lock className="w-5 h-5" /> {t("pos.close_session")}
               </button>
             </div>
           </div>
@@ -905,7 +907,7 @@ export const PosPage: React.FC<{ onInventoryUpdated?: () => void }> = ({ onInven
             <div className="lg:col-span-3 space-y-4">
               <form onSubmit={handleScan} className="bg-white p-4 rounded-3xl border border-[#D4AF62]/40">
                 <label className="flex items-center gap-2 font-bold text-[#063D2E] mb-2 text-base">
-                  <ScanLine className="w-5 h-5" /> Scanner ou chercher un produit
+                  <ScanLine className="w-5 h-5" /> {t("pos.scan_or_search")}
                 </label>
                 <div className="flex gap-2">
                   <input
@@ -1115,7 +1117,7 @@ export const PosPage: React.FC<{ onInventoryUpdated?: () => void }> = ({ onInven
                   }}
                   className="w-full h-16 rounded-2xl bg-gradient-to-r from-[#D4AF62] to-[#E8D4A5] text-[#02291F] font-extrabold text-xl flex items-center justify-center gap-3 disabled:opacity-40 active:scale-[0.99] shadow-sm"
                 >
-                  <CheckCircle2 className="w-6 h-6" /> Encaisser {fmt(total)}
+                  <CheckCircle2 className="w-6 h-6" /> {t("pos.checkout")} {fmt(total)}
                 </button>
               </div>
             </div>

@@ -17,8 +17,12 @@ export default {
         },
       },
       fontFamily: {
+        // Cairo + Noto Sans Arabic are the two broadly-available web fonts
+        // with strong Arabic glyph coverage. The CSS stack lets the system
+        // pick whichever is installed (we do not bundle web fonts, so the
+        // Tauri WebView falls back to the OS Arabic UI font — fine in Windows).
         serif: ["Cinzel", "Playfair Display", "Georgia", "serif"],
-        sans: ["'Plus Jakarta Sans'", "Inter", "system-ui", "sans-serif"],
+        sans: ["'Plus Jakarta Sans'", "Inter", "Cairo", "'Noto Sans Arabic'", "system-ui", "sans-serif"],
         mono: ["'JetBrains Mono'", "SFMono-Regular", "Menlo", "monospace"],
       },
       boxShadow: {
@@ -28,5 +32,14 @@ export default {
       },
     },
   },
-  plugins: [],
+  plugins: [
+    // Enable `rtl:` + `ltr:` variants driven by the `dir` attribute on any
+    // ancestor. The i18n provider in src/i18n/index.tsx sets this on
+    // <html>, so `className="pl-4 rtl:pl-0 rtl:pr-4"` gives us direction-
+    // aware styling without a second utility pass.
+    function ({ addVariant }) {
+      addVariant("rtl", '&:where([dir="rtl"], [dir="rtl"] *)');
+      addVariant("ltr", '&:where([dir="ltr"], [dir="ltr"] *)');
+    },
+  ],
 };

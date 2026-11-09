@@ -188,6 +188,8 @@ export const DesktopCmsApi = {
     full_name: string;
     email: string;
     password: string;
+    // whatsapp_phone is accepted by the backend but no longer collected in
+    // the CMS owner-setup form (password recovery over WhatsApp removed).
     whatsapp_phone?: string;
     emergency_phone?: string;
   }) => {
@@ -215,18 +217,8 @@ export const DesktopCmsApi = {
       setAccessToken(null);
     }
   },
-  getRecoveryStatus: () => adminFetch("/admin/auth/recovery/status"),
-  rotateEmergencyCode: () => adminFetch("/admin/auth/recovery/rotate-emergency-code", { method: "POST" }),
-  requestPasswordRecovery: (phone: string, channel: "whatsapp_cloud_api" | "offline_emergency" = "whatsapp_cloud_api") =>
-    adminFetch("/admin/auth/recovery/request", {
-      method: "POST",
-      body: JSON.stringify({ phone, channel }),
-    }),
-  verifyPasswordRecovery: (phone: string, verification_code: string, new_password: string) =>
-    adminFetch("/admin/auth/recovery/verify", {
-      method: "POST",
-      body: JSON.stringify({ phone, verification_code, new_password }),
-    }),
+  // Password-recovery endpoints removed. Owner-side password reset is now a
+  // server-side CLI operation only (backend/scripts/emergency_reset_owner.py).
 
   // Dashboard & Delta Synchronization
   getDashboard: () => adminFetch("/admin/dashboard"),
@@ -498,10 +490,8 @@ export const DesktopCmsApi = {
   },
   getAuditLogFacets: () => adminFetch("/admin/audit-logs/facets"),
   checkReadiness: () => adminFetch("/ready"),
-  listBackups: () => adminFetch("/admin/backups"),
-  triggerBackup: () => adminFetch("/admin/backups", { method: "POST" }),
-  verifyBackupRestore: (backupId: number) =>
-    adminFetch(`/admin/backups/${backupId}/verify-restore`, { method: "POST" }),
+  // Admin-facing backup endpoints removed. Backups run as infrastructure
+  // (cron + release-deploy pre-migration dump).
 
   // ERP: Suppliers & Purchasing
   listSuppliers: () => adminFetch("/admin/suppliers"),
