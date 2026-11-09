@@ -1,5 +1,6 @@
 import { readDraft, writeDraft, clearDraft } from "../utils/draftStorage";
 import React, { useEffect, useState } from "react";
+import { useT } from "../i18n";
 import { DesktopCmsApi } from "../api/adminClient";
 import { notifyClientError, notifyClientSuccess, notifyClientWarning } from "../utils/clientNotifier";
 import {
@@ -594,6 +595,7 @@ export const CATEGORY_PRESETS: CategoryPreset[] = [
 ];
 
 export function CategoryBuilderPage({ onCategoryChanged }: { onCategoryChanged?: () => void }) {
+  const t = useT();
   const [categories, setCategories] = useState<any[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
@@ -1255,10 +1257,10 @@ export function CategoryBuilderPage({ onCategoryChanged }: { onCategoryChanged?:
             </div>
             <div>
               <h1 className="text-2xl font-serif font-bold text-[#063D2E]">
-                Architecture des Catégories &amp; Modèles de Variantes
+                {t("cat_builder.title")}
               </h1>
               <p className="text-xs text-gray-500 mt-0.5">
-                Configurez les catégories, les attributs techniques et les axes de déclinaisons (couleurs avec nuancier, tailles, matières).
+                {t("cat_builder.subtitle")}
               </p>
             </div>
           </div>
@@ -1270,7 +1272,7 @@ export function CategoryBuilderPage({ onCategoryChanged }: { onCategoryChanged?:
             className="flex items-center gap-2 px-3.5 py-2.5 rounded-xl border border-[#063D2E]/20 text-[#063D2E] text-xs font-bold hover:bg-[#F8F6F0] transition"
           >
             <RefreshCw className="w-4 h-4" />
-            <span>Actualiser</span>
+            <span>{t("cat_builder.btn_refresh")}</span>
           </button>
           <button
             type="button"
@@ -1278,7 +1280,7 @@ export function CategoryBuilderPage({ onCategoryChanged }: { onCategoryChanged?:
             className="flex items-center gap-2 px-4 py-2.5 rounded-xl bg-[#063D2E] text-[#D4AF62] text-xs font-extrabold hover:bg-[#02291F] shadow-sm transition"
           >
             <Plus className="w-4 h-4" />
-            <span>{showCreateForm ? "Fermer le configurateur" : "+ Créer une Catégorie"}</span>
+            <span>{showCreateForm ? t("cat_builder.btn_close_config") : t("cat_builder.btn_create_category")}</span>
           </button>
         </div>
       </div>
@@ -1287,7 +1289,7 @@ export function CategoryBuilderPage({ onCategoryChanged }: { onCategoryChanged?:
       <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-4">
         <div className="p-4 bg-white rounded-xl border border-[#D4AF62]/30 shadow-sm flex items-center justify-between">
           <div>
-            <span className="text-[11px] text-gray-500 font-bold uppercase">Total Catégories</span>
+            <span className="text-[11px] text-gray-500 font-bold uppercase">{t("cat_builder.kpi_total")}</span>
             <p className="text-2xl font-bold font-mono text-[#063D2E] mt-0.5">{categories.length}</p>
           </div>
           <div className="p-3 rounded-xl bg-[#F8F6F0] text-[#063D2E]">
@@ -1297,7 +1299,7 @@ export function CategoryBuilderPage({ onCategoryChanged }: { onCategoryChanged?:
 
         <div className="p-4 bg-white rounded-xl border border-[#D4AF62]/30 shadow-sm flex items-center justify-between">
           <div>
-            <span className="text-[11px] text-gray-500 font-bold uppercase">Sur Page d'Accueil</span>
+            <span className="text-[11px] text-gray-500 font-bold uppercase">{t("cat_builder.kpi_homepage")}</span>
             <p className="text-2xl font-bold font-mono text-emerald-700 mt-0.5">{homepageCount}</p>
           </div>
           <div className="p-3 rounded-xl bg-emerald-50 text-emerald-800">
@@ -1307,7 +1309,7 @@ export function CategoryBuilderPage({ onCategoryChanged }: { onCategoryChanged?:
 
         <div className="p-4 bg-white rounded-xl border border-[#D4AF62]/30 shadow-sm flex items-center justify-between">
           <div>
-            <span className="text-[11px] text-gray-500 font-bold uppercase">Attributs Actifs</span>
+            <span className="text-[11px] text-gray-500 font-bold uppercase">{t("cat_builder.kpi_active_attrs")}</span>
             <p className="text-2xl font-bold font-mono text-amber-700 mt-0.5">{totalAttributesCount}</p>
           </div>
           <div className="p-3 rounded-xl bg-amber-50 text-amber-800">
@@ -1317,10 +1319,10 @@ export function CategoryBuilderPage({ onCategoryChanged }: { onCategoryChanged?:
 
         <div className="p-4 bg-white rounded-xl border border-[#D4AF62]/30 shadow-sm flex items-center justify-between">
           <div>
-            <span className="text-[11px] text-gray-500 font-bold uppercase">Synchronisation</span>
+            <span className="text-[11px] text-gray-500 font-bold uppercase">{t("cat_builder.kpi_sync")}</span>
             <p className="text-sm font-bold text-emerald-800 mt-1 flex items-center gap-1.5">
               <Check className="w-4 h-4 text-emerald-600" />
-              <span>Modèles Dynamiques OK</span>
+              <span>{t("cat_builder.kpi_sync_ok")}</span>
             </p>
           </div>
           <div className="p-3 rounded-xl bg-emerald-50 text-emerald-800">
@@ -1364,10 +1366,10 @@ export function CategoryBuilderPage({ onCategoryChanged }: { onCategoryChanged?:
             <div>
               <h2 className="text-lg font-serif font-bold text-[#063D2E] flex items-center gap-2">
                 <SlidersHorizontal className="w-5 h-5 text-[#D4AF62]" />
-                <span>Créer une Catégorie &amp; Définir son Modèle de Déclinaisons</span>
+                <span>{t("cat_builder.form_create_title")}</span>
               </h2>
               <p className="text-xs text-gray-500 mt-0.5">
-                Configurez les attributs, axes de variantes (couleurs avec nuancier, tailles), filtres boutique et prévisualisez le rendu en direct.
+                {t("cat_builder.form_create_sub")}
               </p>
             </div>
             <button
@@ -1385,9 +1387,9 @@ export function CategoryBuilderPage({ onCategoryChanged }: { onCategoryChanged?:
             <div className="flex items-center justify-between">
               <span className="text-xs font-bold text-[#063D2E] uppercase tracking-wider flex items-center gap-1.5">
                 <Sparkles className="w-3.5 h-3.5 text-[#D4AF62]" />
-                <span>Modèles Rapides &amp; Préréglages Métier (1 Clic)</span>
+                <span>{t("cat_builder.presets_title")}</span>
               </span>
-              <span className="text-[11px] text-gray-500">Cliquez sur un modèle pour préremplir instantanément attributs, couleurs et dimensions</span>
+              <span className="text-[11px] text-gray-500">{t("cat_builder.presets_hint")}</span>
             </div>
             <div className="flex flex-wrap items-center gap-2">
               {CATEGORY_PRESETS.map((preset) => {
@@ -1996,14 +1998,14 @@ export function CategoryBuilderPage({ onCategoryChanged }: { onCategoryChanged?:
               onClick={() => setShowCreateForm(false)}
               className="px-4 py-2.5 rounded-xl border border-gray-300 font-bold text-gray-700 text-xs hover:bg-gray-50 transition"
             >
-              Annuler
+              {t("cat_builder.btn_cancel")}
             </button>
             <button
               type="submit"
               className="px-6 py-2.5 rounded-xl bg-[#D4AF62] text-[#02291F] font-extrabold text-xs shadow-md hover:brightness-105 transition flex items-center gap-2"
             >
               <Check className="w-4 h-4" />
-              <span>Enregistrer &amp; Publier la Catégorie</span>
+              <span>{t("cat_builder.btn_save_category")}</span>
             </button>
           </div>
         </form>
@@ -2018,16 +2020,16 @@ export function CategoryBuilderPage({ onCategoryChanged }: { onCategoryChanged?:
             type="text"
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
-            placeholder="Rechercher par nom (FR / AR / EN) ou slug..."
+            placeholder={t("cat_builder.search_placeholder")}
             className="w-full pl-9 pr-3 py-2 border rounded-xl bg-[#F8F6F0] focus:bg-white focus:border-[#063D2E] outline-none transition"
           />
         </div>
 
         <div className="flex flex-wrap items-center gap-2 w-full md:w-auto">
           {[
-            { id: "all", label: `Toutes (${categories.length})` },
-            { id: "homepage", label: `Sur l'Accueil (${homepageCount})` },
-            { id: "with_attrs", label: "Avec Attributs" },
+            { id: "all", label: t("cat_builder.tab_all", { count: categories.length }) },
+            { id: "homepage", label: t("cat_builder.tab_homepage", { count: homepageCount }) },
+            { id: "with_attrs", label: t("cat_builder.tab_with_attrs") },
           ].map((tab) => (
             <button
               key={tab.id}
@@ -2048,7 +2050,7 @@ export function CategoryBuilderPage({ onCategoryChanged }: { onCategoryChanged?:
       {/* Luxury Category Cards Grid */}
       {loading ? (
         <div className="p-12 text-center text-xs text-gray-500 bg-white rounded-2xl border border-[#D4AF62]/30">
-          Chargement des catégories et des attributs en cours...
+          {t("cat_builder.loading")}
         </div>
       ) : filteredCategories.length === 0 ? (
         categories.length === 0 ? (
@@ -2057,7 +2059,7 @@ export function CategoryBuilderPage({ onCategoryChanged }: { onCategoryChanged?:
               <Sparkles className="w-8 h-8 text-[#D4AF62]" />
             </div>
             <div className="max-w-md mx-auto space-y-1">
-              <h4 className="text-lg font-serif font-bold text-[#063D2E]">Catalogue Vierge — Définissez vos Collections</h4>
+              <h4 className="text-lg font-serif font-bold text-[#063D2E]">{t("cat_builder.empty_title")}</h4>
               <p className="text-xs text-gray-600 leading-relaxed">
                 Aucune catégorie n'est actuellement enregistrée dans la base de données. Vous pouvez initialiser en un clic les 4 collections de prestige Mus Luxury (Sacs, Souliers, Cosmétiques, Soieries) ou créer une catégorie sur mesure.
               </p>
@@ -2069,7 +2071,7 @@ export function CategoryBuilderPage({ onCategoryChanged }: { onCategoryChanged?:
                 className="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl bg-gradient-to-r from-[#D4AF62] to-[#E8D4A5] text-[#02291F] font-extrabold text-xs shadow-xs hover:brightness-105 transition"
               >
                 <Sparkles className="w-4 h-4 text-[#02291F]" />
-                <span>Initialiser les 4 Collections Mus Luxury</span>
+                <span>{t("cat_builder.btn_init_starter")}</span>
               </button>
               <button
                 type="button"
@@ -2077,14 +2079,14 @@ export function CategoryBuilderPage({ onCategoryChanged }: { onCategoryChanged?:
                 className="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl bg-[#063D2E] text-[#D4AF62] font-bold text-xs shadow-xs hover:bg-[#084e3b] transition"
               >
                 <Plus className="w-4 h-4 text-[#D4AF62]" />
-                <span>Créer une Catégorie sur Mesure</span>
+                <span>{t("cat_builder.btn_create_custom")}</span>
               </button>
             </div>
           </div>
         ) : (
           <div className="p-12 text-center bg-white rounded-2xl border border-dashed border-[#D4AF62]/40 space-y-3">
             <Tags className="w-10 h-10 text-gray-300 mx-auto" />
-            <p className="text-sm font-bold text-gray-600">Aucune catégorie ne correspond à votre recherche.</p>
+            <p className="text-sm font-bold text-gray-600">{t("cat_builder.no_results")}</p>
             <button
               type="button"
               onClick={() => {
@@ -2093,7 +2095,7 @@ export function CategoryBuilderPage({ onCategoryChanged }: { onCategoryChanged?:
               }}
               className="px-4 py-2 rounded-xl bg-[#063D2E] text-[#D4AF62] text-xs font-bold"
             >
-              Réinitialiser les filtres
+              {t("cat_builder.btn_reset_filters")}
             </button>
           </div>
         )
@@ -2152,30 +2154,30 @@ export function CategoryBuilderPage({ onCategoryChanged }: { onCategoryChanged?:
                       }`}
                     >
                       {c.show_on_homepage ? <Eye className="w-3 h-3" /> : <EyeOff className="w-3 h-3" />}
-                      <span>{c.show_on_homepage ? "Accueil : Visible" : "Accueil : Masqué"}</span>
+                      <span>{c.show_on_homepage ? t("cat_builder.badge_home_visible") : t("cat_builder.badge_home_hidden")}</span>
                     </span>
 
                     <span className="px-2.5 py-0.5 rounded-full bg-[#F8F6F0] text-[#063D2E] font-bold border border-[#D4AF62]/30">
-                      {attrs.length} attribut(s)
+                      {t("cat_builder.attrs_count", { count: attrs.length })}
                     </span>
                   </div>
 
                   {/* Dynamic Attributes List for this category */}
                   <div className="pt-2 border-t border-gray-100 space-y-1.5">
                     <div className="flex items-center justify-between text-[11px] font-bold text-gray-500">
-                      <span>Attributs &amp; Filtres :</span>
+                      <span>{t("cat_builder.attrs_and_filters")}</span>
                       <button
                         type="button"
                         onClick={() => setQuickAttrCategory(c)}
                         className="text-[#063D2E] hover:underline flex items-center gap-1"
                       >
                         <Plus className="w-3 h-3" />
-                        <span>Ajouter</span>
+                        <span>{t("cat_builder.btn_add_attr")}</span>
                       </button>
                     </div>
 
                     {attrs.length === 0 ? (
-                      <p className="text-[11px] text-gray-400 italic">Aucun attribut spécifique configuré.</p>
+                      <p className="text-[11px] text-gray-400 italic">{t("cat_builder.no_attrs")}</p>
                     ) : (
                       <div className="flex flex-wrap gap-1.5 max-h-24 overflow-y-auto">
                         {attrs.map((a: any) => (
@@ -2212,7 +2214,7 @@ export function CategoryBuilderPage({ onCategoryChanged }: { onCategoryChanged?:
                     title={c.show_on_homepage ? "Masquer de la page d'accueil" : "Afficher sur la page d'accueil"}
                   >
                     {c.show_on_homepage ? <EyeOff className="w-3.5 h-3.5 text-gray-500" /> : <Eye className="w-3.5 h-3.5 text-emerald-600" />}
-                    <span>{c.show_on_homepage ? "Masquer" : "Accueil"}</span>
+                    <span>{c.show_on_homepage ? t("cat_builder.btn_toggle_home_hide") : t("cat_builder.btn_toggle_home_show")}</span>
                   </button>
 
                   <div className="flex items-center gap-1.5">
@@ -2224,7 +2226,7 @@ export function CategoryBuilderPage({ onCategoryChanged }: { onCategoryChanged?:
                       title="Modifier les noms, slug, description et icône"
                     >
                       <Edit3 className="w-3.5 h-3.5 text-[#063D2E]" />
-                      <span>Modifier</span>
+                      <span>{t("cat_builder.btn_modify")}</span>
                     </button>
 
                     {/* DELETE / ARCHIVE BUTTON */}
@@ -2235,7 +2237,7 @@ export function CategoryBuilderPage({ onCategoryChanged }: { onCategoryChanged?:
                       title="Archiver ou Supprimer définitivement cette catégorie"
                     >
                       <Trash2 className="w-3.5 h-3.5 text-red-600" />
-                      <span>Supprimer</span>
+                      <span>{t("cat_builder.btn_delete")}</span>
                     </button>
                   </div>
                 </div>
