@@ -14,7 +14,15 @@ import {
   Trash2,
   X,
   Sparkles,
+  Tag,
 } from "lucide-react";
+import {
+  isLabelPrinterConfigured,
+  loadLabelPrinterSettings,
+  printLabels,
+  isTauriRuntime,
+  type LabelPayload,
+} from "../utils/posHardware";
 
 export function PurchasesPage({ onInventoryUpdated }: { onInventoryUpdated?: () => void }) {
   const [suppliers, setSuppliers] = useState<any[]>([]);
@@ -181,6 +189,10 @@ export function PurchasesPage({ onInventoryUpdated }: { onInventoryUpdated?: () 
     try {
       await DesktopCmsApi.receivePurchaseOrder(poToReceive.id);
       notifyClientSuccess("Réception confirmée", `Bon ${poToReceive.reference} réceptionné en stock avec succès.`);
+      // Ask the operator whether to print labels now; keep the receive modal
+      // in a second-step state instead of closing immediately so the batch
+      // print is one more click away, with zero guesswork.
+      await offerToPrintLabels(poToReceive.id, poToReceive.reference);
       setPoToReceive(null);
       await loadData();
       if (onInventoryUpdated) onInventoryUpdated();
@@ -189,6 +201,51 @@ export function PurchasesPage({ onInventoryUpdated }: { onInventoryUpdated?: () 
       setError(tr.message);
     } finally {
       setReceivingPo(false);
+    }
+  }
+
+  async function offerToPrintLabels(poId: number, reference: string) {
+    if (!isTauriRuntime() || !isLabelPrinterConfigured()) {
+      // No label printer configured → nothing to offer. The operator can
+      // still print per-variant labels from the Products page later.
+      return;
+    }
+    try {
+      const batch = await DesktopCmsApi.getPurchaseOrderLabels(poId);
+      const printable = (batch.labels || []).filter((l: any) => l.barcode_value);
+      const missing = (batch.variants_without_barcode || 0) as number;
+      const totalCopies = printable.reduce((n: number, l: any) => n + (l.copies || 0), 0);
+      if (!printable.length) {
+        notifyClientWarning(
+          "Impression impossible",
+          missing > 0
+            ? `${missing} article(s) de ce bon n'ont pas de code-barres. Assignez-leur un code dans Produits avant d'imprimer les étiquettes.`
+            : "Aucune étiquette à imprimer pour ce bon.",
+        );
+        return;
+      }
+      const confirmMsg = missing > 0
+        ? `Imprimer ${totalCopies} étiquettes maintenant ?\n(${missing} article(s) sans code-barres seront ignorés — à assigner dans Produits.)`
+        : `Imprimer ${totalCopies} étiquettes pour le bon ${reference} ?`;
+      if (!window.confirm(confirmMsg)) return;
+      const labels: LabelPayload[] = printable.map((l: any) => ({
+        header: l.header,
+        product_name: l.product_name,
+        variant_title: l.variant_title,
+        sku: l.sku,
+        price_text: l.price_text,
+        barcode_value: l.barcode_value,
+        barcode_kind: l.barcode_kind === "ean13" ? "ean13" : "code128",
+        copies: Math.max(1, Math.min(100, Number(l.copies) || 1)),
+      }));
+      const r = await printLabels(loadLabelPrinterSettings(), labels);
+      if (r.ok) {
+        notifyClientSuccess("Étiquettes envoyées", `${totalCopies} étiquettes transmises à l'étiqueteuse.`);
+      } else {
+        notifyClientError({ userMessage: r.error }, "Impression des étiquettes impossible");
+      }
+    } catch (err) {
+      notifyClientError(err, "Impression des étiquettes impossible");
     }
   }
 

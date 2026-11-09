@@ -520,6 +520,8 @@ export const DesktopCmsApi = {
     adminFetch(`/admin/purchases/${poId}/receive`, { method: "POST" }),
   payPurchaseOrder: (poId: number, paymentMethod = "cash") =>
     adminFetch(`/admin/purchases/${poId}/pay?payment_method=${paymentMethod}`, { method: "POST" }),
+  getPurchaseOrderLabels: (poId: number) =>
+    adminFetch(`/admin/purchases/${poId}/labels`),
 
   // ERP: Operating Expenses
   listExpenses: (category?: string) =>

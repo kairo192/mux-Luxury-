@@ -4766,6 +4766,72 @@ def admin_create_purchase_order(
         result["items"] = enriched_items
         return result
 
+@app.get("/api/v1/admin/purchases/{po_id}/labels")
+def admin_purchase_order_labels(
+    po_id: int,
+    admin: dict = Depends(require_permission("dashboard:read")),
+):
+    """Returns the exact label batch to print for a PO: one entry per variant,
+    with `copies` set to the quantity received (or ordered if nothing received
+    yet). The Desktop CMS pipes this straight into `pos_print_labels` after a
+    PO is receipted so every unit that just arrived gets a sticky barcode.
+
+    Variants without a barcode are returned with `barcode: null`; the UI must
+    assign one (generate internal or scan the supplier's) before printing.
+    """
+    with db_session() as conn:
+        cur = conn.cursor()
+        cur.execute("SELECT * FROM purchase_orders WHERE id = ?", (po_id,))
+        po = cur.fetchone()
+        if not po:
+            raise HTTPException(status_code=404, detail="Bon de commande introuvable")
+
+        cur.execute(
+            """SELECT poi.id, poi.product_id, poi.variant_id,
+                      poi.quantity_ordered, poi.quantity_received,
+                      pv.sku AS variant_sku, pv.title AS variant_title,
+                      pv.barcode AS variant_barcode,
+                      p.name_fr AS product_name,
+                      p.selling_price_dzd
+               FROM purchase_order_items poi
+               LEFT JOIN product_variants pv ON pv.id = poi.variant_id
+               LEFT JOIN products p ON p.id = poi.product_id
+               WHERE poi.purchase_order_id = ? ORDER BY poi.id""",
+            (po_id,),
+        )
+        rows = cur.fetchall()
+        boutique = _boutique_info_from_settings(conn)
+
+    store_name = (boutique.get("name") or "Mus Luxury").strip() or "Mus Luxury"
+    labels = []
+    for r in rows:
+        d = dict(r)
+        qty = int(d.get("quantity_received") or 0) or int(d.get("quantity_ordered") or 0)
+        if qty <= 0:
+            continue
+        price = int(d.get("selling_price_dzd") or 0)
+        labels.append({
+            "variant_id": d.get("variant_id"),
+            "product_id": d.get("product_id"),
+            "header": store_name,
+            "product_name": (d.get("product_name") or "").strip() or "Produit",
+            "variant_title": (d.get("variant_title") or "").strip() or "",
+            "sku": (d.get("variant_sku") or "").strip() or f"V{d.get('variant_id') or ''}",
+            "price_text": f"{price:,} DA".replace(",", " "),
+            "barcode_value": (d.get("variant_barcode") or ""),
+            "barcode_kind": ("ean13" if (d.get("variant_barcode") or "").isdigit() and len(d.get("variant_barcode") or "") == 13 else "code128"),
+            "copies": qty,
+            "needs_barcode": not bool(d.get("variant_barcode")),
+        })
+    return {
+        "po_id": po_id,
+        "reference": dict(po).get("reference"),
+        "labels": labels,
+        "total_copies": sum(int(x["copies"]) for x in labels),
+        "variants_without_barcode": sum(1 for x in labels if x["needs_barcode"]),
+    }
+
+
 @app.post("/api/v1/admin/purchases/{po_id}/receive")
 def admin_receive_purchase_order(
     po_id: int,
