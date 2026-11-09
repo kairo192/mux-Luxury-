@@ -2069,9 +2069,14 @@ console.log("ALL_TSX_COMPILED_OK");
         self.assertIn("limit_req_zone", nginx_conf)
         self.assertIn("Strict-Transport-Security", nginx_conf)
 
-        ci_workflow = repo_root / ".github" / "workflows" / "ci-security-and-backend.yml"
+        # The consolidated CI lives at .github/workflows/ci.yml. Both the sqlite
+        # and the postgres backend-test jobs run the full unittest discovery.
+        ci_workflow = repo_root / ".github" / "workflows" / "ci.yml"
         self.assertTrue(ci_workflow.is_file())
-        self.assertIn("unittest discover -s tests -v", ci_workflow.read_text(encoding="utf-8"))
+        ci_body = ci_workflow.read_text(encoding="utf-8")
+        self.assertIn("unittest discover -s tests -v", ci_body)
+        self.assertIn("backend-tests-sqlite", ci_body)
+        self.assertIn("backend-tests-postgres", ci_body)
 
 
 
@@ -3082,11 +3087,10 @@ flushOfflineMutationQueue(async () => true).then((res) => {
         self.assertIn("err?.status === 409", cb_code)
         self.assertIn("deleteCategoryAttribute(attrId, true)", cb_code)
 
-        # 3. Verify both CI workflows install node-babel7 and run frontend bundle builds
+        # 3. Verify the consolidated CI installs node-babel7 (for tests that parse TSX
+        #    via @babel/core) and runs the frontend bundle builds.
         ci_yml = (repo_root / ".github" / "workflows" / "ci.yml").read_text(encoding="utf-8")
-        ci_sec_yml = (repo_root / ".github" / "workflows" / "ci-security-and-backend.yml").read_text(encoding="utf-8")
         self.assertIn("node-babel7", ci_yml)
-        self.assertIn("node-babel7", ci_sec_yml)
         self.assertIn("npm run build", ci_yml)
 
 

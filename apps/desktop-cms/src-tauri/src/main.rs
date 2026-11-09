@@ -78,6 +78,7 @@ fn main() {
     tauri::Builder::default()
         .manage(SecureMemoryVault(Mutex::new(HashMap::new())))
         .plugin(tauri_plugin_store::Builder::default().build())
+        .plugin(tauri_plugin_updater::Builder::new().build())
         .invoke_handler(tauri::generate_handler![
             keychain_set_secret,
             keychain_get_secret,

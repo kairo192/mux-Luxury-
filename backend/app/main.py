@@ -4033,6 +4033,50 @@ def api_healthcheck():
     except Exception:
         raise HTTPException(status_code=503, detail="Database connectivity check failed")
 
+
+# Compatibility matrix for the Tauri POS / Desktop CMS. The desktop app pings
+# this on startup and refuses to run against an API that no longer supports it
+# (the user is prompted to install the newer signed release). Keep the keys in
+# sync with infrastructure/environments/*.env and docs/cicd/POS_UPDATE_STRATEGY.md.
+_POS_MIN_SUPPORTED = os.getenv("POS_MIN_SUPPORTED_VERSION", "1.0.0")
+_POS_LATEST = os.getenv("POS_LATEST_VERSION", "1.0.0")
+_POS_API_CONTRACT = os.getenv("POS_API_CONTRACT_VERSION", "1")
+
+
+@app.get("/api/v1/pos/compat")
+def pos_compat(client_version: Optional[str] = None):
+    """POS / Desktop CMS version-compatibility probe.
+
+    Returns the minimum supported POS version, the latest released POS
+    version, and a boolean telling the client whether its own version is
+    still allowed to talk to this API. Backwards-compatible by design: adding
+    a new field here must never break an older POS."""
+    def _parse(v: str):
+        try:
+            return tuple(int(p) for p in (v or "0").split(".")[:3])
+        except (ValueError, AttributeError):
+            return (0, 0, 0)
+
+    supported = True
+    deprecated = False
+    if client_version:
+        cv = _parse(client_version)
+        if cv < _parse(_POS_MIN_SUPPORTED):
+            supported = False
+        elif cv < _parse(_POS_LATEST):
+            deprecated = True
+
+    return {
+        "api_contract_version": _POS_API_CONTRACT,
+        "min_supported_pos_version": _POS_MIN_SUPPORTED,
+        "latest_pos_version": _POS_LATEST,
+        "client_version": client_version,
+        "supported": supported,
+        "deprecated": deprecated,
+        "update_channel": "github-releases",
+        "update_manifest": "https://github.com/kairo192/mux-Luxury-/releases/latest/download/latest.json",
+    }
+
 @app.post("/api/v1/admin/products/{product_id}/images", status_code=201)
 def admin_add_product_image(
     product_id: int,

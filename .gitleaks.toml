@@ -1,0 +1,24 @@
+# gitleaks configuration for Mus Luxury.
+# Scans every commit on PRs for accidentally-committed secrets.
+
+[extend]
+useDefault = true
+
+[allowlist]
+description = "Known-safe placeholders, docs examples, and ephemeral CI secrets"
+regexes = [
+  '''<CHANGE_ME[^>]*>''',
+  '''<mux-luxury@10000>''',
+  '''<mux-luxry@2060>''',
+  '''<editor@2050>''',
+  '''ci_only_ephemeral_[A-Za-z0-9_]+''',
+  '''test_only_ephemeral_[A-Za-z0-9_]+''',
+]
+paths = [
+  '''(^|/)\.env\.example$''',
+  '''(^|/)infrastructure/environments/.*\.env\.example$''',
+  '''(^|/)docs/''',
+  '''(^|/)backend/tests/''',
+  '''(^|/).github/workflows/ci\.yml$''',
+  '''(^|/).gitleaks\.toml$''',
+]

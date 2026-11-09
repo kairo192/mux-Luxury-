@@ -1,0 +1,163 @@
+# ============================================================================
+# Mus Luxury — Continuous Delivery to STAGING.
+# Fires automatically on every push to main. Blocks on CI being green for that
+# commit (branch protection enforces the same thing from the UI). Builds a
+# release tarball on GitHub-hosted runners (never on the VPS) and pushes it
+# over SSH to the staging VPS, where release-deploy.sh takes over.
+# ============================================================================
+name: CD → Staging
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: cd-staging
+  cancel-in-progress: false
+
+jobs:
+  wait-for-ci:
+    name: Wait for CI
+    runs-on: ubuntu-latest
+    steps:
+      - name: Wait for the CI workflow on this commit
+        uses: lewagon/wait-on-check-action@ccfb013c15c8afb7bf2b7c028fb74dc5a068cccc  # v1.3.4
+        with:
+          ref: ${{ github.sha }}
+          check-name: "CI complete (branch-protection gate)"
+          repo-token: ${{ secrets.GITHUB_TOKEN }}
+          wait-interval: 15
+          allowed-conclusions: success
+
+  build-release:
+    name: Build release tarball
+    needs: wait-for-ci
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.version.outputs.value }}
+    steps:
+      - uses: actions/checkout@v4
+      - id: version
+        run: echo "value=$(date -u +%Y.%m.%d)-${GITHUB_SHA::7}" >> "$GITHUB_OUTPUT"
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: "npm"
+          cache-dependency-path: |
+            apps/storefront/package-lock.json
+            apps/desktop-cms/package-lock.json
+
+      - name: Build storefront
+        working-directory: ./apps/storefront
+        run: |
+          npm ci --audit=false --fund=false
+          npm run build
+
+      - name: Build CMS web bundle
+        working-directory: ./apps/desktop-cms
+        run: |
+          npm ci --audit=false --fund=false
+          npm run build
+
+      - name: Assemble release tar
+        env:
+          VERSION: ${{ steps.version.outputs.value }}
+        run: |
+          mkdir -p .release
+          # Include everything the VPS needs at runtime:
+          tar czf ".release/mux-luxury-${VERSION}.tar.gz" \
+              --exclude=".git" \
+              --exclude=".github" \
+              --exclude="node_modules" \
+              --exclude=".release" \
+              --exclude="apps/storefront/node_modules" \
+              --exclude="apps/desktop-cms/node_modules" \
+              --exclude="apps/desktop-cms/src-tauri/target" \
+              --exclude="backend/__pycache__" \
+              --exclude="backend/uploads" \
+              --exclude="backend/backups" \
+              --exclude="**/*.pyc" \
+              --exclude="scratch" \
+              --exclude="images" \
+              .
+          sha256sum ".release/mux-luxury-${VERSION}.tar.gz" > ".release/mux-luxury-${VERSION}.tar.gz.sha256"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: release-${{ steps.version.outputs.value }}
+          path: .release/
+          retention-days: 14
+
+  deploy-staging:
+    name: Deploy to staging VPS
+    needs: build-release
+    runs-on: ubuntu-latest
+    environment:
+      name: staging
+      url: ${{ vars.STAGING_URL }}
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: release-${{ needs.build-release.outputs.version }}
+          path: .release/
+
+      - name: Verify tarball checksum
+        env:
+          VERSION: ${{ needs.build-release.outputs.version }}
+        working-directory: .release
+        run: sha256sum -c "mux-luxury-${VERSION}.tar.gz.sha256"
+
+      - name: Install ssh key for deploy user
+        uses: webfactory/ssh-agent@a6f90b1f127823b31d4d4a8d96047790581349bd  # v0.9.0
+        with:
+          ssh-private-key: ${{ secrets.STAGING_SSH_PRIVATE_KEY }}
+
+      - name: Known-hosts
+        env:
+          HOST: ${{ secrets.STAGING_SSH_HOST }}
+        run: |
+          mkdir -p ~/.ssh
+          ssh-keyscan -H "$HOST" >> ~/.ssh/known_hosts
+
+      - name: Upload tarball
+        env:
+          VERSION: ${{ needs.build-release.outputs.version }}
+          HOST:    ${{ secrets.STAGING_SSH_HOST }}
+          USER:    ${{ secrets.STAGING_SSH_USER }}
+        run: |
+          scp ".release/mux-luxury-${VERSION}.tar.gz" \
+              "${USER}@${HOST}:/tmp/mux-luxury-release.tar.gz"
+
+      - name: Invoke release-deploy.sh on VPS
+        env:
+          VERSION: ${{ needs.build-release.outputs.version }}
+          HOST:    ${{ secrets.STAGING_SSH_HOST }}
+          USER:    ${{ secrets.STAGING_SSH_USER }}
+        run: |
+          ssh "${USER}@${HOST}" bash -lc "'
+            set -e
+            TMPDIR=\$(mktemp -d)
+            tar -xzf /tmp/mux-luxury-release.tar.gz -C \$TMPDIR
+            bash \$TMPDIR/infrastructure/scripts/release-deploy.sh \
+                --version ${VERSION} \
+                --archive /tmp/mux-luxury-release.tar.gz
+            rm -rf \$TMPDIR /tmp/mux-luxury-release.tar.gz
+          '"
+
+      - name: Post-deploy health check
+        env:
+          HEALTH_URL: ${{ vars.STAGING_HEALTH_URL }}
+        run: |
+          for i in $(seq 1 20); do
+            if curl -fsS --max-time 10 "$HEALTH_URL" >/dev/null; then
+              echo "staging healthy"; exit 0
+            fi
+            sleep 6
+          done
+          echo "::error ::staging health probe failed after 2 minutes"
+          exit 1

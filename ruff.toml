@@ -1,0 +1,38 @@
+# Minimal, non-noisy ruff baseline for the backend.
+# Keeps the pipeline pragmatic: hard-fail only on real bugs and syntax issues,
+# not stylistic nits that would require a wide reformat.
+
+target-version = "py311"
+line-length = 120
+extend-exclude = [
+    "backend/backups",
+    "backend/uploads",
+    "backend/migrations",
+    "backend/__pycache__",
+    ".agent",
+    "scratch",
+    "images",
+]
+
+[lint]
+# Only rules we actually want to block CI on — real bugs, not style.
+# Stylistic cleanups (bare try/except passes, unused locals, etc.) are left to
+# follow-up PRs; CI fails only on things that are very likely a defect.
+select = [
+    "F",   # pyflakes (undefined names, unused imports)
+    "E9",  # syntax errors
+    "W605", # invalid escape sequences
+    "B006", # mutable default argument
+    "PLE",  # pylint errors (always-false conditions, bad f-strings, etc.)
+]
+ignore = [
+    "F401",  # unused import — intentional in __init__ shims
+    "F403",  # from X import * — used by seed/
+    "F405",  # may be undefined from star imports
+    "F541",  # f-string without placeholders — harmless
+    "F841",  # unused local — trip hazard, not a defect
+]
+
+[lint.per-file-ignores]
+"backend/tests/**" = ["F841", "E501", "B007"]
+"backend/app/seed.py" = ["E501", "F401", "F403", "F405"]

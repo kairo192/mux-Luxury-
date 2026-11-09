@@ -1,0 +1,224 @@
+# ============================================================================
+# Mus Luxury — Continuous Delivery to PRODUCTION.
+# Only runs on manual dispatch with a version tag OR when a release tag of the
+# form v* is pushed. The `environment: production` gate forces the configured
+# reviewers to approve each deploy from the GitHub UI, satisfying the
+# "authorized approvals" requirement.
+#
+# CI must be green on the commit tied to the tag.
+# ============================================================================
+name: CD → Production
+
+on:
+  workflow_dispatch:
+    inputs:
+      ref:
+        description: "Branch, tag or SHA to deploy (default: current ref)"
+        required: false
+        default: ""
+      skip_health_gate:
+        description: "Skip the post-deploy health gate (NOT recommended)"
+        type: boolean
+        default: false
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: write    # required to create a GitHub release on tag
+
+concurrency:
+  group: cd-production
+  cancel-in-progress: false
+
+jobs:
+  resolve-ref:
+    name: Resolve ref & version
+    runs-on: ubuntu-latest
+    outputs:
+      ref:     ${{ steps.r.outputs.ref }}
+      version: ${{ steps.r.outputs.version }}
+      is_tag:  ${{ steps.r.outputs.is_tag }}
+    steps:
+      - id: r
+        env:
+          INPUT_REF: ${{ inputs.ref }}
+          GITHUB_REF: ${{ github.ref }}
+          GITHUB_SHA: ${{ github.sha }}
+        run: |
+          if [ -n "$INPUT_REF" ]; then
+            REF="$INPUT_REF"
+          else
+            REF="$GITHUB_REF"
+          fi
+          echo "ref=$REF" >> "$GITHUB_OUTPUT"
+          if [[ "$REF" == refs/tags/v* ]]; then
+            VERSION="${REF#refs/tags/}"
+            echo "is_tag=true" >> "$GITHUB_OUTPUT"
+          elif [[ "$REF" == v* ]]; then
+            VERSION="$REF"
+            echo "is_tag=true" >> "$GITHUB_OUTPUT"
+          else
+            VERSION="$(date -u +%Y.%m.%d)-${GITHUB_SHA::7}"
+            echo "is_tag=false" >> "$GITHUB_OUTPUT"
+          fi
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+
+  wait-for-ci:
+    name: Wait for CI
+    needs: resolve-ref
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.resolve-ref.outputs.ref }}
+      - name: Get the commit SHA at that ref
+        id: sha
+        run: echo "value=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+      - name: Wait for CI on that commit
+        uses: lewagon/wait-on-check-action@ccfb013c15c8afb7bf2b7c028fb74dc5a068cccc  # v1.3.4
+        with:
+          ref: ${{ steps.sha.outputs.value }}
+          check-name: "CI complete (branch-protection gate)"
+          repo-token: ${{ secrets.GITHUB_TOKEN }}
+          wait-interval: 20
+          allowed-conclusions: success
+
+  build-release:
+    name: Build release tarball
+    needs: [resolve-ref, wait-for-ci]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.resolve-ref.outputs.ref }}
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: "npm"
+          cache-dependency-path: |
+            apps/storefront/package-lock.json
+            apps/desktop-cms/package-lock.json
+
+      - name: Build storefront
+        working-directory: ./apps/storefront
+        run: |
+          npm ci --audit=false --fund=false
+          npm run build
+
+      - name: Build CMS bundle
+        working-directory: ./apps/desktop-cms
+        run: |
+          npm ci --audit=false --fund=false
+          npm run build
+
+      - name: Assemble release tar
+        env:
+          VERSION: ${{ needs.resolve-ref.outputs.version }}
+        run: |
+          mkdir -p .release
+          tar czf ".release/mux-luxury-${VERSION}.tar.gz" \
+              --exclude=".git" --exclude=".github" \
+              --exclude="node_modules" --exclude=".release" \
+              --exclude="apps/storefront/node_modules" \
+              --exclude="apps/desktop-cms/node_modules" \
+              --exclude="apps/desktop-cms/src-tauri/target" \
+              --exclude="backend/__pycache__" --exclude="backend/uploads" \
+              --exclude="backend/backups" --exclude="**/*.pyc" \
+              --exclude="scratch" --exclude="images" .
+          sha256sum ".release/mux-luxury-${VERSION}.tar.gz" > ".release/mux-luxury-${VERSION}.tar.gz.sha256"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: release-${{ needs.resolve-ref.outputs.version }}
+          path: .release/
+          retention-days: 30
+
+  deploy-production:
+    name: Deploy to production VPS
+    needs: [resolve-ref, build-release]
+    runs-on: ubuntu-latest
+    environment:
+      name: production
+      url: ${{ vars.PRODUCTION_URL }}
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: release-${{ needs.resolve-ref.outputs.version }}
+          path: .release/
+
+      - name: Verify tarball checksum
+        env:
+          VERSION: ${{ needs.resolve-ref.outputs.version }}
+        working-directory: .release
+        run: sha256sum -c "mux-luxury-${VERSION}.tar.gz.sha256"
+
+      - uses: webfactory/ssh-agent@a6f90b1f127823b31d4d4a8d96047790581349bd  # v0.9.0
+        with:
+          ssh-private-key: ${{ secrets.PRODUCTION_SSH_PRIVATE_KEY }}
+
+      - name: Known-hosts
+        env:
+          HOST: ${{ secrets.PRODUCTION_SSH_HOST }}
+        run: |
+          mkdir -p ~/.ssh
+          ssh-keyscan -H "$HOST" >> ~/.ssh/known_hosts
+
+      - name: Upload tarball
+        env:
+          VERSION: ${{ needs.resolve-ref.outputs.version }}
+          HOST:    ${{ secrets.PRODUCTION_SSH_HOST }}
+          USER:    ${{ secrets.PRODUCTION_SSH_USER }}
+        run: |
+          scp ".release/mux-luxury-${VERSION}.tar.gz" \
+              "${USER}@${HOST}:/tmp/mux-luxury-release.tar.gz"
+
+      - name: Invoke release-deploy.sh on VPS
+        env:
+          VERSION: ${{ needs.resolve-ref.outputs.version }}
+          HOST:    ${{ secrets.PRODUCTION_SSH_HOST }}
+          USER:    ${{ secrets.PRODUCTION_SSH_USER }}
+        run: |
+          ssh "${USER}@${HOST}" bash -lc "'
+            set -e
+            TMPDIR=\$(mktemp -d)
+            tar -xzf /tmp/mux-luxury-release.tar.gz -C \$TMPDIR
+            bash \$TMPDIR/infrastructure/scripts/release-deploy.sh \
+                --version ${VERSION} \
+                --archive /tmp/mux-luxury-release.tar.gz
+            rm -rf \$TMPDIR /tmp/mux-luxury-release.tar.gz
+          '"
+
+      - name: Post-deploy health probe
+        if: ${{ !inputs.skip_health_gate }}
+        env:
+          HEALTH_URL: ${{ vars.PRODUCTION_HEALTH_URL }}
+        run: |
+          for i in $(seq 1 30); do
+            if curl -fsS --max-time 10 "$HEALTH_URL" >/dev/null; then
+              echo "production healthy"; exit 0
+            fi
+            sleep 6
+          done
+          echo "::error ::production health probe failed after 3 minutes"
+          exit 1
+
+  create-github-release:
+    name: Create GitHub release
+    if: needs.resolve-ref.outputs.is_tag == 'true'
+    needs: [resolve-ref, deploy-production]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: release-${{ needs.resolve-ref.outputs.version }}
+          path: .release/
+      - name: Create release
+        uses: softprops/action-gh-release@c062e08bd532815e2082a85e87e3ef29c3e6d191  # v2.0.8
+        with:
+          tag_name: ${{ needs.resolve-ref.outputs.version }}
+          name: Mus Luxury ${{ needs.resolve-ref.outputs.version }}
+          generate_release_notes: true
+          files: |
+            .release/mux-luxury-*.tar.gz
+            .release/mux-luxury-*.tar.gz.sha256

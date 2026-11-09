@@ -1,0 +1,13 @@
+# Pattern                         Owner(s)
+# Catch-all — repo owner reviews anything with no more-specific owner
+*                                  @kairo192
+
+# CI/CD, infrastructure, migrations — require repo owner review
+.github/                           @kairo192
+infrastructure/                    @kairo192
+backend/migrations/                @kairo192
+docker-compose.yml                 @kairo192
+backend/app/migration_runner.py    @kairo192
+
+# Documentation can be reviewed by anyone on the team; still flag owner
+docs/cicd/                         @kairo192
