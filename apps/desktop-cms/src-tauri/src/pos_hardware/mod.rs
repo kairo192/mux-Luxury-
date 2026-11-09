@@ -31,8 +31,10 @@
 // ============================================================================
 
 mod escpos;
+mod zpl;
 
 use escpos::{Align, EscPos, DEFAULT_LINE_WIDTH};
+use zpl::{render_batch as zpl_render_batch, BarcodeKind as ZplBarcodeKind, LabelContent as ZplLabelContent};
 use serde::{Deserialize, Serialize};
 use std::fs::OpenOptions;
 use std::io::Write;
@@ -308,6 +310,150 @@ pub fn pos_open_cash_drawer(opts: PrinterTarget) -> Result<(), String> {
     let pin = opts.drawer_pin.unwrap_or(2);
     printer.drawer_kick(pin);
     send_bytes(&opts, &printer.into_bytes())
+}
+
+// -------------------------------------------------- Label-printer types ----
+
+#[derive(Debug, Clone, Deserialize, Default)]
+pub struct LabelPrinterTarget {
+    #[serde(default)]
+    pub printer_name: Option<String>,
+    #[serde(default)]
+    pub device_path: Option<String>,
+    /// "zpl" (default — Zebra & compatibles) or "escpos-text" (fallback for
+    /// ESC/POS label printers; prints labels as plain-text slips).
+    #[serde(default = "default_label_format")]
+    pub format: String,
+    #[serde(default)]
+    pub width_mm: Option<u16>,
+    #[serde(default)]
+    pub height_mm: Option<u16>,
+    #[serde(default)]
+    pub dpi: Option<u16>,
+}
+
+fn default_label_format() -> String { "zpl".to_string() }
+
+impl LabelPrinterTarget {
+    fn as_printer_target(&self) -> PrinterTarget {
+        PrinterTarget {
+            printer_name: self.printer_name.clone(),
+            device_path: self.device_path.clone(),
+            line_width: None,
+            drawer_pin: None,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Deserialize)]
+pub struct LabelPayload {
+    pub header: String,
+    pub product_name: String,
+    #[serde(default)]
+    pub variant_title: String,
+    pub sku: String,
+    pub price_text: String,
+    pub barcode_value: String,
+    /// "code128" or "ean13" (case-insensitive). Default: "code128".
+    #[serde(default = "default_symbology")]
+    pub barcode_kind: String,
+    #[serde(default = "default_copies")]
+    pub copies: u16,
+}
+
+fn default_symbology() -> String { "code128".to_string() }
+fn default_copies() -> u16 { 1 }
+
+fn parse_barcode_kind(s: &str) -> ZplBarcodeKind {
+    match s.to_ascii_lowercase().as_str() {
+        "ean13" | "ean-13" | "ean" => ZplBarcodeKind::Ean13,
+        _ => ZplBarcodeKind::Code128,
+    }
+}
+
+fn to_zpl_content(p: &LabelPayload) -> ZplLabelContent {
+    ZplLabelContent {
+        header: p.header.clone(),
+        product_name: p.product_name.clone(),
+        variant_title: p.variant_title.clone(),
+        sku: p.sku.clone(),
+        price_text: p.price_text.clone(),
+        barcode_value: p.barcode_value.clone(),
+        barcode_kind: parse_barcode_kind(&p.barcode_kind),
+        copies: p.copies.max(1).min(100),
+    }
+}
+
+/// ESC/POS fallback for label printers that don't speak ZPL: prints each
+/// label as a compact ESC/POS slip with a cut between labels. Works on any
+/// ESC/POS receipt-style printer wired as a label device.
+fn render_labels_escpos_text(labels: &[LabelPayload], width_chars: u8) -> Vec<u8> {
+    let mut p = EscPos::new();
+    p.init();
+    p.select_cp437();
+    for label in labels {
+        for _ in 0..label.copies.max(1).min(100) {
+            p.align(Align::Center);
+            p.bold(true);
+            p.text(&label.header);
+            p.feed(1);
+            p.bold(false);
+            let name = if label.variant_title.is_empty() {
+                label.product_name.clone()
+            } else {
+                format!("{} - {}", label.product_name, label.variant_title)
+            };
+            p.text(&name);
+            p.feed(1);
+            p.text(&format!("SKU {}", label.sku));
+            p.feed(1);
+            p.text_size(true, true);
+            p.text(&label.price_text);
+            p.text_size(false, false);
+            p.feed(1);
+            p.barcode_code128(&label.barcode_value);
+            p.feed(1);
+            p.partial_cut();
+        }
+    }
+    // Suppress "unused" warning on width_chars; kept in the signature so a
+    // future ESC/POS layout can honour column width per label.
+    let _ = width_chars;
+    p.into_bytes()
+}
+
+#[tauri::command]
+pub fn pos_print_labels(opts: LabelPrinterTarget, labels: Vec<LabelPayload>) -> Result<(), String> {
+    if labels.is_empty() {
+        return Err("Aucune étiquette à imprimer".into());
+    }
+    let width_mm = opts.width_mm.unwrap_or(zpl::DEFAULT_LABEL_WIDTH_MM);
+    let height_mm = opts.height_mm.unwrap_or(zpl::DEFAULT_LABEL_HEIGHT_MM);
+    let dpi = opts.dpi.unwrap_or(zpl::DEFAULT_DPI);
+
+    let bytes = match opts.format.to_ascii_lowercase().as_str() {
+        "escpos" | "escpos-text" => render_labels_escpos_text(&labels, DEFAULT_LINE_WIDTH),
+        _ => {
+            let content: Vec<ZplLabelContent> = labels.iter().map(to_zpl_content).collect();
+            zpl_render_batch(&content, width_mm, height_mm, dpi)
+        }
+    };
+    send_bytes(&opts.as_printer_target(), &bytes)
+}
+
+#[tauri::command]
+pub fn pos_test_print_label(opts: LabelPrinterTarget) -> Result<(), String> {
+    let sample = vec![LabelPayload {
+        header: "Mus Luxury".into(),
+        product_name: "Test etiquette".into(),
+        variant_title: "".into(),
+        sku: "TEST-001".into(),
+        price_text: "1 234 DA".into(),
+        barcode_value: "MUSLUXURY".into(),
+        barcode_kind: "code128".into(),
+        copies: 1,
+    }];
+    pos_print_labels(opts, sample)
 }
 
 #[tauri::command]

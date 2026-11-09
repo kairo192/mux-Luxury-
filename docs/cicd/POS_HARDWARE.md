@@ -6,13 +6,20 @@ A plain web page cannot reliably reach a USB thermal printer, fire a cash
 drawer's pulse, or read barcode scans without stealing text input — so these
 live outside the WebView.
 
-Three pieces of hardware, two commands + one browser hook:
+Four devices, two independent printer channels, three Rust commands + one
+browser hook:
 
 | Device                       | Where the work happens                                   |
 | ---------------------------- | -------------------------------------------------------- |
-| Thermal receipt printer      | `pos_print_receipt` (Rust, ESC/POS over system printer or raw device) |
-| Cash drawer                  | `pos_open_cash_drawer` (Rust, ESC p pulse via the printer's RJ11) |
+| Thermal **receipt** printer  | `pos_print_receipt` (Rust, ESC/POS over system printer or raw device) |
+| Cash drawer                  | `pos_open_cash_drawer` (Rust, ESC p pulse via the receipt printer's RJ11) |
+| Thermal **label** printer    | `pos_print_labels` (Rust, ZPL by default, ESC/POS fallback) |
 | USB-HID barcode scanner      | `useBarcodeScanner` React hook (frontend only — scanners emulate a keyboard) |
+
+Receipts and labels use **separate printers** by design — a boutique typically
+has one 58/80 mm receipt printer behind the till and one dedicated 50×30 mm
+Zebra-style label printer for product tagging. Each is configured
+independently in POS → **Matériel**.
 
 ## First-time setup
 
@@ -64,6 +71,51 @@ field opts in with `data-barcode-target="true"`. The POS lookup box opts in
 so a scan both fills the box and triggers the lookup; every other text
 field is untouched.
 
+## Label printer
+
+The label printer is a separate device — typically a 50×30 mm Zebra or
+compatible. Configure it in **Matériel → Étiqueteuse**:
+
+- **Protocole**: ZPL (recommended — Zebra, GoDEX, SNBC, most OEM clones) or
+  ESC/POS text (fallback for thermal label printers that only speak ESC/POS).
+- **Résolution**: 203 dpi (standard — most 50×30 mm labels) or 300/600 dpi
+  (fine printers like Zebra ZD621).
+- **Largeur × Hauteur** in millimetres. The Rust side scales everything to
+  the chosen DPI automatically.
+
+### What gets printed
+
+The label layout is fixed to keep things fast and scannable:
+
+```
++----------------------------------+
+|           Mus Luxury             |   ← boutique header
+|   Chemise Lin - Beige M          |   ← product + variant
+|   SKU CHE-LN-BM                  |
+|           4 500 DA               |   ← price (double-height)
+|                                  |
+| |||||  |||  ||||  |||| |||  ||  |   ← CODE128 or EAN-13 barcode
+|    CHE-LN-BM                     |   ← barcode interpretation line
++----------------------------------+
+```
+
+Long product names are clipped with "…" so they never overflow the label
+width.
+
+### Quantities
+
+The label modal has a quantity selector (1–100). The `^PQ` ZPL command sends
+the count once and the printer replicates the label itself — printing 50
+labels of one product takes ~2 s on a 203 dpi Zebra. On ESC/POS fallback
+each copy is sent as its own slip with a cut between copies.
+
+### Where in the UI
+
+- Products page → open a variant → **Code-barres & Étiquette**
+- Set the barcode (generate internal or paste an EAN/UPC), then **Imprimer**
+- When a label printer is configured in **Matériel**, the Imprimer button
+  prints natively; otherwise it opens a browser print preview.
+
 ## Supported printer protocols
 
 | Protocol         | Supported?       | How                                       |
@@ -74,6 +126,17 @@ field is untouched.
 | Windows Spooler  | Yes (as transport) | System printer name + ESC/POS bytes     |
 | Raw serial       | Partial          | Pass `COM3:`, `/dev/ttyUSB0` as `device_path` |
 | Network (LAN)    | Via OS printer   | Install the printer at the OS level first |
+
+### Label-printer-specific cheatsheet
+
+| Printer                                   | Protocol  | Settings                       |
+| ----------------------------------------- | --------- | ------------------------------ |
+| Zebra ZD230 / ZD421 / GK420 / GX420       | ZPL       | 203 dpi, 50 × 30 mm            |
+| Zebra ZD621                               | ZPL       | 300 dpi, 50 × 30 mm            |
+| GoDEX RT230i / G500 / EZ-2250i            | ZPL       | 203 dpi                         |
+| SNBC BTP-L580 / BTP-L540                  | ZPL       | 203 dpi                         |
+| Xprinter XP-470B / XP-365B                | ESC/POS   | fallback — select "ESC/POS texte" |
+| Thermal receipt printer re-purposed as label | ESC/POS   | fallback — select "ESC/POS texte" |
 
 ## Known gaps / roadmap
 
@@ -111,8 +174,13 @@ The Rust byte builder has unit tests you can run without connected hardware:
 rustc --test --edition 2021 \
   apps/desktop-cms/src-tauri/src/pos_hardware/escpos.rs \
   -o /tmp/escpos_test && /tmp/escpos_test
+
+# All ZPL label-builder commands produce the expected bytes.
+rustc --test --edition 2021 \
+  apps/desktop-cms/src-tauri/src/pos_hardware/zpl.rs \
+  -o /tmp/zpl_test && /tmp/zpl_test
 ```
 
 (Once a Tauri Linux dev stack is installed, `cargo test` inside
 `apps/desktop-cms/src-tauri` runs the module tests under `pos_hardware::`
-and the escpos sub-module as well.)
+and the escpos / zpl sub-modules as well.)

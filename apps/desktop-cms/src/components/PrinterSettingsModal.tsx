@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from "react";
-import { X, Printer, RefreshCw, CheckCircle2, AlertTriangle, DoorOpen, Zap, Wifi } from "lucide-react";
+import { X, Printer, RefreshCw, CheckCircle2, AlertTriangle, DoorOpen, Zap, Wifi, Tag } from "lucide-react";
 import {
   listPrinters,
   loadHardwareSettings,
@@ -7,8 +7,12 @@ import {
   testPrint,
   openCashDrawer,
   isTauriRuntime,
+  loadLabelPrinterSettings,
+  saveLabelPrinterSettings,
+  testPrintLabel,
   type PrinterInfo,
   type PrinterTarget,
+  type LabelPrinterTarget,
 } from "../utils/posHardware";
 
 // ---------------------------------------------------------------------------
@@ -26,9 +30,11 @@ interface Props {
 export const PrinterSettingsModal: React.FC<Props> = ({ open, onClose, onFlash }) => {
   const [printers, setPrinters] = useState<PrinterInfo[]>([]);
   const [settings, setSettings] = useState<PrinterTarget>(() => loadHardwareSettings());
+  const [labelSettings, setLabelSettings] = useState<LabelPrinterTarget>(() => loadLabelPrinterSettings());
   const [loadingPrinters, setLoadingPrinters] = useState(false);
-  const [testing, setTesting] = useState<null | "print" | "drawer">(null);
+  const [testing, setTesting] = useState<null | "print" | "drawer" | "label">(null);
   const [status, setStatus] = useState<{ kind: "ok" | "err"; msg: string } | null>(null);
+  const [tab, setTab] = useState<"receipt" | "label">("receipt");
   const inTauri = isTauriRuntime();
 
   const refresh = async () => {
@@ -46,6 +52,7 @@ export const PrinterSettingsModal: React.FC<Props> = ({ open, onClose, onFlash }
       setStatus(null);
       refresh();
       setSettings(loadHardwareSettings());
+      setLabelSettings(loadLabelPrinterSettings());
     }
   }, [open]);
 
@@ -56,7 +63,7 @@ export const PrinterSettingsModal: React.FC<Props> = ({ open, onClose, onFlash }
     onFlash?.(kind, msg);
   };
 
-  const save = () => {
+  const saveReceipt = () => {
     const normalised: PrinterTarget = {
       printer_name: settings.printer_name?.trim() || null,
       device_path: settings.device_path?.trim() || null,
@@ -65,24 +72,51 @@ export const PrinterSettingsModal: React.FC<Props> = ({ open, onClose, onFlash }
     };
     saveHardwareSettings(normalised);
     setSettings(normalised);
+  };
+
+  const saveLabel = () => {
+    const normalised: LabelPrinterTarget = {
+      printer_name: labelSettings.printer_name?.trim() || null,
+      device_path: labelSettings.device_path?.trim() || null,
+      format: labelSettings.format === "escpos-text" ? "escpos-text" : "zpl",
+      width_mm: Number(labelSettings.width_mm) || 50,
+      height_mm: Number(labelSettings.height_mm) || 30,
+      dpi: (labelSettings.dpi === 300 || labelSettings.dpi === 600 ? labelSettings.dpi : 203),
+    };
+    saveLabelPrinterSettings(normalised);
+    setLabelSettings(normalised);
+  };
+
+  const saveAll = () => {
+    saveReceipt();
+    saveLabel();
     flash("ok", "Paramètres enregistrés");
   };
 
   const onTestPrint = async () => {
-    save();
+    saveReceipt();
     setTesting("print");
     const r = await testPrint(settings);
     setTesting(null);
-    if (r.ok) flash("ok", "Test envoyé à l'imprimante");
+    if (r.ok) flash("ok", "Test envoyé à l'imprimante de reçus");
     else flash("err", r.error);
   };
 
   const onOpenDrawer = async () => {
-    save();
+    saveReceipt();
     setTesting("drawer");
     const r = await openCashDrawer(settings);
     setTesting(null);
     if (r.ok) flash("ok", "Impulsion envoyée au tiroir");
+    else flash("err", r.error);
+  };
+
+  const onTestLabel = async () => {
+    saveLabel();
+    setTesting("label");
+    const r = await testPrintLabel(labelSettings);
+    setTesting(null);
+    if (r.ok) flash("ok", "Étiquette de test envoyée");
     else flash("err", r.error);
   };
 
@@ -95,6 +129,23 @@ export const PrinterSettingsModal: React.FC<Props> = ({ open, onClose, onFlash }
           </div>
           <button type="button" onClick={onClose} className="h-10 w-10 flex items-center justify-center rounded-full hover:bg-white/10 active:scale-95">
             <X className="w-5 h-5" />
+          </button>
+        </div>
+
+        <div className="px-5 pt-4 flex gap-2">
+          <button
+            type="button"
+            onClick={() => setTab("receipt")}
+            className={`flex-1 h-11 rounded-2xl font-bold flex items-center justify-center gap-2 active:scale-95 ${tab === "receipt" ? "bg-[#063D2E] text-[#D4AF62]" : "bg-gray-100 text-gray-500"}`}
+          >
+            <Printer className="w-4 h-4" /> Reçus & tiroir
+          </button>
+          <button
+            type="button"
+            onClick={() => setTab("label")}
+            className={`flex-1 h-11 rounded-2xl font-bold flex items-center justify-center gap-2 active:scale-95 ${tab === "label" ? "bg-[#063D2E] text-[#D4AF62]" : "bg-gray-100 text-gray-500"}`}
+          >
+            <Tag className="w-4 h-4" /> Étiqueteuse
           </button>
         </div>
 
@@ -116,6 +167,7 @@ export const PrinterSettingsModal: React.FC<Props> = ({ open, onClose, onFlash }
             </div>
           )}
 
+          {tab === "receipt" ? <>
           <div className="space-y-2">
             <label className="flex items-center justify-between gap-2 font-bold text-[#063D2E]">
               <span className="flex items-center gap-2"><Wifi className="w-4 h-4" /> Imprimante système</span>
@@ -203,13 +255,108 @@ export const PrinterSettingsModal: React.FC<Props> = ({ open, onClose, onFlash }
               <DoorOpen className="w-5 h-5" /> {testing === "drawer" ? "Envoi…" : "Ouvrir le tiroir"}
             </button>
           </div>
+          </> : (
+          <>
+            {/* ========== LABEL PRINTER TAB ========== */}
+            <div className="space-y-2">
+              <label className="flex items-center justify-between gap-2 font-bold text-[#063D2E]">
+                <span className="flex items-center gap-2"><Tag className="w-4 h-4" /> Étiqueteuse de produits</span>
+              </label>
+              <select
+                value={labelSettings.printer_name ?? ""}
+                onChange={(e) => setLabelSettings(s => ({ ...s, printer_name: e.target.value || null }))}
+                className="w-full h-12 px-3 rounded-2xl border-2 border-gray-200 focus:border-[#063D2E] text-base"
+                disabled={!inTauri}
+              >
+                <option value="">— Aucune étiqueteuse configurée —</option>
+                {printers.map(p => (
+                  <option key={`lbl-${p.name}`} value={p.name}>
+                    {p.name}{p.is_default ? " (par défaut)" : ""} · {p.state}
+                  </option>
+                ))}
+              </select>
+              <div className="text-xs text-gray-500">
+                Choisissez l'étiqueteuse si elle est installée comme imprimante système (Zebra, OKI, …).
+              </div>
+            </div>
+
+            <div className="space-y-2">
+              <label className="font-bold text-[#063D2E]">…ou chemin d'appareil brut</label>
+              <input
+                type="text"
+                value={labelSettings.device_path ?? ""}
+                onChange={(e) => setLabelSettings(s => ({ ...s, device_path: e.target.value || null }))}
+                placeholder="Ex: /dev/usb/lp1, USB001, COM4"
+                className="w-full h-12 px-3 rounded-2xl border-2 border-gray-200 focus:border-[#063D2E] font-mono text-sm"
+              />
+            </div>
+
+            <div className="grid grid-cols-2 gap-3">
+              <div className="space-y-2">
+                <label className="font-bold text-[#063D2E]">Protocole</label>
+                <select
+                  value={labelSettings.format ?? "zpl"}
+                  onChange={(e) => setLabelSettings(s => ({ ...s, format: e.target.value === "escpos-text" ? "escpos-text" : "zpl" }))}
+                  className="w-full h-12 px-3 rounded-2xl border-2 border-gray-200 focus:border-[#063D2E] text-base"
+                >
+                  <option value="zpl">ZPL — Zebra & compatibles (recommandé)</option>
+                  <option value="escpos-text">ESC/POS texte — étiqueteuses thermiques classiques</option>
+                </select>
+              </div>
+              <div className="space-y-2">
+                <label className="font-bold text-[#063D2E]">Résolution</label>
+                <select
+                  value={labelSettings.dpi ?? 203}
+                  onChange={(e) => setLabelSettings(s => ({ ...s, dpi: (Number(e.target.value) === 300 ? 300 : Number(e.target.value) === 600 ? 600 : 203) }))}
+                  className="w-full h-12 px-3 rounded-2xl border-2 border-gray-200 focus:border-[#063D2E] text-base"
+                  disabled={labelSettings.format === "escpos-text"}
+                >
+                  <option value={203}>203 dpi (standard)</option>
+                  <option value={300}>300 dpi (haute définition)</option>
+                  <option value={600}>600 dpi (très haute définition)</option>
+                </select>
+              </div>
+            </div>
+
+            <div className="grid grid-cols-2 gap-3">
+              <div className="space-y-2">
+                <label className="font-bold text-[#063D2E]">Largeur (mm)</label>
+                <input
+                  type="number" min={10} max={210}
+                  value={labelSettings.width_mm ?? 50}
+                  onChange={(e) => setLabelSettings(s => ({ ...s, width_mm: Number(e.target.value) || 50 }))}
+                  className="w-full h-12 px-3 rounded-2xl border-2 border-gray-200 focus:border-[#063D2E] text-base"
+                />
+              </div>
+              <div className="space-y-2">
+                <label className="font-bold text-[#063D2E]">Hauteur (mm)</label>
+                <input
+                  type="number" min={10} max={297}
+                  value={labelSettings.height_mm ?? 30}
+                  onChange={(e) => setLabelSettings(s => ({ ...s, height_mm: Number(e.target.value) || 30 }))}
+                  className="w-full h-12 px-3 rounded-2xl border-2 border-gray-200 focus:border-[#063D2E] text-base"
+                />
+              </div>
+            </div>
+
+            <div className="pt-2">
+              <button
+                type="button"
+                onClick={onTestLabel}
+                disabled={testing !== null || !inTauri}
+                className="w-full h-14 rounded-2xl bg-[#063D2E] text-[#D4AF62] font-bold flex items-center justify-center gap-2 disabled:opacity-40 active:scale-95"
+              >
+                <Zap className="w-5 h-5" /> {testing === "label" ? "Envoi…" : "Imprimer une étiquette de test"}
+              </button>
+            </div>
+          </>)}
         </div>
 
         <div className="p-4 bg-gray-50 border-t-2 border-gray-100 flex items-center justify-end gap-2">
           <button type="button" onClick={onClose} className="h-11 px-4 rounded-xl bg-white border-2 border-gray-200 font-bold active:scale-95">
             Fermer
           </button>
-          <button type="button" onClick={() => { save(); onClose(); }} className="h-11 px-5 rounded-xl bg-[#063D2E] text-[#D4AF62] font-bold flex items-center gap-2 active:scale-95">
+          <button type="button" onClick={() => { saveAll(); onClose(); }} className="h-11 px-5 rounded-xl bg-[#063D2E] text-[#D4AF62] font-bold flex items-center gap-2 active:scale-95">
             <CheckCircle2 className="w-4 h-4" /> Enregistrer
           </button>
         </div>

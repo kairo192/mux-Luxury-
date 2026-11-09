@@ -1,7 +1,14 @@
 import React, { useEffect, useState, useCallback } from "react";
-import { X, RefreshCw, Printer, Trash2, Wand2, CheckCircle2, AlertTriangle } from "lucide-react";
+import { X, RefreshCw, Printer, Trash2, Wand2, CheckCircle2, AlertTriangle, Tag, Zap, Minus, Plus } from "lucide-react";
 import { DesktopCmsApi } from "../api/adminClient";
 import { renderBarcodeSvg } from "../utils/barcode";
+import {
+  isLabelPrinterConfigured,
+  loadLabelPrinterSettings,
+  printLabels,
+  isTauriRuntime,
+  type LabelPayload,
+} from "../utils/posHardware";
 
 interface LabelData {
   store_name: string;
@@ -28,6 +35,9 @@ export const BarcodeLabelModal: React.FC<{
   const [success, setSuccess] = useState<string | null>(null);
   const [customCode, setCustomCode] = useState("");
   const [codeCheck, setCodeCheck] = useState<{ valid: boolean; symbology: string | null; reason: string | null } | null>(null);
+  const [copies, setCopies] = useState(1);
+  const labelPrinterReady = isLabelPrinterConfigured();
+  const inTauri = isTauriRuntime();
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -99,28 +109,75 @@ export const BarcodeLabelModal: React.FC<{
     }
   };
 
-  const printLabel = () => {
+  // Native thermal label printer path (ZPL / ESC/POS). Preferred when a
+  // label printer is configured in Settings — it prints N labels on the
+  // real device without opening a browser dialog.
+  const printOnLabelPrinter = async () => {
+    if (!label?.barcode) return;
+    setBusy(true);
+    setError(null);
+    try {
+      const payload: LabelPayload = {
+        header: label.store_name,
+        product_name: label.product_name,
+        variant_title: label.variant_title || "",
+        sku: label.sku,
+        price_text: fmt(label.price_dzd),
+        barcode_value: label.barcode,
+        barcode_kind: label.symbology === "ean13" ? "ean13" : "code128",
+        copies: Math.max(1, Math.min(copies, 100)),
+      };
+      const settings = loadLabelPrinterSettings();
+      const r = await printLabels(settings, [payload]);
+      if (r.ok) {
+        flash(copies === 1 ? "Étiquette envoyée" : `${copies} étiquettes envoyées`);
+      } else {
+        setError(r.error);
+      }
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  // Browser-print fallback: opens one print preview per copy so sheet-based
+  // printers still work when no native label printer is configured.
+  const printLabelInBrowser = () => {
     if (!label?.barcode) return;
     const svg = renderBarcodeSvg(label.barcode, label.symbology || undefined, { moduleWidth: 2, height: 56 });
+    const n = Math.max(1, Math.min(copies, 100));
+    // Generate one page per copy so each label fits a 50×30 mm sheet.
+    const pages = Array.from({ length: n }, () => `
+      <div class="label">
+        <div class="name">${label.store_name}</div>
+        <div class="meta">${label.product_name} — ${label.variant_title}</div>
+        <div class="meta">SKU: ${label.sku}</div>
+        <div class="price">${fmt(label.price_dzd)}</div>
+        ${svg}
+      </div>`).join("");
     const w = window.open("", "_blank", "width=420,height=320");
     if (!w) return;
     w.document.write(`<!DOCTYPE html><html><head><title>Étiquette ${label.sku}</title>
       <style>
         @page { size: 50mm 30mm; margin: 2mm; }
-        body { font-family: system-ui, sans-serif; margin: 0; padding: 6px; text-align: center; }
+        body { font-family: system-ui, sans-serif; margin: 0; }
+        .label { page-break-after: always; padding: 6px; text-align: center; }
+        .label:last-child { page-break-after: auto; }
         .name { font-size: 11px; font-weight: 700; }
         .meta { font-size: 10px; color: #333; }
         .price { font-size: 14px; font-weight: 800; margin-top: 2px; }
         svg { margin-top: 4px; }
       </style></head><body>
-      <div class="name">${label.store_name}</div>
-      <div class="meta">${label.product_name} — ${label.variant_title}</div>
-      <div class="meta">SKU: ${label.sku}</div>
-      <div class="price">${fmt(label.price_dzd)}</div>
-      ${svg}
+      ${pages}
       <script>window.onload=function(){window.print();setTimeout(function(){window.close();},300);};<\/script>
       </body></html>`);
     w.document.close();
+  };
+
+  // Route the "Imprimer" button to the native printer when configured,
+  // otherwise the browser preview.
+  const printLabel = () => {
+    if (inTauri && labelPrinterReady) return printOnLabelPrinter();
+    return printLabelInBrowser();
   };
 
   const barcodeSvg = label?.barcode
@@ -176,7 +233,52 @@ export const BarcodeLabelModal: React.FC<{
                 )}
               </div>
 
-              {/* Actions */}
+              {/* Quantity + actions */}
+              {label.barcode && (
+                <div className="rounded-2xl border-2 border-gray-200 p-3 space-y-2 bg-white">
+                  <div className="flex items-center justify-between gap-3">
+                    <span className="font-bold text-[#063D2E]">Nombre d'étiquettes</span>
+                    <div className="flex items-center gap-1">
+                      <button
+                        type="button"
+                        onClick={() => setCopies(c => Math.max(1, c - 1))}
+                        className="w-10 h-10 rounded-xl bg-gray-100 text-[#063D2E] font-bold flex items-center justify-center active:scale-95"
+                      >
+                        <Minus className="w-4 h-4" />
+                      </button>
+                      <input
+                        type="number" min={1} max={100}
+                        value={copies}
+                        onChange={(e) => setCopies(Math.max(1, Math.min(100, Number(e.target.value) || 1)))}
+                        className="w-16 h-10 text-center rounded-xl border-2 border-gray-200 font-mono font-bold focus:border-[#063D2E] outline-none"
+                      />
+                      <button
+                        type="button"
+                        onClick={() => setCopies(c => Math.min(100, c + 1))}
+                        className="w-10 h-10 rounded-xl bg-gray-100 text-[#063D2E] font-bold flex items-center justify-center active:scale-95"
+                      >
+                        <Plus className="w-4 h-4" />
+                      </button>
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-1 text-xs text-gray-500">
+                    {inTauri && labelPrinterReady ? (
+                      <span className="flex items-center gap-1 text-emerald-700 font-bold">
+                        <Tag className="w-3.5 h-3.5" /> Étiqueteuse native détectée — impression directe
+                      </span>
+                    ) : inTauri ? (
+                      <span className="flex items-center gap-1 text-amber-700">
+                        <AlertTriangle className="w-3.5 h-3.5" /> Aucune étiqueteuse configurée — aperçu navigateur
+                      </span>
+                    ) : (
+                      <span className="flex items-center gap-1 text-gray-500">
+                        <AlertTriangle className="w-3.5 h-3.5" /> Mode navigateur — impression via le navigateur
+                      </span>
+                    )}
+                  </div>
+                </div>
+              )}
+
               <div className="grid grid-cols-2 gap-2">
                 <button
                   type="button"
@@ -192,9 +294,20 @@ export const BarcodeLabelModal: React.FC<{
                   onClick={printLabel}
                   className="h-12 rounded-2xl bg-[#D4AF62] text-[#02291F] font-bold flex items-center justify-center gap-2 disabled:opacity-40 active:scale-95"
                 >
-                  <Printer className="w-5 h-5" /> Imprimer
+                  {inTauri && labelPrinterReady ? <Zap className="w-5 h-5" /> : <Printer className="w-5 h-5" />}
+                  {inTauri && labelPrinterReady ? `Imprimer × ${copies}` : "Imprimer"}
                 </button>
               </div>
+              {inTauri && labelPrinterReady && (
+                <button
+                  type="button"
+                  disabled={busy || !label.barcode}
+                  onClick={printLabelInBrowser}
+                  className="w-full h-10 rounded-2xl border-2 border-gray-200 text-gray-600 font-bold text-xs flex items-center justify-center gap-2 active:scale-95"
+                >
+                  <Printer className="w-4 h-4" /> Aperçu navigateur (fallback)
+                </button>
+              )}
 
               {/* Custom barcode */}
               <div>

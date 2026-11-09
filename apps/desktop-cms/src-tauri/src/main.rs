@@ -93,6 +93,8 @@ fn main() {
             pos_hardware::pos_print_receipt,
             pos_hardware::pos_open_cash_drawer,
             pos_hardware::pos_test_print,
+            pos_hardware::pos_print_labels,
+            pos_hardware::pos_test_print_label,
         ])
         .run(tauri::generate_context!())
         .expect("error while running Mus Luxury Desktop CMS");

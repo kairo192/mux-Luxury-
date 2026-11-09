@@ -15,6 +15,7 @@
 // ============================================================================
 
 export const POS_HW_SETTINGS_KEY = "luxe_pos_hardware_settings";
+export const POS_LABEL_SETTINGS_KEY = "luxe_pos_label_printer_settings";
 
 export interface PrinterInfo {
   name: string;
@@ -252,6 +253,103 @@ export function buildReceiptLines(sale: PosSalePayload, width = 32): ReceiptLine
   out.push({ text: "Merci de votre visite", align: "center" });
   if (ref !== "—") out.push({ barcode: ref });
   return out;
+}
+
+// ============================================================================
+// LABEL PRINTER
+// Separate device, separate settings. ZPL is the default (Zebra & compatibles);
+// ESC/POS text is a fallback for shops that bought a label printer that only
+// speaks ESC/POS.
+// ============================================================================
+
+export interface LabelPrinterTarget {
+  printer_name?: string | null;
+  device_path?: string | null;
+  format?: "zpl" | "escpos-text";
+  width_mm?: number;
+  height_mm?: number;
+  dpi?: 203 | 300 | 600;
+}
+
+export interface LabelPayload {
+  header: string;
+  product_name: string;
+  variant_title?: string;
+  sku: string;
+  price_text: string;
+  barcode_value: string;
+  barcode_kind?: "code128" | "ean13";
+  copies?: number;
+}
+
+const DEFAULT_LABEL_SETTINGS: LabelPrinterTarget = {
+  printer_name: null,
+  device_path: null,
+  format: "zpl",
+  width_mm: 50,
+  height_mm: 30,
+  dpi: 203,
+};
+
+export function loadLabelPrinterSettings(): LabelPrinterTarget {
+  try {
+    const raw = localStorage.getItem(POS_LABEL_SETTINGS_KEY);
+    if (!raw) return { ...DEFAULT_LABEL_SETTINGS };
+    const parsed = JSON.parse(raw) as LabelPrinterTarget;
+    return {
+      printer_name: parsed.printer_name ?? null,
+      device_path: parsed.device_path ?? null,
+      format: parsed.format === "escpos-text" ? "escpos-text" : "zpl",
+      width_mm: Number(parsed.width_mm) || 50,
+      height_mm: Number(parsed.height_mm) || 30,
+      dpi: (parsed.dpi === 300 || parsed.dpi === 600 ? parsed.dpi : 203),
+    };
+  } catch {
+    return { ...DEFAULT_LABEL_SETTINGS };
+  }
+}
+
+export function saveLabelPrinterSettings(s: LabelPrinterTarget): void {
+  try {
+    localStorage.setItem(POS_LABEL_SETTINGS_KEY, JSON.stringify({
+      printer_name: s.printer_name ?? null,
+      device_path: s.device_path ?? null,
+      format: s.format === "escpos-text" ? "escpos-text" : "zpl",
+      width_mm: Number(s.width_mm) || 50,
+      height_mm: Number(s.height_mm) || 30,
+      dpi: (s.dpi === 300 || s.dpi === 600 ? s.dpi : 203),
+    }));
+  } catch {
+    // quota / private mode — reverts to defaults next launch
+  }
+}
+
+export function isLabelPrinterConfigured(s?: LabelPrinterTarget): boolean {
+  const cfg = s ?? loadLabelPrinterSettings();
+  return Boolean((cfg.printer_name && cfg.printer_name.trim()) || (cfg.device_path && cfg.device_path.trim()));
+}
+
+export async function printLabels(opts: LabelPrinterTarget, labels: LabelPayload[]): Promise<HardwareResult> {
+  const invoke = getTauriInvoke();
+  if (!invoke) return { ok: false, error: "Hors Tauri — impression d'étiquette indisponible" };
+  if (!labels.length) return { ok: false, error: "Aucune étiquette à imprimer" };
+  try {
+    await invoke("pos_print_labels", { opts, labels });
+    return { ok: true };
+  } catch (e: any) {
+    return { ok: false, error: String(e?.message ?? e ?? "Erreur étiqueteuse") };
+  }
+}
+
+export async function testPrintLabel(opts: LabelPrinterTarget = loadLabelPrinterSettings()): Promise<HardwareResult> {
+  const invoke = getTauriInvoke();
+  if (!invoke) return { ok: false, error: "Hors Tauri — test indisponible" };
+  try {
+    await invoke("pos_test_print_label", { opts });
+    return { ok: true };
+  } catch (e: any) {
+    return { ok: false, error: String(e?.message ?? e ?? "Échec du test d'étiquette") };
+  }
 }
 
 /**
