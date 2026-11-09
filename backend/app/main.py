@@ -5601,6 +5601,146 @@ def pos_list_register_sessions(
         return {"items": [dict(r) for r in cur.fetchall()]}
 
 
+# ============================================================================
+# POS catalog mirror — snapshot + incremental deltas
+# ----------------------------------------------------------------------------
+# The Desktop CMS keeps a local SQLite copy of the catalog so the POS can
+# look up products and sell them even with zero connectivity. These two
+# endpoints feed that mirror:
+#
+#   GET /api/v1/admin/pos/catalog/snapshot
+#        Full dump of every active product + variant. Used on first launch,
+#        after a mirror reset, or when the mirror is older than a week.
+#
+#   GET /api/v1/admin/pos/catalog/deltas?since=<iso>
+#        Everything created or updated since `since`. The mirror calls this
+#        every ~30 seconds when online. Deleted rows come back with
+#        `deleted: true` so the mirror can tombstone them.
+#
+# Rows are flat (no nested arrays), keep every field the POS lookup actually
+# uses, and omit anything that would bloat the payload (long descriptions,
+# image blobs). Expect ~150 bytes/variant on the wire.
+# ============================================================================
+
+def _pos_catalog_products_rows(conn, since_iso: Optional[str] = None):
+    cur = conn.cursor()
+    base = ("SELECT id, sku, name_fr, name_ar, name_en, selling_price_dzd, "
+            "purchase_cost_dzd, main_image_url, status, category_id, updated_at, "
+            "deleted_at FROM products")
+    if since_iso:
+        # Normalize for SQLite: cursors are `YYYY-MM-DDTHH:MM:SSZ`, DB values
+        # are `YYYY-MM-DD HH:MM:SS`. datetime() parses both forms so the >=
+        # comparison lines up on either engine.
+        cur.execute(
+            base + " WHERE datetime(updated_at) >= datetime(?) "
+                   "   OR datetime(deleted_at) >= datetime(?)",
+            (since_iso, since_iso),
+        )
+    else:
+        cur.execute(base + " WHERE deleted_at IS NULL AND status = 'published'")
+    rows = []
+    for r in cur.fetchall():
+        d = dict(r)
+        rows.append({
+            "id": d["id"],
+            "sku": d.get("sku"),
+            "name_fr": d.get("name_fr") or "",
+            "name_ar": d.get("name_ar") or "",
+            "name_en": d.get("name_en") or "",
+            "selling_price_dzd": int(d.get("selling_price_dzd") or 0),
+            "purchase_cost_dzd": int(d.get("purchase_cost_dzd") or 0),
+            "main_image_url": d.get("main_image_url"),
+            "status": d.get("status") or "draft",
+            "category_id": d.get("category_id"),
+            "updated_at": d.get("updated_at"),
+            "deleted": bool(d.get("deleted_at")),
+        })
+    return rows
+
+
+def _pos_catalog_variants_rows(conn, since_iso: Optional[str] = None):
+    cur = conn.cursor()
+    base = ("SELECT pv.id, pv.product_id, pv.sku, pv.title, pv.barcode, "
+            "pv.price_override_dzd, pv.stock_qty, pv.is_active, pv.updated_at "
+            "FROM product_variants pv")
+    if since_iso:
+        cur.execute(base + " WHERE datetime(pv.updated_at) >= datetime(?)",
+                    (since_iso,))
+    else:
+        cur.execute(base + " WHERE pv.is_active = 1")
+    rows = []
+    for r in cur.fetchall():
+        d = dict(r)
+        rows.append({
+            "id": d["id"],
+            "product_id": d["product_id"],
+            "sku": d.get("sku"),
+            "title": d.get("title") or "",
+            "barcode": d.get("barcode"),
+            "price_override_dzd": (int(d["price_override_dzd"])
+                                    if d.get("price_override_dzd") is not None else None),
+            "stock_qty": int(d.get("stock_qty") or 0),
+            "is_active": bool(d.get("is_active")),
+            "updated_at": d.get("updated_at"),
+            "deleted": not bool(d.get("is_active")),
+        })
+    return rows
+
+
+@app.get("/api/v1/admin/pos/catalog/snapshot")
+def pos_catalog_snapshot(admin: dict = Depends(require_permission("pos:read"))):
+    """Full catalog dump — call this once, then prefer `/catalog/deltas`.
+
+    The cursor returned is `now + 1s`. Snapshot captures everything through
+    the current second; the next delta starts at the next second, so no row
+    is double-fetched and no row is missed at the boundary (the trigger
+    stamps updated_at in whole seconds)."""
+    with db_session() as conn:
+        products = _pos_catalog_products_rows(conn, since_iso=None)
+        variants = _pos_catalog_variants_rows(conn, since_iso=None)
+    cursor = (datetime.utcnow() + timedelta(seconds=1)).strftime("%Y-%m-%dT%H:%M:%SZ")
+    return {
+        "generated_at": datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%SZ"),
+        "cursor": cursor,
+        "products": products,
+        "variants": variants,
+        "stats": {
+            "products": len(products),
+            "variants": len(variants),
+            "variants_with_barcode": sum(1 for v in variants if v.get("barcode")),
+        },
+    }
+
+
+@app.get("/api/v1/admin/pos/catalog/deltas")
+def pos_catalog_deltas(
+    since: str = Query(..., min_length=1, max_length=64,
+                       description="ISO-8601 timestamp of the last sync (use snapshot.cursor)"),
+    admin: dict = Depends(require_permission("pos:read")),
+):
+    """Everything created / updated since `since`. Variants that went inactive
+    arrive with `deleted: true`; products with `deleted_at` ditto. The mirror
+    is forward-only — the client never re-asks for a cursor it already saw."""
+    since_s = since.strip()
+    if not since_s:
+        raise HTTPException(status_code=400, detail="`since` is required")
+    with db_session() as conn:
+        products = _pos_catalog_products_rows(conn, since_iso=since_s)
+        variants = _pos_catalog_variants_rows(conn, since_iso=since_s)
+    cursor = (datetime.utcnow() + timedelta(seconds=1)).strftime("%Y-%m-%dT%H:%M:%SZ")
+    return {
+        "generated_at": datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%SZ"),
+        "cursor": cursor,
+        "since": since_s,
+        "products": products,
+        "variants": variants,
+        "stats": {
+            "products": len(products),
+            "variants": len(variants),
+        },
+    }
+
+
 @app.get("/api/v1/admin/pos/lookup")
 def pos_lookup(
     code: str = Query(..., min_length=1, max_length=120),

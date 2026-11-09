@@ -12,6 +12,7 @@
 // ============================================================================
 
 mod pos_hardware;
+mod pos_mirror;
 
 use std::collections::HashMap;
 use std::sync::Mutex;
@@ -82,6 +83,7 @@ fn keychain_status() -> serde_json::Value {
 fn main() {
     tauri::Builder::default()
         .manage(SecureMemoryVault(Mutex::new(HashMap::new())))
+        .manage(pos_mirror::MirrorState::new())
         .plugin(tauri_plugin_store::Builder::default().build())
         .plugin(tauri_plugin_updater::Builder::new().build())
         .invoke_handler(tauri::generate_handler![
@@ -95,6 +97,13 @@ fn main() {
             pos_hardware::pos_test_print,
             pos_hardware::pos_print_labels,
             pos_hardware::pos_test_print_label,
+            pos_mirror::mirror_init,
+            pos_mirror::mirror_upsert_products,
+            pos_mirror::mirror_upsert_variants,
+            pos_mirror::mirror_mark_synced,
+            pos_mirror::mirror_status,
+            pos_mirror::mirror_clear,
+            pos_mirror::mirror_lookup,
         ])
         .run(tauri::generate_context!())
         .expect("error while running Mus Luxury Desktop CMS");

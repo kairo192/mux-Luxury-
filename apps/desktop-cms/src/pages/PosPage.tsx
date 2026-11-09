@@ -42,6 +42,9 @@ import {
 } from "../utils/posHardware";
 import { useBarcodeScanner } from "../utils/useBarcodeScanner";
 import { openSystemPrint, renderReceiptHtml, type ReceiptBlock } from "../utils/systemPrint";
+import { resolveLookup } from "../utils/posLookupResolver";
+import { syncCatalog, ensureMirrorReady } from "../utils/posMirrorSync";
+import { mirrorStatus, type MirrorStatus as MirrorStatusType } from "../utils/posMirror";
 
 // ---------------------------------------------------------------------------
 // POS — Touch-first cashier workspace.
@@ -192,6 +195,9 @@ export const PosPage: React.FC<{ onInventoryUpdated?: () => void }> = ({ onInven
   const [showConflicts, setShowConflicts] = useState(false);
   const [showPrinterSettings, setShowPrinterSettings] = useState(false);
   const [labelVariantId, setLabelVariantId] = useState<number | null>(null);
+  const [mirrorStat, setMirrorStat] = useState<MirrorStatusType | null>(null);
+  const [mirrorSyncing, setMirrorSyncing] = useState(false);
+  const [lastLookupSource, setLastLookupSource] = useState<"mirror" | "api" | "none">("none");
   const queueCounts = {
     pending: queue.filter((i) => i.status === "pending").length,
     conflict: queue.filter((i) => i.status === "conflict").length,
@@ -354,16 +360,16 @@ export const PosPage: React.FC<{ onInventoryUpdated?: () => void }> = ({ onInven
     scanRef.current?.focus();
   };
 
-  // Manual (Enter / Chercher) lookup. Keeps the "exact match → add to cart"
-  // shortcut for barcode-like input, and surfaces name/SKU search results in
-  // the grid for luxury items that have no barcode (bags, high-end goods —
-  // which is the majority of this catalogue).
+  // Manual (Enter / Chercher) lookup. Goes through resolveLookup which
+  // tries the local mirror first and falls back to the API — so the POS
+  // keeps working even on a dead connection.
   const handleScan = async (e?: React.FormEvent) => {
     e?.preventDefault();
     const code = scanCode.trim();
     if (!code) return;
     try {
-      const res = await DesktopCmsApi.posLookup(code);
+      const res = await resolveLookup(code, { online });
+      setLastLookupSource(res.source);
       if (res.match_type === "variant") {
         addVariantToCart(res.variant);
         setSearchResults([]);
@@ -395,12 +401,11 @@ export const PosPage: React.FC<{ onInventoryUpdated?: () => void }> = ({ onInven
     }
     const handle = setTimeout(async () => {
       try {
-        const res = await DesktopCmsApi.posLookup(term);
-        if (res.match_type === "search" && res.results.length) {
+        const res = await resolveLookup(term, { online });
+        setLastLookupSource(res.source);
+        if (res.match_type === "search" || res.match_type === "product") {
           setSearchResults(res.results);
-        } else if (res.match_type === "product") {
-          setSearchResults(res.results);
-        } else if (res.match_type === "variant") {
+        } else if (res.match_type === "variant" && res.variant) {
           // Exact code match while still typing — don't auto-add from live
           // search; keep the exact match available if the operator presses
           // Enter. (The scanner hook's path handles instant adds.)
@@ -419,7 +424,7 @@ export const PosPage: React.FC<{ onInventoryUpdated?: () => void }> = ({ onInven
       }
     }, 250);
     return () => clearTimeout(handle);
-  }, [scanCode]);
+  }, [scanCode, online]);
 
   // ------------------------------------------------------------ cart math
   const updateQty = (variantId: number, delta: number) => {
@@ -686,7 +691,8 @@ export const PosPage: React.FC<{ onInventoryUpdated?: () => void }> = ({ onInven
     if (!trimmed) return;
     setScanCode(trimmed);
     try {
-      const res = await DesktopCmsApi.posLookup(trimmed);
+      const res = await resolveLookup(trimmed, { online });
+      setLastLookupSource(res.source);
       if (res.match_type === "variant") {
         addVariantToCart(res.variant);
         setScanCode("");
@@ -701,6 +707,44 @@ export const PosPage: React.FC<{ onInventoryUpdated?: () => void }> = ({ onInven
       flashError(e?.userMessage || "Recherche échouée");
     }
   }, { enabled: scannerEnabled && Boolean(session) });
+
+  // Mount: initialise the mirror (idempotent) and kick off an incremental
+  // sync if we're online. Also expose a refresher the Matériel modal and a
+  // toolbar button can call.
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      const s = await ensureMirrorReady();
+      if (!cancelled) setMirrorStat(s);
+      if (online && s) {
+        setMirrorSyncing(true);
+        try {
+          await syncCatalog(false);
+          if (!cancelled) setMirrorStat(await mirrorStatus());
+        } finally {
+          if (!cancelled) setMirrorSyncing(false);
+        }
+      }
+    })();
+    return () => { cancelled = true; };
+    // Only on mount AND when connectivity flips online — avoids a flood of
+    // syncs when the online flag bounces.
+  }, [online]);
+
+  const refreshMirror = useCallback(async (force = false) => {
+    setMirrorSyncing(true);
+    try {
+      const r = await syncCatalog(force);
+      setMirrorStat(await mirrorStatus());
+      if (r.ok) {
+        flashSuccess(`Catalogue ${r.mode === "snapshot" ? "chargé" : "mis à jour"} (${r.variants_upserted} variantes).`);
+      } else {
+        flashError(`Sync catalogue : ${r.error ?? "échec"}`);
+      }
+    } finally {
+      setMirrorSyncing(false);
+    }
+  }, [flashError, flashSuccess]);
 
   // ------------------------------------------------------------ render
   if (loading) {
@@ -815,6 +859,21 @@ export const PosPage: React.FC<{ onInventoryUpdated?: () => void }> = ({ onInven
               </div>
             </div>
             <div className="flex items-center gap-2">
+              {mirrorStat && mirrorStat.initialized && (
+                <button
+                  type="button"
+                  onClick={() => refreshMirror(false)}
+                  disabled={mirrorSyncing}
+                  className="h-12 px-3 rounded-2xl bg-white/10 hover:bg-white/20 text-[#E8D4A5] font-bold flex items-center gap-2 active:scale-95 disabled:opacity-60"
+                  title={`Catalogue local — ${mirrorStat.variant_count} variantes${mirrorStat.last_synced_at ? ` · dernière sync ${new Date(mirrorStat.last_synced_at).toLocaleTimeString("fr-DZ")}` : ""}`}
+                >
+                  <RefreshCw className={`w-4 h-4 ${mirrorSyncing ? "animate-spin" : ""}`} />
+                  <span className="font-mono text-xs">
+                    {mirrorStat.variant_count}
+                    {lastLookupSource === "mirror" && !online && <span className="ml-1 text-amber-300">· hors ligne</span>}
+                  </span>
+                </button>
+              )}
               <button
                 type="button"
                 onClick={() => setShowPrinterSettings(true)}

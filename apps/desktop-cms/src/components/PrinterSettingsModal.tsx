@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from "react";
-import { X, Printer, RefreshCw, CheckCircle2, AlertTriangle, DoorOpen, Zap, Wifi, Tag } from "lucide-react";
+import { X, Printer, RefreshCw, CheckCircle2, AlertTriangle, DoorOpen, Zap, Wifi, Tag, Database, Trash2 } from "lucide-react";
 import {
   listPrinters,
   loadHardwareSettings,
@@ -14,6 +14,8 @@ import {
   type PrinterTarget,
   type LabelPrinterTarget,
 } from "../utils/posHardware";
+import { mirrorStatus, mirrorClear, type MirrorStatus } from "../utils/posMirror";
+import { syncCatalog } from "../utils/posMirrorSync";
 
 // ---------------------------------------------------------------------------
 // PrinterSettingsModal — configure the thermal receipt printer, cash drawer
@@ -34,7 +36,9 @@ export const PrinterSettingsModal: React.FC<Props> = ({ open, onClose, onFlash }
   const [loadingPrinters, setLoadingPrinters] = useState(false);
   const [testing, setTesting] = useState<null | "print" | "drawer" | "label">(null);
   const [status, setStatus] = useState<{ kind: "ok" | "err"; msg: string } | null>(null);
-  const [tab, setTab] = useState<"receipt" | "label">("receipt");
+  const [tab, setTab] = useState<"receipt" | "label" | "mirror">("receipt");
+  const [mirror, setMirror] = useState<MirrorStatus | null>(null);
+  const [mirrorBusy, setMirrorBusy] = useState<null | "sync" | "clear">(null);
   const inTauri = isTauriRuntime();
 
   const refresh = async () => {
@@ -53,8 +57,31 @@ export const PrinterSettingsModal: React.FC<Props> = ({ open, onClose, onFlash }
       refresh();
       setSettings(loadHardwareSettings());
       setLabelSettings(loadLabelPrinterSettings());
+      mirrorStatus().then(setMirror);
     }
   }, [open]);
+
+  const refreshMirrorStat = async () => setMirror(await mirrorStatus());
+
+  const onSyncNow = async (force: boolean) => {
+    setMirrorBusy("sync");
+    const r = await syncCatalog(force);
+    await refreshMirrorStat();
+    setMirrorBusy(null);
+    if (r.ok) flash("ok", force
+      ? `Catalogue rechargé (${r.variants_upserted} variantes).`
+      : `Mise à jour: ${r.variants_upserted} variantes.`);
+    else flash("err", r.error ?? "Sync échouée");
+  };
+
+  const onClearMirror = async () => {
+    if (!window.confirm("Effacer le catalogue local ? La prochaine synchronisation rechargera tout.")) return;
+    setMirrorBusy("clear");
+    await mirrorClear();
+    await refreshMirrorStat();
+    setMirrorBusy(null);
+    flash("ok", "Catalogue local effacé.");
+  };
 
   if (!open) return null;
 
@@ -138,14 +165,21 @@ export const PrinterSettingsModal: React.FC<Props> = ({ open, onClose, onFlash }
             onClick={() => setTab("receipt")}
             className={`flex-1 h-11 rounded-2xl font-bold flex items-center justify-center gap-2 active:scale-95 ${tab === "receipt" ? "bg-[#063D2E] text-[#D4AF62]" : "bg-gray-100 text-gray-500"}`}
           >
-            <Printer className="w-4 h-4" /> Reçus & tiroir
+            <Printer className="w-4 h-4" /> Reçus
           </button>
           <button
             type="button"
             onClick={() => setTab("label")}
             className={`flex-1 h-11 rounded-2xl font-bold flex items-center justify-center gap-2 active:scale-95 ${tab === "label" ? "bg-[#063D2E] text-[#D4AF62]" : "bg-gray-100 text-gray-500"}`}
           >
-            <Tag className="w-4 h-4" /> Étiqueteuse
+            <Tag className="w-4 h-4" /> Étiquettes
+          </button>
+          <button
+            type="button"
+            onClick={() => setTab("mirror")}
+            className={`flex-1 h-11 rounded-2xl font-bold flex items-center justify-center gap-2 active:scale-95 ${tab === "mirror" ? "bg-[#063D2E] text-[#D4AF62]" : "bg-gray-100 text-gray-500"}`}
+          >
+            <Database className="w-4 h-4" /> Catalogue
           </button>
         </div>
 
@@ -255,7 +289,7 @@ export const PrinterSettingsModal: React.FC<Props> = ({ open, onClose, onFlash }
               <DoorOpen className="w-5 h-5" /> {testing === "drawer" ? "Envoi…" : "Ouvrir le tiroir"}
             </button>
           </div>
-          </> : (
+          </> : tab === "label" ? (
           <>
             {/* ========== LABEL PRINTER TAB ========== */}
             <div className="space-y-2">
@@ -347,6 +381,71 @@ export const PrinterSettingsModal: React.FC<Props> = ({ open, onClose, onFlash }
                 className="w-full h-14 rounded-2xl bg-[#063D2E] text-[#D4AF62] font-bold flex items-center justify-center gap-2 disabled:opacity-40 active:scale-95"
               >
                 <Zap className="w-5 h-5" /> {testing === "label" ? "Envoi…" : "Imprimer une étiquette de test"}
+              </button>
+            </div>
+          </>) : (
+          <>
+            {/* ========== LOCAL CATALOG MIRROR TAB ========== */}
+            <div className="space-y-3">
+              <label className="flex items-center gap-2 font-bold text-[#063D2E]">
+                <Database className="w-4 h-4" /> Catalogue local (vente hors ligne)
+              </label>
+              <div className="text-xs text-gray-500">
+                Copie locale du catalogue stockée dans l'application : la caisse peut
+                chercher, scanner et vendre un produit même sans internet. La
+                synchronisation se fait automatiquement au démarrage et après chaque
+                reconnexion.
+              </div>
+
+              <div className="grid grid-cols-3 gap-2">
+                <div className="p-3 rounded-2xl bg-[#FCFBF8] border border-gray-100 text-center">
+                  <div className="text-[11px] text-gray-500 uppercase tracking-wide">Produits</div>
+                  <div className="font-mono font-bold text-xl text-[#063D2E]">{mirror?.product_count ?? "—"}</div>
+                </div>
+                <div className="p-3 rounded-2xl bg-[#FCFBF8] border border-gray-100 text-center">
+                  <div className="text-[11px] text-gray-500 uppercase tracking-wide">Variantes</div>
+                  <div className="font-mono font-bold text-xl text-[#063D2E]">{mirror?.variant_count ?? "—"}</div>
+                </div>
+                <div className="p-3 rounded-2xl bg-[#FCFBF8] border border-gray-100 text-center">
+                  <div className="text-[11px] text-gray-500 uppercase tracking-wide">Codes-barres</div>
+                  <div className="font-mono font-bold text-xl text-[#063D2E]">{mirror?.variants_with_barcode ?? "—"}</div>
+                </div>
+              </div>
+
+              <div className="text-xs text-gray-500 font-mono break-all">
+                {mirror?.last_synced_at
+                  ? `Dernière sync: ${new Date(mirror.last_synced_at).toLocaleString("fr-DZ")}`
+                  : "Jamais synchronisé."}
+              </div>
+
+              <div className="grid grid-cols-2 gap-3 pt-1">
+                <button
+                  type="button"
+                  disabled={mirrorBusy !== null || !inTauri}
+                  onClick={() => onSyncNow(false)}
+                  className="h-14 rounded-2xl bg-[#063D2E] text-[#D4AF62] font-bold flex items-center justify-center gap-2 disabled:opacity-40 active:scale-95"
+                >
+                  <RefreshCw className={`w-5 h-5 ${mirrorBusy === "sync" ? "animate-spin" : ""}`} />
+                  Synchroniser
+                </button>
+                <button
+                  type="button"
+                  disabled={mirrorBusy !== null || !inTauri}
+                  onClick={() => onSyncNow(true)}
+                  className="h-14 rounded-2xl bg-[#D4AF62] text-[#063D2E] font-bold flex items-center justify-center gap-2 disabled:opacity-40 active:scale-95"
+                  title="Recharge la totalité du catalogue"
+                >
+                  <Database className="w-5 h-5" /> Recharger complet
+                </button>
+              </div>
+
+              <button
+                type="button"
+                disabled={mirrorBusy !== null || !inTauri}
+                onClick={onClearMirror}
+                className="w-full h-11 rounded-2xl border-2 border-red-200 text-red-600 font-bold text-sm flex items-center justify-center gap-2 disabled:opacity-40 active:scale-95"
+              >
+                <Trash2 className="w-4 h-4" /> Effacer le cache local
               </button>
             </div>
           </>)}

@@ -523,6 +523,11 @@ export const DesktopCmsApi = {
   getPurchaseOrderLabels: (poId: number) =>
     adminFetch(`/admin/purchases/${poId}/labels`),
 
+  // Catalog mirror (offline POS)
+  catalogSnapshot: () => adminFetch(`/admin/pos/catalog/snapshot`),
+  catalogDeltas: (sinceIso: string) =>
+    adminFetch(`/admin/pos/catalog/deltas?since=${encodeURIComponent(sinceIso)}`),
+
   // ERP: Operating Expenses
   listExpenses: (category?: string) =>
     adminFetch(`/admin/expenses${category ? `?category=${category}` : ""}`),

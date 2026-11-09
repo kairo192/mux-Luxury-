@@ -175,6 +175,65 @@ Barcode & Label modal for that variant: generate / scan / paste a barcode,
 then print N sticky labels on the label printer. This closes the "add
 stock → assign barcode later → print later" loop in one place.
 
+## Local catalog mirror (offline POS)
+
+The Desktop CMS keeps a local SQLite copy of the catalog in the user's
+app-data directory (`<AppData>/Mus Luxury CMS/pos_mirror.sqlite3`) so the
+POS can look up and sell products with zero connectivity. Backend feeds it
+through two endpoints:
+
+```
+GET /api/v1/admin/pos/catalog/snapshot
+    Full dump of every active product + variant. Used on first launch.
+
+GET /api/v1/admin/pos/catalog/deltas?since=<cursor>
+    Everything created or updated since `since`. Called every time the POS
+    opens and after each reconnect.
+```
+
+### Freshness
+
+- Automatic sync on POS page mount and on every "offline → online" flip.
+- Manual re-sync and full re-seed from **Matériel → Catalogue**.
+- The cursor is stamped as `now + 1 s` so a snapshot cleanly hands off to
+  the next delta at the exact second boundary (no duplicates, no misses).
+
+### Lookup policy
+
+Every lookup goes through `posLookupResolver`:
+
+1. **Try the mirror first.** Barcode or SKU hit → return the variant
+   immediately.
+2. **Mirror miss + online → ask the API.** The mirror may be a few
+   seconds stale on a brand-new product.
+3. **Mirror miss + offline → return the mirror's best fallback** (empty
+   or fuzzy name match). The cashier sees a "hors ligne" chip on the
+   toolbar.
+
+### Capacity
+
+Each variant is ~150 bytes in the mirror. A 5 000-variant catalog is
+under 1 MB on disk. Indexes on `barcode` and `sku` give O(log n) lookups;
+a name search strips accents and uses `LIKE` on a normalized column.
+
+### Trigger-backed change capture
+
+`product_variants.updated_at` is stamped by two triggers added in
+migration `003_product_variants_updated_at` (SQLite + Postgres):
+
+- `AFTER UPDATE OF ...` for stock, price, title, barcode, SKU, active
+  flag, image, cost, low-stock threshold.
+- `AFTER INSERT` (SQLite) / `BEFORE INSERT` (Postgres) stamps new rows
+  so a brand-new variant never has a NULL cursor value.
+
+### Troubleshooting
+
+| Symptom                                      | Fix                                                          |
+| -------------------------------------------- | ------------------------------------------------------------ |
+| Chip shows 0 variants after first launch     | Click **Recharger complet** in Matériel → Catalogue.         |
+| Stock in the POS doesn't match the dashboard | Click **Synchroniser** in the chip or in Matériel.           |
+| Mirror looks corrupted                       | **Effacer le cache local** in Matériel; next sync re-seeds.  |
+
 ## Known gaps / roadmap
 
 - **Arabic text** does not print on most thermal printers — ESC/POS only
