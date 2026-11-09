@@ -165,16 +165,8 @@ export function sanitizeAndTranslateError(
     if (contextPath.includes("/admin/auth/login") || lower.includes("invalid email or password")) {
       return {
         title: "Identifiants incorrects",
-        message: "L'adresse e-mail ou le mot de passe saisi est incorrect. Vérifiez votre saisie ou utilisez la récupération WhatsApp / Code de secours.",
+        message: "L'adresse e-mail ou le mot de passe saisi est incorrect. En cas d'oubli, contactez l'administrateur système sur le serveur.",
         code: "AUTH_INVALID_CREDENTIALS",
-        status: 401,
-      };
-    }
-    if (contextPath.includes("/admin/auth/recovery") || lower.includes("recovery") || lower.includes("otp")) {
-      return {
-        title: "Code de récupération invalide ou expiré",
-        message: "Le code OTP WhatsApp ou le code de secours saisi est incorrect ou a dépassé sa durée de validité.",
-        code: "RECOVERY_CODE_INVALID",
         status: 401,
       };
     }

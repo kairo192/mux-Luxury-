@@ -123,7 +123,7 @@ async function adminFetch(path: string, options: RequestInit = {}, timeoutMs = d
       const data = contentType.includes("application/json") ? await res.json().catch(() => ({})) : await res.text().catch(() => "");
 
       if (res.status === 401) {
-        const isAuthEndpoint = path.includes("/admin/auth/login") || path.includes("/admin/auth/recovery");
+        const isAuthEndpoint = path.includes("/admin/auth/login");
         if (!isAuthEndpoint) {
           setAccessToken(null);
         }

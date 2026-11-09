@@ -2533,19 +2533,10 @@ def admin_update_store_settings(
 
 
 # ============================================================================
-# SECTION 6: WHATSAPP CLOUD API PASSWORD RECOVERY & OFFLINE EMERGENCY RECOVERY
+# SECTION 6: WEBHOOKS & STORE INTEGRATIONS
 # ============================================================================
 
 from .security import hash_password, REVOKED_TOKENS, revoke_all_user_sessions
-
-class RecoveryRequestInput(BaseModel):
-    phone: str
-    channel: str = Field("whatsapp_cloud_api", regex=r"^(whatsapp_cloud_api|offline_emergency)$")
-
-class RecoveryVerifyInput(BaseModel):
-    phone: str
-    verification_code: str = Field(..., min_length=6, max_length=64)
-    new_password: str = Field(..., min_length=10, max_length=128)
 
 class ProductConcurrencyUpdate(BaseModel):
     name_fr: str
@@ -2589,8 +2580,6 @@ from .whatsapp import (
     list_recent_whatsapp_outbox,
     normalize_algerian_phone,
     get_whatsapp_config,
-    # dispatch_whatsapp_recovery_otp intentionally no longer imported —
-    # admin password recovery over WhatsApp was removed per owner request.
     verify_whatsapp_webhook_signature,
 )
 
