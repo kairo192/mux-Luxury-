@@ -113,6 +113,20 @@ export function VariantManager({
   const [selectedIds, setSelectedIds] = useState<number[]>([]);
   const [busy, setBusy] = useState(false);
   const [rowEdits, setRowEdits] = useState<Record<number, Partial<EditorVariant>>>({});
+  // Reusable inline numeric prompt — replaces the three window.prompt() calls
+  // that were impossible to use on a touchscreen till.
+  const [numPrompt, setNumPrompt] = useState<null | {
+    title: string;
+    hint?: string;
+    unit?: string;
+    initial: string;
+    allowEmpty?: boolean;
+    resolve: (value: number | null) => void;
+  }>(null);
+  const askNumber = (title: string, initial: string, unit?: string, hint?: string) =>
+    new Promise<number | null>((resolve) =>
+      setNumPrompt({ title, initial, unit, hint, resolve }),
+    );
   const [showAddForm, setShowAddForm] = useState(false);
   const [newVariant, setNewVariant] = useState<{ stock: number; price: string; sku: string; attrs: Record<string, string> }>({
     stock: 0,
@@ -388,9 +402,13 @@ export function VariantManager({
     }
     const payload: any = { variant_ids: selectedIds, reason: `cms_bulk_${action}` };
     if (action === "stock") {
-      const raw = window.prompt("Nouveau stock pour les déclinaisons sélectionnées :", String(defaultStock));
-      if (raw === null) return;
-      const qty = Number(raw);
+      const qty = await askNumber(
+        "Nouveau stock",
+        String(defaultStock),
+        "u.",
+        `Appliqué à ${selectedIds.length} déclinaison${selectedIds.length > 1 ? "s" : ""}`,
+      );
+      if (qty === null) return;
       if (!Number.isFinite(qty) || qty < 0) {
         notifyClientWarning("Quantité invalide", "Le stock doit être un nombre entier positif ou nul.");
         return;
@@ -398,9 +416,13 @@ export function VariantManager({
       payload.set_stock_qty = Math.floor(qty);
     }
     if (action === "price") {
-      const raw = window.prompt("Prix spécifique en DA (laisser vide pour annuler) :", String(productPrice));
-      if (raw === null) return;
-      const price = Number(raw);
+      const price = await askNumber(
+        "Prix spécifique",
+        String(productPrice),
+        "DA",
+        `Appliqué à ${selectedIds.length} déclinaison${selectedIds.length > 1 ? "s" : ""}`,
+      );
+      if (price === null) return;
       if (!Number.isFinite(price) || price < 0) {
         notifyClientWarning("Prix invalide", "Le prix doit être un nombre positif ou nul.");
         return;
@@ -1022,9 +1044,68 @@ export function VariantManager({
           désactivée pour préserver l'historique. Le prix affiché sur la boutique est toujours recalculé côté serveur.
         </span>
       </p>
+
+      {numPrompt && <NumericPromptModal prompt={numPrompt} onDone={(v) => { numPrompt.resolve(v); setNumPrompt(null); }} />}
     </div>
   );
 }
+
+const NumericPromptModal: React.FC<{
+  prompt: { title: string; hint?: string; unit?: string; initial: string };
+  onDone: (value: number | null) => void;
+}> = ({ prompt, onDone }) => {
+  const [raw, setRaw] = useState(prompt.initial);
+  const inputRef = React.useRef<HTMLInputElement>(null);
+  React.useEffect(() => {
+    inputRef.current?.focus();
+    inputRef.current?.select();
+  }, []);
+  const submit = () => {
+    const n = Number(raw);
+    onDone(Number.isFinite(n) ? n : null);
+  };
+  return (
+    <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-[60] p-4" onClick={() => onDone(null)}>
+      <div className="bg-white rounded-3xl w-full max-w-sm p-6 shadow-2xl border-2 border-[#063D2E]/10" onClick={(e) => e.stopPropagation()}>
+        <h4 className="font-bold text-[#063D2E] text-lg mb-1">{prompt.title}</h4>
+        {prompt.hint && <p className="text-xs text-gray-500 mb-3">{prompt.hint}</p>}
+        <div className="flex items-stretch gap-2 mb-5">
+          <input
+            ref={inputRef}
+            type="number"
+            inputMode="numeric"
+            value={raw}
+            onChange={(e) => setRaw(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === "Enter") submit();
+              if (e.key === "Escape") onDone(null);
+            }}
+            className="flex-1 h-14 px-4 rounded-2xl border-2 border-gray-200 focus:border-[#063D2E] font-mono text-xl outline-none"
+          />
+          {prompt.unit && (
+            <span className="h-14 px-4 flex items-center rounded-2xl bg-[#063D2E]/5 text-[#063D2E] font-bold">{prompt.unit}</span>
+          )}
+        </div>
+        <div className="flex gap-2">
+          <button
+            type="button"
+            onClick={() => onDone(null)}
+            className="flex-1 h-12 rounded-2xl bg-gray-100 text-gray-700 font-bold active:scale-95"
+          >
+            Annuler
+          </button>
+          <button
+            type="button"
+            onClick={submit}
+            className="flex-1 h-12 rounded-2xl bg-[#063D2E] text-[#D4AF62] font-bold active:scale-95"
+          >
+            Appliquer
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+};
 
 function PackageIcon() {
   return (

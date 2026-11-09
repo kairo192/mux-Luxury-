@@ -250,20 +250,30 @@ export function PurchasesPage({ onInventoryUpdated }: { onInventoryUpdated?: () 
   }
 
   async function handlePayPurchaseOrder(poId: number, ref: string, amount: number) {
-    const method = window.prompt(`Régler le fournisseur pour le bon ${ref} (${amount} DA).\nMode de paiement : tapez 'cash' (Caisse) ou 'bank_transfer' (Banque) :`, "cash");
-    if (!method) return;
-    const cleanMethod = method.trim().toLowerCase() === "bank_transfer" ? "bank_transfer" : "cash";
+    // Button-based choice replaces the old window.prompt — far friendlier on a
+    // touchscreen and leaves no room for typos ("cach", "bank transfer", …)
+    // that would silently fall through to the default method.
+    setPayDialog({ poId, ref, amount });
+  }
 
+  const [payDialog, setPayDialog] = useState<null | { poId: number; ref: string; amount: number }>(null);
+  const confirmPayment = async (method: "cash" | "bank_transfer") => {
+    if (!payDialog) return;
+    const { poId, ref, amount } = payDialog;
+    setPayDialog(null);
     setError("");
     try {
-      await DesktopCmsApi.payPurchaseOrder(poId, cleanMethod);
-      notifyClientSuccess("Règlement effectué", `Paiement de ${amount} DA enregistré via ${cleanMethod === "cash" ? "Caisse" : "Banque"}.`);
+      await DesktopCmsApi.payPurchaseOrder(poId, method);
+      notifyClientSuccess(
+        "Règlement effectué",
+        `Paiement de ${amount} DA pour le bon ${ref} enregistré via ${method === "cash" ? "Caisse" : "Banque"}.`,
+      );
       await loadData();
     } catch (err: any) {
       const tr = notifyClientError(err, "Règlement impossible");
       setError(tr.message);
     }
-  }
+  };
 
   async function handleCreateSupplier(e: React.FormEvent) {
     e.preventDefault();
@@ -883,6 +893,34 @@ export function PurchasesPage({ onInventoryUpdated }: { onInventoryUpdated?: () 
                 </button>
               </div>
             </div>
+          </div>
+        </div>
+      )}
+
+      {payDialog && (
+        <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4" onClick={() => setPayDialog(null)}>
+          <div className="bg-white rounded-3xl w-full max-w-sm p-6 shadow-2xl border-2 border-[#063D2E]/10" onClick={(e) => e.stopPropagation()}>
+            <h4 className="font-bold text-[#063D2E] text-lg mb-1">Régler le fournisseur</h4>
+            <p className="text-sm text-gray-600 mb-4">
+              Bon <span className="font-mono font-bold">{payDialog.ref}</span> — <span className="font-mono font-bold">{payDialog.amount.toLocaleString("fr-DZ")} DA</span>.
+              <br />Choisissez le mode de paiement :
+            </p>
+            <div className="grid grid-cols-2 gap-3 mb-3">
+              <button type="button" onClick={() => confirmPayment("cash")}
+                className="h-16 rounded-2xl bg-[#063D2E] text-[#D4AF62] font-bold flex flex-col items-center justify-center active:scale-95">
+                <span className="text-lg">Caisse</span>
+                <span className="text-[10px] font-normal opacity-70">Espèces en main</span>
+              </button>
+              <button type="button" onClick={() => confirmPayment("bank_transfer")}
+                className="h-16 rounded-2xl bg-[#D4AF62] text-[#02291F] font-bold flex flex-col items-center justify-center active:scale-95">
+                <span className="text-lg">Banque</span>
+                <span className="text-[10px] font-normal opacity-70">Virement / chèque</span>
+              </button>
+            </div>
+            <button type="button" onClick={() => setPayDialog(null)}
+              className="w-full h-11 rounded-2xl bg-gray-100 text-gray-700 font-bold active:scale-95">
+              Annuler
+            </button>
           </div>
         </div>
       )}

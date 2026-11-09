@@ -4,47 +4,19 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Mus Luxury — Boutique Officielle Mode, Sacs &amp; Accessoires en Algérie</title>
-  <script src="https://cdn.tailwindcss.com/3.4.17"></script>
+  <!--
+    Tailwind is compiled at build time by PostCSS via src/index.css + the
+    config in tailwind.config.js. We deliberately do NOT load the Tailwind
+    JIT CDN (`cdn.tailwindcss.com`) because the production Nginx CSP's
+    script-src is `'self' 'unsafe-inline'` — a CDN script would be blocked
+    and the boutique would render unstyled. Palette, fonts and shadows
+    used throughout this page come from tailwind.config.js → keep the two
+    in sync when adding new tokens.
+  -->
+  <link rel="stylesheet" href="/src/index.css" />
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Cairo:wght@400;500;600;700&family=Montserrat:wght@400;500;600;700&family=Playfair+Display:ital,wght@0,500;0,600;0,700;1,400;1,600&display=swap" rel="stylesheet" />
-  <script>
-    tailwind.config = {
-      theme: {
-        extend: {
-          colors: {
-            emerald: {
-              deep: '#063D2E',
-              forest: '#02291F',
-              mid: '#0A523E',
-              soft: '#0D4A3A'
-            },
-            gold: {
-              reflective: '#D4AF62',
-              light: '#E8D4A5',
-              dark: '#B68F40',
-              muted: '#C8A96E'
-            },
-            cream: {
-              DEFAULT: '#F8F6F0',
-              warm: '#F2EFE7',
-              card: '#FAF9F5'
-            },
-            charcoal: '#202923'
-          },
-          fontFamily: {
-            serif: ['"Playfair Display"', 'Georgia', 'serif'],
-            sans: ['Montserrat', 'Cairo', 'sans-serif']
-          },
-          boxShadow: {
-            luxury: '0 10px 30px -10px rgba(2, 41, 31, 0.12)',
-            'luxury-hover': '0 20px 40px -12px rgba(2, 41, 31, 0.22)',
-            'gold-ring': '0 0 0 1px rgba(212, 175, 98, 0.35)'
-          }
-        }
-      }
-    };
-  </script>
   <style>
     body {
       font-family: 'Montserrat', 'Cairo', sans-serif;
@@ -1982,6 +1954,92 @@
       if (rawFavs) state.favorites = new Set(JSON.parse(rawFavs));
     } catch (_e) {}
 
+    // ------------------------------------------------------------------
+    // HTTP helper — shared by every public endpoint call on this page.
+    //
+    // Why this exists: the storefront used to call `fetch()` directly in a
+    // dozen places, which meant (1) a blipping 502 at a flaky moment showed
+    // customers a raw backend detail, (2) a 422 validation payload (array of
+    // dicts) rendered as "[object Object]" in the toast, (3) a slow server
+    // hung the UI indefinitely. The sibling React client (`src/api/client.ts`)
+    // already had the right shape; this helper ports it onto the vanilla page.
+    //
+    // Behaviour:
+    //   - Timeout per attempt (default 15s) via AbortController.
+    //   - Retries GETs and POSTs carrying an Idempotency-Key up to 3 attempts
+    //     on 502/503/504 and transient network errors. Exponential-ish backoff.
+    //   - Adds X-Request-ID so the backend's structured logs can tie a
+    //     customer complaint back to a specific request.
+    //   - Translates backend errors to French customer-facing text, never
+    //     leaking SQLite / Postgres / traceback keywords.
+    // Returns the parsed JSON body on success; throws an Error whose message
+    // is already safe to show in a toast on failure.
+    async function fetchPublicJson(path, options = {}, timeoutMs = 15000) {
+      const method = ((options && options.method) || "GET").toUpperCase();
+      const reqId = "sf_" + Date.now().toString(36) + "_" + Math.random().toString(36).slice(2, 7);
+      const headers = Object.assign(
+        { "X-Request-ID": reqId },
+        (options && options.headers) || {}
+      );
+      const canRetry = method === "GET" || Boolean(headers["Idempotency-Key"]);
+      const maxAttempts = canRetry ? 3 : 1;
+      for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+        const controller = new AbortController();
+        const timer = setTimeout(() => controller.abort(), timeoutMs);
+        try {
+          const res = await fetch(path, Object.assign({}, options, {
+            headers,
+            signal: options.signal || controller.signal,
+          }));
+          if ([502, 503, 504].includes(res.status) && attempt < maxAttempts) {
+            await new Promise((r) => setTimeout(r, attempt * 250));
+            continue;
+          }
+          const data = await res.json().catch(() => ({}));
+          if (!res.ok) {
+            throw new Error(formatStorefrontError(data, res.status));
+          }
+          return data;
+        } catch (err) {
+          const isAbort = err && (err.name === "AbortError" || /abort/i.test(String(err.message || "")));
+          const isNet = err && /failed to fetch|networkerror|network request/i.test(String(err.message || ""));
+          if ((isAbort || isNet) && attempt < maxAttempts) {
+            await new Promise((r) => setTimeout(r, attempt * 250));
+            continue;
+          }
+          if (isAbort || isNet) {
+            throw new Error(
+              "Connexion interrompue avec la boutique Mus Luxury. Vérifiez votre connexion Internet ou commandez sur WhatsApp au 0655 53 41 54."
+            );
+          }
+          throw err;
+        } finally {
+          clearTimeout(timer);
+        }
+      }
+    }
+
+    function formatStorefrontError(data, status) {
+      // Keep this in sync with apps/storefront/src/api/client.ts.
+      if (status === 422 || Array.isArray(data && data.detail)) {
+        return "Veuillez vérifier les informations saisies (nom, numéro de téléphone 05/06/07, Wilaya et adresse).";
+      }
+      const raw = (data && typeof data.detail === "string") ? data.detail : "";
+      if (status === 403 && raw && raw.indexOf("Anti-Retour") !== -1) return raw;
+      if (status === 409) {
+        if (raw && raw.toLowerCase().indexOf("stock") !== -1) {
+          return "La quantité demandée dépasse le stock actuellement disponible pour cet article.";
+        }
+        return "Cette commande vient déjà d'être enregistrée. Vérifiez son statut dans le suivi de commande.";
+      }
+      if (status === 429) return "Trop de tentatives rapprochées. Veuillez patienter quelques secondes avant de réessayer.";
+      if (status === 404) return "Aucun résultat trouvé pour cette référence ou cet article.";
+      if (status >= 500 || !raw || /sqlite|postgres|traceback|internal|exception/i.test(raw)) {
+        return "Le service est momentanément indisponible. Veuillez réessayer dans un instant ou commander via WhatsApp au 0655 53 41 54.";
+      }
+      return raw;
+    }
+
     function saveCartToStorage() {
       try {
         localStorage.setItem("luxe_store_cart", JSON.stringify(state.cart));
@@ -3493,25 +3551,22 @@
       }
       const subtotal = computeCartSubtotal();
       try {
-        const apiRes = await fetch("/api/v1/coupons/validate", {
+        const cpnData = await fetchPublicJson("/api/v1/coupons/validate", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ code: raw, subtotal_dzd: subtotal }),
         });
-        if (apiRes.ok) {
-          const cpnData = await apiRes.json();
-          state.appliedCoupon = {
-            code: cpnData.code,
-            type: cpnData.discount_type,
-            value: cpnData.discount_value,
-            minOrder: 0,
-            maxDiscount: cpnData.discount_dzd,
-          };
-          updateCheckoutCalculation();
-          showToast(`Code promo ${cpnData.code} appliqué (-${formatDZD(cpnData.discount_dzd)})`);
-          return;
-        }
-      } catch (_e) {}
+        state.appliedCoupon = {
+          code: cpnData.code,
+          type: cpnData.discount_type,
+          value: cpnData.discount_value,
+          minOrder: 0,
+          maxDiscount: cpnData.discount_dzd,
+        };
+        updateCheckoutCalculation();
+        showToast(`Code promo ${cpnData.code} appliqué (-${formatDZD(cpnData.discount_dzd)})`);
+        return;
+      } catch (_e) { /* fall through to the local COUPONS fixture below */ }
       const found = COUPONS.find((c) => c.code === raw);
       if (!found) {
         showToast("Code promo invalide", "error");
@@ -3645,7 +3700,7 @@
       let orderRef = `LUX-${Math.floor(10000 + Math.random() * 89999)}-DZ`;
 
       try {
-        const apiOrdRes = await fetch("/api/v1/orders", {
+        const createdOrd = await fetchPublicJson("/api/v1/orders", {
           method: "POST",
           headers: {
             "Content-Type": "application/json",
@@ -3662,19 +3717,11 @@
             items: orderItems.map((it) => ({ variant_id: it.variant_id, quantity: it.quantity })),
           }),
         });
-        if (!apiOrdRes.ok) {
-          const errJson = await apiOrdRes.json().catch(() => ({}));
-          const errMsg = errJson.detail || "Erreur lors de l'enregistrement de votre commande (" + apiOrdRes.status + ").";
-          showToast(String(errMsg), "error");
-          return;
-        } else {
-          const createdOrd = await apiOrdRes.json();
-          if (createdOrd && createdOrd.order_reference) {
-            orderRef = createdOrd.order_reference;
-          }
+        if (createdOrd && createdOrd.order_reference) {
+          orderRef = createdOrd.order_reference;
         }
-      } catch (_err) {
-        showToast("Impossible de contacter le serveur. Veuillez vérifier votre connexion.", "error");
+      } catch (err) {
+        showToast(String((err && err.message) || "Erreur lors de l'enregistrement de votre commande."), "error");
         return;
       }
 
@@ -3965,7 +4012,7 @@
       }
       let found = null;
       try {
-        const trackRes = await fetch(`/api/v1/orders/track?reference=${encodeURIComponent(ref)}&phone=${encodeURIComponent(phone)}`);
+        const trackRes = await fetch(`/api/v1/orders/track?reference=${encodeURIComponent(ref)}&phone=${encodeURIComponent(phone)}`, { headers: { "X-Request-ID": "sf_" + Date.now().toString(36) } });
         if (trackRes.ok) {
           const apiOrd = await trackRes.json();
           found = {
@@ -4070,7 +4117,7 @@
       document.getElementById("static-page-body").innerHTML = p.body;
       document.getElementById("static-page-modal").classList.remove("hidden");
       try {
-        const pgRes = await fetch(`/api/v1/pages/${encodeURIComponent(pageKey)}`);
+        const pgRes = await fetch(`/api/v1/pages/${encodeURIComponent(pageKey)}`, { headers: { "X-Request-ID": "sf_" + Date.now().toString(36) } });
         if (pgRes.ok) {
           const pgData = await pgRes.json();
           if (pgData.title_fr) document.getElementById("static-page-title").textContent = pgData.title_fr;
@@ -4172,10 +4219,13 @@
       isSyncingBackend = true;
       try {
         const [catRes, prodRes, wilRes, setRes] = await Promise.all([
-          fetch("/api/v1/categories").then((r) => (r.ok ? r.json() : null)).catch(() => null),
-          fetch("/api/v1/products?page_size=50").then((r) => (r.ok ? r.json() : null)).catch(() => null),
-          fetch("/api/v1/delivery-zones").then((r) => (r.ok ? r.json() : null)).catch(() => null),
-          fetch("/api/v1/store/settings").then((r) => (r.ok ? r.json() : null)).catch(() => null),
+          // GETs benefit from the retry/timeout wrapper; keep the per-call
+          // fallback to null so one failing endpoint doesn't knock the
+          // homepage down.
+          fetchPublicJson("/api/v1/categories").catch(() => null),
+          fetchPublicJson("/api/v1/products?page_size=50").catch(() => null),
+          fetchPublicJson("/api/v1/delivery-zones").catch(() => null),
+          fetchPublicJson("/api/v1/store/settings").catch(() => null),
         ]);
         let dataChanged = false;
         if (catRes && Array.isArray(catRes.items)) {
