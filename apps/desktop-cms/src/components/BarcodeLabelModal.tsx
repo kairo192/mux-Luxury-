@@ -9,6 +9,7 @@ import {
   isTauriRuntime,
   type LabelPayload,
 } from "../utils/posHardware";
+import { openSystemPrint, renderLabelsHtml } from "../utils/systemPrint";
 
 interface LabelData {
   store_name: string;
@@ -139,38 +140,32 @@ export const BarcodeLabelModal: React.FC<{
     }
   };
 
-  // Browser-print fallback: opens one print preview per copy so sheet-based
-  // printers still work when no native label printer is configured.
+  // Universal system-printer path — opens the Windows print dialog with the
+  // configured label dimensions, so the operator can pick ANY printer brand
+  // (laser, inkjet, label, PDF) and adjust scale / paper size in the preview.
+  // This is a first-class alternative to the native ZPL/ESC-POS path, not
+  // just a fallback: some shops will use a laser printer on an A4 sheet of
+  // labels, which only this path supports.
   const printLabelInBrowser = () => {
     if (!label?.barcode) return;
     const svg = renderBarcodeSvg(label.barcode, label.symbology || undefined, { moduleWidth: 2, height: 56 });
-    const n = Math.max(1, Math.min(copies, 100));
-    // Generate one page per copy so each label fits a 50×30 mm sheet.
-    const pages = Array.from({ length: n }, () => `
-      <div class="label">
-        <div class="name">${label.store_name}</div>
-        <div class="meta">${label.product_name} — ${label.variant_title}</div>
-        <div class="meta">SKU: ${label.sku}</div>
-        <div class="price">${fmt(label.price_dzd)}</div>
-        ${svg}
-      </div>`).join("");
-    const w = window.open("", "_blank", "width=420,height=320");
-    if (!w) return;
-    w.document.write(`<!DOCTYPE html><html><head><title>Étiquette ${label.sku}</title>
-      <style>
-        @page { size: 50mm 30mm; margin: 2mm; }
-        body { font-family: system-ui, sans-serif; margin: 0; }
-        .label { page-break-after: always; padding: 6px; text-align: center; }
-        .label:last-child { page-break-after: auto; }
-        .name { font-size: 11px; font-weight: 700; }
-        .meta { font-size: 10px; color: #333; }
-        .price { font-size: 14px; font-weight: 800; margin-top: 2px; }
-        svg { margin-top: 4px; }
-      </style></head><body>
-      ${pages}
-      <script>window.onload=function(){window.print();setTimeout(function(){window.close();},300);};<\/script>
-      </body></html>`);
-    w.document.close();
+    const settings = loadLabelPrinterSettings();
+    const widthMm = Number(settings.width_mm) || 50;
+    const heightMm = Number(settings.height_mm) || 30;
+    const r = openSystemPrint({
+      title: `Étiquette ${label.sku}`,
+      paper: { kind: "mm", width: widthMm, height: heightMm },
+      marginMm: 2,
+      html: renderLabelsHtml([{
+        header: label.store_name,
+        product_name: label.product_name,
+        variant_title: label.variant_title,
+        sku: label.sku,
+        price_text: fmt(label.price_dzd),
+        barcode_svg: svg,
+      }], Math.max(1, Math.min(copies, 100))),
+    });
+    if (!r.ok) setError(r.error);
   };
 
   // Route the "Imprimer" button to the native printer when configured,

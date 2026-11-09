@@ -31,7 +31,8 @@ import {
 } from "../utils/posOfflineQueue";
 import { InvoiceModal } from "../components/InvoiceModal";
 import { PrinterSettingsModal } from "../components/PrinterSettingsModal";
-import { FileText as FileTextIcon, Settings as SettingsIcon } from "lucide-react";
+import { BarcodeLabelModal } from "../components/BarcodeLabelModal";
+import { FileText as FileTextIcon, Settings as SettingsIcon, Tag as TagIcon } from "lucide-react";
 import { Wifi, WifiOff, CloudUpload, CloudOff, User, UserPlus, UserCheck } from "lucide-react";
 import {
   isHardwareConfigured,
@@ -40,6 +41,7 @@ import {
   openCashDrawer as kickDrawer,
 } from "../utils/posHardware";
 import { useBarcodeScanner } from "../utils/useBarcodeScanner";
+import { openSystemPrint, renderReceiptHtml, type ReceiptBlock } from "../utils/systemPrint";
 
 // ---------------------------------------------------------------------------
 // POS — Touch-first cashier workspace.
@@ -189,6 +191,7 @@ export const PosPage: React.FC<{ onInventoryUpdated?: () => void }> = ({ onInven
   const [syncing, setSyncing] = useState(false);
   const [showConflicts, setShowConflicts] = useState(false);
   const [showPrinterSettings, setShowPrinterSettings] = useState(false);
+  const [labelVariantId, setLabelVariantId] = useState<number | null>(null);
   const queueCounts = {
     pending: queue.filter((i) => i.status === "pending").length,
     conflict: queue.filter((i) => i.status === "conflict").length,
@@ -351,6 +354,10 @@ export const PosPage: React.FC<{ onInventoryUpdated?: () => void }> = ({ onInven
     scanRef.current?.focus();
   };
 
+  // Manual (Enter / Chercher) lookup. Keeps the "exact match → add to cart"
+  // shortcut for barcode-like input, and surfaces name/SKU search results in
+  // the grid for luxury items that have no barcode (bags, high-end goods —
+  // which is the majority of this catalogue).
   const handleScan = async (e?: React.FormEvent) => {
     e?.preventDefault();
     const code = scanCode.trim();
@@ -359,6 +366,8 @@ export const PosPage: React.FC<{ onInventoryUpdated?: () => void }> = ({ onInven
       const res = await DesktopCmsApi.posLookup(code);
       if (res.match_type === "variant") {
         addVariantToCart(res.variant);
+        setSearchResults([]);
+        setScanCode("");
       } else if (res.match_type === "product") {
         setVariantPicker(res.results[0]);
       } else if (res.match_type === "search" && res.results.length) {
@@ -370,6 +379,47 @@ export const PosPage: React.FC<{ onInventoryUpdated?: () => void }> = ({ onInven
       flashError(e?.userMessage || "Recherche échouée");
     }
   };
+
+  // Live incremental search — luxury items (bags, pieces) rarely have a
+  // barcode, so the cashier types part of the product name and the matching
+  // products appear below without having to press Enter. Only fires for
+  // human-speed typing (debounced) so a USB scanner's fast burst still falls
+  // through to the scanner hook / handleScan path and doesn't double-call.
+  useEffect(() => {
+    const term = scanCode.trim();
+    // Short queries would flood the API with too many results; two chars min
+    // is also what the operator would type intentionally.
+    if (term.length < 2) {
+      setSearchResults([]);
+      return;
+    }
+    const handle = setTimeout(async () => {
+      try {
+        const res = await DesktopCmsApi.posLookup(term);
+        if (res.match_type === "search" && res.results.length) {
+          setSearchResults(res.results);
+        } else if (res.match_type === "product") {
+          setSearchResults(res.results);
+        } else if (res.match_type === "variant") {
+          // Exact code match while still typing — don't auto-add from live
+          // search; keep the exact match available if the operator presses
+          // Enter. (The scanner hook's path handles instant adds.)
+          setSearchResults([{
+            id: res.variant.product_id,
+            name_fr: res.variant.product_name,
+            selling_price_dzd: res.variant.unit_price_dzd,
+            main_image_url: res.variant.main_image_url,
+            variants: [res.variant],
+          }]);
+        } else {
+          setSearchResults([]);
+        }
+      } catch {
+        // Silent on live search — the explicit submit will surface errors.
+      }
+    }, 250);
+    return () => clearTimeout(handle);
+  }, [scanCode]);
 
   // ------------------------------------------------------------ cart math
   const updateQty = (variantId: number, delta: number) => {
@@ -564,8 +614,66 @@ export const PosPage: React.FC<{ onInventoryUpdated?: () => void }> = ({ onInven
         window.print();
       }
     } else {
-      window.print();
+      // No thermal printer — go straight to the universal system-printer path
+      // so the operator gets a proper preview + any Windows printer to pick.
+      printReceiptViaSystem();
     }
+  };
+
+  // Universal path: render the receipt as a sized HTML page and open the
+  // browser/Tauri PDF-preview dialog. The operator can pick ANY installed
+  // Windows printer (laser, inkjet, PDF, fax), zoom, change paper size, or
+  // Save as PDF. Always available — not just a fallback.
+  const printReceiptViaSystem = () => {
+    if (!receipt) return;
+    const b = receipt.boutique_info || {};
+    const width = loadHardwareSettings().line_width ?? 32;
+    const paperWidthMm = width >= 42 ? 80 : 58;
+    const blocks: ReceiptBlock[] = [];
+    blocks.push({ text: (b.name || "Mus Luxury"), align: "center", bold: true, size: "lg" });
+    if (b.legal_name && b.legal_name !== b.name) blocks.push({ text: b.legal_name, align: "center", size: "sm" });
+    if (b.address) blocks.push({ text: b.address, align: "center", size: "sm" });
+    if (b.phone)   blocks.push({ text: `Tél: ${b.phone}`, align: "center", size: "sm" });
+    for (const [label, v] of [["NIF", b.nif], ["NIS", b.nis], ["RC", b.rc], ["Art.", b.article]] as const) {
+      if (v) blocks.push({ text: `${label}: ${v}`, align: "center", size: "sm" });
+    }
+    blocks.push({ rule: true });
+    blocks.push({ left: "Ticket", right: receipt.sale_reference || "—", bold: true });
+    blocks.push({ left: "Date", right: receipt.created_at ? new Date(receipt.created_at).toLocaleString("fr-DZ") : "—" });
+    if (receipt.customer?.full_name) blocks.push({ left: "Client", right: receipt.customer.full_name });
+    if (receipt.offline) blocks.push({ text: "** HORS LIGNE — à synchroniser **", align: "center", bold: true });
+    if (receipt.sale_type === "refund") blocks.push({ text: "** REMBOURSEMENT **", align: "center", bold: true });
+    blocks.push({ rule: true });
+    for (const it of receipt.items ?? []) {
+      const name = `${it.product_name ?? ""}${it.variant_title ? " · " + it.variant_title : ""}`.trim();
+      const qty = Number(it.quantity ?? 0);
+      const lineTotal = Number(it.line_total_dzd ?? (Number(it.unit_price_dzd ?? 0) * qty));
+      blocks.push({ left: name, right: fmt(lineTotal) });
+      if (qty > 1 || it.unit_price_dzd) blocks.push({ left: `  ${qty} × ${fmt(it.unit_price_dzd)}`, size: "sm" });
+    }
+    blocks.push({ rule: true });
+    if (receipt.subtotal_dzd != null) blocks.push({ left: "Sous-total", right: fmt(receipt.subtotal_dzd) });
+    if ((receipt.discount_dzd ?? 0) > 0) blocks.push({ left: "Remise", right: `- ${fmt(receipt.discount_dzd)}` });
+    if ((receipt.tax_dzd ?? 0) > 0) blocks.push({ left: "TVA", right: fmt(receipt.tax_dzd) });
+    blocks.push({ left: "TOTAL", right: fmt(receipt.total_dzd), bold: true, size: "xl" });
+    if ((receipt.payments ?? []).length) {
+      blocks.push({ rule: true });
+      for (const p of receipt.payments) {
+        const label = p.method === "cash" ? "Espèces" : p.method === "card" ? "Carte" : p.method === "transfer" ? "Virement" : (p.method ?? "");
+        blocks.push({ left: label, right: fmt(p.amount_dzd) });
+        if ((p.change_dzd ?? 0) > 0) blocks.push({ left: "Monnaie", right: fmt(p.change_dzd) });
+      }
+    }
+    blocks.push({ rule: true });
+    blocks.push({ text: b.footer_line || `Merci de votre visite — ${b.name || "Mus Luxury"}`, align: "center", size: "sm" });
+
+    const r = openSystemPrint({
+      title: `Reçu ${receipt.sale_reference || ""}`.trim(),
+      paper: { kind: "mm", width: paperWidthMm, height: 297 },  // 58/80mm × receipt-length A4 (printer trims unused area)
+      marginMm: 2,
+      html: renderReceiptHtml(blocks),
+    });
+    if (!r.ok) flashError(r.error);
   };
 
   // Barcode scanner HID hook — scans anywhere on the POS screen route to the
@@ -770,16 +878,28 @@ export const PosPage: React.FC<{ onInventoryUpdated?: () => void }> = ({ onInven
                         <div className="font-bold text-[#063D2E] mb-2">{p.name_fr}</div>
                         <div className="flex flex-wrap gap-2">
                           {(p.variants || []).map((v: any) => (
-                            <button
-                              key={v.variant_id}
-                              type="button"
-                              disabled={v.stock_qty < 1}
-                              onClick={() => addVariantToCart({ ...v, product_name: p.name_fr })}
-                              className="min-h-12 px-3 py-2 rounded-xl border-2 border-[#063D2E]/15 font-bold text-left disabled:opacity-40 active:scale-95 hover:border-[#063D2E]"
-                            >
-                              <div>{v.variant_title}</div>
-                              <div className="text-[#7a5c16] font-mono">{fmt(v.unit_price_dzd)} · {v.stock_qty} dispo</div>
-                            </button>
+                            <div key={v.variant_id} className="flex items-stretch rounded-xl border-2 border-[#063D2E]/15 overflow-hidden hover:border-[#063D2E]">
+                              <button
+                                type="button"
+                                disabled={v.stock_qty < 1}
+                                onClick={() => addVariantToCart({ ...v, product_name: p.name_fr })}
+                                className="min-h-12 px-3 py-2 font-bold text-left disabled:opacity-40 active:scale-95"
+                              >
+                                <div>{v.variant_title}</div>
+                                <div className="text-[#7a5c16] font-mono">
+                                  {fmt(v.unit_price_dzd)} · {v.stock_qty} dispo
+                                  {!v.barcode && <span className="ml-1 text-amber-700 text-xs"> · sans code-barres</span>}
+                                </div>
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => setLabelVariantId(v.variant_id)}
+                                title={v.barcode ? "Imprimer l'étiquette" : "Générer un code-barres et imprimer"}
+                                className="px-3 border-l-2 border-[#063D2E]/15 bg-white text-[#063D2E] hover:bg-[#063D2E]/5 active:scale-95 flex items-center"
+                              >
+                                <TagIcon className="w-4 h-4" />
+                              </button>
+                            </div>
                           ))}
                         </div>
                       </div>
@@ -1176,7 +1296,7 @@ export const PosPage: React.FC<{ onInventoryUpdated?: () => void }> = ({ onInven
       )}
 
       {/* ================= RECEIPT ================= */}
-      {receipt && <ReceiptModal sale={receipt} onClose={() => setReceipt(null)} onPrint={printReceipt} />}
+      {receipt && <ReceiptModal sale={receipt} onClose={() => setReceipt(null)} onPrint={printReceipt} onSystemPrint={printReceiptViaSystem} />}
 
       {/* ================= INVOICE A4 ================= */}
       {invoiceSaleId !== null && <InvoiceModal saleId={invoiceSaleId} onClose={() => setInvoiceSaleId(null)} />}
@@ -1187,6 +1307,15 @@ export const PosPage: React.FC<{ onInventoryUpdated?: () => void }> = ({ onInven
         onClose={() => setShowPrinterSettings(false)}
         onFlash={(kind, msg) => (kind === "ok" ? flashSuccess(msg) : flashError(msg))}
       />
+
+      {/* ================= BARCODE / LABEL (inline from search results) ======= */}
+      {labelVariantId !== null && (
+        <BarcodeLabelModal
+          variantId={labelVariantId}
+          onClose={() => setLabelVariantId(null)}
+          onChanged={() => onInventoryUpdated?.()}
+        />
+      )}
     </div>
   );
 };
@@ -1217,7 +1346,7 @@ const Sheet: React.FC<{ title: string; onClose: () => void; children: React.Reac
   </div>
 );
 
-const ReceiptModal: React.FC<{ sale: any; onClose: () => void; onPrint: () => void }> = ({ sale, onClose, onPrint }) => {
+const ReceiptModal: React.FC<{ sale: any; onClose: () => void; onPrint: () => void; onSystemPrint?: () => void }> = ({ sale, onClose, onPrint, onSystemPrint }) => {
   const b = sale.boutique_info || {};
   return (
     <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4" onClick={onClose}>
@@ -1289,13 +1418,25 @@ const ReceiptModal: React.FC<{ sale: any; onClose: () => void; onPrint: () => vo
           )}
           <div className="text-center mt-4 text-xs">{b.footer_line || `Merci de votre visite — ${b.name || "Mus Luxury"}`}</div>
         </div>
-        <div className="p-4 border-t flex gap-2 print:hidden">
-          <button type="button" onClick={onPrint} className="flex-1 h-14 rounded-2xl bg-[#063D2E] text-[#D4AF62] font-bold flex items-center justify-center gap-2 active:scale-95">
-            <Printer className="w-5 h-5" /> Imprimer
-          </button>
-          <button type="button" onClick={onClose} className="flex-1 h-14 rounded-2xl bg-gray-100 font-bold active:scale-95">
-            Fermer
-          </button>
+        <div className="p-4 border-t space-y-2 print:hidden">
+          <div className="flex gap-2">
+            <button type="button" onClick={onPrint} className="flex-1 h-14 rounded-2xl bg-[#063D2E] text-[#D4AF62] font-bold flex items-center justify-center gap-2 active:scale-95">
+              <Printer className="w-5 h-5" /> Imprimer
+            </button>
+            <button type="button" onClick={onClose} className="flex-1 h-14 rounded-2xl bg-gray-100 font-bold active:scale-95">
+              Fermer
+            </button>
+          </div>
+          {onSystemPrint && (
+            <button
+              type="button"
+              onClick={onSystemPrint}
+              className="w-full h-11 rounded-2xl border-2 border-gray-200 text-gray-700 font-bold text-sm flex items-center justify-center gap-2 active:scale-95"
+              title="Ouvrir l'aperçu système (toute imprimante Windows, ajuster la taille)"
+            >
+              <Printer className="w-4 h-4" /> Aperçu système (toute imprimante)
+            </button>
+          )}
         </div>
       </div>
     </div>

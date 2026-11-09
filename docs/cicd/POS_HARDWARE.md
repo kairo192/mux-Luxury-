@@ -138,6 +138,43 @@ each copy is sent as its own slip with a cut between copies.
 | Xprinter XP-470B / XP-365B                | ESC/POS   | fallback — select "ESC/POS texte" |
 | Thermal receipt printer re-purposed as label | ESC/POS   | fallback — select "ESC/POS texte" |
 
+## Universal "system printer" path (any Windows printer)
+
+Not every boutique buys a thermal receipt printer or a Zebra label printer.
+Every modal that offers "Imprimer" also offers **Aperçu système (toute imprimante)**:
+it opens an isolated print preview sized to the current paper setting
+(58/80 mm for receipts, configured W×H mm for labels) and invokes
+`window.print()`. The Tauri WebView's standard PDF preview appears — the
+operator picks ANY installed Windows printer (laser, inkjet, A4-sheet-of-
+labels, Microsoft Print to PDF), can zoom, change paper size, or **Save as
+PDF**.
+
+- The system-printer path is always available; the thermal/ZPL path is only
+  there when one of the printers is configured in **Matériel**.
+- When nothing is configured, "Imprimer" goes straight to the system path
+  (no error, no "configure first" roadblock).
+- Receipt content and boutique header come from fiscal settings, so a shop
+  with no NIF/NIS/RC yet still prints a clean slip.
+
+## POS search-as-you-type (luxury items without barcodes)
+
+Mus Luxury sells high-end bags and pieces that rarely carry a barcode from
+the supplier. The POS lookup box supports both modes at the same time:
+
+- **Scan** — a USB-HID scanner's fast keystroke burst is detected by
+  `useBarcodeScanner`, routed to `/pos/lookup`, and auto-added to the cart
+  on exact match.
+- **Live search** — human typing (debounced ~250 ms, minimum 2 chars) fires
+  the same `/pos/lookup`; results grow in the grid below as you type. No
+  Enter needed.
+- **Enter / Chercher** — the explicit submit still works and clears the box
+  on an exact match.
+
+Every row in the results grid has a small **tag** icon → opens the
+Barcode & Label modal for that variant: generate / scan / paste a barcode,
+then print N sticky labels on the label printer. This closes the "add
+stock → assign barcode later → print later" loop in one place.
+
 ## Known gaps / roadmap
 
 - **Arabic text** does not print on most thermal printers — ESC/POS only
