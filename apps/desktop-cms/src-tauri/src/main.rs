@@ -1,4 +1,4 @@
-// #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
+#![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
 // ============================================================================
 // MUS LUXURY (LUXE) — TAURI 2 WINDOWS DESKTOP CMS NATIVE SECURITY CORE
@@ -18,7 +18,7 @@ use std::collections::HashMap;
 use std::sync::Mutex;
 use tauri::State;
 
-const KEYCHAIN_SERVICE: &str = "dz.musluxury.cms.wincred";
+const KEYCHAIN_SERVICE: &str = "com.musluxury.cms.wincred";
 
 struct SecureMemoryVault(Mutex<HashMap<String, String>>);
 

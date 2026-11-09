@@ -4,6 +4,21 @@ import App from "./App";
 import { I18nProvider } from "./i18n";
 import "./index.css";
 
+// Native Desktop Software Behavior: disable web right-click menu (Inspect Element) & browser dev shortcuts
+if (typeof window !== "undefined") {
+  window.addEventListener("contextmenu", (e) => e.preventDefault());
+  window.addEventListener("keydown", (e) => {
+    if (
+      e.key === "F12" ||
+      e.key === "F5" ||
+      (e.ctrlKey && e.shiftKey && ["I", "i", "C", "c", "J", "j"].includes(e.key)) ||
+      (e.ctrlKey && ["r", "R", "u", "U", "p", "P"].includes(e.key))
+    ) {
+      e.preventDefault();
+    }
+  });
+}
+
 interface ErrorBoundaryProps {
   children: ReactNode;
 }
