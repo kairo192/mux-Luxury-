@@ -14,16 +14,22 @@ import { recordNetworkSample } from "../utils/networkQueue";
 
 let accessToken: string | null = null;
 function resolveDefaultApiBaseUrl(): string {
+  if (typeof localStorage !== "undefined") {
+    try {
+      const saved = localStorage.getItem("luxe_api_base_url");
+      if (saved && saved.trim()) return saved.trim().replace(/\/+$/, "");
+    } catch { /* ignore */ }
+  }
   if (typeof import.meta !== "undefined" && (import.meta as any).env?.VITE_CMS_API_URL) {
     return String((import.meta as any).env.VITE_CMS_API_URL).replace(/\/+$/, "");
   }
   if (typeof window !== "undefined" && window.location) {
     const h = window.location.hostname;
-    if (h === "localhost" || h === "127.0.0.1") {
+    if (h === "localhost" || h === "127.0.0.1" || h === "tauri.localhost") {
       return "http://127.0.0.1:8000/api/v1";
     }
   }
-  return "https://api.musluxury.dz/api/v1";
+  return "https://api.mus-luxury.com/api/v1";
 }
 
 let apiBaseUrl: string = resolveDefaultApiBaseUrl();
@@ -31,6 +37,11 @@ let defaultTimeoutMs = 15000;
 
 export function configureApiBaseUrl(url: string) {
   apiBaseUrl = url.replace(/\/+$/, "");
+  if (typeof localStorage !== "undefined") {
+    try {
+      localStorage.setItem("luxe_api_base_url", apiBaseUrl);
+    } catch { /* ignore */ }
+  }
 }
 
 export function getApiBaseUrl(): string {

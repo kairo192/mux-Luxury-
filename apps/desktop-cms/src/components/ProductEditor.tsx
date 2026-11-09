@@ -1176,7 +1176,7 @@ export function ProductEditor({ open, product, categories, brands, onClose, onSa
                 <div className="p-3 rounded-xl bg-[#F8F6F0] border border-gray-200">
                   <p className="text-[10px] uppercase tracking-wide text-gray-500 font-bold mb-1">Aperçu Google</p>
                   <p className="text-[#1a0dab] font-semibold truncate">{draft.seo_title || draft.name_fr || "Titre du produit"}</p>
-                  <p className="text-emerald-700 text-[11px] font-mono truncate">musluxury.dz/produit/{draft.slug || "slug-produit"}</p>
+                  <p className="text-emerald-700 text-[11px] font-mono truncate">mus-luxury.com/produit/{draft.slug || "slug-produit"}</p>
                   <p className="text-gray-600 line-clamp-2">
                     {draft.seo_description || draft.description_fr || "Ajoutez une meta description pour améliorer le référencement."}
                   </p>

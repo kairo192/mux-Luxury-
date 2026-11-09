@@ -274,7 +274,7 @@ export const UsersRolesPage: React.FC = () => {
                   disabled={form.id !== null}
                   onChange={(e) => setForm({ ...form, email: e.target.value })}
                   className="w-full h-12 px-3 rounded-2xl border-2 border-gray-200 font-mono disabled:opacity-60"
-                  placeholder="caissier@musluxury.dz"
+                  placeholder="caissier@mus-luxury.com"
                 />
               </Field>
               <div className="grid grid-cols-2 gap-3">

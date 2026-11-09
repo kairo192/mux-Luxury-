@@ -64,7 +64,7 @@ import {
   Users,
 } from "lucide-react";
 import { RevenueTrendChart, OrderStatusDistributionChart, InventoryHealthWidget } from "./components/CmsCharts";
-import { DesktopCmsApi, restoreSessionFromOsKeychain } from "./api/adminClient";
+import { DesktopCmsApi, restoreSessionFromOsKeychain, getApiBaseUrl, configureApiBaseUrl } from "./api/adminClient";
 import { CategoryBuilderPage } from "./pages/CategoryBuilderPage";
 import { DeliveryWilayasPage } from "./pages/DeliveryWilayasPage";
 import { DeliveryNoteModal } from "./components/DeliveryNoteModal";
@@ -179,6 +179,8 @@ export default function App() {
   //   python3 backend/scripts/emergency_reset_owner.py --email X --new-password Y
   const [loginEmail, setLoginEmail] = useState("");
   const [loginPassword, setLoginPassword] = useState("");
+  const [serverUrl, setServerUrl] = useState(() => getApiBaseUrl());
+  const [showServerConfig, setShowServerConfig] = useState(false);
 
   // Workspace Data States
   const [dashboard, setDashboard] = useState<any | null>(null);
@@ -1197,7 +1199,7 @@ export default function App() {
             {error && <div className="p-3 rounded bg-red-900/90 text-xs text-red-100">{error}</div>}
             <div>
               <label className="block text-xs font-bold mb-1">Email / Identifiant</label>
-              <input type="email" value={loginEmail} onChange={(e) => setLoginEmail(e.target.value)} required placeholder="administrateur@domaine.dz" className="w-full px-3 py-2 rounded bg-[#02291F] border border-[#D4AF62]/40 text-sm" />
+              <input type="email" value={loginEmail} onChange={(e) => setLoginEmail(e.target.value)} required placeholder="administrateur@mus-luxury.com" className="w-full px-3 py-2 rounded bg-[#02291F] border border-[#D4AF62]/40 text-sm" />
             </div>
             <div>
               <label className="block text-xs font-bold mb-1">Mot de passe</label>
@@ -1207,6 +1209,56 @@ export default function App() {
               Se connecter au CMS Desktop
             </button>
           </form>
+
+          {/* Serveur Endpoint Selector */}
+          <div className="pt-3 border-t border-[#D4AF62]/20">
+            <button
+              type="button"
+              onClick={() => setShowServerConfig(!showServerConfig)}
+              className="text-[11px] text-[#E8D4A5]/70 hover:text-[#D4AF62] transition flex items-center justify-between w-full"
+            >
+              <span>Serveur API : <code className="text-[#D4AF62]">{serverUrl}</code></span>
+              <span>{showServerConfig ? "▲ Masquer" : "⚙ Modifier"}</span>
+            </button>
+            {showServerConfig && (
+              <div className="mt-2.5 p-3 rounded-xl bg-[#02291F] border border-[#D4AF62]/30 space-y-2 text-xs">
+                <div className="flex gap-2">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const u = "http://127.0.0.1:8000/api/v1";
+                      configureApiBaseUrl(u);
+                      setServerUrl(u);
+                    }}
+                    className={`px-2.5 py-1 rounded text-[11px] font-bold transition ${serverUrl.includes("127.0.0.1") || serverUrl.includes("localhost") ? "bg-[#D4AF62] text-[#02291F]" : "bg-white/10 text-white hover:bg-white/20"}`}
+                  >
+                    Serveur Local (127.0.0.1:8000)
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const u = "https://api.mus-luxury.com/api/v1";
+                      configureApiBaseUrl(u);
+                      setServerUrl(u);
+                    }}
+                    className={`px-2.5 py-1 rounded text-[11px] font-bold transition ${serverUrl.includes("mus-luxury.com") ? "bg-[#D4AF62] text-[#02291F]" : "bg-white/10 text-white hover:bg-white/20"}`}
+                  >
+                    VPS Cloud (mus-luxury.com)
+                  </button>
+                </div>
+                <input
+                  type="text"
+                  value={serverUrl}
+                  onChange={(e) => {
+                    setServerUrl(e.target.value);
+                    configureApiBaseUrl(e.target.value);
+                  }}
+                  className="w-full px-2.5 py-1.5 rounded bg-[#063D2E] border border-[#D4AF62]/40 text-xs font-mono text-white"
+                  placeholder="https://api.mus-luxury.com/api/v1"
+                />
+              </div>
+            )}
+          </div>
 
           <p className="pt-4 text-[11px] text-white/50 text-center">
             Mot de passe oublié ? La réinitialisation est une opération serveur
