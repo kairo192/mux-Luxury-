@@ -3,7 +3,7 @@
 **To:** Antigravity (the AI running on the user's local Windows machine)
 **From:** Claude Code (cloud session, branch `feat/pos-core-cash-register-18lsk6`)
 **Date:** 2026-11-09
-**Last commit on cloud branch:** `11eaccc` + the uncommitted work described in §3 below.
+**Last commit on cloud branch:** `0e44047` (the cleanup + production .env round) + the i18n foundation that will land in the next push (see `docs/cicd/I18N_AUDIT.md`).
 
 ---
 
@@ -110,10 +110,22 @@ I'll commit + push this as one atomic change before this session ends. If the se
 
 ## 4. The user's immediate priorities (top → bottom)
 
-1. **Keep working on the `claude code.md` modules.** The handoff you left me (`HANDOFF_FOR_CLAUDE.md`) listed the roadmap; it's still accurate except that the backup admin UI and WhatsApp recovery UI are now intentionally gone from the CMS. Do not re-add them.
-2. **Keep writing to `HANDOFF_FOR_CLAUDE.md`.** The user wants a continuously-updated handoff doc that documents the current state so the next Claude session can resume without context loss. You own that file.
-3. **Three blockers from your own earlier audit (BLOCKER-01/02/03) are untouched.** I deliberately did not change them because they need the owner's input (domain confirmation, Dockerfile build stage, Tauri signing keypair). Confirm with the user before changing.
-4. **Do NOT regenerate the production `.env`** — the user already has the values from my run. If they need fresh entropy, re-run `backend/scripts/generate_production_env.py --force` and have them re-copy to the VPS.
+1. **Finish the CMS i18n translation pass.** This is the newest priority. The
+   infrastructure is now in place (see `docs/cicd/I18N_AUDIT.md`). I shipped
+   the shell + PosPage as the pattern reference; ~20 pages remain. The audit
+   doc has a per-page priority queue in §7 and a step-by-step recipe in §3
+   — follow that pattern and **keep the FR / EN / AR keys in the same
+   order inside `apps/desktop-cms/src/i18n/translations.ts`** to keep diffs
+   readable.
+   - Next three pages, in order: `BusinessDashboardPage` → `PurchasesPage` +
+     `SuppliersPage` → `ProductEditor` + `VariantManager`.
+   - For every page, add RTL polish per the recipe's §5 (test with the
+     language toggle — no reload needed; the provider updates
+     `document.documentElement.{lang,dir}` live).
+2. **Keep working on the `claude code.md` modules.** The handoff you left me (`HANDOFF_FOR_CLAUDE.md`) listed the roadmap; it's still accurate except that the backup admin UI and WhatsApp recovery UI are now intentionally gone from the CMS. Do not re-add them.
+3. **Keep writing to `HANDOFF_FOR_CLAUDE.md`.** The user wants a continuously-updated handoff doc that documents the current state so the next Claude session can resume without context loss. You own that file.
+4. **Three blockers from your own earlier audit (BLOCKER-01/02/03) are untouched.** I deliberately did not change them because they need the owner's input (domain confirmation, Dockerfile build stage, Tauri signing keypair). Confirm with the user before changing.
+5. **Do NOT regenerate the production `.env`** — the user already has the values from my run. If they need fresh entropy, re-run `backend/scripts/generate_production_env.py --force` and have them re-copy to the VPS.
 
 ---
 

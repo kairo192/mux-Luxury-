@@ -1,4 +1,5 @@
 import { readDraft, writeDraft, clearDraft } from "./utils/draftStorage";
+import { useT, LanguageToggle } from "./i18n";
 import {
   ClientNotificationItem,
   notifyClientError,
@@ -118,6 +119,7 @@ type CmsTab =
   | "backups";
 
 export default function App() {
+  const t = useT();
   const [checkingSetup, setCheckingSetup] = useState(true);
   const [requiresOwnerSetup, setRequiresOwnerSetup] = useState(false);
   const [user, setUser] = useState<any | null>(() => readDraft("luxe_cms_user", null));
@@ -1254,17 +1256,19 @@ export default function App() {
               )}
               <span className={`relative inline-flex rounded-full h-2 w-2 ${netTelemetry.online ? "bg-emerald-500" : "bg-red-500"}`}></span>
             </span>
-            <span>{netTelemetry.online ? "Système Connecté • En Ligne" : "Hors-Ligne • Reconnexion..."}</span>
+            <span>{netTelemetry.online ? t("status.online") : t("status.offline")}</span>
           </div>
+
+          <LanguageToggle />
 
           <button
             type="button"
             onClick={handleDeltaSync}
             className="flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl bg-white/10 hover:bg-white/20 text-[#E8D4A5] border border-[#D4AF62]/40 font-bold transition shadow-sm active:scale-95"
-            title="Synchroniser les données avec le serveur central"
+            title={t("common.refresh")}
           >
             <span>↻</span>
-            <span>Actualiser</span>
+            <span>{t("common.refresh")}</span>
           </button>
 
           <button
@@ -1275,7 +1279,7 @@ export default function App() {
             }}
             className="px-3.5 py-1.5 rounded-xl bg-red-900/80 hover:bg-red-800 text-white font-bold transition shadow-sm active:scale-95"
           >
-            Déconnexion
+            {t("topbar.logout")}
           </button>
         </div>
       </header>
@@ -1283,20 +1287,20 @@ export default function App() {
       {/* Navigation Tabs */}
       <nav className="bg-[#063D2E] text-[#E8D4A5] px-6 py-2.5 flex flex-wrap gap-1.5 text-xs font-bold border-b border-[#D4AF62]/30 shadow-inner">
         {[
-          { id: "dashboard", label: "1. Tableau de Bord", icon: LayoutDashboard },
-          { id: "business", label: "★ Synthèse Magasin", icon: TrendingUp },
-          { id: "pos", label: "★ Caisse POS", icon: ScanLine },
-          { id: "products", label: "2. Produits & Prix", icon: ShoppingBag },
-          { id: "categories", label: "3. Catégories & Attributs", icon: Tags },
-          { id: "purchases", label: "4. Achats & Fournisseurs", icon: PackageCheck },
-          { id: "inventory", label: "5. Stocks & Mouvements", icon: Boxes },
-          { id: "orders", label: "6. Commandes & Ventes", icon: FileText },
-          { id: "expenses", label: "7. Dépenses & Charges", icon: Receipt },
-          { id: "treasury", label: "8. Caisse & Trésorerie", icon: Landmark },
-          { id: "accounting", label: "9. Comptabilité & Marges", icon: TrendingUp },
-          { id: "delivery_wilayas", label: "10. Livraison 69 Wilayas", icon: Truck },
-          { id: "content", label: "11. Boutique & Vitrine", icon: Palette },
-          { id: "devices", label: "12. Appareils & Matériel", icon: HardDrive },
+          { id: "dashboard", label: t("sidebar.dashboard"), icon: LayoutDashboard },
+          { id: "business", label: "★ " + t("sidebar.dashboard"), icon: TrendingUp },
+          { id: "pos", label: "★ " + t("sidebar.pos"), icon: ScanLine },
+          { id: "products", label: t("sidebar.products"), icon: ShoppingBag },
+          { id: "categories", label: t("sidebar.categories"), icon: Tags },
+          { id: "purchases", label: t("sidebar.purchases"), icon: PackageCheck },
+          { id: "inventory", label: t("sidebar.inventory"), icon: Boxes },
+          { id: "orders", label: t("sidebar.orders"), icon: FileText },
+          { id: "expenses", label: t("sidebar.expenses"), icon: Receipt },
+          { id: "treasury", label: t("sidebar.treasury"), icon: Landmark },
+          { id: "accounting", label: t("sidebar.accounting"), icon: TrendingUp },
+          { id: "delivery_wilayas", label: t("sidebar.reports"), icon: Truck },
+          { id: "content", label: t("sidebar.settings"), icon: Palette },
+          { id: "devices", label: t("sidebar.devices"), icon: HardDrive },
           { id: "customers", label: "13. Clients", icon: Users },
           { id: "users", label: "14. Utilisateurs & Rôles", icon: Users },
           { id: "inventory_count", label: "15. Inventaire physique", icon: Boxes },
