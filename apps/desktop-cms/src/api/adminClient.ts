@@ -14,9 +14,9 @@ import { recordNetworkSample } from "../utils/networkQueue";
 
 let accessToken: string | null = null;
 function resolveDefaultApiBaseUrl(): string {
-  if (typeof localStorage !== "undefined") {
+  if (typeof sessionStorage !== "undefined") {
     try {
-      const saved = localStorage.getItem("luxe_api_base_url");
+      const saved = sessionStorage.getItem("luxe_api_base_url");
       if (saved && saved.trim()) return saved.trim().replace(/\/+$/, "");
     } catch { /* ignore */ }
   }
@@ -37,9 +37,9 @@ let defaultTimeoutMs = 15000;
 
 export function configureApiBaseUrl(url: string) {
   apiBaseUrl = url.replace(/\/+$/, "");
-  if (typeof localStorage !== "undefined") {
+  if (typeof sessionStorage !== "undefined") {
     try {
-      localStorage.setItem("luxe_api_base_url", apiBaseUrl);
+      sessionStorage.setItem("luxe_api_base_url", apiBaseUrl);
     } catch { /* ignore */ }
   }
 }

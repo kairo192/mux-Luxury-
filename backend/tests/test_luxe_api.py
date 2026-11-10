@@ -1497,7 +1497,7 @@ console.log("ALL_TSX_COMPILED_OK");
         self.assertIn("fn keychain_set_secret", main_rs)
         self.assertIn("fn keychain_get_secret", main_rs)
         self.assertIn("fn keychain_delete_secret", main_rs)
-        self.assertIn("dz.musluxury.cms.wincred", main_rs)
+        self.assertIn("com.musluxury.cms.wincred", main_rs)
 
         # Verify frontend uses osKeychain IPC and NEVER writes access token to localStorage
         self.assertIn("keychainSetSecret", os_kc_ts)
