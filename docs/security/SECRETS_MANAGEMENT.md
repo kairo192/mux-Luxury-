@@ -37,9 +37,7 @@ Mus Luxury strictly isolates secrets across four decoupled boundaries:
 | `POSTGRES_USER` | Database | Yes | PostgreSQL | `"luxe_app_user"` |
 | `POSTGRES_PASSWORD` | Database | Yes | PostgreSQL | `openssl rand -base64 32` |
 | `DATABASE_URL` | Database | Yes | API / Alembic | `postgresql://luxe_app_user:<PASS>@db:5432/luxe_ecommerce` |
-| `WHATSAPP_CLOUD_API_TOKEN` | Third-Party | Optional | Concierge / Alerts | Meta Developer Portal |
-| `WHATSAPP_PHONE_NUMBER_ID` | Third-Party | Optional | Meta WhatsApp | Meta Developer Portal |
-| `STORE_WHATSAPP_CONTACT_NUMBER`| Business | Yes | Customer Support | Store phone: `+213655534154` |
+| `STORE_WHATSAPP_CONTACT_NUMBER`| Business | Yes | Customer Support / Concierge | Store phone: `+213655534154` |
 | `YALIDINE_API_TOKEN` | Logistics | Optional | Courier Integration| Yalidine App Dashboard |
 | `ZR_EXPRESS_TOKEN` | Logistics | Optional | Courier Integration| Procolis ZR Express Portal |
 | `CHARGILY_SECRET_KEY` | Payment | Optional | CIB / Edahabia | Chargily Pay V2 Dashboard |
