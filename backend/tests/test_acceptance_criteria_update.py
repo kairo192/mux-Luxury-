@@ -47,7 +47,7 @@ class TestUpdateMdAcceptanceCriteria(unittest.TestCase):
         cls.client = TestClient(app)
         login = cls.client.post(
             "/api/v1/admin/auth/login",
-            json={"email": "admin@musluxury.dz", "password": "MusLuxury2026!"},
+            json={"email": "admin@mus-luxury.com", "password": "MusLuxury2026!"},
         )
         assert login.status_code == 200, login.text
         cls.admin_headers = {"Authorization": f"Bearer {login.json()['access_token']}"}
@@ -564,7 +564,7 @@ class TestUpdateMdAcceptanceCriteria(unittest.TestCase):
             json={
                 "name": f"Maison El Djazaïr {self.suffix}",
                 "slug": brand_slug,
-                "logo_url": "https://musluxury.dz/assets/brand_logo.png",
+                "logo_url": "https://mus-luxury.com/assets/brand_logo.png",
             },
         )
         self.assertEqual(brand_resp.status_code, 201)

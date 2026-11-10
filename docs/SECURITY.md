@@ -22,7 +22,7 @@
 ## 2. Operational Incident Response Runbook
 - **Scenario A — Suspected Administrator Credential or Token Compromise**:
   1. Run the offline CLI emergency reset on the VPS:
-     `docker compose exec api python3 scripts/emergency_reset_owner.py --email admin@musluxury.dz --phone 0655534154`
+     `docker compose exec api python3 scripts/emergency_reset_owner.py --email admin@mus-luxury.com --phone 0655534154`
   2. Rotate `SECRET_KEY` in `.env` and restart `api` (`docker compose up -d api`) to invalidate all active tokens globally.
   3. Inspect `/api/v1/admin/audit-logs` (Tab 8 in Desktop CMS) to review all actions performed during the window.
 - **Scenario B — Database Corruption or Accidental Bulk Modification**:

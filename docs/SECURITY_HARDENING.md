@@ -48,7 +48,7 @@ Internet / Cash Register
 
 ### 2.3 Zero-Admin Production Gate
 When `APP_ENV=production`:
-- The database seeder (`backend/app/seed.py`) strictly refuses to create default administrative accounts (e.g. `admin@musluxury.dz`) or static emergency tokens.
+- The database seeder (`backend/app/seed.py`) strictly refuses to create default administrative accounts (e.g. `admin@mus-luxury.com`) or static emergency tokens.
 - The `admin_users` table remains empty until the store owner executes the first-time setup wizard via the Desktop CMS.
 - The setup wizard permanently locks itself upon owner registration.
 

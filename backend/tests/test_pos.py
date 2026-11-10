@@ -28,14 +28,14 @@ class TestPointOfSale(unittest.TestCase):
         cls.client = TestClient(app)
         login = cls.client.post(
             "/api/v1/admin/auth/login",
-            json={"email": "admin@musluxury.dz", "password": "MusLuxury2026!"},
+            json={"email": "admin@mus-luxury.com", "password": "MusLuxury2026!"},
         )
         assert login.status_code == 200, login.text
         cls.headers = {"Authorization": f"Bearer {login.json()['access_token']}"}
         # product_manager account: has products:write but NOT pos:sell / pos:refund
         editor = cls.client.post(
             "/api/v1/admin/auth/login",
-            json={"email": "editor@musluxury.dz", "password": "EditorLuxury2026!"},
+            json={"email": "editor@mus-luxury.com", "password": "EditorLuxury2026!"},
         )
         assert editor.status_code == 200, editor.text
         cls.editor_headers = {"Authorization": f"Bearer {editor.json()['access_token']}"}

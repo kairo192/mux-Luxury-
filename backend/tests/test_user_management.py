@@ -26,8 +26,8 @@ class TestUserManagement(unittest.TestCase):
     def setUpClass(cls):
         seed_initial_data()
         cls.client = TestClient(app)
-        cls.headers = cls._login("admin@musluxury.dz", "MusLuxury2026!")
-        cls.editor_headers = cls._login("editor@musluxury.dz", "EditorLuxury2026!")
+        cls.headers = cls._login("admin@mus-luxury.com", "MusLuxury2026!")
+        cls.editor_headers = cls._login("editor@mus-luxury.com", "EditorLuxury2026!")
 
     @classmethod
     def _login(cls, email, pw):
@@ -43,7 +43,7 @@ class TestUserManagement(unittest.TestCase):
 
     def _create_user(self, role_name="cashier", **over):
         body = {
-            "email": f"user-{self.suffix}@musluxury.dz",
+            "email": f"user-{self.suffix}@mus-luxury.com",
             "full_name": "Employé Test",
             "phone": "+213550000099",
             "role_id": self.role_by_name[role_name]["id"],
@@ -61,7 +61,7 @@ class TestUserManagement(unittest.TestCase):
     def test_02_create_cashier_can_login_with_pos_perms(self):
         r = self._create_user()
         self.assertEqual(r.status_code, 201, r.text)
-        login = self.client.post("/api/v1/admin/auth/login", json={"email": f"user-{self.suffix}@musluxury.dz", "password": "StaffPass2026!"})
+        login = self.client.post("/api/v1/admin/auth/login", json={"email": f"user-{self.suffix}@mus-luxury.com", "password": "StaffPass2026!"})
         self.assertEqual(login.status_code, 200, login.text)
         perms = login.json()["user"]["permissions"]
         self.assertIn("pos:sell", perms)
@@ -81,23 +81,23 @@ class TestUserManagement(unittest.TestCase):
         upd = self.client.put(f"/api/v1/admin/users/{uid}", headers=self.headers, json={"is_active": False})
         self.assertEqual(upd.status_code, 200, upd.text)
         self.assertFalse(upd.json()["is_active"])
-        login = self.client.post("/api/v1/admin/auth/login", json={"email": f"user-{self.suffix}@musluxury.dz", "password": "StaffPass2026!"})
+        login = self.client.post("/api/v1/admin/auth/login", json={"email": f"user-{self.suffix}@mus-luxury.com", "password": "StaffPass2026!"})
         self.assertEqual(login.status_code, 401, login.text)
 
     def test_06_role_change_takes_effect_after_relogin(self):
         uid = self._create_user(role_name="order_manager").json()["id"]
         # promote to admin
         self.client.put(f"/api/v1/admin/users/{uid}", headers=self.headers, json={"role_id": self.role_by_name["admin"]["id"]})
-        login = self.client.post("/api/v1/admin/auth/login", json={"email": f"user-{self.suffix}@musluxury.dz", "password": "StaffPass2026!"})
+        login = self.client.post("/api/v1/admin/auth/login", json={"email": f"user-{self.suffix}@mus-luxury.com", "password": "StaffPass2026!"})
         self.assertIn("pos:refund", login.json()["user"]["permissions"])  # admin has it, order_manager didn't
 
     def test_07_reset_password(self):
         uid = self._create_user().json()["id"]
         rp = self.client.post(f"/api/v1/admin/users/{uid}/reset-password", headers=self.headers, json={"new_password": "BrandNewPass2026!"})
         self.assertEqual(rp.status_code, 200, rp.text)
-        old = self.client.post("/api/v1/admin/auth/login", json={"email": f"user-{self.suffix}@musluxury.dz", "password": "StaffPass2026!"})
+        old = self.client.post("/api/v1/admin/auth/login", json={"email": f"user-{self.suffix}@mus-luxury.com", "password": "StaffPass2026!"})
         self.assertEqual(old.status_code, 401)
-        new = self.client.post("/api/v1/admin/auth/login", json={"email": f"user-{self.suffix}@musluxury.dz", "password": "BrandNewPass2026!"})
+        new = self.client.post("/api/v1/admin/auth/login", json={"email": f"user-{self.suffix}@mus-luxury.com", "password": "BrandNewPass2026!"})
         self.assertEqual(new.status_code, 200)
 
     def test_08_cannot_remove_last_super_admin(self):
