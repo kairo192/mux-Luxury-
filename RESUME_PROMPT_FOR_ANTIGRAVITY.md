@@ -88,7 +88,7 @@ Latest commit on remote: `f59ac77`
 ## Related artefacts already in the repo
 
 - `backend/scripts/generate_production_env.py` — run with
-  `--domain mus-luxury.dz --admin-email … --admin-whatsapp +213…` to
+  `--domain mus-luxury.com --admin-email … --admin-whatsapp +213…` to
   produce `scratch/production.env` (git-ignored by the `*.env` catch-all).
 - `scratch/README.md` — explains the gitignore policy for the scratch dir.
 - `HANDOFF_FOR_ANTIGRAVITY.md` — the complete living handoff.
