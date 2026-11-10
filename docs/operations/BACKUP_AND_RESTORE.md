@@ -105,3 +105,4 @@ The Desktop CMS utilizes an independent embedded SQLite database at `%APPDATA%\c
 
 - **Crash Recovery:** SQLite WAL (Write-Ahead Logging) is enabled by default. If the Windows POS machine experiences a sudden power loss, uncommitted transactions roll back cleanly upon the next app startup.
 - **Queue Protection:** Queued offline transactions are stored in durable SQLite tables until the central API confirms receipt with an HTTP `200` response.
+

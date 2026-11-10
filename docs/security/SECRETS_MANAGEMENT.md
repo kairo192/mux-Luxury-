@@ -77,3 +77,4 @@ chown luxe:luxe /opt/luxe/shared/.env
 | `POSTGRES_PASSWORD` | 12 Months | Requires updating both `.env` and `ALTER USER luxe_app_user WITH PASSWORD '...';`. |
 | `CMS_HMAC_SIGNING_SECRET` | 6 Months | Coordinated: Update `.env` and deploy new Desktop CMS version. |
 | `TAURI_SIGNING_PRIVATE_KEY` | On Compromise Only | **Critical:** Rotating the updater private key requires a manual reinstall for all running POS terminals. |
+

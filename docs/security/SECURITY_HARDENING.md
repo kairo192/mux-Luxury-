@@ -110,3 +110,4 @@ add_header Content-Security-Policy "default-src 'self'; script-src 'self'; style
 1. **Magic-Byte Image Validation:** All uploaded product images must match true `JPEG` (`FF D8 FF`), `PNG` (`89 50 4E 47`), or `WEBP` headers. Polyglot PHP/HTML scripts masked with image extensions are rejected.
 2. **Path Traversal Shield:** Upload filenames are generated with cryptographically random hex strings (`secrets.token_hex(16)`). Original user-provided filenames are completely discarded.
 3. **CSV Formula Injection:** Data export routines escape formulas starting with `=`, `+`, `-`, or `@` by prepending a single quote (`'`).
+

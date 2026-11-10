@@ -147,3 +147,4 @@ The desktop POS communicates natively with hardware peripherals without browser 
    python3 backend/scripts/emergency_reset_owner.py --email admin@mus-luxury.com --new-password <SecurePass>
    ```
 4. **Anti-Replay Nonce Verification:** Critical administrative commands require cryptographic HMAC-SHA256 signatures with millisecond timestamp skew verification (`SIGNATURE_MAX_SKEW_SECONDS=300`) and unique nonces (`X-Luxe-Nonce`).
+

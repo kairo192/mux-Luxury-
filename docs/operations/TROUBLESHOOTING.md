@@ -99,3 +99,4 @@ Problem Encountered?
 ### Cash Drawer Not Opening:
 1. Ensure the RJ11 cable is securely plugged from the drawer into the receipt printer DK port (not a phone jack).
 2. The cash drawer kick is triggered by the receipt printer via ESC/POS command `ESC p 0 25 250`. Test printing a receipt first.
+

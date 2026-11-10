@@ -70,3 +70,4 @@ docker exec -it luxe_api python3 scripts/emergency_reset_owner.py \
   --new-password "SecureOwnerPassword2026!"
 ```
 This updates the PBKDF2 hash (600,000 iterations), invalidates all active sessions via `iat_ns`, and outputs an audit log entry.
+

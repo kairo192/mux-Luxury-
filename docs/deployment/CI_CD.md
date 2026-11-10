@@ -84,3 +84,4 @@ The following repository secrets must be configured in GitHub Settings (`Setting
 | `PRODUCTION_SECRET_KEY` | Backend token signing key | 64-byte hex (`openssl rand -hex 64`) |
 | `PRODUCTION_POSTGRES_PASSWORD` | PostgreSQL database user password | 32-byte base64 |
 | `TAURI_SIGNING_PRIVATE_KEY` | Windows desktop updater private key | Minisign private key |
+
