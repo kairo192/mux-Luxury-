@@ -383,9 +383,47 @@ export interface ClientConfirmRequest {
 
 type ConfirmListener = (req: ClientConfirmRequest | null) => void;
 const confirmListeners: Set<ConfirmListener> = new Set();
+const confirmQueue: ClientConfirmRequest[] = [];
+let currentConfirm: ClientConfirmRequest | null = null;
+
+function processNextConfirm() {
+  if (currentConfirm || confirmQueue.length === 0) {
+    if (!currentConfirm) {
+      confirmListeners.forEach((fn) => fn(null));
+    }
+    return;
+  }
+  const nextReq = confirmQueue.shift()!;
+  currentConfirm = nextReq;
+  confirmListeners.forEach((fn) => fn(nextReq));
+}
+
+export function clearPendingClientConfirms(): void {
+  if (currentConfirm) {
+    const active = currentConfirm;
+    currentConfirm = null;
+    try {
+      active.resolve(false);
+    } catch { /* ignore */ }
+  }
+  while (confirmQueue.length > 0) {
+    const queued = confirmQueue.shift()!;
+    try {
+      queued.resolve(false);
+    } catch { /* ignore */ }
+  }
+  confirmListeners.forEach((fn) => fn(null));
+}
+
+if (typeof window !== "undefined") {
+  window.addEventListener("beforeunload", () => {
+    clearPendingClientConfirms();
+  });
+}
 
 export function subscribeClientConfirm(fn: ConfirmListener): () => void {
   confirmListeners.add(fn);
+  fn(currentConfirm);
   return () => {
     confirmListeners.delete(fn);
   };
@@ -399,18 +437,30 @@ export function confirmClientAction(opts: {
   danger?: boolean;
 }): Promise<boolean> {
   return new Promise<boolean>((resolve) => {
+    let resolved = false;
+    const reqId = `confirm_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`;
     const req: ClientConfirmRequest = {
-      id: `confirm_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`,
+      id: reqId,
       title: opts.title,
       message: opts.message,
       confirmLabel: opts.confirmLabel,
       cancelLabel: opts.cancelLabel,
       danger: opts.danger,
       resolve: (val: boolean) => {
+        if (resolved) return;
+        resolved = true;
         resolve(val);
-        confirmListeners.forEach((fn) => fn(null));
+        if (currentConfirm?.id === reqId) {
+          currentConfirm = null;
+          processNextConfirm();
+        }
       },
     };
-    confirmListeners.forEach((fn) => fn(req));
+    confirmQueue.push(req);
+    processNextConfirm();
   });
+}
+
+if (typeof window !== "undefined") {
+  (window as any).__confirmClientAction = confirmClientAction;
 }

@@ -8,13 +8,14 @@ import {
   notifyClientWarning,
   subscribeClientNotifications,
   subscribeClientConfirm,
+  clearPendingClientConfirms,
 } from "./utils/clientNotifier";
 import {
   NetworkTelemetryState,
   getNetworkTelemetry,
   subscribeNetworkTelemetry,
 } from "./utils/networkQueue";
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import {
   LayoutDashboard,
   ShoppingBag,
@@ -130,6 +131,21 @@ export default function App() {
   const [toastQueue, setToastQueue] = useState<ClientNotificationItem[]>([]);
   const [activeMessageBox, setActiveMessageBox] = useState<ClientNotificationItem | null>(null);
   const [activeConfirm, setActiveConfirm] = useState<ClientConfirmRequest | null>(null);
+  const confirmCancelButtonRef = useRef<HTMLButtonElement | null>(null);
+
+  useEffect(() => {
+    if (activeConfirm) {
+      confirmCancelButtonRef.current?.focus();
+      const handleKeyDown = (e: KeyboardEvent) => {
+        if (e.key === "Escape") {
+          e.preventDefault();
+          activeConfirm.resolve(false);
+        }
+      };
+      window.addEventListener("keydown", handleKeyDown);
+      return () => window.removeEventListener("keydown", handleKeyDown);
+    }
+  }, [activeConfirm]);
 
   useEffect(() => {
     const unsubNotifs = subscribeClientNotifications((item) => {
@@ -168,6 +184,7 @@ export default function App() {
     return () => {
       unsubNotifs();
       unsubConfirm();
+      clearPendingClientConfirms();
     };
   }, []);
   const [activeTab, setActiveTab] = useState<CmsTab>(() => readDraft("luxe_cms_active_tab", "dashboard"));
@@ -994,6 +1011,7 @@ export default function App() {
             <div
               role="dialog"
               aria-modal="true"
+              aria-labelledby="active-confirm-title"
               className="bg-white text-[#202923] rounded-2xl max-w-md w-full overflow-hidden shadow-2xl border-2 border-[#D4AF62]"
             >
               <div
@@ -1003,27 +1021,29 @@ export default function App() {
               >
                 <div className="flex items-center gap-2">
                   <ShieldAlert className="w-5 h-5 text-[#D4AF62]" />
-                  <span className="text-base font-extrabold text-[#D4AF62]">
+                  <span id="active-confirm-title" className="text-base font-extrabold text-[#D4AF62]">
                     {activeConfirm.title}
                   </span>
                 </div>
                 <button
                   type="button"
                   onClick={() => activeConfirm.resolve(false)}
+                  aria-label={t("common.close") || "Fermer"}
                   className="w-7 h-7 rounded-full bg-black/25 text-white font-bold text-xs flex items-center justify-center hover:bg-black/40 transition"
                 >
                   <X className="w-4 h-4" />
                 </button>
               </div>
               <div className="p-6 space-y-4 text-xs">
-                <p className="text-sm text-gray-700 leading-relaxed bg-[#F8F6F0] p-3.5 rounded-xl border border-[#D4AF62]/30">
+                <p className="text-sm text-gray-700 leading-relaxed whitespace-pre-line bg-[#F8F6F0] p-3.5 rounded-xl border border-[#D4AF62]/30">
                   {activeConfirm.message}
                 </p>
                 <div className="flex justify-end gap-3 pt-2">
                   <button
+                    ref={confirmCancelButtonRef}
                     type="button"
                     onClick={() => activeConfirm.resolve(false)}
-                    className="px-5 py-2.5 rounded-xl border border-gray-300 text-gray-700 font-bold hover:bg-gray-100 transition"
+                    className="px-5 py-2.5 rounded-xl border border-gray-300 text-gray-700 font-bold hover:bg-gray-100 transition focus:outline-none focus:ring-2 focus:ring-[#D4AF62]"
                   >
                     {activeConfirm.cancelLabel || t("common.cancel")}
                   </button>
@@ -1036,7 +1056,7 @@ export default function App() {
                         : "bg-[#063D2E] hover:bg-[#02291F] text-[#D4AF62]"
                     }`}
                   >
-                    {activeConfirm.confirmLabel || "Confirmer"}
+                    {activeConfirm.confirmLabel || t("common.confirm")}
                   </button>
                 </div>
               </div>
