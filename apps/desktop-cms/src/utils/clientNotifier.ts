@@ -165,16 +165,8 @@ export function sanitizeAndTranslateError(
     if (contextPath.includes("/admin/auth/login") || lower.includes("invalid email or password")) {
       return {
         title: "Identifiants incorrects",
-        message: "L'adresse e-mail ou le mot de passe saisi est incorrect. Vérifiez votre saisie ou utilisez la récupération WhatsApp / Code de secours.",
+        message: "L'adresse e-mail ou le mot de passe saisi est incorrect. En cas d'oubli, contactez l'administrateur système sur le serveur.",
         code: "AUTH_INVALID_CREDENTIALS",
-        status: 401,
-      };
-    }
-    if (contextPath.includes("/admin/auth/recovery") || lower.includes("recovery") || lower.includes("otp")) {
-      return {
-        title: "Code de récupération invalide ou expiré",
-        message: "Le code OTP WhatsApp ou le code de secours saisi est incorrect ou a dépassé sa durée de validité.",
-        code: "RECOVERY_CODE_INVALID",
         status: 401,
       };
     }
@@ -377,4 +369,98 @@ export function notifyClientError(
     showModalBox,
   });
   return translated;
+}
+
+export interface ClientConfirmRequest {
+  id: string;
+  title: string;
+  message: string;
+  confirmLabel?: string;
+  cancelLabel?: string;
+  danger?: boolean;
+  resolve: (val: boolean) => void;
+}
+
+type ConfirmListener = (req: ClientConfirmRequest | null) => void;
+const confirmListeners: Set<ConfirmListener> = new Set();
+const confirmQueue: ClientConfirmRequest[] = [];
+let currentConfirm: ClientConfirmRequest | null = null;
+
+function processNextConfirm() {
+  if (currentConfirm || confirmQueue.length === 0) {
+    if (!currentConfirm) {
+      confirmListeners.forEach((fn) => fn(null));
+    }
+    return;
+  }
+  const nextReq = confirmQueue.shift()!;
+  currentConfirm = nextReq;
+  confirmListeners.forEach((fn) => fn(nextReq));
+}
+
+export function clearPendingClientConfirms(): void {
+  if (currentConfirm) {
+    const active = currentConfirm;
+    currentConfirm = null;
+    try {
+      active.resolve(false);
+    } catch { /* ignore */ }
+  }
+  while (confirmQueue.length > 0) {
+    const queued = confirmQueue.shift()!;
+    try {
+      queued.resolve(false);
+    } catch { /* ignore */ }
+  }
+  confirmListeners.forEach((fn) => fn(null));
+}
+
+if (typeof window !== "undefined") {
+  window.addEventListener("beforeunload", () => {
+    clearPendingClientConfirms();
+  });
+}
+
+export function subscribeClientConfirm(fn: ConfirmListener): () => void {
+  confirmListeners.add(fn);
+  fn(currentConfirm);
+  return () => {
+    confirmListeners.delete(fn);
+  };
+}
+
+export function confirmClientAction(opts: {
+  title: string;
+  message: string;
+  confirmLabel?: string;
+  cancelLabel?: string;
+  danger?: boolean;
+}): Promise<boolean> {
+  return new Promise<boolean>((resolve) => {
+    let resolved = false;
+    const reqId = `confirm_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`;
+    const req: ClientConfirmRequest = {
+      id: reqId,
+      title: opts.title,
+      message: opts.message,
+      confirmLabel: opts.confirmLabel,
+      cancelLabel: opts.cancelLabel,
+      danger: opts.danger,
+      resolve: (val: boolean) => {
+        if (resolved) return;
+        resolved = true;
+        resolve(val);
+        if (currentConfirm?.id === reqId) {
+          currentConfirm = null;
+          processNextConfirm();
+        }
+      },
+    };
+    confirmQueue.push(req);
+    processNextConfirm();
+  });
+}
+
+if (typeof window !== "undefined") {
+  (window as any).__confirmClientAction = confirmClientAction;
 }

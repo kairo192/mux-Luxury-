@@ -18,7 +18,7 @@ use std::collections::HashMap;
 use std::sync::Mutex;
 use tauri::State;
 
-const KEYCHAIN_SERVICE: &str = "dz.musluxury.cms.wincred";
+const KEYCHAIN_SERVICE: &str = "com.musluxury.cms.wincred";
 
 struct SecureMemoryVault(Mutex<HashMap<String, String>>);
 
@@ -81,11 +81,39 @@ fn keychain_status() -> serde_json::Value {
 }
 
 fn main() {
-    tauri::Builder::default()
+    std::panic::set_hook(Box::new(|info| {
+        let msg = format!("PANIC: {:?}\nBacktrace: {:?}", info, std::backtrace::Backtrace::capture());
+        eprintln!("{}", msg);
+        let _ = std::fs::write("tauri_crash.log", &msg);
+        if let Ok(mut exe) = std::env::current_exe() {
+            exe.pop();
+            let _ = std::fs::write(exe.join("tauri_crash.log"), &msg);
+        }
+    }));
+
+    let result = tauri::Builder::default()
         .manage(SecureMemoryVault(Mutex::new(HashMap::new())))
         .manage(pos_mirror::MirrorState::new())
         .plugin(tauri_plugin_store::Builder::default().build())
-        .plugin(tauri_plugin_updater::Builder::new().build())
+        .on_window_event(|window, event| match event {
+            tauri::WindowEvent::CloseRequested { .. } => {
+                let msg = format!("Window close requested on window '{}'\n", window.label());
+                eprintln!("{}", msg);
+                if let Ok(mut exe) = std::env::current_exe() {
+                    exe.pop();
+                    let _ = std::fs::write(exe.join("tauri_window_close.log"), &msg);
+                }
+            }
+            tauri::WindowEvent::Destroyed => {
+                let msg = format!("Window destroyed on window '{}'\n", window.label());
+                eprintln!("{}", msg);
+                if let Ok(mut exe) = std::env::current_exe() {
+                    exe.pop();
+                    let _ = std::fs::write(exe.join("tauri_window_destroyed.log"), &msg);
+                }
+            }
+            _ => {}
+        })
         .invoke_handler(tauri::generate_handler![
             keychain_set_secret,
             keychain_get_secret,
@@ -104,7 +132,21 @@ fn main() {
             pos_mirror::mirror_status,
             pos_mirror::mirror_clear,
             pos_mirror::mirror_lookup,
+            pos_mirror::pos_queue_enqueue,
+            pos_mirror::pos_queue_list,
+            pos_mirror::pos_queue_upsert_batch,
+            pos_mirror::pos_queue_remove,
+            pos_mirror::pos_queue_clear_synced,
         ])
-        .run(tauri::generate_context!())
-        .expect("error while running Mus Luxury Desktop CMS");
+        .run(tauri::generate_context!());
+
+    if let Err(e) = result {
+        let msg = format!("TAURI RUN ERROR: {:?}", e);
+        eprintln!("{}", msg);
+        let _ = std::fs::write("tauri_run_error.log", &msg);
+        if let Ok(mut exe) = std::env::current_exe() {
+            exe.pop();
+            let _ = std::fs::write(exe.join("tauri_run_error.log"), &msg);
+        }
+    }
 }

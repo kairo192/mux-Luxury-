@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from "react";
 import { DesktopCmsApi } from "../api/adminClient";
-import { notifyClientError, notifyClientSuccess, notifyClientWarning } from "../utils/clientNotifier";
+import { notifyClientError, notifyClientSuccess, notifyClientWarning, confirmClientAction } from "../utils/clientNotifier";
 import {
   PackageCheck,
   Building2,
@@ -23,8 +23,10 @@ import {
   isTauriRuntime,
   type LabelPayload,
 } from "../utils/posHardware";
+import { useT } from "../i18n";
 
 export function PurchasesPage({ onInventoryUpdated }: { onInventoryUpdated?: () => void }) {
+  const t = useT();
   const [suppliers, setSuppliers] = useState<any[]>([]);
   const [purchases, setPurchases] = useState<any[]>([]);
   const [products, setProducts] = useState<any[]>([]);
@@ -227,7 +229,12 @@ export function PurchasesPage({ onInventoryUpdated }: { onInventoryUpdated?: () 
       const confirmMsg = missing > 0
         ? `Imprimer ${totalCopies} étiquettes maintenant ?\n(${missing} article(s) sans code-barres seront ignorés — à assigner dans Produits.)`
         : `Imprimer ${totalCopies} étiquettes pour le bon ${reference} ?`;
-      if (!window.confirm(confirmMsg)) return;
+      const confirmed = await confirmClientAction({
+        title: "Impression d'étiquettes",
+        message: confirmMsg,
+        danger: false,
+      });
+      if (!confirmed) return;
       const labels: LabelPayload[] = printable.map((l: any) => ({
         header: l.header,
         product_name: l.product_name,
@@ -353,10 +360,10 @@ export function PurchasesPage({ onInventoryUpdated }: { onInventoryUpdated?: () 
       <div className="bg-white p-5 rounded-2xl border border-[#D4AF62]/40 shadow-sm flex flex-wrap items-center justify-between gap-4">
         <div>
           <h2 className="text-lg font-serif font-bold text-[#063D2E]">
-            Gestion des Achats &amp; Fournisseurs (ERP Approvisionnements)
+            {t("purchases.title")}
           </h2>
           <p className="text-gray-500">
-            Contrôlez les coûts d'achat, les réceptions en stock avec calcul du Coût Moyen Pondéré (PMP) et les dettes fournisseurs.
+            {t("purchases.subtitle")}
           </p>
         </div>
         <button
@@ -364,7 +371,7 @@ export function PurchasesPage({ onInventoryUpdated }: { onInventoryUpdated?: () 
           onClick={loadData}
           className="px-4 py-2 rounded-xl bg-[#F8F6F0] text-[#063D2E] border border-[#D4AF62]/40 font-bold hover:bg-[#D4AF62]/20"
         >
-          Actualiser les données
+          {t("common.refresh")}
         </button>
       </div>
 
@@ -377,29 +384,29 @@ export function PurchasesPage({ onInventoryUpdated }: { onInventoryUpdated?: () 
         <div className="lg:col-span-2 space-y-4">
           <form onSubmit={handleCreatePurchaseOrder} className="bg-white p-6 rounded-2xl border border-[#D4AF62]/40 space-y-4">
             <h3 className="text-base font-serif font-bold text-[#063D2E] border-b pb-2">
-              + Émettre un Bon de Commande Fournisseur (Approvisionnement)
+              {t("purchases.create_po_title")}
             </h3>
 
             <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
               <div>
-                <label className="block font-bold mb-1">Fournisseur *</label>
+                <label className="block font-bold mb-1">{t("purchases.supplier_label")}</label>
                 <select
                   value={selectedSupplierId}
                   onChange={(e) => setSelectedSupplierId(Number(e.target.value))}
                   required
                   className="w-full px-3 py-2 border rounded-xl bg-white font-semibold"
                 >
-                  <option value="">-- Choisir un fournisseur --</option>
+                  <option value="">{t("purchases.supplier_placeholder")}</option>
                   {suppliers.map((s) => (
                     <option key={s.id} value={s.id}>
-                      {s.name} {s.company_name ? `(${s.company_name})` : ""} - Dette: {s.balance_dzd} DA
+                      {s.name} {s.company_name ? `(${s.company_name})` : ""} - {t("purchases.debt", { amount: s.balance_dzd })}
                     </option>
                   ))}
                 </select>
               </div>
 
               <div>
-                <label className="block font-bold mb-1">Frais de transport / expédition (DA)</label>
+                <label className="block font-bold mb-1">{t("purchases.shipping_cost")}</label>
                 <input
                   type="number"
                   min={0}
@@ -410,7 +417,7 @@ export function PurchasesPage({ onInventoryUpdated }: { onInventoryUpdated?: () 
               </div>
 
               <div>
-                <label className="block font-bold mb-1">Date d'arrivée prévue</label>
+                <label className="block font-bold mb-1">{t("purchases.expected_date")}</label>
                 <input
                   type="date"
                   value={expectedDate}
@@ -422,10 +429,10 @@ export function PurchasesPage({ onInventoryUpdated }: { onInventoryUpdated?: () 
 
             {/* Line Item Adder */}
             <div className="p-4 rounded-xl bg-[#F8F6F0] border border-[#D4AF62]/30 space-y-3">
-              <span className="font-bold text-[#063D2E] block">Ajouter des articles à commander :</span>
+              <span className="font-bold text-[#063D2E] block">{t("purchases.add_items_label")}</span>
               <div className="grid grid-cols-1 md:grid-cols-5 gap-2 items-end">
                 <div className="md:col-span-2">
-                  <label className="block font-semibold mb-1">Produit du catalogue</label>
+                  <label className="block font-semibold mb-1">{t("purchases.catalog_product")}</label>
                   <select
                     value={selectedProdId}
                     onChange={(e) => handleProductSelect(Number(e.target.value))}
@@ -440,7 +447,7 @@ export function PurchasesPage({ onInventoryUpdated }: { onInventoryUpdated?: () 
                 </div>
 
                 <div>
-                  <label className="block font-semibold mb-1">Quantité (unités)</label>
+                  <label className="block font-semibold mb-1">{t("purchases.quantity_units")}</label>
                   <input
                     type="number"
                     min={1}
@@ -451,7 +458,7 @@ export function PurchasesPage({ onInventoryUpdated }: { onInventoryUpdated?: () 
                 </div>
 
                 <div>
-                  <label className="block font-semibold mb-1">Coût d'achat unit. (DA)</label>
+                  <label className="block font-semibold mb-1">{t("purchases.unit_cost")}</label>
                   <input
                     type="number"
                     min={0}
@@ -467,7 +474,7 @@ export function PurchasesPage({ onInventoryUpdated }: { onInventoryUpdated?: () 
                     onClick={addItemToPurchaseOrder}
                     className="w-full py-2 px-3 rounded-xl bg-[#063D2E] text-[#D4AF62] font-bold shadow"
                   >
-                    + Ajouter
+                    {t("purchases.btn_add")}
                   </button>
                 </div>
               </div>
@@ -490,31 +497,31 @@ export function PurchasesPage({ onInventoryUpdated }: { onInventoryUpdated?: () 
                         className="inline-flex items-center gap-1 text-red-600 font-bold px-2 py-1 hover:underline"
                       >
                         <X className="w-3.5 h-3.5" />
-                        <span>Retirer</span>
+                        <span>{t("purchases.btn_remove")}</span>
                       </button>
                     </div>
                   ))}
                   <div className="p-3 bg-[#063D2E]/5 font-bold flex justify-between items-center text-sm">
-                    <span>Total Sous-Total Marchandises :</span>
+                    <span>{t("purchases.items_subtotal")}</span>
                     <span className="text-[#063D2E] font-extrabold">{itemsSubtotal} DA</span>
                   </div>
                 </div>
               ) : (
-                <p className="text-gray-400 italic text-[11px]">Aucun article sélectionné pour l'instant.</p>
+                <p className="text-gray-400 italic text-[11px]">{t("purchases.no_items")}</p>
               )}
             </div>
 
             {/* Total Summary & Submit */}
             <div className="flex flex-wrap items-center justify-between gap-4 pt-2 border-t">
               <div>
-                <span className="text-gray-500">Coût Total d'Acquisition (Marchandises + Transport) :</span>
+                <span className="text-gray-500">{t("purchases.total_acq_cost")}</span>
                 <p className="text-xl font-extrabold text-[#063D2E]">{totalPurchaseCost} DA</p>
               </div>
               <button
                 type="submit"
                 className="px-6 py-3 rounded-xl bg-[#D4AF62] text-[#02291F] font-extrabold shadow hover:bg-[#D4AF62]/90"
               >
-                Enregistrer &amp; Valider le Bon d'Achat
+                {t("purchases.btn_submit_po")}
               </button>
             </div>
           </form>
@@ -524,10 +531,10 @@ export function PurchasesPage({ onInventoryUpdated }: { onInventoryUpdated?: () 
         <div className="space-y-4">
           <form onSubmit={handleCreateSupplier} className="bg-white p-6 rounded-2xl border border-[#D4AF62]/40 space-y-3">
             <h3 className="text-base font-serif font-bold text-[#063D2E] border-b pb-2">
-              + Ajouter un Fournisseur
+              {t("purchases.add_supplier_title")}
             </h3>
             <div>
-              <label className="block font-bold mb-1">Nom du fournisseur *</label>
+              <label className="block font-bold mb-1">{t("purchases.supplier_name")}</label>
               <input
                 value={supName}
                 onChange={(e) => setSupName(e.target.value)}
@@ -537,7 +544,7 @@ export function PurchasesPage({ onInventoryUpdated }: { onInventoryUpdated?: () 
               />
             </div>
             <div>
-              <label className="block font-bold mb-1">Raison Sociale / Société</label>
+              <label className="block font-bold mb-1">{t("purchases.company_name")}</label>
               <input
                 value={supCompany}
                 onChange={(e) => setSupCompany(e.target.value)}
@@ -547,7 +554,7 @@ export function PurchasesPage({ onInventoryUpdated }: { onInventoryUpdated?: () 
             </div>
             <div className="grid grid-cols-2 gap-2">
               <div>
-                <label className="block font-bold mb-1">Téléphone</label>
+                <label className="block font-bold mb-1">{t("purchases.phone")}</label>
                 <input
                   value={supPhone}
                   onChange={(e) => setSupPhone(e.target.value)}
@@ -556,7 +563,7 @@ export function PurchasesPage({ onInventoryUpdated }: { onInventoryUpdated?: () 
                 />
               </div>
               <div>
-                <label className="block font-bold mb-1">Contact</label>
+                <label className="block font-bold mb-1">{t("purchases.contact")}</label>
                 <input
                   value={supContact}
                   onChange={(e) => setSupContact(e.target.value)}
@@ -566,7 +573,7 @@ export function PurchasesPage({ onInventoryUpdated }: { onInventoryUpdated?: () 
               </div>
             </div>
             <div>
-              <label className="block font-bold mb-1">Adresse / Wilaya</label>
+              <label className="block font-bold mb-1">{t("purchases.address_wilaya")}</label>
               <input
                 value={supAddress}
                 onChange={(e) => setSupAddress(e.target.value)}
@@ -578,14 +585,14 @@ export function PurchasesPage({ onInventoryUpdated }: { onInventoryUpdated?: () 
               type="submit"
               className="w-full py-2.5 rounded-xl bg-[#063D2E] text-[#D4AF62] font-bold shadow hover:bg-[#02291F]"
             >
-              Enregistrer le Fournisseur
+              {t("purchases.save_supplier")}
             </button>
           </form>
 
           {/* Quick Suppliers Directory */}
           <div className="bg-white p-5 rounded-2xl border border-[#D4AF62]/40 space-y-3 max-h-96 overflow-y-auto">
             <h4 className="font-bold text-[#063D2E] border-b pb-1">
-              Répertoire Fournisseurs ({suppliers.length})
+              {t("purchases.suppliers_dir", { count: suppliers.length })}
             </h4>
             {suppliers.map((s) => (
               <div key={s.id} className="p-3 rounded-xl border border-gray-200 space-y-1 hover:border-[#D4AF62]/50">
@@ -594,7 +601,7 @@ export function PurchasesPage({ onInventoryUpdated }: { onInventoryUpdated?: () 
                   <span className={`px-2 py-0.5 rounded font-mono font-bold text-[10px] ${
                     s.balance_dzd > 0 ? "bg-amber-100 text-amber-900" : "bg-emerald-100 text-emerald-900"
                   }`}>
-                    Dette: {s.balance_dzd} DA
+                    {t("purchases.debt", { amount: s.balance_dzd })}
                   </span>
                 </div>
                 <div className="text-[11px] text-gray-500">
@@ -607,14 +614,14 @@ export function PurchasesPage({ onInventoryUpdated }: { onInventoryUpdated?: () 
                     onClick={() => setEditingSupplier(s)}
                     className="text-[#063D2E] font-bold hover:underline"
                   >
-                    Modifier
+                    {t("common.edit")}
                   </button>
                   <button
                     type="button"
                     onClick={() => setSupplierToDelete({ id: s.id, name: s.name })}
                     className="text-red-600 font-bold hover:underline"
                   >
-                    Supprimer
+                    {t("common.delete")}
                   </button>
                 </div>
               </div>
@@ -628,7 +635,7 @@ export function PurchasesPage({ onInventoryUpdated }: { onInventoryUpdated?: () 
         <form onSubmit={handleSaveEditedSupplier} className="bg-[#F8F6F0] p-6 rounded-2xl border-2 border-[#D4AF62] space-y-3">
           <div className="flex justify-between items-center border-b pb-2">
             <h4 className="text-base font-serif font-bold text-[#063D2E]">
-              Modifier Fournisseur #{editingSupplier.id} : {editingSupplier.name}
+              {t("purchases.edit_sup_title", { id: editingSupplier.id, name: editingSupplier.name })}
             </h4>
             <button
               type="button"
@@ -640,7 +647,7 @@ export function PurchasesPage({ onInventoryUpdated }: { onInventoryUpdated?: () 
           </div>
           <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
             <div>
-              <label className="block font-bold mb-1">Nom *</label>
+              <label className="block font-bold mb-1">{t("purchases.supplier_name")}</label>
               <input
                 value={editingSupplier.name || ""}
                 onChange={(e) => setEditingSupplier({ ...editingSupplier, name: e.target.value })}
@@ -649,7 +656,7 @@ export function PurchasesPage({ onInventoryUpdated }: { onInventoryUpdated?: () 
               />
             </div>
             <div>
-              <label className="block font-bold mb-1">Société</label>
+              <label className="block font-bold mb-1">{t("purchases.company_name")}</label>
               <input
                 value={editingSupplier.company_name || ""}
                 onChange={(e) => setEditingSupplier({ ...editingSupplier, company_name: e.target.value })}
@@ -657,7 +664,7 @@ export function PurchasesPage({ onInventoryUpdated }: { onInventoryUpdated?: () 
               />
             </div>
             <div>
-              <label className="block font-bold mb-1">Téléphone</label>
+              <label className="block font-bold mb-1">{t("purchases.phone")}</label>
               <input
                 value={editingSupplier.phone || ""}
                 onChange={(e) => setEditingSupplier({ ...editingSupplier, phone: e.target.value })}
@@ -666,8 +673,8 @@ export function PurchasesPage({ onInventoryUpdated }: { onInventoryUpdated?: () 
             </div>
           </div>
           <div className="flex justify-end gap-3 pt-2">
-            <button type="button" onClick={() => setEditingSupplier(null)} className="px-4 py-2 rounded-xl bg-gray-200 font-bold">Annuler</button>
-            <button type="submit" className="px-5 py-2 rounded-xl bg-[#063D2E] text-[#D4AF62] font-bold">Enregistrer</button>
+            <button type="button" onClick={() => setEditingSupplier(null)} className="px-4 py-2 rounded-xl bg-gray-200 font-bold">{t("common.cancel")}</button>
+            <button type="submit" className="px-5 py-2 rounded-xl bg-[#063D2E] text-[#D4AF62] font-bold">{t("common.save")}</button>
           </div>
         </form>
       )}
@@ -675,20 +682,20 @@ export function PurchasesPage({ onInventoryUpdated }: { onInventoryUpdated?: () 
       {/* Historical Purchase Orders List */}
       <div className="bg-white p-6 rounded-2xl border border-[#D4AF62]/40 space-y-4">
         <h3 className="text-base font-serif font-bold text-[#063D2E]">
-          Historique des Bons de Commande &amp; Réceptions Stock ({purchases.length})
+          {t("purchases.history_title", { count: purchases.length })}
         </h3>
 
         <div className="overflow-x-auto">
-          <table className="w-full text-left border-collapse">
+          <table className="w-full text-start border-collapse">
             <thead>
               <tr className="bg-[#063D2E] text-[#E8D4A5]">
-                <th className="p-3">Réf / Date</th>
-                <th className="p-3">Fournisseur</th>
-                <th className="p-3">Articles commandés</th>
-                <th className="p-3">Coût Total (DA)</th>
-                <th className="p-3">Statut Réception</th>
-                <th className="p-3">Paiement Dette</th>
-                <th className="p-3 text-right">Actions ERP</th>
+                <th className="p-3 text-start">{t("purchases.th_ref_date")}</th>
+                <th className="p-3 text-start">{t("purchases.th_supplier")}</th>
+                <th className="p-3 text-start">{t("purchases.th_items")}</th>
+                <th className="p-3 text-start">{t("purchases.th_total_cost")}</th>
+                <th className="p-3 text-start">{t("purchases.th_status")}</th>
+                <th className="p-3 text-start">{t("purchases.th_payment")}</th>
+                <th className="p-3 text-end">{t("purchases.th_actions")}</th>
               </tr>
             </thead>
             <tbody className="divide-y">
@@ -721,12 +728,12 @@ export function PurchasesPage({ onInventoryUpdated }: { onInventoryUpdated?: () 
                       {po.status === "received" ? (
                         <>
                           <CheckCircle2 className="w-3 h-3 text-emerald-700" />
-                          <span>Réceptionné en stock</span>
+                          <span>{t("purchases.status_received")}</span>
                         </>
                       ) : (
                         <>
                           <Clock className="w-3 h-3 text-amber-700" />
-                          <span>En attente de livraison</span>
+                          <span>{t("purchases.status_pending")}</span>
                         </>
                       )}
                     </span>
@@ -738,14 +745,14 @@ export function PurchasesPage({ onInventoryUpdated }: { onInventoryUpdated?: () 
                       {po.payment_status === "paid" ? (
                         <>
                           <CheckCircle2 className="w-3 h-3 text-emerald-700" />
-                          <span>Payé</span>
+                          <span>{t("purchases.status_paid")}</span>
                         </>
                       ) : (
-                        <span>Dû ({po.total_cost_dzd - (po.paid_amount_dzd || 0)} DA)</span>
+                        <span>{t("purchases.status_owed", { amount: po.total_cost_dzd - (po.paid_amount_dzd || 0) })}</span>
                       )}
                     </span>
                   </td>
-                  <td className="p-3 text-right space-x-2">
+                  <td className="p-3 text-end space-x-2 rtl:space-x-reverse">
                     {po.status !== "received" && (
                       <button
                         type="button"
@@ -753,7 +760,7 @@ export function PurchasesPage({ onInventoryUpdated }: { onInventoryUpdated?: () 
                         className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-[#063D2E] text-[#D4AF62] font-bold shadow hover:bg-[#02291F] transition active:scale-95"
                       >
                         <Download className="w-3.5 h-3.5 text-[#D4AF62]" />
-                        <span>Réceptionner</span>
+                        <span>{t("purchases.btn_receive")}</span>
                       </button>
                     )}
                     {po.payment_status !== "paid" && (
@@ -763,7 +770,7 @@ export function PurchasesPage({ onInventoryUpdated }: { onInventoryUpdated?: () 
                         className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-[#D4AF62] text-[#02291F] font-bold shadow hover:bg-[#D4AF62]/90"
                       >
                         <CreditCard className="w-3.5 h-3.5 text-[#02291F]" />
-                        <span>Régler</span>
+                        <span>{t("purchases.btn_pay")}</span>
                       </button>
                     )}
                   </td>
@@ -784,9 +791,9 @@ export function PurchasesPage({ onInventoryUpdated }: { onInventoryUpdated?: () 
                 </div>
                 <div>
                   <h3 className="text-base font-serif font-bold text-white tracking-wide">
-                    Réception en Stock
+                    {t("purchases.modal_receive_title")}
                   </h3>
-                  <p className="text-[11px] text-[#E8D4A5]/80">Bon d'Approvisionnement : {poToReceive.reference}</p>
+                  <p className="text-[11px] text-[#E8D4A5]/80">{t("purchases.modal_receive_sub", { ref: poToReceive.reference })}</p>
                 </div>
               </div>
               <button
@@ -799,21 +806,21 @@ export function PurchasesPage({ onInventoryUpdated }: { onInventoryUpdated?: () 
             </div>
             <div className="p-6 space-y-4 text-xs">
               <p className="text-gray-700 leading-relaxed">
-                Confirmez-vous la réception physique en stock de la marchandise pour ce bon de commande ?
+                {t("purchases.modal_receive_confirm")}
               </p>
               <div className="p-3.5 rounded-2xl bg-white border border-[#D4AF62]/40 space-y-1.5">
                 <div className="flex justify-between text-gray-600">
-                  <span>Référence :</span>
+                  <span>{t("purchases.modal_receive_ref")}</span>
                   <span className="font-mono font-bold text-[#063D2E]">{poToReceive.reference}</span>
                 </div>
                 <div className="flex justify-between text-gray-600">
-                  <span>Montant Total :</span>
+                  <span>{t("purchases.modal_receive_total")}</span>
                   <span className="font-mono font-bold text-[#063D2E]">{Number(poToReceive.total_cost_dzd || 0).toLocaleString()} DA</span>
                 </div>
               </div>
               <p className="text-[11px] text-emerald-800 bg-emerald-50 p-2.5 rounded-xl border border-emerald-200 flex items-center gap-1.5">
                 <Sparkles className="w-4 h-4 text-emerald-700 shrink-0" />
-                <span>Cette action incrémentera automatiquement les stocks des variantes et mettra à jour le coût moyen d'achat pondéré.</span>
+                <span>{t("purchases.modal_receive_note")}</span>
               </p>
               <div className="flex items-center justify-end gap-3 pt-2">
                 <button
@@ -822,7 +829,7 @@ export function PurchasesPage({ onInventoryUpdated }: { onInventoryUpdated?: () 
                   disabled={receivingPo}
                   className="px-4 py-2 rounded-xl bg-gray-200 hover:bg-gray-300 text-gray-700 font-bold transition"
                 >
-                  Annuler
+                  {t("common.cancel")}
                 </button>
                 <button
                   type="button"
@@ -830,7 +837,7 @@ export function PurchasesPage({ onInventoryUpdated }: { onInventoryUpdated?: () 
                   disabled={receivingPo}
                   className="px-5 py-2 rounded-xl bg-gradient-to-r from-[#063D2E] to-[#0A5C45] hover:from-[#02291F] hover:to-[#063D2E] text-[#D4AF62] font-bold shadow-md transition disabled:opacity-50"
                 >
-                  {receivingPo ? "Réception en cours..." : "Confirmer la Réception"}
+                  {receivingPo ? t("purchases.modal_receiving_btn") : t("purchases.modal_receive_btn")}
                 </button>
               </div>
             </div>
@@ -849,9 +856,9 @@ export function PurchasesPage({ onInventoryUpdated }: { onInventoryUpdated?: () 
                 </div>
                 <div>
                   <h3 className="text-base font-serif font-bold text-white tracking-wide">
-                    Retirer le Fournisseur
+                    {t("purchases.modal_delete_sup_title")}
                   </h3>
-                  <p className="text-[11px] text-[#E8D4A5]/80">Suppression ou Archivage</p>
+                  <p className="text-[11px] text-[#E8D4A5]/80">{t("purchases.modal_delete_sup_sub")}</p>
                 </div>
               </div>
               <button
@@ -864,7 +871,7 @@ export function PurchasesPage({ onInventoryUpdated }: { onInventoryUpdated?: () 
             </div>
             <div className="p-6 space-y-4 text-xs">
               <p className="text-gray-700 leading-relaxed">
-                Êtes-vous certain de vouloir supprimer ou archiver le fournisseur suivant ?
+                {t("purchases.modal_delete_sup_confirm")}
               </p>
               <div className="p-3.5 rounded-2xl bg-white border border-[#D4AF62]/40">
                 <div className="font-bold text-[#063D2E] text-sm">{supplierToDelete.name}</div>
@@ -872,7 +879,7 @@ export function PurchasesPage({ onInventoryUpdated }: { onInventoryUpdated?: () 
               </div>
               <p className="text-[11px] text-amber-800 bg-amber-50 p-2.5 rounded-xl border border-amber-200 flex items-center gap-1.5">
                 <AlertTriangle className="w-4 h-4 text-amber-700 shrink-0" />
-                <span>Si ce fournisseur a des bons de commandes historiques, il sera archivé afin de préserver l'intégrité de vos factures et de votre comptabilité.</span>
+                <span>{t("purchases.modal_delete_sup_note")}</span>
               </p>
               <div className="flex items-center justify-end gap-3 pt-2">
                 <button
@@ -881,7 +888,7 @@ export function PurchasesPage({ onInventoryUpdated }: { onInventoryUpdated?: () 
                   disabled={deletingSupplier}
                   className="px-4 py-2 rounded-xl bg-gray-200 hover:bg-gray-300 text-gray-700 font-bold transition"
                 >
-                  Annuler
+                  {t("common.cancel")}
                 </button>
                 <button
                   type="button"
@@ -889,7 +896,7 @@ export function PurchasesPage({ onInventoryUpdated }: { onInventoryUpdated?: () 
                   disabled={deletingSupplier}
                   className="px-5 py-2 rounded-xl bg-gradient-to-r from-red-600 to-red-700 hover:from-red-700 hover:to-red-800 text-white font-bold shadow-md transition disabled:opacity-50"
                 >
-                  {deletingSupplier ? "Traitement..." : "Confirmer le Retrait"}
+                  {deletingSupplier ? t("purchases.modal_deleting_sup_btn") : t("purchases.modal_delete_sup_btn")}
                 </button>
               </div>
             </div>
@@ -900,26 +907,25 @@ export function PurchasesPage({ onInventoryUpdated }: { onInventoryUpdated?: () 
       {payDialog && (
         <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4" onClick={() => setPayDialog(null)}>
           <div className="bg-white rounded-3xl w-full max-w-sm p-6 shadow-2xl border-2 border-[#063D2E]/10" onClick={(e) => e.stopPropagation()}>
-            <h4 className="font-bold text-[#063D2E] text-lg mb-1">Régler le fournisseur</h4>
+            <h4 className="font-bold text-[#063D2E] text-lg mb-1">{t("purchases.modal_pay_title")}</h4>
             <p className="text-sm text-gray-600 mb-4">
-              Bon <span className="font-mono font-bold">{payDialog.ref}</span> — <span className="font-mono font-bold">{payDialog.amount.toLocaleString("fr-DZ")} DA</span>.
-              <br />Choisissez le mode de paiement :
+              {t("purchases.modal_pay_sub", { ref: payDialog.ref, amount: payDialog.amount.toLocaleString("fr-DZ") })}
             </p>
             <div className="grid grid-cols-2 gap-3 mb-3">
               <button type="button" onClick={() => confirmPayment("cash")}
                 className="h-16 rounded-2xl bg-[#063D2E] text-[#D4AF62] font-bold flex flex-col items-center justify-center active:scale-95">
-                <span className="text-lg">Caisse</span>
-                <span className="text-[10px] font-normal opacity-70">Espèces en main</span>
+                <span className="text-lg">{t("purchases.pay_cash")}</span>
+                <span className="text-[10px] font-normal opacity-70">{t("purchases.pay_cash_sub")}</span>
               </button>
               <button type="button" onClick={() => confirmPayment("bank_transfer")}
                 className="h-16 rounded-2xl bg-[#D4AF62] text-[#02291F] font-bold flex flex-col items-center justify-center active:scale-95">
-                <span className="text-lg">Banque</span>
-                <span className="text-[10px] font-normal opacity-70">Virement / chèque</span>
+                <span className="text-lg">{t("purchases.pay_bank")}</span>
+                <span className="text-[10px] font-normal opacity-70">{t("purchases.pay_bank_sub")}</span>
               </button>
             </div>
             <button type="button" onClick={() => setPayDialog(null)}
               className="w-full h-11 rounded-2xl bg-gray-100 text-gray-700 font-bold active:scale-95">
-              Annuler
+              {t("common.cancel")}
             </button>
           </div>
         </div>

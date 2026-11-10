@@ -1,9 +1,9 @@
 FROM node:20-alpine AS build
 WORKDIR /app
-COPY package.json ./
+COPY package*.json ./
 RUN npm install --no-audit --no-fund
 COPY . .
-RUN npx tsc --noEmit && mkdir -p /app/dist && cp index.html /app/dist/index.html && cp -r public/* /app/dist/
+RUN npx tsc --noEmit && npm run build
 
 FROM nginx:1.27-alpine
 COPY --from=build /app/dist /usr/share/nginx/html

@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useCallback, useRef } from "react";
+import React, { useEffect, useState, useCallback, useRef, useMemo } from "react";
 import {
   ClipboardList,
   ScanLine,
@@ -13,6 +13,8 @@ import {
   History,
 } from "lucide-react";
 import { DesktopCmsApi } from "../api/adminClient";
+import { confirmClientAction } from "../utils/clientNotifier";
+import { useT } from "../i18n";
 
 interface Count {
   id: number;
@@ -44,9 +46,9 @@ const BADGE: Record<string, string> = {
   applied: "bg-gray-200 text-gray-700",
   cancelled: "bg-red-100 text-red-700",
 };
-const LBL: Record<string, string> = { open: "Ouvert", applied: "Appliqué", cancelled: "Annulé" };
 
 export const InventoryCountPage: React.FC<{ onInventoryUpdated?: () => void }> = ({ onInventoryUpdated }) => {
+  const t = useT();
   const [list, setList] = useState<Count[]>([]);
   const [active, setActive] = useState<Count | null>(null);
   const [showHistory, setShowHistory] = useState(false);
@@ -57,6 +59,12 @@ export const InventoryCountPage: React.FC<{ onInventoryUpdated?: () => void }> =
   const [scanCode, setScanCode] = useState("");
   const [qtyEdit, setQtyEdit] = useState<{ lineId: number; value: string } | null>(null);
   const scanRef = useRef<HTMLInputElement>(null);
+
+  const statusLabels = useMemo<Record<string, string>>(() => ({
+    open: t("inventory_count.status_open"),
+    applied: t("inventory_count.status_applied"),
+    cancelled: t("inventory_count.status_cancelled"),
+  }), [t]);
 
   const flash = (msg: string) => {
     setSuccess(msg);
@@ -73,7 +81,6 @@ export const InventoryCountPage: React.FC<{ onInventoryUpdated?: () => void }> =
     try {
       const d = await DesktopCmsApi.listInventoryCounts(30);
       setList(d.items || []);
-      // auto-pick the currently open one
       const open = (d.items || []).find((c: Count) => c.status === "open");
       if (open) {
         const full = await DesktopCmsApi.getInventoryCount(open.id);
@@ -82,15 +89,16 @@ export const InventoryCountPage: React.FC<{ onInventoryUpdated?: () => void }> =
         setActive(null);
       }
     } catch (e: any) {
-      setError(e?.userMessage || "Chargement impossible");
+      setError(e?.userMessage || t("status.error"));
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [t]);
 
   useEffect(() => {
     load();
   }, [load]);
+
   useEffect(() => {
     if (active && active.status === "open") scanRef.current?.focus();
   }, [active?.id, active?.status]);
@@ -103,7 +111,7 @@ export const InventoryCountPage: React.FC<{ onInventoryUpdated?: () => void }> =
       flash(`Inventaire ${c.reference} ouvert`);
       load();
     } catch (e: any) {
-      flashError(e?.userMessage || "Ouverture refusée");
+      flashError(e?.userMessage || t("status.error"));
     } finally {
       setBusy(false);
     }
@@ -135,7 +143,7 @@ export const InventoryCountPage: React.FC<{ onInventoryUpdated?: () => void }> =
       setScanCode("");
       scanRef.current?.focus();
     } catch (e: any) {
-      flashError(e?.userMessage || "Scan refusé");
+      flashError(e?.userMessage || t("status.error"));
     }
   };
 
@@ -153,7 +161,7 @@ export const InventoryCountPage: React.FC<{ onInventoryUpdated?: () => void }> =
       setActive(updated);
       setQtyEdit(null);
     } catch (e: any) {
-      flashError(e?.userMessage || "Mise à jour refusée");
+      flashError(e?.userMessage || t("status.error"));
     }
   };
 
@@ -163,22 +171,27 @@ export const InventoryCountPage: React.FC<{ onInventoryUpdated?: () => void }> =
       const updated = await DesktopCmsApi.deleteInventoryCountLine(active.id, line.id);
       setActive(updated);
     } catch (e: any) {
-      flashError(e?.userMessage || "Suppression refusée");
+      flashError(e?.userMessage || t("status.error"));
     }
   };
 
   const apply = async () => {
     if (!active) return;
-    if (!window.confirm(`Appliquer l'inventaire ${active.reference} ?\nLe stock sera ajusté aux quantités comptées.`)) return;
+    const confirmed = await confirmClientAction({
+      title: t("inventory_count.btn_apply"),
+      message: `${t("inventory_count.btn_apply")} ${active.reference} ?`,
+      danger: false,
+    });
+    if (!confirmed) return;
     setBusy(true);
     try {
       const applied = await DesktopCmsApi.applyInventoryCount(active.id);
       setActive(applied);
-      flash("Inventaire appliqué — écritures générées");
+      flash(t("common.saved"));
       onInventoryUpdated?.();
       load();
     } catch (e: any) {
-      flashError(e?.userMessage || "Application refusée");
+      flashError(e?.userMessage || t("status.error"));
     } finally {
       setBusy(false);
     }
@@ -186,14 +199,19 @@ export const InventoryCountPage: React.FC<{ onInventoryUpdated?: () => void }> =
 
   const cancel = async () => {
     if (!active) return;
-    if (!window.confirm(`Annuler l'inventaire ${active.reference} ? Les quantités comptées seront perdues.`)) return;
+    const confirmed = await confirmClientAction({
+      title: t("inventory_count.btn_cancel"),
+      message: `${t("inventory_count.btn_cancel")} ${active.reference} ?`,
+      danger: true,
+    });
+    if (!confirmed) return;
     try {
       const upd = await DesktopCmsApi.cancelInventoryCount(active.id);
       setActive(upd);
-      flash("Inventaire annulé");
+      flash(t("inventory_count.status_cancelled"));
       load();
     } catch (e: any) {
-      flashError(e?.userMessage || "Annulation refusée");
+      flashError(e?.userMessage || t("status.error"));
     }
   };
 
@@ -213,17 +231,17 @@ export const InventoryCountPage: React.FC<{ onInventoryUpdated?: () => void }> =
       <div className="bg-white p-5 rounded-3xl border border-[#D4AF62]/40 flex flex-wrap items-center justify-between gap-3">
         <div>
           <h3 className="text-lg font-serif font-bold text-[#063D2E] flex items-center gap-2">
-            <ClipboardList className="w-5 h-5" /> Inventaire physique & réconciliation
+            <ClipboardList className="w-5 h-5" /> {t("inventory_count.title")}
           </h3>
-          <p className="text-gray-500 mt-1">Scannez les unités réellement présentes ; le stock s'ajuste à l'application.</p>
+          <p className="text-gray-500 mt-1">{t("inventory_count.subtitle")}</p>
         </div>
         <div className="flex gap-2">
           <button type="button" onClick={() => setShowHistory(true)} className="h-12 px-4 rounded-2xl border-2 border-gray-200 font-bold flex items-center gap-2 active:scale-95">
-            <History className="w-5 h-5" /> Historique
+            <History className="w-5 h-5" /> {t("inventory_count.btn_history")}
           </button>
           {!active || active.status !== "open" ? (
             <button type="button" disabled={busy} onClick={openNew} className="h-12 px-5 rounded-2xl bg-[#063D2E] text-[#D4AF62] font-bold flex items-center gap-2 active:scale-95 disabled:opacity-50">
-              <Plus className="w-5 h-5" /> Nouvel inventaire
+              <Plus className="w-5 h-5" /> {t("inventory_count.btn_new")}
             </button>
           ) : null}
         </div>
@@ -231,11 +249,11 @@ export const InventoryCountPage: React.FC<{ onInventoryUpdated?: () => void }> =
 
       {loading ? (
         <div className="flex items-center justify-center py-16 text-gray-500">
-          <RefreshCw className="w-6 h-6 animate-spin mr-2" /> Chargement…
+          <RefreshCw className="w-6 h-6 animate-spin mr-2" /> {t("status.loading")}
         </div>
       ) : !active ? (
         <div className="bg-white p-10 rounded-3xl border border-gray-200 text-center text-gray-400">
-          Aucun inventaire ouvert. Cliquez sur « Nouvel inventaire » pour commencer.
+          {t("inventory_count.empty")}
         </div>
       ) : (
         <>
@@ -243,27 +261,27 @@ export const InventoryCountPage: React.FC<{ onInventoryUpdated?: () => void }> =
             <div>
               <div className="font-bold text-[#063D2E] text-lg flex items-center gap-2">
                 {active.reference}
-                <span className={`px-2 py-0.5 rounded-lg text-xs font-bold ${BADGE[active.status]}`}>{LBL[active.status]}</span>
+                <span className={`px-2 py-0.5 rounded-lg text-xs font-bold ${BADGE[active.status]}`}>{statusLabels[active.status]}</span>
               </div>
-              <div className="text-gray-500 text-[11px]">{active.name} · ouvert le {new Date(active.opened_at).toLocaleString("fr-DZ")}{active.opened_by_name ? ` par ${active.opened_by_name}` : ""}</div>
+              <div className="text-gray-500 text-[11px]">{active.name} · {new Date(active.opened_at).toLocaleString("fr-DZ")}{active.opened_by_name ? ` · ${active.opened_by_name}` : ""}</div>
             </div>
             <div className="flex gap-4 text-sm">
-              <Stat label="Lignes" value={String(active.total_lines)} />
-              <Stat label="Écart absolu" value={String(active.total_variance_abs)} warn={active.total_variance_abs > 0} />
+              <Stat label={t("inventory_count.stat_lines")} value={String(active.total_lines)} />
+              <Stat label={t("inventory_count.stat_variance")} value={String(active.total_variance_abs)} warn={active.total_variance_abs > 0} />
             </div>
           </div>
 
           {active.status === "open" && (
             <form onSubmit={handleScan} className="bg-white p-4 rounded-3xl border border-[#D4AF62]/40">
               <label className="flex items-center gap-2 font-bold text-[#063D2E] mb-2">
-                <ScanLine className="w-5 h-5" /> Scanner / saisir un SKU ou code-barres
+                <ScanLine className="w-5 h-5" /> {t("inventory_count.scan_label")}
               </label>
               <div className="flex gap-2">
                 <input
                   ref={scanRef}
                   value={scanCode}
                   onChange={(e) => setScanCode(e.target.value)}
-                  placeholder="Un scan = +1 à la variante…"
+                  placeholder={t("inventory_count.scan_placeholder")}
                   className="flex-1 h-14 px-4 rounded-2xl border-2 border-gray-200 font-mono text-lg focus:border-[#063D2E] outline-none"
                   autoFocus
                 />
@@ -276,16 +294,16 @@ export const InventoryCountPage: React.FC<{ onInventoryUpdated?: () => void }> =
             <table className="w-full text-left">
               <thead className="bg-[#063D2E] text-[#E8D4A5] text-xs uppercase">
                 <tr>
-                  <th className="px-4 py-3">Produit</th>
-                  <th className="px-4 py-3 text-right">Attendu</th>
-                  <th className="px-4 py-3 text-right">Compté</th>
-                  <th className="px-4 py-3 text-right">Écart</th>
+                  <th className="px-4 py-3">{t("inventory_count.th_product")}</th>
+                  <th className="px-4 py-3 text-right">{t("inventory_count.th_expected")}</th>
+                  <th className="px-4 py-3 text-right">{t("inventory_count.th_counted")}</th>
+                  <th className="px-4 py-3 text-right">{t("inventory_count.th_variance")}</th>
                   <th className="px-4 py-3"></th>
                 </tr>
               </thead>
               <tbody>
                 {(active.items || []).length === 0 && (
-                  <tr><td colSpan={5} className="px-4 py-10 text-center text-gray-400">Aucune ligne. Scannez un produit pour l'ajouter.</td></tr>
+                  <tr><td colSpan={5} className="px-4 py-10 text-center text-gray-400">{t("inventory_count.scan_placeholder")}</td></tr>
                 )}
                 {(active.items || []).map((l) => {
                   const edit = qtyEdit?.lineId === l.id;
@@ -332,10 +350,10 @@ export const InventoryCountPage: React.FC<{ onInventoryUpdated?: () => void }> =
           {active.status === "open" && (active.total_lines || 0) > 0 && (
             <div className="flex gap-2">
               <button type="button" disabled={busy} onClick={apply} className="flex-1 h-14 rounded-2xl bg-gradient-to-r from-[#D4AF62] to-[#E8D4A5] text-[#02291F] font-extrabold text-base flex items-center justify-center gap-2 active:scale-[0.99] disabled:opacity-50">
-                <Check className="w-5 h-5" /> Appliquer l'inventaire
+                <Check className="w-5 h-5" /> {t("inventory_count.btn_apply")}
               </button>
               <button type="button" onClick={cancel} className="h-14 px-5 rounded-2xl border-2 border-red-200 text-red-600 font-bold flex items-center gap-2 active:scale-95">
-                <Ban className="w-5 h-5" /> Annuler
+                <Ban className="w-5 h-5" /> {t("inventory_count.btn_cancel")}
               </button>
               <button type="button" onClick={reloadActive} className="h-14 w-14 rounded-2xl border-2 border-gray-200 flex items-center justify-center text-gray-500 active:scale-95">
                 <RefreshCw className="w-5 h-5" />
@@ -350,21 +368,21 @@ export const InventoryCountPage: React.FC<{ onInventoryUpdated?: () => void }> =
         <div className="fixed inset-0 bg-black/40 flex items-end sm:items-center justify-center z-50 p-0 sm:p-4" onClick={() => setShowHistory(false)}>
           <div className="bg-white rounded-t-3xl sm:rounded-3xl p-5 w-full sm:max-w-md max-h-[92vh] overflow-auto" onClick={(e) => e.stopPropagation()}>
             <div className="flex items-center justify-between mb-3">
-              <h3 className="font-serif font-bold text-[#063D2E] text-lg">Historique des inventaires</h3>
+              <h3 className="font-serif font-bold text-[#063D2E] text-lg">{t("inventory_count.history_title")}</h3>
               <button type="button" onClick={() => setShowHistory(false)} className="w-11 h-11 rounded-xl flex items-center justify-center text-gray-400 hover:bg-gray-100 active:scale-95">
                 <X className="w-6 h-6" />
               </button>
             </div>
             <div className="space-y-2">
-              {list.length === 0 && <div className="text-gray-400 py-6 text-center">Aucun inventaire.</div>}
+              {list.length === 0 && <div className="text-gray-400 py-6 text-center">{t("status.empty")}</div>}
               {list.map((c) => (
                 <button key={c.id} type="button" onClick={async () => { setActive(await DesktopCmsApi.getInventoryCount(c.id)); setShowHistory(false); }}
                   className="w-full text-left p-3 rounded-2xl border border-gray-100 bg-[#FCFBF8] hover:border-[#063D2E] active:scale-[0.99]">
                   <div className="flex items-center justify-between">
                     <span className="font-bold text-[#063D2E]">{c.reference}</span>
-                    <span className={`px-2 py-0.5 rounded-lg text-xs font-bold ${BADGE[c.status]}`}>{LBL[c.status]}</span>
+                    <span className={`px-2 py-0.5 rounded-lg text-xs font-bold ${BADGE[c.status]}`}>{statusLabels[c.status]}</span>
                   </div>
-                  <div className="text-gray-500 text-[11px] mt-1">{c.name} · {c.total_lines} ligne(s) · écart {c.total_variance_abs}</div>
+                  <div className="text-gray-500 text-[11px] mt-1">{c.name} · {c.total_lines} · écart {c.total_variance_abs}</div>
                   <div className="text-gray-400 text-[11px]">{new Date(c.opened_at).toLocaleString("fr-DZ")}</div>
                 </button>
               ))}

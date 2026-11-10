@@ -14,16 +14,22 @@ import { recordNetworkSample } from "../utils/networkQueue";
 
 let accessToken: string | null = null;
 function resolveDefaultApiBaseUrl(): string {
+  if (typeof sessionStorage !== "undefined") {
+    try {
+      const saved = sessionStorage.getItem("luxe_api_base_url");
+      if (saved && saved.trim()) return saved.trim().replace(/\/+$/, "");
+    } catch { /* ignore */ }
+  }
   if (typeof import.meta !== "undefined" && (import.meta as any).env?.VITE_CMS_API_URL) {
     return String((import.meta as any).env.VITE_CMS_API_URL).replace(/\/+$/, "");
   }
   if (typeof window !== "undefined" && window.location) {
     const h = window.location.hostname;
-    if (h === "localhost" || h === "127.0.0.1") {
+    if (h === "localhost" || h === "127.0.0.1" || h === "tauri.localhost") {
       return "http://127.0.0.1:8000/api/v1";
     }
   }
-  return "https://api.musluxury.dz/api/v1";
+  return "https://api.mus-luxury.com/api/v1";
 }
 
 let apiBaseUrl: string = resolveDefaultApiBaseUrl();
@@ -31,6 +37,11 @@ let defaultTimeoutMs = 15000;
 
 export function configureApiBaseUrl(url: string) {
   apiBaseUrl = url.replace(/\/+$/, "");
+  if (typeof sessionStorage !== "undefined") {
+    try {
+      sessionStorage.setItem("luxe_api_base_url", apiBaseUrl);
+    } catch { /* ignore */ }
+  }
 }
 
 export function getApiBaseUrl(): string {
@@ -123,7 +134,7 @@ async function adminFetch(path: string, options: RequestInit = {}, timeoutMs = d
       const data = contentType.includes("application/json") ? await res.json().catch(() => ({})) : await res.text().catch(() => "");
 
       if (res.status === 401) {
-        const isAuthEndpoint = path.includes("/admin/auth/login") || path.includes("/admin/auth/recovery");
+        const isAuthEndpoint = path.includes("/admin/auth/login");
         if (!isAuthEndpoint) {
           setAccessToken(null);
         }
@@ -191,7 +202,7 @@ export const DesktopCmsApi = {
     // whatsapp_phone is accepted by the backend but no longer collected in
     // the CMS owner-setup form (password recovery over WhatsApp removed).
     whatsapp_phone?: string;
-    emergency_phone: string;
+    emergency_phone?: string;
   }) => {
     const data = await adminFetch("/admin/auth/initialize-owner", {
       method: "POST",
@@ -512,6 +523,10 @@ export const DesktopCmsApi = {
     adminFetch(`/admin/purchases/${poId}/pay?payment_method=${paymentMethod}`, { method: "POST" }),
   getPurchaseOrderLabels: (poId: number) =>
     adminFetch(`/admin/purchases/${poId}/labels`),
+
+  // POS version compatibility probe
+  checkPosCompat: (clientVersion = "1.0.0") =>
+    adminFetch(`/pos/compat?client_version=${encodeURIComponent(clientVersion)}`),
 
   // Catalog mirror (offline POS)
   catalogSnapshot: () => adminFetch(`/admin/pos/catalog/snapshot`),

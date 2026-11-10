@@ -27,7 +27,7 @@ class TestExpenseReport(unittest.TestCase):
     def setUpClass(cls):
         seed_initial_data()
         cls.client = TestClient(app)
-        login = cls.client.post("/api/v1/admin/auth/login", json={"email": "admin@musluxury.dz", "password": "MusLuxury2026!"})
+        login = cls.client.post("/api/v1/admin/auth/login", json={"email": "admin@mus-luxury.com", "password": "MusLuxury2026!"})
         assert login.status_code == 200, login.text
         cls.headers = {"Authorization": f"Bearer {login.json()['access_token']}"}
 

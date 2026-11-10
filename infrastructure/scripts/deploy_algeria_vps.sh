@@ -14,19 +14,19 @@ chmod 600 .env || true
 
 echo "[2/5] Ensuring TLS certificates exist in ./infrastructure/nginx/ssl/..."
 mkdir -p ./infrastructure/nginx/ssl
-if [ -f /etc/letsencrypt/live/musluxury.dz/fullchain.pem ] && [ -f /etc/letsencrypt/live/musluxury.dz/privkey.pem ]; then
-  cp /etc/letsencrypt/live/musluxury.dz/fullchain.pem ./infrastructure/nginx/ssl/fullchain.pem
-  cp /etc/letsencrypt/live/musluxury.dz/privkey.pem ./infrastructure/nginx/ssl/privkey.pem
+if [ -f /etc/letsencrypt/live/mus-luxury.com/fullchain.pem ] && [ -f /etc/letsencrypt/live/mus-luxury.com/privkey.pem ]; then
+  cp /etc/letsencrypt/live/mus-luxury.com/fullchain.pem ./infrastructure/nginx/ssl/fullchain.pem
+  cp /etc/letsencrypt/live/mus-luxury.com/privkey.pem ./infrastructure/nginx/ssl/privkey.pem
 elif [ ! -f ./infrastructure/nginx/ssl/fullchain.pem ]; then
   echo "================================================================================"
-  echo "[WARNING] Let's Encrypt certificate not found at /etc/letsencrypt/live/musluxury.dz/"
+  echo "[WARNING] Let's Encrypt certificate not found at /etc/letsencrypt/live/mus-luxury.com/"
   echo "[WARNING] Generating a temporary SELF-SIGNED bootstrap certificate for Nginx startup."
   echo "[WARNING] Replace with a valid Let's Encrypt certificate before serving public traffic!"
   echo "================================================================================"
   openssl req -x509 -nodes -days 365 -newkey rsa:2048 \
     -keyout ./infrastructure/nginx/ssl/privkey.pem \
     -out ./infrastructure/nginx/ssl/fullchain.pem \
-    -subj "/C=DZ/ST=Blida/L=OuledYaich/O=MusLuxury/CN=musluxury.dz" 2>/dev/null
+    -subj "/C=DZ/ST=Blida/L=OuledYaich/O=MusLuxury/CN=mus-luxury.com" 2>/dev/null
 fi
 
 echo "[3/5] Building and starting PostgreSQL 16, FastAPI, Storefront, and Nginx containers..."

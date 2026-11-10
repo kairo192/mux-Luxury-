@@ -1,6 +1,7 @@
 import React, { useEffect, useState, useCallback } from "react";
-import { AlertTriangle, RefreshCw, PackageMinus, Package, TrendingDown, Wallet } from "lucide-react";
+import { AlertTriangle, RefreshCw, PackageMinus, Wallet } from "lucide-react";
 import { DesktopCmsApi } from "../api/adminClient";
+import { useT } from "../i18n";
 
 const fmt = (dzd: number) => `${Number(dzd || 0).toLocaleString("fr-DZ")} DA`;
 
@@ -19,6 +20,7 @@ interface LowStockItem {
 }
 
 export const LowStockPage: React.FC = () => {
+  const t = useT();
   const [data, setData] = useState<{ items: LowStockItem[]; summary: any } | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -30,11 +32,11 @@ export const LowStockPage: React.FC = () => {
       setData(await DesktopCmsApi.getLowStockReport(includeOut));
       setError(null);
     } catch (e: any) {
-      setError(e?.userMessage || "Chargement impossible");
+      setError(e?.userMessage || t("status.error"));
     } finally {
       setLoading(false);
     }
-  }, [includeOut]);
+  }, [includeOut, t]);
 
   useEffect(() => {
     load();
@@ -54,14 +56,14 @@ export const LowStockPage: React.FC = () => {
       <div className="bg-white p-5 rounded-3xl border border-[#D4AF62]/40 flex flex-wrap items-center justify-between gap-3">
         <div>
           <h3 className="text-lg font-serif font-bold text-[#063D2E] flex items-center gap-2">
-            <PackageMinus className="w-5 h-5" /> Alertes stock faible
+            <PackageMinus className="w-5 h-5" /> {t("low_stock.title")}
           </h3>
-          <p className="text-gray-500 mt-1">Variantes à ou sous leur seuil critique, avec suggestions de réapprovisionnement.</p>
+          <p className="text-gray-500 mt-1">{t("low_stock.subtitle")}</p>
         </div>
         <div className="flex items-center gap-3">
           <label className="flex items-center gap-2 text-gray-600 font-bold">
             <input type="checkbox" checked={includeOut} onChange={(e) => setIncludeOut(e.target.checked)} className="w-5 h-5" />
-            Inclure ruptures
+            {t("low_stock.include_out")}
           </label>
           <button type="button" onClick={load} className="h-12 w-12 rounded-2xl border-2 border-gray-200 flex items-center justify-center text-gray-500 active:scale-95">
             <RefreshCw className={`w-5 h-5 ${loading ? "animate-spin" : ""}`} />
@@ -70,31 +72,31 @@ export const LowStockPage: React.FC = () => {
       </div>
 
       <div className="grid grid-cols-3 gap-3">
-        <Tile icon={AlertTriangle} label="Ruptures" value={String(summary.out_of_stock_count)} tone="red" />
-        <Tile icon={PackageMinus} label="Stock faible" value={String(summary.low_stock_count)} tone="amber" />
-        <Tile icon={Wallet} label="Réappro suggéré" value={fmt(summary.total_suggested_reorder_value_dzd)} tone="gold" />
+        <Tile icon={AlertTriangle} label={t("low_stock.tile_out")} value={String(summary.out_of_stock_count)} tone="red" />
+        <Tile icon={PackageMinus} label={t("low_stock.tile_low")} value={String(summary.low_stock_count)} tone="amber" />
+        <Tile icon={Wallet} label={t("low_stock.tile_suggested")} value={fmt(summary.total_suggested_reorder_value_dzd)} tone="gold" />
       </div>
 
       {loading ? (
         <div className="flex items-center justify-center py-16 text-gray-500">
-          <RefreshCw className="w-6 h-6 animate-spin mr-2" /> Chargement…
+          <RefreshCw className="w-6 h-6 animate-spin mr-2" /> {t("status.loading")}
         </div>
       ) : items.length === 0 ? (
         <div className="bg-white p-10 rounded-3xl border border-gray-200 text-center text-gray-400">
-          Aucune alerte stock. Bravo !
+          {t("low_stock.empty")}
         </div>
       ) : (
         <div className="bg-white rounded-3xl border border-gray-200 overflow-hidden">
           <table className="w-full text-left">
             <thead className="bg-[#063D2E] text-[#E8D4A5] text-xs uppercase">
               <tr>
-                <th className="px-4 py-3">Produit</th>
-                <th className="px-4 py-3 text-right">Stock</th>
-                <th className="px-4 py-3 text-right">Seuil</th>
-                <th className="px-4 py-3 text-right">En cours</th>
-                <th className="px-4 py-3 text-right hidden md:table-cell">Ventes 30j</th>
-                <th className="px-4 py-3 text-right">Suggéré</th>
-                <th className="px-4 py-3 text-right hidden md:table-cell">Coût</th>
+                <th className="px-4 py-3">{t("low_stock.th_product")}</th>
+                <th className="px-4 py-3 text-right">{t("low_stock.th_stock")}</th>
+                <th className="px-4 py-3 text-right">{t("low_stock.th_threshold")}</th>
+                <th className="px-4 py-3 text-right">{t("low_stock.th_on_order")}</th>
+                <th className="px-4 py-3 text-right hidden md:table-cell">{t("low_stock.th_velocity")}</th>
+                <th className="px-4 py-3 text-right">{t("low_stock.th_suggested")}</th>
+                <th className="px-4 py-3 text-right hidden md:table-cell">{t("low_stock.th_cost")}</th>
               </tr>
             </thead>
             <tbody>
@@ -129,7 +131,7 @@ export const LowStockPage: React.FC = () => {
       )}
 
       <p className="text-[11px] text-gray-400 text-center">
-        Suggestion = max(seuil + 1, 2 × vélocité 30 jours) − stock actuel − commandes en cours. Vérifiez auprès de vos fournisseurs avant de commander.
+        {t("low_stock.formula_hint")}
       </p>
     </div>
   );

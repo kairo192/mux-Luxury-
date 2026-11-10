@@ -126,6 +126,23 @@ pub struct MirrorStatus {
     pub db_path: String,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct OfflineQueueRow {
+    pub client_txn_id: String,
+    #[serde(rename = "type")]
+    pub item_type: String,
+    pub created_at: String,
+    pub register_session_id: Option<i64>,
+    pub payload_json: String,
+    pub total_dzd: i64,
+    pub status: String,
+    pub error: Option<String>,
+    pub reason: Option<String>,
+    pub attempts: i64,
+    pub sale_reference: Option<String>,
+    pub updated_at: String,
+}
+
 // -------------------------------------------------- Shared connection -----
 
 pub struct MirrorState {
@@ -178,6 +195,22 @@ CREATE TABLE IF NOT EXISTS meta (
     key   TEXT PRIMARY KEY,
     value TEXT
 );
+
+CREATE TABLE IF NOT EXISTS offline_sales_queue (
+    client_txn_id       TEXT PRIMARY KEY,
+    item_type           TEXT NOT NULL DEFAULT 'sale',
+    created_at          TEXT NOT NULL,
+    register_session_id INTEGER,
+    payload_json        TEXT NOT NULL,
+    total_dzd           INTEGER NOT NULL DEFAULT 0,
+    status              TEXT NOT NULL DEFAULT 'pending',
+    error               TEXT,
+    reason              TEXT,
+    attempts            INTEGER NOT NULL DEFAULT 0,
+    sale_reference      TEXT,
+    updated_at          TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_offline_sales_queue_status ON offline_sales_queue(status);
 "#;
 
 fn normalize(s: &str) -> String {
@@ -596,6 +629,151 @@ fn now_iso() -> String {
         "{:04}-{:02}-{:02}T{:02}:{:02}:{:02}Z",
         y, m, d, rem / 3600, (rem / 60) % 60, rem % 60
     )
+}
+
+#[tauri::command]
+pub fn pos_queue_enqueue(
+    state: State<'_, MirrorState>,
+    item: OfflineQueueRow,
+) -> Result<String, String> {
+    with_conn(&state, |conn| -> rusqlite::Result<String> {
+        conn.execute(
+            "INSERT INTO offline_sales_queue
+                (client_txn_id, item_type, created_at, register_session_id, payload_json,
+                 total_dzd, status, error, reason, attempts, sale_reference, updated_at)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12)
+             ON CONFLICT(client_txn_id) DO UPDATE SET
+                payload_json = excluded.payload_json,
+                total_dzd = excluded.total_dzd,
+                status = excluded.status,
+                error = excluded.error,
+                reason = excluded.reason,
+                attempts = excluded.attempts,
+                sale_reference = excluded.sale_reference,
+                updated_at = excluded.updated_at",
+            params![
+                item.client_txn_id,
+                item.item_type,
+                item.created_at,
+                item.register_session_id,
+                item.payload_json,
+                item.total_dzd,
+                item.status,
+                item.error,
+                item.reason,
+                item.attempts,
+                item.sale_reference,
+                item.updated_at,
+            ],
+        )?;
+        Ok(item.client_txn_id)
+    })
+}
+
+#[tauri::command]
+pub fn pos_queue_list(state: State<'_, MirrorState>) -> Result<Vec<OfflineQueueRow>, String> {
+    with_conn(&state, |conn| -> rusqlite::Result<Vec<OfflineQueueRow>> {
+        let mut stmt = conn.prepare(
+            "SELECT client_txn_id, item_type, created_at, register_session_id,
+                    payload_json, total_dzd, status, error, reason, attempts,
+                    sale_reference, updated_at
+             FROM offline_sales_queue
+             ORDER BY created_at ASC",
+        )?;
+        let rows = stmt.query_map([], |row| {
+            Ok(OfflineQueueRow {
+                client_txn_id: row.get(0)?,
+                item_type: row.get(1)?,
+                created_at: row.get(2)?,
+                register_session_id: row.get(3)?,
+                payload_json: row.get(4)?,
+                total_dzd: row.get(5)?,
+                status: row.get(6)?,
+                error: row.get(7)?,
+                reason: row.get(8)?,
+                attempts: row.get(9)?,
+                sale_reference: row.get(10)?,
+                updated_at: row.get(11)?,
+            })
+        })?;
+        let mut out = Vec::new();
+        for r in rows {
+            out.push(r?);
+        }
+        Ok(out)
+    })
+}
+
+#[tauri::command]
+pub fn pos_queue_upsert_batch(
+    state: State<'_, MirrorState>,
+    items: Vec<OfflineQueueRow>,
+) -> Result<usize, String> {
+    with_conn(&state, |conn| -> rusqlite::Result<usize> {
+        let tx = conn.transaction()?;
+        let mut count = 0;
+        {
+            let mut stmt = tx.prepare(
+                "INSERT INTO offline_sales_queue
+                    (client_txn_id, item_type, created_at, register_session_id, payload_json,
+                     total_dzd, status, error, reason, attempts, sale_reference, updated_at)
+                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12)
+                 ON CONFLICT(client_txn_id) DO UPDATE SET
+                    payload_json = excluded.payload_json,
+                    total_dzd = excluded.total_dzd,
+                    status = excluded.status,
+                    error = excluded.error,
+                    reason = excluded.reason,
+                    attempts = excluded.attempts,
+                    sale_reference = excluded.sale_reference,
+                    updated_at = excluded.updated_at",
+            )?;
+            for item in items {
+                stmt.execute(params![
+                    item.client_txn_id,
+                    item.item_type,
+                    item.created_at,
+                    item.register_session_id,
+                    item.payload_json,
+                    item.total_dzd,
+                    item.status,
+                    item.error,
+                    item.reason,
+                    item.attempts,
+                    item.sale_reference,
+                    item.updated_at,
+                ])?;
+                count += 1;
+            }
+        }
+        tx.commit()?;
+        Ok(count)
+    })
+}
+
+#[tauri::command]
+pub fn pos_queue_remove(
+    state: State<'_, MirrorState>,
+    client_txn_id: String,
+) -> Result<bool, String> {
+    with_conn(&state, |conn| -> rusqlite::Result<bool> {
+        let affected = conn.execute(
+            "DELETE FROM offline_sales_queue WHERE client_txn_id = ?1",
+            params![client_txn_id],
+        )?;
+        Ok(affected > 0)
+    })
+}
+
+#[tauri::command]
+pub fn pos_queue_clear_synced(state: State<'_, MirrorState>) -> Result<usize, String> {
+    with_conn(&state, |conn| -> rusqlite::Result<usize> {
+        let affected = conn.execute(
+            "DELETE FROM offline_sales_queue WHERE status = 'synced'",
+            [],
+        )?;
+        Ok(affected)
+    })
 }
 
 fn date_from_days(mut n: i64) -> (i32, u32, u32) {

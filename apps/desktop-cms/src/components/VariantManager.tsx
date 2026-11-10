@@ -13,6 +13,7 @@ import {
 } from "lucide-react";
 import { DesktopCmsApi } from "../api/adminClient";
 import { notifyClientError, notifyClientSuccess, notifyClientWarning } from "../utils/clientNotifier";
+import { useT } from "../i18n";
 
 // ============================================================================
 // REAL VARIANT MANAGER — colour / size / custom axis combinations
@@ -94,6 +95,7 @@ export function VariantManager({
   onChange,
   onRefresh,
 }: Props) {
+  const t = useT();
   const isCreateMode = !productId;
   const [selection, setSelection] = useState<Record<string, string[]>>(() => {
     const seeded: Record<string, string[]> = {};
@@ -456,14 +458,13 @@ export function VariantManager({
     return (
       <div className="p-6 rounded-2xl bg-[#F8F6F0] border border-[#D4AF62]/40 text-xs space-y-2">
         <p className="font-bold text-[#063D2E] flex items-center gap-2">
-          <Layers className="w-4 h-4" /> Déclinaisons (couleurs / tailles)
+          <Layers className="w-4 h-4" /> {t("variant_mgr.no_axes_title")}
         </p>
         <p className="text-gray-600 leading-relaxed">
-          Cette catégorie ne définit aucun axe de déclinaison. Le produit sera vendu en référence unique avec son stock global.
+          {t("variant_mgr.no_axes_desc")}
         </p>
         <p className="text-[11px] text-gray-500">
-          Pour proposer plusieurs couleurs ou pointures, activez l'option « Axe de déclinaison » sur un attribut dans l'onglet
-          <span className="font-bold"> Catégories</span>.
+          {t("variant_mgr.no_axes_hint")}
         </p>
       </div>
     );
@@ -476,11 +477,11 @@ export function VariantManager({
         <div className="flex flex-wrap items-center justify-between gap-2">
           <p className="font-bold text-[#063D2E] flex items-center gap-2">
             <SlidersHorizontal className="w-4 h-4 text-[#063D2E]" />
-            <span>Combinaisons vendables</span>
+            <span>{t("variant_mgr.builder_title")}</span>
           </p>
           <div className="flex items-center gap-2">
             <label className="flex items-center gap-1 text-[11px] font-semibold text-gray-600">
-              Stock par défaut
+              {t("variant_mgr.default_stock")}
               <input
                 type="number"
                 min={0}
@@ -490,7 +491,7 @@ export function VariantManager({
               />
             </label>
             <label className="flex items-center gap-1 text-[11px] font-semibold text-gray-600">
-              Seuil alerte
+              {t("variant_mgr.default_threshold")}
               <input
                 type="number"
                 min={0}
@@ -651,11 +652,11 @@ export function VariantManager({
 
         <div className="flex flex-wrap items-center gap-2 pt-1 border-t border-[#D4AF62]/20">
           <span className="text-[11px] text-gray-600">
-            {combos.length} combinaison(s) théorique(s) · <strong className="text-emerald-700">{variants.length}</strong>{" "}
-            existante(s) ·{" "}
-            <strong className={missingCombos.length ? "text-amber-700" : "text-gray-500"}>
-              {missingCombos.length} manquante(s)
-            </strong>
+            {t("variant_mgr.combos_meta", {
+              combosCount: combos.length,
+              existingCount: variants.length,
+              missingCount: missingCombos.length,
+            })}
           </span>
           <div className="flex-1" />
           {isCreateMode ? (
@@ -666,7 +667,7 @@ export function VariantManager({
               className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-[#D4AF62] text-[#02291F] font-extrabold disabled:opacity-40 disabled:cursor-not-allowed"
             >
               <Plus className="w-3.5 h-3.5" />
-              <span>Ajouter {missingCombos.length || ""} combinaison(s)</span>
+              <span>{t("variant_mgr.btn_add_combos", { count: missingCombos.length || "" })}</span>
             </button>
           ) : (
             <button
@@ -676,7 +677,7 @@ export function VariantManager({
               className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-[#063D2E] text-[#D4AF62] font-extrabold disabled:opacity-40 disabled:cursor-not-allowed"
             >
               {busy ? <RefreshCw className="w-3.5 h-3.5 animate-spin" /> : <Layers className="w-3.5 h-3.5" />}
-              <span>Générer les {missingCombos.length || ""} manquantes</span>
+              <span>{t("variant_mgr.btn_generate_combos", { count: missingCombos.length || "" })}</span>
             </button>
           )}
           <button
@@ -685,7 +686,7 @@ export function VariantManager({
             className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-white border border-[#063D2E] text-[#063D2E] font-bold"
           >
             <Plus className="w-3.5 h-3.5" />
-            <span>Déclinaison manuelle</span>
+            <span>{t("variant_mgr.btn_manual_variant")}</span>
           </button>
         </div>
 
@@ -702,7 +703,7 @@ export function VariantManager({
                     }
                     className="w-full px-2 py-1.5 border rounded-lg bg-white"
                   >
-                    <option value="">— Choisir —</option>
+                    <option value="">{t("product_editor.select_option")}</option>
                     {(axis.options || []).map((o) => (
                       <option key={o.value} value={o.value}>
                         {o.label_fr || o.value}
@@ -712,7 +713,7 @@ export function VariantManager({
                 </div>
               ))}
               <div>
-                <label className="block font-semibold mb-1">Stock</label>
+                <label className="block font-semibold mb-1">{t("variant_mgr.manual_stock")}</label>
                 <input
                   type="number"
                   min={0}
@@ -722,18 +723,18 @@ export function VariantManager({
                 />
               </div>
               <div>
-                <label className="block font-semibold mb-1">Prix spécifique (DA)</label>
+                <label className="block font-semibold mb-1">{t("variant_mgr.manual_price")}</label>
                 <input
                   type="number"
                   min={0}
                   value={newVariant.price}
                   onChange={(e) => setNewVariant((prev) => ({ ...prev, price: e.target.value }))}
-                  placeholder={`Défaut : ${productPrice.toLocaleString()}`}
+                  placeholder={t("variant_mgr.manual_price_placeholder", { price: productPrice.toLocaleString() })}
                   className="w-full px-2 py-1.5 border rounded-lg bg-white font-mono"
                 />
               </div>
               <div>
-                <label className="block font-semibold mb-1">SKU (auto si vide)</label>
+                <label className="block font-semibold mb-1">{t("variant_mgr.manual_sku")}</label>
                 <input
                   value={newVariant.sku}
                   onChange={(e) => setNewVariant((prev) => ({ ...prev, sku: e.target.value }))}
@@ -748,14 +749,14 @@ export function VariantManager({
                 disabled={busy}
                 className="px-3 py-1.5 rounded-lg bg-[#063D2E] text-[#D4AF62] font-extrabold disabled:opacity-50"
               >
-                Ajouter la déclinaison
+                {t("variant_mgr.btn_add_single")}
               </button>
               <button
                 type="button"
                 onClick={() => setShowAddForm(false)}
                 className="px-3 py-1.5 rounded-lg bg-gray-100 font-bold text-gray-700"
               >
-                Annuler
+                {t("common.cancel")}
               </button>
             </div>
           </div>
@@ -767,9 +768,9 @@ export function VariantManager({
         <div className="flex flex-wrap items-center justify-between gap-2 px-4 py-2.5 bg-[#063D2E] text-[#E8D4A5]">
           <div className="flex items-center gap-3 font-bold">
             <Layers className="w-4 h-4" />
-            <span>{variants.length} déclinaison(s)</span>
+            <span>{t("variant_mgr.table_title", { count: variants.length })}</span>
             <span className="text-[11px] font-normal text-[#E8D4A5]/80">
-              Stock total : {totalStock} · Rupture : {outOfStock} · Alerte : {lowStock}
+              {t("variant_mgr.table_stock_meta", { total: totalStock, out: outOfStock, low: lowStock })}
             </span>
           </div>
           {dirtyCount > 0 && (
@@ -780,28 +781,28 @@ export function VariantManager({
               className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-[#D4AF62] text-[#02291F] font-extrabold disabled:opacity-50"
             >
               <Save className="w-3.5 h-3.5" />
-              <span>Enregistrer {dirtyCount} modification(s)</span>
+              <span>{t("variant_mgr.btn_save_edits", { count: dirtyCount })}</span>
             </button>
           )}
         </div>
 
         {selectedIds.length > 0 && (
           <div className="flex flex-wrap items-center gap-2 px-4 py-2 bg-[#F8F6F0] border-b border-[#D4AF62]/30">
-            <span className="font-bold text-[#063D2E]">{selectedIds.length} sélectionnée(s) :</span>
+            <span className="font-bold text-[#063D2E]">{t("variant_mgr.bulk_selected", { count: selectedIds.length })}</span>
             <button type="button" onClick={() => runBulk("stock")} className="px-2.5 py-1 rounded-lg bg-white border border-[#063D2E] font-bold text-[#063D2E]">
-              Définir le stock
+              {t("variant_mgr.bulk_set_stock")}
             </button>
             <button type="button" onClick={() => runBulk("price")} className="px-2.5 py-1 rounded-lg bg-white border border-[#063D2E] font-bold text-[#063D2E]">
-              Définir le prix
+              {t("variant_mgr.bulk_set_price")}
             </button>
             <button type="button" onClick={() => runBulk("clear_price")} className="px-2.5 py-1 rounded-lg bg-white border border-gray-300 font-bold text-gray-700">
-              Prix produit
+              {t("variant_mgr.bulk_clear_price")}
             </button>
             <button type="button" onClick={() => runBulk("activate")} className="px-2.5 py-1 rounded-lg bg-emerald-50 border border-emerald-300 font-bold text-emerald-800">
-              Activer
+              {t("variant_mgr.bulk_activate")}
             </button>
             <button type="button" onClick={() => runBulk("deactivate")} className="px-2.5 py-1 rounded-lg bg-amber-50 border border-amber-300 font-bold text-amber-800">
-              Désactiver
+              {t("variant_mgr.bulk_deactivate")}
             </button>
             <button type="button" onClick={() => setSelectedIds([])} className="ml-auto p-1 rounded text-gray-500 hover:text-black">
               <X className="w-3.5 h-3.5" />
@@ -812,10 +813,9 @@ export function VariantManager({
         {variants.length === 0 ? (
           <div className="p-8 text-center space-y-2">
             <PackageIcon />
-            <p className="font-bold text-gray-700">Aucune déclinaison enregistrée</p>
+            <p className="font-bold text-gray-700">{t("variant_mgr.empty_title")}</p>
             <p className="text-gray-500 max-w-md mx-auto">
-              Sélectionnez les couleurs et tailles ci-dessus puis cliquez sur « Ajouter les combinaisons » pour créer les
-              références vendables.
+              {t("variant_mgr.empty_desc")}
             </p>
           </div>
         ) : (
@@ -834,14 +834,14 @@ export function VariantManager({
                       disabled={isCreateMode}
                     />
                   </th>
-                  <th className="p-2">Déclinaison</th>
-                  <th className="p-2">SKU</th>
-                  <th className="p-2">Code-barres</th>
-                  <th className="p-2 text-right">Prix</th>
-                  <th className="p-2 text-center">Stock</th>
-                  <th className="p-2 text-center">Seuil</th>
-                  <th className="p-2 text-center">État</th>
-                  <th className="p-2 text-right">Actions</th>
+                  <th className="p-2">{t("variant_mgr.th_variant")}</th>
+                  <th className="p-2">{t("variant_mgr.th_sku")}</th>
+                  <th className="p-2">{t("variant_mgr.th_barcode")}</th>
+                  <th className="p-2 text-right">{t("variant_mgr.th_price")}</th>
+                  <th className="p-2 text-center">{t("variant_mgr.th_stock")}</th>
+                  <th className="p-2 text-center">{t("variant_mgr.th_threshold")}</th>
+                  <th className="p-2 text-center">{t("variant_mgr.th_status")}</th>
+                  <th className="p-2 text-right">{t("variant_mgr.th_actions")}</th>
                 </tr>
               </thead>
               <tbody className="divide-y">
@@ -887,7 +887,7 @@ export function VariantManager({
                           })}
                           {variant.__new && (
                             <span className="px-1.5 py-0.5 rounded bg-amber-100 text-amber-900 text-[10px] font-bold">
-                              NON ENREGISTRÉE
+                              {t("variant_mgr.not_saved_badge")}
                             </span>
                           )}
                         </div>
@@ -984,19 +984,19 @@ export function VariantManager({
                       <td className="p-2 text-center">
                         {Number(value("stock_qty") ?? 0) <= 0 ? (
                           <span className="px-2 py-0.5 rounded-full bg-rose-50 text-rose-700 border border-rose-200 font-bold text-[10px]">
-                            Rupture
+                            {t("variant_mgr.status_out")}
                           </span>
                         ) : Number(value("stock_qty") ?? 0) <= Number(value("low_stock_threshold") ?? 3) ? (
                           <span className="px-2 py-0.5 rounded-full bg-amber-50 text-amber-800 border border-amber-300 font-bold text-[10px]">
-                            Faible
+                            {t("variant_mgr.status_low")}
                           </span>
                         ) : (
                           <span className="px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-800 border border-emerald-200 font-bold text-[10px]">
-                            Disponible
+                            {t("variant_mgr.status_available")}
                           </span>
                         )}
                         {variant.is_active === false && (
-                          <div className="text-[10px] text-gray-500 font-bold mt-0.5">Inactif</div>
+                          <div className="text-[10px] text-gray-500 font-bold mt-0.5">{t("variant_mgr.status_inactive")}</div>
                         )}
                       </td>
                       <td className="p-2 text-right whitespace-nowrap space-x-1">
@@ -1016,7 +1016,7 @@ export function VariantManager({
                             }`}
                             title="Activer / désactiver la déclinaison sur la boutique"
                           >
-                            {edit.is_active !== undefined ? (edit.is_active ? "Activer" : "Désactiver") : variant.is_active !== false ? "Désactiver" : "Activer"}
+                            {edit.is_active !== undefined ? (edit.is_active ? t("variant_mgr.btn_activate") : t("variant_mgr.btn_deactivate")) : variant.is_active !== false ? t("variant_mgr.btn_deactivate") : t("variant_mgr.btn_activate")}
                           </button>
                         )}
                         <button
@@ -1040,8 +1040,7 @@ export function VariantManager({
       <p className="flex items-start gap-1.5 text-[11px] text-gray-500">
         <AlertTriangle className="w-3.5 h-3.5 text-amber-600 shrink-0 mt-0.5" />
         <span>
-          Une déclinaison liée à des commandes passées ne peut pas être supprimée définitivement : elle est automatiquement
-          désactivée pour préserver l'historique. Le prix affiché sur la boutique est toujours recalculé côté serveur.
+          {t("variant_mgr.deactivation_warning")}
         </span>
       </p>
 
@@ -1054,6 +1053,7 @@ const NumericPromptModal: React.FC<{
   prompt: { title: string; hint?: string; unit?: string; initial: string };
   onDone: (value: number | null) => void;
 }> = ({ prompt, onDone }) => {
+  const t = useT();
   const [raw, setRaw] = useState(prompt.initial);
   const inputRef = React.useRef<HTMLInputElement>(null);
   React.useEffect(() => {
@@ -1092,14 +1092,14 @@ const NumericPromptModal: React.FC<{
             onClick={() => onDone(null)}
             className="flex-1 h-12 rounded-2xl bg-gray-100 text-gray-700 font-bold active:scale-95"
           >
-            Annuler
+            {t("common.cancel")}
           </button>
           <button
             type="button"
             onClick={submit}
             className="flex-1 h-12 rounded-2xl bg-[#063D2E] text-[#D4AF62] font-bold active:scale-95"
           >
-            Appliquer
+            {t("variant_mgr.prompt_apply")}
           </button>
         </div>
       </div>

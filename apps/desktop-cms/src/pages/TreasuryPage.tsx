@@ -1,6 +1,5 @@
 import React, { useState, useEffect } from "react";
 import {
-  Landmark,
   Building2,
   Zap,
   Truck,
@@ -8,14 +7,13 @@ import {
   Boxes,
   Plus,
   RefreshCw,
-  ArrowUpRight,
-  ArrowDownRight,
   DollarSign,
   AlertTriangle,
   CheckCircle2,
   X,
 } from "lucide-react";
 import { DesktopCmsApi } from "../api/adminClient";
+import { useT } from "../i18n";
 
 interface TreasurySummary {
   cash_balance_dzd: number;
@@ -45,6 +43,7 @@ interface CashMovement {
 }
 
 export const TreasuryPage: React.FC = () => {
+  const t = useT();
   const [summary, setSummary] = useState<TreasurySummary | null>(null);
   const [movements, setMovements] = useState<CashMovement[]>([]);
   const [loading, setLoading] = useState<boolean>(true);
@@ -70,7 +69,7 @@ export const TreasuryPage: React.FC = () => {
       setSummary(sumData);
       setMovements(Array.isArray(movData) ? movData : (movData as any)?.items || []);
     } catch (err: unknown) {
-      setError(err instanceof Error ? err.message : "Erreur lors du chargement des données de trésorerie");
+      setError(err instanceof Error ? err.message : t("status.error"));
     } finally {
       setLoading(false);
     }
@@ -98,13 +97,13 @@ export const TreasuryPage: React.FC = () => {
         notes: movNotes.trim() || undefined,
       });
 
-      setSuccess("Mouvement de trésorerie enregistré avec succès dans le journal de caisse.");
+      setSuccess(t("common.saved"));
       setShowModal(false);
       setMovAmount("");
       setMovNotes("");
       loadData();
     } catch (err: unknown) {
-      setError(err instanceof Error ? err.message : "Erreur lors de l'enregistrement du mouvement");
+      setError(err instanceof Error ? err.message : t("status.error"));
     } finally {
       setSaving(false);
     }
@@ -116,10 +115,10 @@ export const TreasuryPage: React.FC = () => {
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 pb-4 border-b border-[#063D2E]/10">
         <div>
           <h2 className="text-2xl font-serif font-bold text-[#063D2E] tracking-tight">
-            Trésorerie, Caisse & Liquidités
+            {t("treasury.title")}
           </h2>
           <p className="text-sm text-gray-500 mt-1">
-            Contrôle en temps réel des flux d'espèces en boutique, comptes bancaires, fonds livreurs COD et dettes fournisseurs.
+            {t("treasury.subtitle")}
           </p>
         </div>
         <div className="flex items-center gap-3">
@@ -128,7 +127,7 @@ export const TreasuryPage: React.FC = () => {
             className="inline-flex items-center gap-1.5 px-4 py-2 text-xs font-semibold rounded-xl border border-[#063D2E]/20 text-[#063D2E] hover:bg-[#063D2E]/5 transition-colors"
           >
             <RefreshCw className="w-3.5 h-3.5 text-[#063D2E]" />
-            <span>Actualiser</span>
+            <span>{t("common.refresh")}</span>
           </button>
           <button
             onClick={() => {
@@ -139,7 +138,7 @@ export const TreasuryPage: React.FC = () => {
             className="inline-flex items-center gap-1.5 px-4 py-2 text-xs font-semibold rounded-xl bg-[#063D2E] text-[#D4AF62] hover:bg-[#0A5C45] shadow-xs transition-all"
           >
             <Plus className="w-4 h-4 text-[#D4AF62]" />
-            <span>Enregistrer une Opération Caisse</span>
+            <span>{t("treasury.btn_add_movement")}</span>
           </button>
         </div>
       </div>
@@ -175,7 +174,7 @@ export const TreasuryPage: React.FC = () => {
           <div className="flex items-center justify-between text-xs font-semibold uppercase tracking-wider text-gray-500">
             <span className="flex items-center gap-1.5 font-bold text-gray-700">
               <DollarSign className="w-4 h-4 text-emerald-700" />
-              Caisse Boutique (Espèces)
+              {t("treasury.stat_cash")}
             </span>
             <span className="text-[10px] bg-emerald-50 text-emerald-800 font-bold px-2 py-0.5 rounded-full">Physique</span>
           </div>
@@ -193,7 +192,7 @@ export const TreasuryPage: React.FC = () => {
           <div className="flex items-center justify-between text-xs font-semibold uppercase tracking-wider text-gray-500">
             <span className="flex items-center gap-1.5 font-bold text-gray-700">
               <Building2 className="w-4 h-4 text-blue-600" />
-              Comptes Bancaires
+              {t("treasury.stat_bank")}
             </span>
             <span className="text-[10px] bg-blue-50 text-blue-700 font-bold px-2 py-0.5 rounded-full">Banque</span>
           </div>
@@ -211,7 +210,7 @@ export const TreasuryPage: React.FC = () => {
           <div className="flex items-center justify-between text-xs font-semibold uppercase tracking-wider text-[#D4AF62]">
             <span className="flex items-center gap-1.5 font-bold">
               <Zap className="w-4 h-4 text-[#D4AF62]" />
-              Total Liquidités Disponibles
+              {t("treasury.stat_liquidity")}
             </span>
             <span className="text-[10px] bg-white/10 text-[#E8D4A5] font-bold px-2 py-0.5 rounded-full border border-white/15">Consolidé</span>
           </div>
@@ -229,7 +228,7 @@ export const TreasuryPage: React.FC = () => {
           <div className="flex items-center justify-between text-xs font-semibold uppercase tracking-wider text-gray-500">
             <span className="flex items-center gap-1.5 font-bold text-gray-700">
               <Truck className="w-4 h-4 text-amber-600" />
-              Encaissements COD Livreurs
+              {t("treasury.stat_cod_pending")}
             </span>
             <span className="text-[10px] bg-amber-50 text-amber-700 font-bold px-2 py-0.5 rounded-full">En cours</span>
           </div>
@@ -247,16 +246,13 @@ export const TreasuryPage: React.FC = () => {
           <div className="flex items-center justify-between text-xs font-semibold uppercase tracking-wider text-gray-500">
             <span className="flex items-center gap-1.5 font-bold text-gray-700">
               <FileSpreadsheet className="w-4 h-4 text-red-600" />
-              Dettes Fournisseurs (Engagées)
+              Dettes Fournisseurs
             </span>
             <span className="text-[10px] bg-red-50 text-red-700 font-bold px-2 py-0.5 rounded-full">Passif</span>
           </div>
           <div className="text-3xl font-bold font-mono text-red-600 mt-2">
             {(summary?.supplier_debts_dzd ?? 0).toLocaleString()}{" "}
             <span className="text-sm font-sans font-normal text-red-400">DZD</span>
-          </div>
-          <div className="text-[11px] text-gray-500 mt-2">
-            Factures achats reçues restant à payer
           </div>
         </div>
 
@@ -265,7 +261,7 @@ export const TreasuryPage: React.FC = () => {
           <div className="flex items-center justify-between text-xs font-semibold uppercase tracking-wider text-gray-500">
             <span className="flex items-center gap-1.5 font-bold text-gray-700">
               <Boxes className="w-4 h-4 text-purple-600" />
-              Valeur Totale du Stock (Actif)
+              {t("accounting.stat_inventory_val")}
             </span>
             <span className="text-[10px] bg-purple-50 text-purple-700 font-bold px-2 py-0.5 rounded-full">PMP</span>
           </div>
@@ -273,64 +269,25 @@ export const TreasuryPage: React.FC = () => {
             {(summary?.inventory_valuation_dzd ?? 0).toLocaleString()}{" "}
             <span className="text-sm font-sans font-normal text-[#D4AF62]">DZD</span>
           </div>
-          <div className="text-[11px] text-gray-500 mt-2">
-            Valorisation au prix moyen pondéré d'achat
-          </div>
         </div>
       </div>
-
-      {/* Visual Liquidity Allocation Breakdown */}
-      {summary && (
-        <div className="p-4 bg-white rounded-2xl border border-[#063D2E]/10 shadow-sm space-y-2">
-          <div className="flex items-center justify-between text-xs">
-            <span className="font-bold text-[#063D2E]">Répartition des Actifs Disponibles</span>
-            <span className="text-[11px] text-gray-400 font-mono">Consolidation trésorerie boutique</span>
-          </div>
-          {(() => {
-            const tot = Math.max((summary.cash_balance_dzd || 0) + (summary.bank_balance_dzd || 0) + (summary.pending_cod_collections_dzd || 0), 1);
-            const cashPct = (((summary.cash_balance_dzd || 0) / tot) * 100).toFixed(1);
-            const bankPct = (((summary.bank_balance_dzd || 0) / tot) * 100).toFixed(1);
-            const codPct = (((summary.pending_cod_collections_dzd || 0) / tot) * 100).toFixed(1);
-            return (
-              <div className="space-y-1.5">
-                <div className="h-3 w-full bg-gray-100 rounded-full overflow-hidden flex shadow-inner">
-                  <div style={{ width: `${cashPct}%` }} className="bg-[#063D2E] transition-all" title={`Caisse: ${cashPct}%`} />
-                  <div style={{ width: `${bankPct}%` }} className="bg-blue-600 transition-all" title={`Banque: ${bankPct}%`} />
-                  <div style={{ width: `${codPct}%` }} className="bg-amber-500 transition-all" title={`COD: ${codPct}%`} />
-                </div>
-                <div className="flex flex-wrap items-center justify-between text-[11px] text-gray-500 pt-0.5">
-                  <span className="flex items-center gap-1.5">
-                    <span className="w-2.5 h-2.5 rounded-full bg-[#063D2E]" /> Caisse: <strong>{cashPct}%</strong>
-                  </span>
-                  <span className="flex items-center gap-1.5">
-                    <span className="w-2.5 h-2.5 rounded-full bg-blue-600" /> Banque: <strong>{bankPct}%</strong>
-                  </span>
-                  <span className="flex items-center gap-1.5">
-                    <span className="w-2.5 h-2.5 rounded-full bg-amber-500" /> En attente COD: <strong>{codPct}%</strong>
-                  </span>
-                </div>
-              </div>
-            );
-          })()}
-        </div>
-      )}
 
       {/* Movements Table */}
       <div className="bg-white rounded-lg border border-[#063D2E]/10 shadow-sm overflow-hidden">
         <div className="px-6 py-4 bg-[#063D2E]/5 border-b border-[#063D2E]/10 flex items-center justify-between">
           <h3 className="text-sm font-serif font-bold text-[#063D2E] uppercase tracking-wider">
-            Journal des Mouvements de Caisse & Flux Financiers
+            {t("treasury.subtitle")}
           </h3>
           <span className="text-xs text-gray-500 font-mono">
-            {movements.length} derniers mouvements enregistrés
+            {movements.length} mouvements
           </span>
         </div>
 
         {loading ? (
-          <div className="p-8 text-center text-xs text-gray-400">Chargement des mouvements...</div>
+          <div className="p-8 text-center text-xs text-gray-400">{t("status.loading")}</div>
         ) : movements.length === 0 ? (
           <div className="p-8 text-center text-xs text-gray-400">
-            Aucun mouvement de caisse enregistré.
+            {t("status.empty")}
           </div>
         ) : (
           <div className="overflow-x-auto">
@@ -338,10 +295,10 @@ export const TreasuryPage: React.FC = () => {
               <thead className="bg-[#063D2E]/5 border-b border-[#063D2E]/10 text-gray-600 uppercase tracking-wider text-[11px]">
                 <tr>
                   <th className="py-3 px-4">ID</th>
-                  <th className="py-3 px-4">Date & Heure</th>
-                  <th className="py-3 px-4">Type / Catégorie</th>
-                  <th className="py-3 px-4">Description / Réf</th>
-                  <th className="py-3 px-4 text-right">Montant (DZD)</th>
+                  <th className="py-3 px-4">{t("treasury.th_date")}</th>
+                  <th className="py-3 px-4">{t("treasury.th_type")} / {t("treasury.th_category")}</th>
+                  <th className="py-3 px-4">{t("expense_report.th_desc")}</th>
+                  <th className="py-3 px-4 text-right">{t("treasury.th_amount")}</th>
                   <th className="py-3 px-4 text-right">Solde Caisse Après</th>
                   <th className="py-3 px-4 text-right">Opérateur</th>
                 </tr>
@@ -363,11 +320,11 @@ export const TreasuryPage: React.FC = () => {
                               : "bg-red-100 text-red-800"
                           }`}
                         >
-                          {isInflow ? "↗ ENTRÉE" : "↘ SORTIE"} • {m.category || m.source_type || (m.account_type === "cash_box" ? "Caisse" : "Banque")}
+                          {isInflow ? `↗ ${t("treasury.inflow")}` : `↘ ${t("treasury.outflow")}`} • {m.category || m.source_type || (m.account_type === "cash_box" ? "Caisse" : "Banque")}
                         </span>
                       </td>
                       <td className="py-3 px-4 text-gray-700">
-                        <div>{m.notes || m.description || "Opération standard"}</div>
+                        <div>{m.notes || m.description || "—"}</div>
                         {(m.reference_id || m.source_reference) && (
                           <div className="text-[11px] font-mono text-gray-400">
                             {m.reference_type || m.source_type || "Réf"}: #{m.reference_id || m.source_reference}
@@ -384,10 +341,10 @@ export const TreasuryPage: React.FC = () => {
                       <td className="py-3 px-4 text-right font-mono text-gray-700 whitespace-nowrap">
                         {m.balance_after_dzd !== undefined && m.balance_after_dzd !== null
                           ? `${Number(m.balance_after_dzd).toLocaleString()} DZD`
-                          : (m.account_type === "cash_box" ? "Caisse Principale" : m.account_type === "bank_account" ? "Compte Bancaire" : "—")}
+                          : "—"}
                       </td>
                       <td className="py-3 px-4 text-right font-mono text-gray-500">
-                        {m.created_by || (m.recorded_by ? `Admin #${m.recorded_by}` : "Direction")}
+                        {m.created_by || (m.recorded_by ? `Admin #${m.recorded_by}` : "—")}
                       </td>
                     </tr>
                   );
@@ -404,7 +361,7 @@ export const TreasuryPage: React.FC = () => {
           <div className="bg-white rounded-lg shadow-xl w-full max-w-md border border-[#063D2E]/20 overflow-hidden">
             <div className="bg-[#063D2E] px-6 py-4 flex items-center justify-between">
               <h3 className="text-sm font-serif font-bold text-[#D4AF62] uppercase tracking-wider">
-                Opération Manuelle de Caisse
+                {t("treasury.btn_add_movement")}
               </h3>
               <button
                 onClick={() => setShowModal(false)}
@@ -417,7 +374,7 @@ export const TreasuryPage: React.FC = () => {
             <form onSubmit={handleRecordMovement} className="p-6 space-y-4">
               <div>
                 <label className="block text-xs font-semibold text-gray-700 mb-1">
-                  Type de Flux *
+                  Type *
                 </label>
                 <div className="grid grid-cols-2 gap-3">
                   <button
@@ -432,7 +389,7 @@ export const TreasuryPage: React.FC = () => {
                         : "bg-gray-50 text-gray-700 border-gray-200"
                     }`}
                   >
-                    ↗ Entrée de Caisse
+                    ↗ {t("treasury.inflow")}
                   </button>
                   <button
                     type="button"
@@ -446,14 +403,14 @@ export const TreasuryPage: React.FC = () => {
                         : "bg-gray-50 text-gray-700 border-gray-200"
                     }`}
                   >
-                    ↘ Sortie de Caisse
+                    ↘ {t("treasury.outflow")}
                   </button>
                 </div>
               </div>
 
               <div>
                 <label className="block text-xs font-semibold text-gray-700 mb-1">
-                  Catégorie de Mouvement *
+                  {t("treasury.th_category")} *
                 </label>
                 <select
                   value={movCategory}
@@ -482,13 +439,13 @@ export const TreasuryPage: React.FC = () => {
 
               <div>
                 <label className="block text-xs font-semibold text-gray-700 mb-1">
-                  Montant en Dinars (DZD) *
+                  {t("treasury.th_amount")} *
                 </label>
                 <input
                   type="number"
                   required
                   min="1"
-                  placeholder="ex: 50000"
+                  placeholder="50000"
                   value={movAmount}
                   onChange={(e) => setMovAmount(e.target.value)}
                   className="w-full text-xs p-2 border border-gray-300 rounded focus:border-[#063D2E] outline-none font-mono font-bold"
@@ -497,12 +454,11 @@ export const TreasuryPage: React.FC = () => {
 
               <div>
                 <label className="block text-xs font-semibold text-gray-700 mb-1">
-                  Motif / Justification *
+                  {t("treasury.th_notes")} *
                 </label>
                 <textarea
                   rows={2}
                   required
-                  placeholder="ex: Versement de l'apport initial pour fonds de roulement boutique"
                   value={movNotes}
                   onChange={(e) => setMovNotes(e.target.value)}
                   className="w-full text-xs p-2 border border-gray-300 rounded focus:border-[#063D2E] outline-none"
@@ -515,14 +471,14 @@ export const TreasuryPage: React.FC = () => {
                   onClick={() => setShowModal(false)}
                   className="px-4 py-2 text-xs font-semibold text-gray-600 hover:bg-gray-100 rounded"
                 >
-                  Annuler
+                  {t("common.cancel")}
                 </button>
                 <button
                   type="submit"
                   disabled={saving}
                   className="px-5 py-2 text-xs font-semibold text-[#D4AF62] bg-[#063D2E] hover:bg-[#0A5C45] rounded shadow transition-all disabled:opacity-50"
                 >
-                  {saving ? "Enregistrement..." : "Confirmer le Mouvement"}
+                  {saving ? "..." : t("common.save")}
                 </button>
               </div>
             </form>
@@ -532,4 +488,3 @@ export const TreasuryPage: React.FC = () => {
     </div>
   );
 };
-

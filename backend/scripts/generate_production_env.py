@@ -14,8 +14,8 @@ where a careless `git add backend/` could stage them.
 
 Usage:
     python3 backend/scripts/generate_production_env.py \\
-        --domain mus-luxury.dz \\
-        --admin-email admin@mus-luxury.dz \\
+        --domain mus-luxury.com \\
+        --admin-email admin@mus-luxury.com \\
         --admin-whatsapp +213655534154 \\
         [--out scratch/production.env]
 
@@ -136,26 +136,8 @@ LUXE_SEED_DEMO_PRODUCTS=0
 ADMIN_INITIAL_EMAIL={admin_email}
 ADMIN_INITIAL_PASSWORD={admin_pw}
 ADMIN_INITIAL_FULL_NAME="Owner"
-ADMIN_INITIAL_WHATSAPP_PHONE={admin_whatsapp}
 ADMIN_SECONDARY_PHONE={emergency_phone}
-ADMIN_EMERGENCY_RECOVERY_CODE={recovery_code}
 
-# ----------------------------------------------------------------------------
-# WhatsApp Cloud API (customer order notifications + webhook). Admin
-# password recovery over WhatsApp has been removed; these are only used
-# for outgoing order updates and the inbound status webhook.
-# ----------------------------------------------------------------------------
-WHATSAPP_CLOUD_API_TOKEN=<FILL_IN_META_SYSTEM_USER_TOKEN>
-WHATSAPP_ACCESS_TOKEN=<FILL_IN_META_SYSTEM_USER_TOKEN>
-WHATSAPP_PHONE_NUMBER_ID=<FILL_IN_META_PHONE_NUMBER_ID>
-WHATSAPP_BUSINESS_ACCOUNT_ID=<FILL_IN_META_BUSINESS_ACCOUNT_ID>
-WHATSAPP_APP_ID=<FILL_IN_META_APP_ID>
-WHATSAPP_APP_SECRET=<FILL_IN_META_APP_SECRET>
-WHATSAPP_WEBHOOK_VERIFY_TOKEN={whatsapp_verify}
-WHATSAPP_API_VERSION=v20.0
-WHATSAPP_TEMPLATE_NAME=luxe_order_update
-WHATSAPP_TEMPLATE_LANG=fr
-WHATSAPP_SANDBOX_MODE=false
 STORE_WHATSAPP_CONTACT_NUMBER={admin_whatsapp}
 
 # ----------------------------------------------------------------------------
@@ -235,7 +217,7 @@ POS_API_CONTRACT_VERSION=1
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__.strip())
     parser.add_argument("--domain", required=True,
-                        help="Public bare domain, e.g. 'mus-luxury.dz' (no scheme, no www).")
+                        help="Public bare domain, e.g. 'mus-luxury.com' (no scheme, no www).")
     parser.add_argument("--admin-email", required=True,
                         help="First-owner email used by the setup wizard pre-fill.")
     parser.add_argument("--admin-whatsapp", required=True,
@@ -291,9 +273,8 @@ def main() -> int:
     print()
     print("Critical values (copy into a password manager NOW, close this terminal):")
     for line in body.splitlines():
-        if line.startswith(("ADMIN_INITIAL_PASSWORD=", "ADMIN_EMERGENCY_RECOVERY_CODE=",
-                            "POSTGRES_PASSWORD=", "BACKUP_ENCRYPTION_KEY=",
-                            "WHATSAPP_WEBHOOK_VERIFY_TOKEN=")):
+        if line.startswith(("ADMIN_INITIAL_PASSWORD=",
+                            "POSTGRES_PASSWORD=", "BACKUP_ENCRYPTION_KEY=")):
             print(f"  {line}")
     return 0
 

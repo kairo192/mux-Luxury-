@@ -8,7 +8,7 @@ or Grafana — those would double the VPS's RAM footprint.
 
 | Signal              | Where                                               | Who reads it      |
 | ------------------- | --------------------------------------------------- | ----------------- |
-| Storefront up       | Uptime Kuma HTTPS monitor, `https://musluxury.dz/`  | Owner's phone     |
+| Storefront up       | Uptime Kuma HTTPS monitor, `https://mus-luxury.com/`  | Owner's phone     |
 | API up              | Uptime Kuma HTTPS monitor, `/api/v1/health`         | Owner's phone     |
 | POS compat          | Uptime Kuma keyword monitor, `/api/v1/pos/compat`   | Owner's phone     |
 | VPS load / mem / disk | `vps-metrics.sh` → `/opt/luxe/logs/metrics.log`   | Uptime Kuma Push  |

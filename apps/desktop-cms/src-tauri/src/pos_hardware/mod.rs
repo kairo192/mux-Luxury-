@@ -231,11 +231,14 @@ fn list_printers_impl() -> Vec<PrinterInfo> {
 
 #[cfg(feature = "with-printers")]
 fn send_to_system_printer(name: &str, bytes: &[u8]) -> Result<(), String> {
+    use printers::common::base::job::PrinterJobOptions;
     let target = printers::get_printer_by_name(name)
         .ok_or_else(|| format!("imprimante introuvable: {}", name))?;
+    let mut options = PrinterJobOptions::none();
+    options.name = Some("Mus Luxury receipt");
     target
-        .print(bytes, Some("Mus Luxury receipt"))
-        .map_err(|e| format!("échec d'impression ({}): {}", name, e))?;
+        .print(bytes, options)
+        .map_err(|e| format!("échec d'impression ({}): {:?}", name, e))?;
     Ok(())
 }
 

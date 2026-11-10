@@ -52,7 +52,7 @@ class TestLuxeEcommercePlatform(unittest.TestCase):
     def setUp(self):
         reset_rate_limits()
 
-    def get_admin_headers(self, email="admin@musluxury.dz", password="MusLuxury2026!"):
+    def get_admin_headers(self, email="admin@mus-luxury.com", password="MusLuxury2026!"):
         resp = self.client.post("/api/v1/admin/auth/login", json={"email": email, "password": password})
         self.assertEqual(resp.status_code, 200, resp.text)
         token = resp.json()["access_token"]
@@ -313,8 +313,8 @@ class TestLuxeEcommercePlatform(unittest.TestCase):
         # Rate limit on login endpoint (max 5 requests per minute)
         reset_rate_limits()
         for _ in range(5):
-            self.client.post("/api/v1/admin/auth/login", json={"email": "wrong@musluxury.dz", "password": "bad"})
-        r_limited = self.client.post("/api/v1/admin/auth/login", json={"email": "wrong@musluxury.dz", "password": "bad"})
+            self.client.post("/api/v1/admin/auth/login", json={"email": "wrong@mus-luxury.com", "password": "bad"})
+        r_limited = self.client.post("/api/v1/admin/auth/login", json={"email": "wrong@mus-luxury.com", "password": "bad"})
         self.assertEqual(r_limited.status_code, 429)
 
     # 8. Desktop CMS Full Website Control (Banners, Homepage Sections & Store Settings)
@@ -471,7 +471,7 @@ class TestLuxeEcommercePlatform(unittest.TestCase):
         # Attempting to call initialize-owner when already initialized must return HTTP 403 Forbidden
         payload = {
             "full_name": "Mustapha Harbit",
-            "email": "owner_second_attempt@musluxury.dz",
+            "email": "owner_second_attempt@mus-luxury.com",
             "password": "SecurePassword2026!",
             "whatsapp_phone": "0550112233",
             "emergency_phone": "0661223344"
@@ -1155,17 +1155,7 @@ class TestLuxeEcommercePlatform(unittest.TestCase):
             "LUXE_SQLITE_PATH=",
             "ADMIN_INITIAL_EMAIL=",
             "ADMIN_INITIAL_PASSWORD=",
-            "ADMIN_INITIAL_WHATSAPP_PHONE=",
-            "ADMIN_EMERGENCY_RECOVERY_CODE=",
-            "WHATSAPP_CLOUD_API_TOKEN=",
-            "WHATSAPP_PHONE_NUMBER_ID=",
-            "WHATSAPP_BUSINESS_ACCOUNT_ID=",
-            "WHATSAPP_APP_ID=",
-            "WHATSAPP_APP_SECRET=",
-            "WHATSAPP_WEBHOOK_VERIFY_TOKEN=",
-            "WHATSAPP_API_VERSION=",
-            "WHATSAPP_TEMPLATE_NAME=",
-            "WHATSAPP_SANDBOX_MODE=",
+            "STORE_WHATSAPP_CONTACT_NUMBER=",
             "YALIDINE_API_ID=",
             "YALIDINE_API_TOKEN=",
             "ZR_EXPRESS_API_KEY=",
@@ -1260,8 +1250,8 @@ class TestLuxeEcommercePlatform(unittest.TestCase):
         self.assertEqual(r_post_tampered.status_code, 401)
 
         # 3. Verify CLI Emergency Reset Utility
-        info = reset_owner_credentials("admin@musluxury.dz", "MusLuxury2026!")
-        self.assertEqual(info["email"], "admin@musluxury.dz")
+        info = reset_owner_credentials("admin@mus-luxury.com", "MusLuxury2026!")
+        self.assertEqual(info["email"], "admin@mus-luxury.com")
         self.assertTrue(info["new_emergency_code"].startswith("LUXE-EMERG-"))
 
     # 36. Tauri 2 Desktop CMS Build Scaffolding & GitHub Actions Workflow Verification
@@ -1362,10 +1352,10 @@ console.log("ALL_TSX_COMPILED_OK");
 
         src_dir = os.path.join(repo_root, "apps", "desktop-cms", "src")
         ui_parts = [__import__("pathlib").Path(os.path.join(src_dir, "App.tsx")).read_text(encoding="utf-8")]
-        for sub in ("pages", "components"):
+        for sub in ("pages", "components", "utils"):
             sub_dir = os.path.join(src_dir, sub)
             if os.path.isdir(sub_dir):
-                for p in __import__("pathlib").Path(sub_dir).glob("*.tsx"):
+                for p in __import__("pathlib").Path(sub_dir).glob("*.[tj]s*"):
                     ui_parts.append(p.read_text(encoding="utf-8"))
         ui_text = "".join(ui_parts)
         missing = [m for m in methods if f"DesktopCmsApi.{m}" not in ui_text]
@@ -1497,7 +1487,7 @@ console.log("ALL_TSX_COMPILED_OK");
         self.assertIn("fn keychain_set_secret", main_rs)
         self.assertIn("fn keychain_get_secret", main_rs)
         self.assertIn("fn keychain_delete_secret", main_rs)
-        self.assertIn("dz.musluxury.cms.wincred", main_rs)
+        self.assertIn("com.musluxury.cms.wincred", main_rs)
 
         # Verify frontend uses osKeychain IPC and NEVER writes access token to localStorage
         self.assertIn("keychainSetSecret", os_kc_ts)
@@ -1753,12 +1743,12 @@ console.log("ALL_TSX_COMPILED_OK");
             self.client.post(
                 "/api/v1/admin/auth/login",
                 headers={"X-Real-IP": "105.101.10.11"},
-                json={"email": "owner@musluxury.dz", "password": "WrongPassword!"},
+                json={"email": "owner@mus-luxury.com", "password": "WrongPassword!"},
             )
         r_blocked = self.client.post(
             "/api/v1/admin/auth/login",
             headers={"X-Real-IP": "105.101.10.11"},
-            json={"email": "owner@musluxury.dz", "password": "WrongPassword!"},
+            json={"email": "owner@mus-luxury.com", "password": "WrongPassword!"},
         )
         self.assertEqual(r_blocked.status_code, 429)
 
@@ -1766,7 +1756,7 @@ console.log("ALL_TSX_COMPILED_OK");
         r_ok = self.client.post(
             "/api/v1/admin/auth/login",
             headers={"X-Real-IP": "105.101.20.22"},
-            json={"email": "editor@musluxury.dz", "password": "EditorLuxury2026!"},
+            json={"email": "editor@mus-luxury.com", "password": "EditorLuxury2026!"},
         )
         self.assertEqual(r_ok.status_code, 200)
 
@@ -2021,7 +2011,7 @@ console.log("CLIENT_NOTIFIER_ALL_TESTS_PASSED");
             "tauri://localhost",
             "http://127.0.0.1:1420",
             "http://localhost:1420",
-            "https://musluxury.dz",
+            "https://mus-luxury.com",
         ]
         for origin in allowed_origins:
             r_opt = self.client.options(
@@ -2691,11 +2681,11 @@ flushOfflineMutationQueue(async () => true).then((res) => {
         from scripts.emergency_reset_owner import reset_owner_credentials
 
         reset_rate_limits()
-        pre_cli_headers = self.get_admin_headers("admin@musluxury.dz", "MusLuxury2026!")
+        pre_cli_headers = self.get_admin_headers("admin@mus-luxury.com", "MusLuxury2026!")
         self.assertEqual(self.client.get("/api/v1/admin/dashboard", headers=pre_cli_headers).status_code, 200)
 
         # Execute CLI password reset and then clear in-memory USER_SESSION_REVOKED_NS to simulate another Uvicorn worker
-        reset_owner_credentials("admin@musluxury.dz", "MusLuxury2026!")
+        reset_owner_credentials("admin@mus-luxury.com", "MusLuxury2026!")
         USER_SESSION_REVOKED_NS.clear()
 
         # Even with in-memory dict cleared on Worker 2, DB-persisted session_revoked_ns:{uid} must reject old token with 401
@@ -2703,7 +2693,7 @@ flushOfflineMutationQueue(async () => true).then((res) => {
         self.assertEqual(r_after.status_code, 401, "Old token must be rejected across all workers via DB session_revoked_ns")
 
         # Fresh login after CLI reset must succeed and show emergency_cli_password_reset in audit logs
-        fresh_headers = self.get_admin_headers("admin@musluxury.dz", "MusLuxury2026!")
+        fresh_headers = self.get_admin_headers("admin@mus-luxury.com", "MusLuxury2026!")
         r_audit = self.client.get("/api/v1/admin/audit-logs?action=emergency_cli_password_reset", headers=fresh_headers)
         self.assertEqual(r_audit.status_code, 200)
         self.assertGreaterEqual(r_audit.json()["count"], 1)

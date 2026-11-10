@@ -20,6 +20,7 @@ import { DesktopCmsApi } from "../api/adminClient";
 import { notifyClientError, notifyClientSuccess, notifyClientWarning } from "../utils/clientNotifier";
 import { VariantManager, EditorVariant, VariantAxis } from "./VariantManager";
 import { LiveProductCardPreview } from "./LiveProductCardPreview";
+import { useT } from "../i18n";
 
 // ============================================================================
 // FULL DYNAMIC PRODUCT EDITOR (create + edit)
@@ -172,6 +173,7 @@ function labelForType(inputType?: string) {
 }
 
 export function ProductEditor({ open, product, categories, brands, onClose, onSaved, initialCategoryId }: Props) {
+  const t = useT();
   const isCreate = !product;
   const [draft, setDraft] = useState<Draft>(EMPTY);
   const [initialSnapshot, setInitialSnapshot] = useState("");
@@ -509,7 +511,13 @@ export function ProductEditor({ open, product, categories, brands, onClose, onSa
   );
 
   return (
-    <div className="fixed inset-0 z-50 bg-black/50 backdrop-blur-sm flex items-start justify-center overflow-y-auto p-4">
+    <div
+      role="dialog"
+      aria-modal="true"
+      data-testid="product-editor-modal"
+      aria-label={isCreate ? t("product_editor.title_create") : t("product_editor.title_edit", { name: draft.name_fr || "produit" })}
+      className="fixed inset-0 z-50 bg-black/50 backdrop-blur-sm flex items-start justify-center overflow-y-auto p-4"
+    >
       <form
         onSubmit={handleSubmit}
         className="w-full max-w-7xl bg-white rounded-3xl shadow-2xl border border-[#D4AF62]/50 my-6 overflow-hidden text-xs"
@@ -522,12 +530,12 @@ export function ProductEditor({ open, product, categories, brands, onClose, onSa
             </div>
             <div>
               <h3 className="font-serif font-bold text-lg text-[#E8D4A5]">
-                {isCreate ? "Nouvelle pièce de collection" : `Modifier « ${draft.name_fr || "produit"} »`}
+                {isCreate ? t("product_editor.title_create") : t("product_editor.title_edit", { name: draft.name_fr || "produit" })}
               </h3>
               <p className="text-[11px] text-white/70">
                 {isCreate
-                  ? "Renseignez la fiche, les déclinaisons et les visuels avant publication."
-                  : `Référence ${draft.sku} · version serveur v${draft.version || 1}`}
+                  ? t("product_editor.subtitle_create")
+                  : t("product_editor.subtitle_edit", { sku: draft.sku, version: draft.version || 1 })}
               </p>
             </div>
           </div>
@@ -541,13 +549,13 @@ export function ProductEditor({ open, product, categories, brands, onClose, onSa
                   : "bg-white/10 text-white/90 border-white/20 hover:bg-white/20"
               }`}
             >
-              <span>{showLivePreview ? "Aperçu actif" : "Afficher l'aperçu"}</span>
+              <span>{showLivePreview ? t("product_editor.btn_preview_active") : t("product_editor.btn_preview_show")}</span>
             </button>
             <button
               type="button"
               onClick={requestClose}
               className="p-2 rounded-xl bg-white/10 hover:bg-white/20 transition"
-              title="Fermer"
+              title={t("common.close")}
             >
               <X className="w-4 h-4 text-[#E8D4A5]" />
             </button>
@@ -557,10 +565,10 @@ export function ProductEditor({ open, product, categories, brands, onClose, onSa
         {/* Tabs */}
         <div className="flex items-center gap-1 px-6 pt-3 bg-[#F8F6F0] border-b border-[#D4AF62]/30 overflow-x-auto">
           {[
-            { key: "general", label: "Informations", icon: Tag },
-            { key: "variants", label: `Déclinaisons (${draft.variants.length})`, icon: Layers },
-            { key: "images", label: `Visuels (${gallery.length + pendingImages.length})`, icon: ImageIcon },
-            { key: "seo", label: "SEO & Livraison", icon: Search },
+            { key: "general", label: t("product_editor.tab_info"), icon: Tag },
+            { key: "variants", label: t("product_editor.tab_variants", { count: draft.variants.length }), icon: Layers },
+            { key: "images", label: t("product_editor.tab_images", { count: gallery.length + pendingImages.length }), icon: ImageIcon },
+            { key: "seo", label: t("product_editor.tab_seo"), icon: Search },
           ].map((item) => {
             const Icon = item.icon;
             return (
@@ -582,14 +590,14 @@ export function ProductEditor({ open, product, categories, brands, onClose, onSa
         </div>
 
         {/* Body */}
-        <div className="p-6 max-h-[72vh] overflow-y-auto">
+        <div className="p-6 max-h-[72vh] overflow-y-auto [scrollbar-gutter:stable]">
           <div className={`grid grid-cols-1 ${showLivePreview ? "lg:grid-cols-12" : ""} gap-6 items-start`}>
-            <div className={`${showLivePreview ? "lg:col-span-8" : "w-full"} space-y-5`}>
+            <div className={`${showLivePreview ? "lg:col-span-8" : "w-full"} space-y-5 transition-all duration-200`}>
           {conflict && (
             <div className="p-3 rounded-xl bg-amber-50 border border-amber-300 flex items-start gap-2">
               <AlertTriangle className="w-4 h-4 text-amber-700 shrink-0 mt-0.5" />
               <div className="flex-1">
-                <p className="font-bold text-amber-900">Conflit de synchronisation</p>
+                <p className="font-bold text-amber-900">{t("product_editor.conflict_title")}</p>
                 <p className="text-amber-800 text-[11px] mt-0.5">{conflict}</p>
               </div>
               <button
@@ -597,7 +605,7 @@ export function ProductEditor({ open, product, categories, brands, onClose, onSa
                 onClick={reloadLatest}
                 className="px-2.5 py-1 rounded-lg bg-amber-700 text-white font-bold flex items-center gap-1 shrink-0"
               >
-                <RefreshCw className="w-3 h-3" /> Recharger
+                <RefreshCw className="w-3 h-3" /> {t("product_editor.btn_reload")}
               </button>
             </div>
           )}
@@ -606,13 +614,13 @@ export function ProductEditor({ open, product, categories, brands, onClose, onSa
             <div className="p-3 rounded-xl bg-rose-50 border border-rose-300 flex items-center gap-2">
               <AlertTriangle className="w-4 h-4 text-rose-700 shrink-0" />
               <p className="flex-1 text-rose-900 font-semibold">
-                Des modifications ne sont pas enregistrées. Fermer sans sauvegarder ?
+                {t("product_editor.unsaved_warning")}
               </p>
               <button type="button" onClick={() => setConfirmClose(false)} className="px-2.5 py-1 rounded-lg bg-white border border-rose-300 font-bold text-rose-800">
-                Continuer l'édition
+                {t("product_editor.btn_continue_editing")}
               </button>
               <button type="button" onClick={onClose} className="px-2.5 py-1 rounded-lg bg-rose-700 text-white font-bold">
-                Fermer sans sauvegarder
+                {t("product_editor.btn_discard_close")}
               </button>
             </div>
           )}
@@ -622,12 +630,12 @@ export function ProductEditor({ open, product, categories, brands, onClose, onSa
             <div className="space-y-5">
               <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
                 <div className="md:col-span-2">
-                  <label className="block font-bold mb-1">Catégorie *</label>
+                  <label className="block font-bold mb-1">{t("product_editor.category_label")}</label>
                   <div className="flex items-center gap-2">
                     <input
                       value={categorySearch}
                       onChange={(e) => setCategorySearch(e.target.value)}
-                      placeholder="Filtrer les catégories…"
+                      placeholder={t("product_editor.category_filter")}
                       className="w-40 px-2 py-1.5 border rounded-lg bg-[#F8F6F0]"
                     />
                     <select
@@ -635,30 +643,30 @@ export function ProductEditor({ open, product, categories, brands, onClose, onSa
                       onChange={(e) => patch({ category_id: e.target.value === "" ? "" : Number(e.target.value), dynamic_attributes: {} })}
                       className="flex-1 px-3 py-2 border rounded-xl bg-white font-semibold focus:border-[#063D2E] outline-none"
                     >
-                      <option value="">— Choisir une catégorie —</option>
+                      <option value="">{t("product_editor.category_placeholder")}</option>
                       {filteredCategories.map((c) => (
                         <option key={c.id} value={c.id}>
-                          {c.name_fr} {c.deleted_at ? "(archivée)" : ""}
+                          {c.name_fr} {c.deleted_at ? t("product_editor.category_archived") : ""}
                         </option>
                       ))}
                     </select>
                   </div>
                   {category && (
                     <p className="text-[11px] text-gray-500 mt-1">
-                      {dataAttributes.length} caractéristique(s) · {axes.length} axe(s) de déclinaison
+                      {t("product_editor.category_meta", { dataCount: dataAttributes.length, axesCount: axes.length })}
                       {axes.length > 0 ? ` (${axes.map((a: any) => a.label_fr).join(", ")})` : ""}
                     </p>
                   )}
                 </div>
                 <div>
                   <div className="flex items-center justify-between mb-1">
-                    <label className="font-bold">Marque</label>
+                    <label className="font-bold">{t("product_editor.brand_label")}</label>
                     <button
                       type="button"
                       onClick={() => setShowNewBrandForm(!showNewBrandForm)}
                       className="text-[11px] font-bold text-[#063D2E] hover:underline"
                     >
-                      {showNewBrandForm ? "Annuler" : "+ Nouvelle marque"}
+                      {showNewBrandForm ? t("common.cancel") : t("product_editor.btn_new_brand")}
                     </button>
                   </div>
                   {showNewBrandForm ? (
@@ -666,14 +674,14 @@ export function ProductEditor({ open, product, categories, brands, onClose, onSa
                       <input
                         value={newBrandName}
                         onChange={(e) => setNewBrandName(e.target.value)}
-                        placeholder="Nom (ex: Chanel, Hermès, Maison Mus)…"
+                        placeholder={t("product_editor.new_brand_name_placeholder")}
                         className="w-full px-3 py-1.5 border rounded-lg bg-white"
                       />
                       <div className="flex items-center gap-2">
                         <input
                           value={newBrandLogoUrl}
                           onChange={(e) => setNewBrandLogoUrl(e.target.value)}
-                          placeholder="URL logo (optionnel)…"
+                          placeholder={t("product_editor.new_brand_logo_placeholder")}
                           className="flex-1 px-3 py-1.5 border rounded-lg bg-white font-mono text-[11px]"
                         />
                         <button
@@ -682,7 +690,7 @@ export function ProductEditor({ open, product, categories, brands, onClose, onSa
                           onClick={handleCreateBrand}
                           className="px-3 py-1.5 rounded-lg bg-[#063D2E] text-[#D4AF62] font-bold disabled:opacity-50"
                         >
-                          {creatingBrand ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : "Créer"}
+                          {creatingBrand ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : t("product_editor.btn_create_brand")}
                         </button>
                       </div>
                     </div>
@@ -692,7 +700,7 @@ export function ProductEditor({ open, product, categories, brands, onClose, onSa
                       onChange={(e) => patch({ brand_id: e.target.value === "" ? "" : Number(e.target.value) })}
                       className="w-full px-3 py-2 border rounded-xl bg-white"
                     >
-                      <option value="">— Sans marque —</option>
+                      <option value="">{t("product_editor.brand_placeholder")}</option>
                       {localBrands.map((b) => (
                         <option key={b.id} value={b.id}>
                           {b.name}
@@ -705,7 +713,7 @@ export function ProductEditor({ open, product, categories, brands, onClose, onSa
 
               <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
                 <div>
-                  <label className="block font-bold mb-1">Nom (FR) *</label>
+                  <label className="block font-bold mb-1">{t("product_editor.name_fr_label")}</label>
                   <input
                     value={draft.name_fr}
                     onChange={(e) => handleNameChange(e.target.value)}
@@ -714,7 +722,7 @@ export function ProductEditor({ open, product, categories, brands, onClose, onSa
                   />
                 </div>
                 <div>
-                  <label className="block font-bold mb-1">Nom (AR)</label>
+                  <label className="block font-bold mb-1">{t("product_editor.name_ar_label")}</label>
                   <input
                     dir="rtl"
                     value={draft.name_ar}
@@ -723,7 +731,7 @@ export function ProductEditor({ open, product, categories, brands, onClose, onSa
                   />
                 </div>
                 <div>
-                  <label className="block font-bold mb-1">Nom (EN)</label>
+                  <label className="block font-bold mb-1">{t("product_editor.name_en_label")}</label>
                   <input
                     value={draft.name_en}
                     onChange={(e) => patch({ name_en: e.target.value })}
@@ -734,7 +742,7 @@ export function ProductEditor({ open, product, categories, brands, onClose, onSa
 
               <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
                 <div>
-                  <label className="block font-bold mb-1">Description (FR)</label>
+                  <label className="block font-bold mb-1">{t("product_editor.desc_fr_label")}</label>
                   <textarea
                     rows={4}
                     value={draft.description_fr}
@@ -743,7 +751,7 @@ export function ProductEditor({ open, product, categories, brands, onClose, onSa
                   />
                 </div>
                 <div>
-                  <label className="block font-bold mb-1">Description (AR)</label>
+                  <label className="block font-bold mb-1">{t("product_editor.desc_ar_label")}</label>
                   <textarea
                     dir="rtl"
                     rows={4}
@@ -753,7 +761,7 @@ export function ProductEditor({ open, product, categories, brands, onClose, onSa
                   />
                 </div>
                 <div>
-                  <label className="block font-bold mb-1">Description (EN)</label>
+                  <label className="block font-bold mb-1">{t("product_editor.desc_en_label")}</label>
                   <textarea
                     rows={4}
                     value={draft.description_en}
@@ -765,7 +773,7 @@ export function ProductEditor({ open, product, categories, brands, onClose, onSa
 
               <div className="grid grid-cols-1 md:grid-cols-4 gap-3">
                 <div>
-                  <label className="block font-bold mb-1">SKU *</label>
+                  <label className="block font-bold mb-1">{t("product_editor.sku_label")}</label>
                   <input
                     value={draft.sku}
                     onChange={(e) => patch({ sku: e.target.value })}
@@ -774,7 +782,7 @@ export function ProductEditor({ open, product, categories, brands, onClose, onSa
                   />
                 </div>
                 <div>
-                  <label className="block font-bold mb-1">Code-barres (EAN)</label>
+                  <label className="block font-bold mb-1">{t("product_editor.barcode_label")}</label>
                   <input
                     value={draft.barcode}
                     onChange={(e) => patch({ barcode: e.target.value })}
@@ -782,7 +790,7 @@ export function ProductEditor({ open, product, categories, brands, onClose, onSa
                   />
                 </div>
                 <div className="md:col-span-2">
-                  <label className="block font-bold mb-1">Slug (URL boutique) *</label>
+                  <label className="block font-bold mb-1">{t("product_editor.slug_label")}</label>
                   <input
                     value={draft.slug}
                     onChange={(e) => {
@@ -796,7 +804,7 @@ export function ProductEditor({ open, product, categories, brands, onClose, onSa
 
               <div className="grid grid-cols-1 md:grid-cols-4 gap-3 p-3 rounded-xl bg-[#F8F6F0] border border-[#D4AF62]/30">
                 <div>
-                  <label className="block font-bold mb-1">Coût d'achat (DA) *</label>
+                  <label className="block font-bold mb-1">{t("product_editor.cost_label")}</label>
                   <input
                     type="number"
                     min={0}
@@ -804,10 +812,10 @@ export function ProductEditor({ open, product, categories, brands, onClose, onSa
                     onChange={(e) => patch({ purchase_cost_dzd: Math.max(0, Number(e.target.value)) })}
                     className="w-full px-3 py-2 border rounded-xl font-mono bg-white"
                   />
-                  <p className="text-[10px] text-gray-500 mt-1">Privé — jamais exposé sur la boutique.</p>
+                  <p className="text-[10px] text-gray-500 mt-1">{t("product_editor.cost_hint")}</p>
                 </div>
                 <div>
-                  <label className="block font-bold mb-1">Prix de vente (DA) *</label>
+                  <label className="block font-bold mb-1">{t("product_editor.price_label")}</label>
                   <input
                     type="number"
                     min={0}
@@ -817,7 +825,7 @@ export function ProductEditor({ open, product, categories, brands, onClose, onSa
                   />
                 </div>
                 <div>
-                  <label className="block font-bold mb-1">Prix barré (DA)</label>
+                  <label className="block font-bold mb-1">{t("product_editor.prev_price_label")}</label>
                   <input
                     type="number"
                     min={0}
@@ -826,10 +834,10 @@ export function ProductEditor({ open, product, categories, brands, onClose, onSa
                     placeholder="Optionnel"
                     className="w-full px-3 py-2 border rounded-xl font-mono bg-white"
                   />
-                  <p className="text-[10px] text-gray-500 mt-1">Doit rester supérieur au prix de vente.</p>
+                  <p className="text-[10px] text-gray-500 mt-1">{t("product_editor.prev_price_hint")}</p>
                 </div>
                 <div>
-                  <label className="block font-bold mb-1">Remise affichée (%)</label>
+                  <label className="block font-bold mb-1">{t("product_editor.discount_label")}</label>
                   <input
                     type="number"
                     min={0}
@@ -838,12 +846,12 @@ export function ProductEditor({ open, product, categories, brands, onClose, onSa
                     onChange={(e) => patch({ discount_percent: Math.min(95, Math.max(0, Number(e.target.value))) })}
                     className="w-full px-3 py-2 border rounded-xl font-mono bg-white"
                   />
-                  <p className="text-[10px] text-gray-500 mt-1">Calculée automatiquement si un prix barré est saisi.</p>
+                  <p className="text-[10px] text-gray-500 mt-1">{t("product_editor.discount_hint")}</p>
                 </div>
               </div>
 
               <div className="flex flex-wrap items-center gap-4 p-3 rounded-xl border border-emerald-200 bg-emerald-50/60">
-                <span className="font-bold text-[#063D2E]">Marge unitaire :</span>
+                <span className="font-bold text-[#063D2E]">{t("product_editor.unit_margin")}</span>
                 <span className={`font-mono font-bold ${margin >= 0 ? "text-emerald-700" : "text-rose-700"}`}>
                   {margin >= 0 ? "+" : ""}
                   {margin.toLocaleString()} DA
@@ -858,15 +866,15 @@ export function ProductEditor({ open, product, categories, brands, onClose, onSa
 
               <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
                 <div>
-                  <label className="block font-bold mb-1">Statut</label>
+                  <label className="block font-bold mb-1">{t("product_editor.status_label")}</label>
                   <select
                     value={draft.status}
                     onChange={(e) => patch({ status: e.target.value as Draft["status"] })}
                     className="w-full px-3 py-2 border rounded-xl bg-white font-bold"
                   >
-                    <option value="draft">Brouillon (invisible)</option>
-                    <option value="published">Publié (en vente)</option>
-                    <option value="archived">Archivé</option>
+                    <option value="draft">{t("product_editor.status_draft")}</option>
+                    <option value="published">{t("product_editor.status_published")}</option>
+                    <option value="archived">{t("product_editor.status_archived")}</option>
                   </select>
                 </div>
                 <div className="flex items-end gap-3">
@@ -878,7 +886,7 @@ export function ProductEditor({ open, product, categories, brands, onClose, onSa
                       className="w-4 h-4"
                     />
                     <span className="font-bold flex items-center gap-1">
-                      <Star className="w-3.5 h-3.5 text-[#D4AF62]" /> Coup de cœur
+                      <Star className="w-3.5 h-3.5 text-[#D4AF62]" /> {t("product_editor.featured_label")}
                     </span>
                   </label>
                   <label className="flex items-center gap-2 px-3 py-2 rounded-xl border bg-white cursor-pointer">
@@ -888,7 +896,7 @@ export function ProductEditor({ open, product, categories, brands, onClose, onSa
                       onChange={(e) => patch({ is_new_arrival: e.target.checked })}
                       className="w-4 h-4"
                     />
-                    <span className="font-bold">Nouveauté</span>
+                    <span className="font-bold">{t("product_editor.new_arrival_label")}</span>
                   </label>
                 </div>
               </div>
@@ -896,7 +904,7 @@ export function ProductEditor({ open, product, categories, brands, onClose, onSa
               {dataAttributes.length > 0 && (
                 <div className="p-4 rounded-xl bg-[#F8F6F0] border border-[#D4AF62]/30 space-y-2">
                   <p className="font-bold text-[#063D2E]">
-                    Caractéristiques « {category?.name_fr} » ({dataAttributes.length})
+                    {t("product_editor.specs_title", { category: category?.name_fr || "", count: dataAttributes.length })}
                   </p>
                   <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
                     {dataAttributes.map((attr: any) => {
@@ -920,7 +928,7 @@ export function ProductEditor({ open, product, categories, brands, onClose, onSa
                               onChange={(e) => setValue(e.target.value)}
                               className="w-full px-3 py-1.5 border rounded-lg bg-white"
                             >
-                              <option value="">— Choisir —</option>
+                              <option value="">{t("product_editor.select_option")}</option>
                               {attr.options.map((o: any) => (
                                 <option key={o.value} value={o.value}>
                                   {o.label_fr || o.value}
@@ -975,14 +983,14 @@ export function ProductEditor({ open, product, categories, brands, onClose, onSa
             <div className="space-y-4">
               <div className="p-4 rounded-2xl border border-[#D4AF62]/40 bg-[#F8F6F0] space-y-3">
                 <p className="font-bold text-[#063D2E] flex items-center gap-2">
-                  <ImageIcon className="w-4 h-4" /> Image principale
+                  <ImageIcon className="w-4 h-4" /> {t("product_editor.main_image_title")}
                 </p>
                 <div className="flex flex-col md:flex-row gap-4">
                   <div className="w-40 h-40 rounded-xl bg-white border border-gray-200 flex items-center justify-center overflow-hidden shrink-0">
                     {draft.main_image_url ? (
                       <img src={draft.main_image_url} alt="Aperçu" className="w-full h-full object-cover" />
                     ) : (
-                      <span className="text-gray-400 text-[11px] px-3 text-center">Aucune image sélectionnée</span>
+                      <span className="text-gray-400 text-[11px] px-3 text-center">{t("product_editor.no_image_selected")}</span>
                     )}
                   </div>
                   <div className="flex-1 space-y-2">
@@ -1003,7 +1011,7 @@ export function ProductEditor({ open, product, categories, brands, onClose, onSa
                         className="inline-flex items-center gap-1.5 px-3 py-2 rounded-xl bg-[#063D2E] text-[#D4AF62] font-bold disabled:opacity-50"
                       >
                         {uploading && uploadTarget === "main" ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <UploadCloud className="w-3.5 h-3.5" />}
-                        <span>Téléverser depuis l'ordinateur</span>
+                        <span>{t("product_editor.upload_from_computer")}</span>
                       </button>
                       {draft.main_image_url && (
                         <button
@@ -1011,12 +1019,12 @@ export function ProductEditor({ open, product, categories, brands, onClose, onSa
                           onClick={() => patch({ main_image_url: "" })}
                           className="inline-flex items-center gap-1.5 px-3 py-2 rounded-xl bg-white border border-rose-300 text-rose-700 font-bold"
                         >
-                          <Trash2 className="w-3.5 h-3.5" /> Retirer
+                          <Trash2 className="w-3.5 h-3.5" /> {t("product_editor.remove_image")}
                         </button>
                       )}
                     </div>
                     <p className="text-[11px] text-gray-500">
-                      JPEG, PNG ou WEBP · 5 Mo maximum. Les fichiers sont vérifiés par le serveur avant publication.
+                      {t("product_editor.image_guidelines")}
                     </p>
                   </div>
                 </div>
@@ -1024,7 +1032,7 @@ export function ProductEditor({ open, product, categories, brands, onClose, onSa
 
               <div className="p-4 rounded-2xl border border-[#D4AF62]/40 space-y-3">
                 <div className="flex flex-wrap items-center justify-between gap-2">
-                  <p className="font-bold text-[#063D2E]">Galerie ({gallery.length + pendingImages.length})</p>
+                  <p className="font-bold text-[#063D2E]">{t("product_editor.gallery_title", { count: gallery.length + pendingImages.length })}</p>
                   <button
                     type="button"
                     onClick={() => {
@@ -1034,13 +1042,13 @@ export function ProductEditor({ open, product, categories, brands, onClose, onSa
                     disabled={uploading}
                     className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-white border border-[#063D2E] text-[#063D2E] font-bold disabled:opacity-50"
                   >
-                    <UploadCloud className="w-3.5 h-3.5" /> Ajouter une image
+                    <UploadCloud className="w-3.5 h-3.5" /> {t("product_editor.btn_add_image")}
                   </button>
                 </div>
 
                 {gallery.length + pendingImages.length === 0 ? (
                   <p className="p-6 text-center text-gray-500 bg-[#F8F6F0] rounded-xl border border-dashed">
-                    Aucune image dans la galerie. Ajoutez des visuels pour présenter le produit sous tous les angles.
+                    {t("product_editor.empty_gallery")}
                   </p>
                 ) : (
                   <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
@@ -1059,7 +1067,7 @@ export function ProductEditor({ open, product, categories, brands, onClose, onSa
                               onClick={() => setPrimaryImage(img.image_url)}
                               className="flex-1 px-1.5 py-1 rounded-lg bg-[#F8F6F0] border border-[#D4AF62]/40 font-bold text-[10px] text-[#063D2E]"
                             >
-                              {draft.main_image_url === img.image_url ? "Principale" : "Définir principale"}
+                              {draft.main_image_url === img.image_url ? t("product_editor.is_primary") : t("product_editor.btn_set_primary")}
                             </button>
                             <button
                               type="button"
@@ -1079,13 +1087,13 @@ export function ProductEditor({ open, product, categories, brands, onClose, onSa
                           <img src={url} alt="" className="w-full h-full object-cover" />
                         </div>
                         <div className="p-2 space-y-1">
-                          <p className="text-[10px] font-bold text-amber-800">Sera ajoutée à l'enregistrement</p>
+                          <p className="text-[10px] font-bold text-amber-800">{t("product_editor.pending_image_note")}</p>
                           <button
                             type="button"
                             onClick={() => setPendingImages((prev) => prev.filter((u) => u !== url))}
                             className="w-full px-1.5 py-1 rounded-lg bg-white border border-rose-200 text-rose-700 font-bold text-[10px]"
                           >
-                            Retirer
+                            {t("product_editor.remove_image")}
                           </button>
                         </div>
                       </div>
@@ -1095,7 +1103,7 @@ export function ProductEditor({ open, product, categories, brands, onClose, onSa
 
                 <div className="flex items-center gap-2">
                   <input
-                    placeholder="Ou coller une URL / un chemin d'image…"
+                    placeholder={t("product_editor.paste_url_placeholder")}
                     onKeyDown={(e) => {
                       if (e.key === "Enter") {
                         e.preventDefault();
@@ -1108,7 +1116,7 @@ export function ProductEditor({ open, product, categories, brands, onClose, onSa
                     }}
                     className="flex-1 px-3 py-2 border rounded-xl bg-white font-mono"
                   />
-                  <span className="text-[10px] text-gray-400">Entrée pour ajouter</span>
+                  <span className="text-[10px] text-gray-400">{t("product_editor.press_enter_to_add")}</span>
                 </div>
               </div>
 
@@ -1141,9 +1149,9 @@ export function ProductEditor({ open, product, categories, brands, onClose, onSa
           {tab === "seo" && (
             <div className="space-y-4">
               <div className="p-4 rounded-2xl border border-[#D4AF62]/40 space-y-3">
-                <p className="font-bold text-[#063D2E]">Référencement naturel</p>
+                <p className="font-bold text-[#063D2E]">{t("product_editor.seo_heading")}</p>
                 <div>
-                  <label className="block font-semibold mb-1">Titre SEO (max 255)</label>
+                  <label className="block font-semibold mb-1">{t("product_editor.seo_title_label")}</label>
                   <input
                     maxLength={255}
                     value={draft.seo_title}
@@ -1153,7 +1161,7 @@ export function ProductEditor({ open, product, categories, brands, onClose, onSa
                   />
                 </div>
                 <div>
-                  <label className="block font-semibold mb-1">Meta description (max 320)</label>
+                  <label className="block font-semibold mb-1">{t("product_editor.seo_desc_label")}</label>
                   <textarea
                     rows={3}
                     maxLength={320}
@@ -1162,10 +1170,10 @@ export function ProductEditor({ open, product, categories, brands, onClose, onSa
                     placeholder="Résumé accrocheur affiché dans les résultats de recherche"
                     className="w-full px-3 py-2 border rounded-xl bg-white"
                   />
-                  <p className="text-[10px] text-gray-400 mt-1">{draft.seo_description.length}/320 caractères</p>
+                  <p className="text-[10px] text-gray-400 mt-1">{t("product_editor.seo_desc_chars", { count: draft.seo_description.length })}</p>
                 </div>
                 <div>
-                  <label className="block font-semibold mb-1">Mots-clés / tags (séparés par des virgules)</label>
+                  <label className="block font-semibold mb-1">{t("product_editor.tags_label")}</label>
                   <input
                     value={draft.tags}
                     onChange={(e) => patch({ tags: e.target.value })}
@@ -1174,9 +1182,9 @@ export function ProductEditor({ open, product, categories, brands, onClose, onSa
                   />
                 </div>
                 <div className="p-3 rounded-xl bg-[#F8F6F0] border border-gray-200">
-                  <p className="text-[10px] uppercase tracking-wide text-gray-500 font-bold mb-1">Aperçu Google</p>
+                  <p className="text-[10px] uppercase tracking-wide text-gray-500 font-bold mb-1">{t("product_editor.google_preview")}</p>
                   <p className="text-[#1a0dab] font-semibold truncate">{draft.seo_title || draft.name_fr || "Titre du produit"}</p>
-                  <p className="text-emerald-700 text-[11px] font-mono truncate">musluxury.dz/produit/{draft.slug || "slug-produit"}</p>
+                  <p className="text-emerald-700 text-[11px] font-mono truncate">mus-luxury.com/produit/{draft.slug || "slug-produit"}</p>
                   <p className="text-gray-600 line-clamp-2">
                     {draft.seo_description || draft.description_fr || "Ajoutez une meta description pour améliorer le référencement."}
                   </p>
@@ -1184,10 +1192,10 @@ export function ProductEditor({ open, product, categories, brands, onClose, onSa
               </div>
 
               <div className="p-4 rounded-2xl border border-[#D4AF62]/40 space-y-3">
-                <p className="font-bold text-[#063D2E]">Logistique & colis</p>
+                <p className="font-bold text-[#063D2E]">{t("product_editor.logistics_heading")}</p>
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                   <div>
-                    <label className="block font-semibold mb-1">Poids (grammes)</label>
+                    <label className="block font-semibold mb-1">{t("product_editor.weight_label")}</label>
                     <input
                       type="number"
                       min={0}
@@ -1196,10 +1204,10 @@ export function ProductEditor({ open, product, categories, brands, onClose, onSa
                       placeholder="900"
                       className="w-full px-3 py-2 border rounded-xl bg-white font-mono"
                     />
-                    <p className="text-[10px] text-gray-500 mt-1">Utilisé pour estimer les frais de livraison.</p>
+                    <p className="text-[10px] text-gray-500 mt-1">{t("product_editor.weight_hint")}</p>
                   </div>
                   <div>
-                    <label className="block font-semibold mb-1">Dimensions (cm)</label>
+                    <label className="block font-semibold mb-1">{t("product_editor.dimensions_label")}</label>
                     <input
                       value={draft.dimensions_cm}
                       onChange={(e) => patch({ dimensions_cm: e.target.value })}
@@ -1215,7 +1223,7 @@ export function ProductEditor({ open, product, categories, brands, onClose, onSa
 
             {/* Live Storefront Preview Column */}
             {showLivePreview && (
-              <div className="lg:col-span-4 sticky top-0 space-y-3">
+              <div className="lg:col-span-4 sticky top-0 space-y-3 min-w-[280px] w-full">
                 <LiveProductCardPreview
                   name={draft.name_fr}
                   brandName={localBrands.find((b) => b.id === Number(draft.brand_id))?.name}
@@ -1251,16 +1259,16 @@ export function ProductEditor({ open, product, categories, brands, onClose, onSa
             {dirty ? (
               <>
                 <span className="w-2 h-2 rounded-full bg-amber-500" />
-                <span>Modifications non enregistrées</span>
+                <span>{t("product_editor.sync_status_dirty")}</span>
               </>
             ) : (
               <>
                 <Check className="w-3.5 h-3.5 text-emerald-600" />
-                <span>Fiche synchronisée avec le serveur</span>
+                <span>{t("product_editor.sync_status_synced")}</span>
               </>
             )}
             <ChevronRight className="w-3 h-3 text-gray-300" />
-            <span>{draft.variants.length} déclinaison(s)</span>
+            <span>{t("product_editor.variants_count", { count: draft.variants.length })}</span>
           </div>
           <div className="flex items-center gap-2">
             <button
@@ -1268,7 +1276,7 @@ export function ProductEditor({ open, product, categories, brands, onClose, onSa
               onClick={requestClose}
               className="px-4 py-2 rounded-xl bg-white border border-gray-300 font-bold text-gray-700"
             >
-              Annuler
+              {t("common.cancel")}
             </button>
             <button
               type="submit"
@@ -1276,7 +1284,7 @@ export function ProductEditor({ open, product, categories, brands, onClose, onSa
               className="inline-flex items-center gap-1.5 px-5 py-2 rounded-xl bg-gradient-to-r from-[#D4AF62] to-[#E8D4A5] text-[#02291F] font-extrabold shadow-xs hover:brightness-105 transition disabled:opacity-60"
             >
               {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
-              <span>{isCreate ? "Créer le produit" : "Enregistrer les modifications"}</span>
+              <span>{isCreate ? t("product_editor.btn_submit_create") : t("product_editor.btn_submit_save")}</span>
             </button>
           </div>
         </div>

@@ -1,6 +1,7 @@
 import React from "react";
 import { Eye, Heart, ShoppingBag, Sparkles, Star } from "lucide-react";
 import { EditorVariant } from "./VariantManager";
+import { useT } from "../i18n";
 
 type Props = {
   name: string;
@@ -24,7 +25,7 @@ function formatDZD(val: number): string {
   }).format(val || 0);
 }
 
-export function LiveProductCardPreview({
+export const LiveProductCardPreview: React.FC<Props> = React.memo(function LiveProductCardPreview({
   name,
   brandName,
   categoryName,
@@ -36,6 +37,7 @@ export function LiveProductCardPreview({
   isNewArrival = false,
   variants = [],
 }: Props) {
+  const t = useT();
   const totalStock = variants.reduce((sum, v) => sum + (Number(v.stock_qty) || 0), 0);
   const inStock = variants.length === 0 ? true : totalStock > 0;
   const sellPrice = Number(sellingPriceDzd) || 0;
@@ -49,31 +51,30 @@ export function LiveProductCardPreview({
     const c = v.attributes?.color || v.attributes?.couleur;
     if (c && !seenColors.has(c)) {
       seenColors.add(c);
-      // Look for a hex code or fallback
       swatches.push({ name: c });
     }
   });
 
   return (
-    <div className="bg-[#FAF9F6] p-4 rounded-3xl border border-[#D4AF62]/40 shadow-xs space-y-3">
+    <div className="bg-[#FAF9F6] p-4 rounded-3xl border border-[#D4AF62]/40 shadow-xs space-y-3 w-full max-w-sm mx-auto">
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-1.5 text-[#063D2E]">
           <Eye className="w-3.5 h-3.5 text-[#D4AF62]" />
-          <span className="font-serif font-bold text-xs">Aperçu Vitrine en Direct</span>
+          <span className="font-serif font-bold text-xs">{t("preview.title")}</span>
         </div>
         <span className="px-2 py-0.5 rounded-full bg-[#063D2E]/10 text-[#063D2E] text-[10px] font-bold">
-          Temps réel
+          {t("preview.realtime")}
         </span>
       </div>
 
       {/* Luxury Product Card Preview */}
       <div className="bg-white rounded-2xl border border-gray-200 overflow-hidden shadow-sm hover:shadow-md transition group max-w-sm mx-auto">
-        {/* Image & Badges */}
-        <div className="relative aspect-4/5 bg-stone-100 overflow-hidden flex items-center justify-center">
+        {/* Image & Badges with Rock-Solid Dimensions */}
+        <div className="relative aspect-[4/5] min-h-[300px] max-h-[380px] w-full bg-stone-100 overflow-hidden flex items-center justify-center">
           <img
             src={displayImage}
-            alt={name || "Aperçu du produit"}
-            className="w-full h-full object-cover group-hover:scale-105 transition duration-500"
+            alt={name || t("preview.default_name")}
+            className="w-full h-full object-cover transition duration-300"
             onError={(e) => {
               (e.currentTarget as HTMLImageElement).src = "/assets/prod_sac_chanel_hd.jpg";
             }}
@@ -83,12 +84,12 @@ export function LiveProductCardPreview({
           <div className="absolute top-2.5 left-2.5 flex flex-col gap-1 z-10">
             {isNewArrival && (
               <span className="px-2 py-0.5 rounded-full bg-[#063D2E] text-[#D4AF62] text-[9px] font-extrabold uppercase tracking-wider shadow-xs">
-                Nouveau
+                {t("preview.new")}
               </span>
             )}
             {isFeatured && (
               <span className="px-2 py-0.5 rounded-full bg-[#D4AF62] text-[#02291F] text-[9px] font-extrabold uppercase tracking-wider shadow-xs flex items-center gap-0.5">
-                <Star className="w-2.5 h-2.5 fill-current" /> Coup de cœur
+                <Star className="w-2.5 h-2.5 fill-current" /> {t("preview.favorite")}
               </span>
             )}
             {discountPercent > 0 && (
@@ -111,19 +112,19 @@ export function LiveProductCardPreview({
         <div className="p-3.5 space-y-2">
           {/* Brand & Category */}
           <div className="flex items-center justify-between text-[10px] text-gray-500 uppercase tracking-wider font-semibold">
-            <span className="text-[#063D2E] font-bold">{brandName || "Maison Mus Luxury"}</span>
-            <span>{categoryName || "Collection"}</span>
+            <span className="text-[#063D2E] font-bold">{brandName || t("preview.default_brand")}</span>
+            <span>{categoryName || t("preview.default_collection")}</span>
           </div>
 
           {/* Product Title */}
           <h4 className="font-serif font-bold text-sm text-[#202923] truncate" title={name}>
-            {name || "Nom de la création de luxe"}
+            {name || t("preview.default_name")}
           </h4>
 
           {/* Variant Swatches Preview */}
           {swatches.length > 0 && (
             <div className="flex items-center gap-1.5 py-0.5">
-              <span className="text-[10px] text-gray-500">{swatches.length} coloris :</span>
+              <span className="text-[10px] text-gray-500">{t("preview.colors_count", { count: swatches.length })}</span>
               <div className="flex items-center gap-1">
                 {swatches.slice(0, 5).map((s, idx) => (
                   <span
@@ -159,7 +160,7 @@ export function LiveProductCardPreview({
                   : "bg-rose-100 text-rose-800"
               }`}
             >
-              {inStock ? `En stock (${totalStock || "Dispo"})` : "Rupture"}
+              {inStock ? t("preview.in_stock", { stock: totalStock || "Dispo" }) : t("preview.out_of_stock")}
             </span>
           </div>
 
@@ -169,15 +170,14 @@ export function LiveProductCardPreview({
             className="w-full mt-1 py-2 rounded-xl bg-gradient-to-r from-[#063D2E] to-[#0A5C45] text-[#D4AF62] font-bold text-xs flex items-center justify-center gap-1.5 shadow-xs"
           >
             <ShoppingBag className="w-3.5 h-3.5" />
-            <span>Commander • Paiement à la livraison</span>
+            <span>{t("preview.order_cod")}</span>
           </button>
         </div>
       </div>
 
       <div className="text-[10px] text-gray-500 text-center">
-        Aperçu fidèle aux dimensions et au design de la vitrine client.
+        {t("preview.footer_note")}
       </div>
     </div>
   );
-}
-
+});

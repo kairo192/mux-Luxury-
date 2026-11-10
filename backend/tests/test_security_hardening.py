@@ -264,7 +264,7 @@ class TestLuxeSecurityHardeningHandoff(unittest.TestCase):
         # M-13: tauri.conf.json CSP connect-src does not contain bare https: or http:
         tconf_txt = (self.repo_root / "apps" / "desktop-cms" / "src-tauri" / "tauri.conf.json").read_text(encoding="utf-8")
         self.assertNotIn(" https: http:", tconf_txt)
-        self.assertIn("https://api.musluxury.dz", tconf_txt)
+        self.assertIn("https://api.mus-luxury.com", tconf_txt)
 
         # M-15: emergency_reset_owner.py supports getpass fallback when --new-password is omitted
         em_txt = (self.repo_root / "backend" / "scripts" / "emergency_reset_owner.py").read_text(encoding="utf-8")

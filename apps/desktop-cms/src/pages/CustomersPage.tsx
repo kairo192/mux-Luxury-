@@ -14,6 +14,7 @@ import {
   Pencil,
 } from "lucide-react";
 import { DesktopCmsApi } from "../api/adminClient";
+import { useT } from "../i18n";
 
 const fmt = (dzd: number) => `${Number(dzd || 0).toLocaleString("fr-DZ")} DA`;
 
@@ -30,6 +31,7 @@ interface Customer {
 }
 
 export const CustomersPage: React.FC = () => {
+  const t = useT();
   const [customers, setCustomers] = useState<Customer[]>([]);
   const [query, setQuery] = useState("");
   const [loading, setLoading] = useState(true);
@@ -85,7 +87,7 @@ export const CustomersPage: React.FC = () => {
 
   const save = async () => {
     if (!form) return;
-    if (!form.full_name.trim() || (form.id === null && !form.phone.trim())) return setError("Nom et téléphone requis");
+    if (!form.full_name.trim() || (form.id === null && !form.phone.trim())) return setError(t("customers.form_name_required"));
     setBusy(true);
     setError(null);
     try {
@@ -96,14 +98,14 @@ export const CustomersPage: React.FC = () => {
           email: form.email.trim() || null,
           notes: form.notes.trim() || null,
         });
-        flash("Client créé");
+        flash(t("customers.flash_created"));
       } else {
         await DesktopCmsApi.updateCustomer(form.id, {
           full_name: form.full_name.trim(),
           email: form.email.trim() || null,
           notes: form.notes.trim() || null,
         });
-        flash("Client mis à jour");
+        flash(t("customers.flash_updated"));
       }
       setForm(null);
       load();
@@ -129,7 +131,7 @@ export const CustomersPage: React.FC = () => {
 
       <div className="bg-white p-5 rounded-3xl border border-[#D4AF62]/40 flex flex-wrap items-center justify-between gap-3">
         <h3 className="text-lg font-serif font-bold text-[#063D2E] flex items-center gap-2">
-          <Users className="w-5 h-5" /> Clients
+          <Users className="w-5 h-5" /> {t("customers.title")}
         </h3>
         <div className="flex gap-2 flex-1 md:flex-none">
           <div className="flex gap-2 flex-1">
@@ -137,7 +139,7 @@ export const CustomersPage: React.FC = () => {
               value={query}
               onChange={(e) => setQuery(e.target.value)}
               onKeyDown={(e) => e.key === "Enter" && runSearch()}
-              placeholder="Nom ou téléphone…"
+              placeholder={t("customers.search_placeholder")}
               className="flex-1 md:w-64 h-12 px-3 rounded-2xl border-2 border-gray-200 focus:border-[#063D2E] outline-none"
             />
             <button type="button" onClick={runSearch} className="h-12 px-4 rounded-2xl bg-[#063D2E] text-[#D4AF62] font-bold flex items-center gap-2 active:scale-95">
@@ -145,26 +147,26 @@ export const CustomersPage: React.FC = () => {
             </button>
           </div>
           <button type="button" onClick={() => setForm({ id: null, full_name: "", phone: "", email: "", notes: "" })} className="h-12 px-4 rounded-2xl bg-[#D4AF62] text-[#02291F] font-bold flex items-center gap-2 active:scale-95">
-            <Plus className="w-5 h-5" /> Nouveau
+            <Plus className="w-5 h-5" /> {t("customers.btn_new")}
           </button>
         </div>
       </div>
 
       {loading ? (
         <div className="flex items-center justify-center py-16 text-gray-500">
-          <RefreshCw className="w-6 h-6 animate-spin mr-2" /> Chargement…
+          <RefreshCw className="w-6 h-6 animate-spin mr-2" /> {t("customers.loading")}
         </div>
       ) : customers.length === 0 ? (
-        <div className="bg-white p-10 rounded-3xl border border-gray-200 text-center text-gray-400">Aucun client.</div>
+        <div className="bg-white p-10 rounded-3xl border border-gray-200 text-center text-gray-400">{t("customers.empty")}</div>
       ) : (
         <div className="bg-white rounded-3xl border border-gray-200 overflow-hidden">
           <table className="w-full text-left">
             <thead className="bg-[#063D2E] text-[#E8D4A5] text-xs uppercase">
               <tr>
-                <th className="px-4 py-3">Client</th>
-                <th className="px-4 py-3 hidden md:table-cell">Contact</th>
-                <th className="px-4 py-3 text-right">Total dépensé</th>
-                <th className="px-4 py-3 text-right">Actions</th>
+                <th className="px-4 py-3">{t("customers.th_customer")}</th>
+                <th className="px-4 py-3 hidden md:table-cell">{t("customers.th_contact")}</th>
+                <th className="px-4 py-3 text-right">{t("customers.th_spent")}</th>
+                <th className="px-4 py-3 text-right">{t("customers.th_actions")}</th>
               </tr>
             </thead>
             <tbody>
@@ -241,18 +243,18 @@ export const CustomersPage: React.FC = () => {
         <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4" onClick={() => setForm(null)}>
           <div className="bg-white rounded-3xl w-full max-w-md" onClick={(e) => e.stopPropagation()}>
             <div className="flex items-center justify-between px-5 py-4 border-b">
-              <h3 className="font-serif font-bold text-[#063D2E] text-lg">{form.id === null ? "Nouveau client" : "Modifier le client"}</h3>
+              <h3 className="font-serif font-bold text-[#063D2E] text-lg">{form.id === null ? t("customers.modal_new_title") : t("customers.modal_edit_title")}</h3>
               <button type="button" onClick={() => setForm(null)} className="w-11 h-11 rounded-xl flex items-center justify-center text-gray-400 hover:bg-gray-100 active:scale-95">
                 <X className="w-6 h-6" />
               </button>
             </div>
             <div className="p-5 space-y-3">
-              <input value={form.full_name} onChange={(e) => setForm({ ...form, full_name: e.target.value })} placeholder="Nom complet" className="w-full h-12 px-3 rounded-2xl border-2 border-gray-200 focus:border-[#063D2E] outline-none" />
-              <input value={form.phone} disabled={form.id !== null} onChange={(e) => setForm({ ...form, phone: e.target.value })} placeholder="Téléphone (05/06/07…)" className="w-full h-12 px-3 rounded-2xl border-2 border-gray-200 font-mono disabled:opacity-60" />
-              <input value={form.email} onChange={(e) => setForm({ ...form, email: e.target.value })} placeholder="E-mail (optionnel)" className="w-full h-12 px-3 rounded-2xl border-2 border-gray-200" />
-              <textarea value={form.notes} onChange={(e) => setForm({ ...form, notes: e.target.value })} placeholder="Notes (optionnel)" rows={3} className="w-full px-3 py-2 rounded-2xl border-2 border-gray-200" />
+              <input value={form.full_name} onChange={(e) => setForm({ ...form, full_name: e.target.value })} placeholder={t("customers.lbl_fullname")} className="w-full h-12 px-3 rounded-2xl border-2 border-gray-200 focus:border-[#063D2E] outline-none" />
+              <input value={form.phone} disabled={form.id !== null} onChange={(e) => setForm({ ...form, phone: e.target.value })} placeholder={t("customers.lbl_phone")} className="w-full h-12 px-3 rounded-2xl border-2 border-gray-200 font-mono disabled:opacity-60" />
+              <input value={form.email} onChange={(e) => setForm({ ...form, email: e.target.value })} placeholder={t("customers.lbl_email")} className="w-full h-12 px-3 rounded-2xl border-2 border-gray-200" />
+              <textarea value={form.notes} onChange={(e) => setForm({ ...form, notes: e.target.value })} placeholder={t("customers.lbl_notes")} rows={3} className="w-full px-3 py-2 rounded-2xl border-2 border-gray-200" />
               <button type="button" disabled={busy} onClick={save} className="w-full h-14 rounded-2xl bg-[#063D2E] text-[#D4AF62] font-extrabold text-base disabled:opacity-50 active:scale-[0.99]">
-                {form.id === null ? "Créer le client" : "Enregistrer"}
+                {form.id === null ? t("customers.btn_save") : t("customers.btn_save")}
               </button>
             </div>
           </div>

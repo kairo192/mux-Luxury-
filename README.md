@@ -23,33 +23,48 @@ Production-oriented e-commerce platform built for **Mus Luxury (`LUXE`)** target
 
 ## 2. System Architecture
 
-```
+```text
 luxe-ecommerce/
-├── .github/workflows/            # CI (backend tests, storefront/CMS builds, Windows Tauri build)
-├── .env.example                  # Environment template (no secrets committed)
-├── docker-compose.yml            # Production stack (PostgreSQL 16 + FastAPI + Storefront + Nginx)
+├── .github/workflows/            # CI/CD (ci.yml, cd-production.yml, build-desktop-cms.yml)
+├── .env.example                  # Environment template (zero secrets committed)
+├── docker-compose.yml            # Production stack (PostgreSQL 16 + FastAPI + Storefront + Nginx ~608MB RAM)
 ├── backend/                      # Python 3.11 + FastAPI + PostgreSQL/SQLite REST API (/api/v1/)
 │   ├── app/
 │   │   ├── main.py               # Public storefront & RBAC-protected admin endpoints
-│   │   ├── security.py           # PBKDF2 hashing, signed tokens, HMAC signing, rate limiting, MIME checks
+│   │   ├── security.py           # PBKDF2 (600,000 iter), JWT instant revocation, HMAC signing, rate limits
 │   │   ├── database.py           # Dual SQLite / PostgreSQL 16 connection & transaction adapter
-│   │   ├── whatsapp.py           # Meta WhatsApp Cloud API OTP recovery, alerts & deep links
-│   │   └── seed.py               # 9 initial dynamic categories, attributes, products & Algerian Wilayas
+│   │   └── seed.py               # 14 dynamic categories, attributes, products & 69 Algerian Wilayas
 │   ├── migrations/
-│   │   ├── 001_initial_schema.sql          # SQLite schema (28 normalized tables)
-│   │   └── 001_initial_schema_postgres.sql # PostgreSQL 16 schema (parity)
-│   └── tests/                    # Automated API, security, schema-parity & wiring suites
+│   │   ├── 001_initial_schema.sql          # SQLite schema (41 relational tables)
+│   │   └── 001_initial_schema_postgres.sql # PostgreSQL 16 schema (100% parity)
+│   └── tests/                    # 242 automated backend tests (100% passing)
 ├── apps/
-│   ├── storefront/               # Live boutique: index.html (vanilla JS + compiled Tailwind) via Vite
-│   │   └── src/                  # Earlier React module — type-checked only, not mounted (see its README)
-│   └── desktop-cms/              # Tauri 2 + React + TypeScript Windows Desktop CMS (HTTPS API client)
-├── infrastructure/               # Nginx config, backup/restore & Algerian VPS deploy scripts
-└── docs/                         # Architecture, API inventory, security, deployment & test reports
+│   ├── storefront/               # High-performance boutique: React 18 + Vite (Guest COD across 69 Wilayas)
+│   └── desktop-cms/              # Tauri 2.0 + Rust Windows Desktop CMS & POS (wincred token storage)
+├── infrastructure/               # Nginx reverse proxy, automated backup & deploy scripts
+└── docs/                         # Production documentation & runbooks
+    ├── architecture/             # SYSTEM_ARCHITECTURE.md (Topology & 41 tables)
+    ├── deployment/               # VPS_DEPLOYMENT.md (Octenium setup) & CI_CD.md
+    ├── security/                 # SECURITY_HARDENING.md & SECRETS_MANAGEMENT.md
+    └── operations/               # BACKUP_AND_RESTORE.md, MAINTENANCE.md & TROUBLESHOOTING.md
 ```
 
 ---
 
-## 3. Smartphone & Cloud Workflow (GitHub + Codespaces)
+## 3. Production Documentation Index
+
+- [System Architecture](file:///c:/Users/MOURAD/Desktop/mix%20luxury/luxe-ecommerce/docs/architecture/SYSTEM_ARCHITECTURE.md)
+- [Octenium VPS Deployment Guide](file:///c:/Users/MOURAD/Desktop/mix%20luxury/luxe-ecommerce/docs/deployment/VPS_DEPLOYMENT.md)
+- [CI/CD & GitHub Actions](file:///c:/Users/MOURAD/Desktop/mix%20luxury/luxe-ecommerce/docs/deployment/CI_CD.md)
+- [Security Hardening Standards](file:///c:/Users/MOURAD/Desktop/mix%20luxury/luxe-ecommerce/docs/security/SECURITY_HARDENING.md)
+- [Secrets Management Policy](file:///c:/Users/MOURAD/Desktop/mix%20luxury/luxe-ecommerce/docs/security/SECRETS_MANAGEMENT.md)
+- [Backup & Disaster Recovery Runbook](file:///c:/Users/MOURAD/Desktop/mix%20luxury/luxe-ecommerce/docs/operations/BACKUP_AND_RESTORE.md)
+- [Operations & Routine Maintenance](file:///c:/Users/MOURAD/Desktop/mix%20luxury/luxe-ecommerce/docs/operations/MAINTENANCE.md)
+- [Troubleshooting & Diagnostics](file:///c:/Users/MOURAD/Desktop/mix%20luxury/luxe-ecommerce/docs/operations/TROUBLESHOOTING.md)
+
+---
+
+## 4. Production Deployment & Cloud Workflow
 
 Because you are managing the project from a smartphone:
 

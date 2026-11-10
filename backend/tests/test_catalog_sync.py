@@ -42,7 +42,7 @@ class TestCatalogSync(unittest.TestCase):
         cls.client = TestClient(app)
         login = cls.client.post(
             "/api/v1/admin/auth/login",
-            json={"email": "admin@musluxury.dz", "password": "MusLuxury2026!"},
+            json={"email": "admin@mus-luxury.com", "password": "MusLuxury2026!"},
         )
         assert login.status_code == 200, login.text
         cls.headers = {"Authorization": f"Bearer {login.json()['access_token']}"}

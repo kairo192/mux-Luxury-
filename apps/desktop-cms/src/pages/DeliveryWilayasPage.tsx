@@ -2,6 +2,7 @@ import { readDraft, writeDraft } from "../utils/draftStorage";
 import React, { useEffect, useState } from "react";
 import { DesktopCmsApi } from "../api/adminClient";
 import { notifyClientError, notifyClientSuccess, notifyClientWarning } from "../utils/clientNotifier";
+import { useT } from "../i18n";
 
 export interface WilayaZone {
   id: number;
@@ -17,6 +18,7 @@ export interface WilayaZone {
 }
 
 export function DeliveryWilayasPage() {
+  const t = useT();
   const [zones, setZones] = useState<WilayaZone[]>(() => readDraft("luxe_wilayas_cache", []));
   const [dirtyCodes, setDirtyCodes] = useState<Record<string, boolean>>(() => readDraft("luxe_wilayas_dirty", {}));
   const [search, setSearch] = useState(() => readDraft("luxe_wilayas_search", ""));
@@ -36,7 +38,6 @@ export function DeliveryWilayasPage() {
             writeDraft("luxe_wilayas_cache", serverZones);
             return serverZones;
           }
-          // Preserve any unsaved local edits in dirty rows!
           const savedDirty = readDraft<Record<string, boolean>>("luxe_wilayas_dirty", dirtyCodes);
           const merged = serverZones.map((sz) => {
             const localRow = prev.find((p) => p.wilaya_code === sz.wilaya_code);
@@ -167,19 +168,21 @@ export function DeliveryWilayasPage() {
       <div className="flex flex-wrap items-center justify-between gap-4 border-b pb-4">
         <div>
           <h2 className="text-xl font-serif font-bold text-[#063D2E]">
-            Gestion des Tarifs de Livraison — 69 Wilayas (Domicile &amp; Stop-Desk)
+            {t("delivery_wilayas.title")}
           </h2>
           <p className="text-xs text-gray-600 mt-0.5">
-            Définissez les prix en DA pour la livraison à domicile et en bureau relais (Stop-Desk). Ces tarifs s'affichent et se calculent automatiquement dans le total du client.
+            {t("delivery_wilayas.subtitle")}
           </p>
         </div>
         <input
           value={search}
           onChange={(e) => setSearch(e.target.value)}
-          placeholder="Rechercher une wilaya (01 à 69)..."
+          placeholder={t("delivery_wilayas.search_placeholder")}
           className="px-3.5 py-2 rounded-xl border border-gray-300 text-xs w-64"
         />
-        <button type="button" onClick={handleBulkSaveAllWilayas} className="px-4 py-2 rounded-xl bg-[#D4AF62] text-[#02291F] font-extrabold text-xs">Enregistrer les 69 Wilayas (Lot)</button>
+        <button type="button" onClick={handleBulkSaveAllWilayas} className="px-4 py-2 rounded-xl bg-[#D4AF62] text-[#02291F] font-extrabold text-xs">
+          {t("delivery_wilayas.btn_bulk_save")}
+        </button>
       </div>
 
       {bannerMsg && (
@@ -192,12 +195,12 @@ export function DeliveryWilayasPage() {
         <table className="w-full text-left text-xs">
           <thead>
             <tr className="border-b-2 border-[#063D2E] text-[#063D2E] uppercase">
-              <th className="py-2.5">Code</th>
-              <th className="py-2.5">Wilaya (FR / AR)</th>
-              <th className="py-2.5">Prix À Domicile (DA)</th>
-              <th className="py-2.5">Prix Stop-Desk (DA)</th>
-              <th className="py-2.5">Délai Estimé</th>
-              <th className="py-2.5 text-right">Action</th>
+              <th className="py-2.5">{t("delivery_wilayas.th_code")}</th>
+              <th className="py-2.5">{t("delivery_wilayas.th_wilaya")}</th>
+              <th className="py-2.5">{t("delivery_wilayas.th_home_fee")}</th>
+              <th className="py-2.5">{t("delivery_wilayas.th_desk_fee")}</th>
+              <th className="py-2.5">{t("delivery_wilayas.th_est_days")}</th>
+              <th className="py-2.5 text-right">{t("delivery_wilayas.th_action")}</th>
             </tr>
           </thead>
           <tbody>
@@ -258,7 +261,7 @@ export function DeliveryWilayasPage() {
                     disabled={savingCode === z.wilaya_code}
                     className="px-3 py-1.5 rounded-lg bg-[#063D2E] text-[#D4AF62] font-bold hover:bg-[#02291F]"
                   >
-                    {savingCode === z.wilaya_code ? "..." : "Enregistrer"}
+                    {savingCode === z.wilaya_code ? "..." : t("delivery_wilayas.btn_save")}
                   </button>
                 </td>
               </tr>

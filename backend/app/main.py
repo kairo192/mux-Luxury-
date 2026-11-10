@@ -53,8 +53,9 @@ _DEFAULT_CORS_ORIGINS = [
     "http://tauri.localhost",
     "https://tauri.localhost",
     "tauri://localhost",
-    "https://musluxury.dz",
-    "https://www.musluxury.dz",
+    "https://mus-luxury.com",
+    "https://www.mus-luxury.com",
+    "https://api.mus-luxury.com",
 ]
 _EXTRA_CORS = [o.strip() for o in os.getenv("CORS_ORIGINS", "").split(",") if o.strip()]
 ALLOWED_CORS_ORIGINS = list(dict.fromkeys(_DEFAULT_CORS_ORIGINS + _EXTRA_CORS))
@@ -2526,19 +2527,10 @@ def admin_update_store_settings(
 
 
 # ============================================================================
-# SECTION 6: WHATSAPP CLOUD API PASSWORD RECOVERY & OFFLINE EMERGENCY RECOVERY
+# SECTION 6: WEBHOOKS & STORE INTEGRATIONS
 # ============================================================================
 
 from .security import hash_password, REVOKED_TOKENS, revoke_all_user_sessions
-
-class RecoveryRequestInput(BaseModel):
-    phone: str
-    channel: str = Field("whatsapp_cloud_api", regex=r"^(whatsapp_cloud_api|offline_emergency)$")
-
-class RecoveryVerifyInput(BaseModel):
-    phone: str
-    verification_code: str = Field(..., min_length=6, max_length=64)
-    new_password: str = Field(..., min_length=10, max_length=128)
 
 class ProductConcurrencyUpdate(BaseModel):
     name_fr: str
@@ -2582,8 +2574,6 @@ from .whatsapp import (
     list_recent_whatsapp_outbox,
     normalize_algerian_phone,
     get_whatsapp_config,
-    # dispatch_whatsapp_recovery_otp intentionally no longer imported —
-    # admin password recovery over WhatsApp was removed per owner request.
     verify_whatsapp_webhook_signature,
 )
 
@@ -2593,7 +2583,7 @@ from .whatsapp import (
 # verify|rotate-emergency-code`) are gone. Owner-side password reset is
 # now a server-side CLI operation only:
 #     python3 backend/scripts/emergency_reset_owner.py \
-#         --email admin@musluxury.dz --new-password '<new>'
+#         --email admin@mus-luxury.com --new-password '<new>'
 # Run from the VPS over SSH as the deploy user. The WhatsApp module itself
 # (customer order notifications + webhook) stays in place.
 # ---------------------------------------------------------------------------
@@ -2903,11 +2893,13 @@ class OwnerInitializeInput(BaseModel):
     full_name: str = Field(..., min_length=3, max_length=150)
     email: str = Field(..., min_length=5, max_length=150)
     password: str = Field(..., min_length=10, max_length=128)
-    whatsapp_phone: str = Field(...)
-    emergency_phone: str = Field(...)
+    whatsapp_phone: Optional[str] = None
+    emergency_phone: Optional[str] = None
 
     @validator("whatsapp_phone", "emergency_phone")
     def validate_phones(cls, v):
+        if not v:
+            return None
         cleaned = re.sub(r"[\s\-\.]", "", v)
         if not re.match(r"^(\+213|0)(5|6|7)[0-9]{8}$", cleaned):
             raise ValueError("Invalid Algerian mobile phone number (must start with 05, 06, 07 or +213)")
@@ -2979,13 +2971,14 @@ def initialize_primary_owner(payload: OwnerInitializeInput, request: Request):
         )
         owner_id = cur.lastrowid
 
-        # Seed emergency recovery token tied to secondary emergency phone
+        # Seed emergency recovery token tied to secondary emergency phone (or fallback)
         emergency_code = f"EMERGENCY-{secrets.token_hex(6).upper()}"
         code_hash = hashlib.sha256(emergency_code.encode("utf-8")).hexdigest()
+        recovery_phone = payload.emergency_phone or payload.whatsapp_phone or "+213000000000"
         cur.execute(
             """INSERT INTO admin_recovery_codes (admin_user_id, phone, code_hash, channel, max_attempts, expires_at)
                VALUES (?, ?, ?, 'offline_emergency', 3, ?)""",
-            (owner_id, payload.emergency_phone, code_hash, int(time.time()) + 86400 * 365)
+            (owner_id, recovery_phone, code_hash, int(time.time()) + 86400 * 365)
         )
 
         # Mark system as permanently initialized in database
@@ -4322,9 +4315,6 @@ def admin_delete_supplier(
 
 # --- PURCHASING & PURCHASE ORDERS ENDPOINTS ---
 
-@app.get("/api/v1/admin/purchases")
-# Must be registered BEFORE the generic /purchases list route so FastAPI matches
-# the more specific path first when the list route reuses the "/purchases" prefix.
 @app.get("/api/v1/admin/purchases/{po_id}/document")
 def admin_get_purchase_order_document(
     po_id: int,
@@ -4369,6 +4359,7 @@ def admin_get_purchase_order_document(
         return d
 
 
+@app.get("/api/v1/admin/purchases")
 def admin_list_purchases(admin: dict = Depends(require_permission("dashboard:read"))):
     with db_session() as conn:
         cur = conn.cursor()

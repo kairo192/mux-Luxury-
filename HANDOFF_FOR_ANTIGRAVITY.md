@@ -73,8 +73,8 @@ Context: the owner explicitly asked to strip the WhatsApp admin password recover
 
   ```bash
   python3 backend/scripts/generate_production_env.py \
-      --domain mus-luxury.dz \
-      --admin-email admin@mus-luxury.dz \
+      --domain mus-luxury.com \
+      --admin-email admin@mus-luxury.com \
       --admin-whatsapp +213655534154 \
       --emergency-phone +213559420426
   ```
