@@ -14,8 +14,8 @@ where a careless `git add backend/` could stage them.
 
 Usage:
     python3 backend/scripts/generate_production_env.py \\
-        --domain mus-luxury.dz \\
-        --admin-email admin@mus-luxury.dz \\
+        --domain mus-luxury.com \\
+        --admin-email admin@mus-luxury.com \\
         --admin-whatsapp +213655534154 \\
         [--out scratch/production.env]
 
@@ -235,7 +235,7 @@ POS_API_CONTRACT_VERSION=1
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__.strip())
     parser.add_argument("--domain", required=True,
-                        help="Public bare domain, e.g. 'mus-luxury.dz' (no scheme, no www).")
+                        help="Public bare domain, e.g. 'mus-luxury.com' (no scheme, no www).")
     parser.add_argument("--admin-email", required=True,
                         help="First-owner email used by the setup wizard pre-fill.")
     parser.add_argument("--admin-whatsapp", required=True,
