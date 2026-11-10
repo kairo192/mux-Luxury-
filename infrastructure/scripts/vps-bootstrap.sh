@@ -15,7 +15,7 @@
 #   - systemd timer for `vps-metrics.sh`
 #
 # What this script does NOT do:
-#   - Install certificates. Run `certbot --nginx -d musluxury.dz ...` after this.
+#   - Install certificates. Run `certbot --nginx -d mus-luxury.com ...` after this.
 #   - Create the first release. That's `release-deploy.sh`'s job, invoked by CD.
 # =============================================================================
 set -euo pipefail

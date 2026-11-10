@@ -117,7 +117,7 @@ jobs:
           VERSION: ${{ needs.resolve-ref.outputs.version }}
         run: |
           mkdir -p .release
-          tar czf ".release/mux-luxury-${VERSION}.tar.gz" \
+          tar czf ".release/mus-luxury-${VERSION}.tar.gz" \
               --exclude=".git" --exclude=".github" \
               --exclude="node_modules" --exclude=".release" \
               --exclude="apps/storefront/node_modules" \
@@ -126,7 +126,7 @@ jobs:
               --exclude="backend/__pycache__" --exclude="backend/uploads" \
               --exclude="backend/backups" --exclude="**/*.pyc" \
               --exclude="scratch" --exclude="images" .
-          sha256sum ".release/mux-luxury-${VERSION}.tar.gz" > ".release/mux-luxury-${VERSION}.tar.gz.sha256"
+          sha256sum ".release/mus-luxury-${VERSION}.tar.gz" > ".release/mus-luxury-${VERSION}.tar.gz.sha256"
 
       - uses: actions/upload-artifact@v4
         with:
@@ -151,7 +151,7 @@ jobs:
         env:
           VERSION: ${{ needs.resolve-ref.outputs.version }}
         working-directory: .release
-        run: sha256sum -c "mux-luxury-${VERSION}.tar.gz.sha256"
+        run: sha256sum -c "mus-luxury-${VERSION}.tar.gz.sha256"
 
       - uses: webfactory/ssh-agent@a6f90b1f127823b31d4d4a8d96047790581349bd  # v0.9.0
         with:
@@ -170,8 +170,8 @@ jobs:
           HOST:    ${{ secrets.PRODUCTION_SSH_HOST }}
           USER:    ${{ secrets.PRODUCTION_SSH_USER }}
         run: |
-          scp ".release/mux-luxury-${VERSION}.tar.gz" \
-              "${USER}@${HOST}:/tmp/mux-luxury-release.tar.gz"
+          scp ".release/mus-luxury-${VERSION}.tar.gz" \
+              "${USER}@${HOST}:/tmp/mus-luxury-release.tar.gz"
 
       - name: Invoke release-deploy.sh on VPS
         env:
@@ -182,11 +182,11 @@ jobs:
           ssh "${USER}@${HOST}" bash -lc "'
             set -e
             TMPDIR=\$(mktemp -d)
-            tar -xzf /tmp/mux-luxury-release.tar.gz -C \$TMPDIR
+            tar -xzf /tmp/mus-luxury-release.tar.gz -C \$TMPDIR
             bash \$TMPDIR/infrastructure/scripts/release-deploy.sh \
                 --version ${VERSION} \
-                --archive /tmp/mux-luxury-release.tar.gz
-            rm -rf \$TMPDIR /tmp/mux-luxury-release.tar.gz
+                --archive /tmp/mus-luxury-release.tar.gz
+            rm -rf \$TMPDIR /tmp/mus-luxury-release.tar.gz
           '"
 
       - name: Post-deploy health probe
