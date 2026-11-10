@@ -584,9 +584,9 @@ export function ProductEditor({ open, product, categories, brands, onClose, onSa
         </div>
 
         {/* Body */}
-        <div className="p-6 max-h-[72vh] overflow-y-auto">
+        <div className="p-6 max-h-[72vh] overflow-y-auto [scrollbar-gutter:stable]">
           <div className={`grid grid-cols-1 ${showLivePreview ? "lg:grid-cols-12" : ""} gap-6 items-start`}>
-            <div className={`${showLivePreview ? "lg:col-span-8" : "w-full"} space-y-5`}>
+            <div className={`${showLivePreview ? "lg:col-span-8" : "w-full"} space-y-5 transition-all duration-200`}>
           {conflict && (
             <div className="p-3 rounded-xl bg-amber-50 border border-amber-300 flex items-start gap-2">
               <AlertTriangle className="w-4 h-4 text-amber-700 shrink-0 mt-0.5" />
@@ -1217,7 +1217,7 @@ export function ProductEditor({ open, product, categories, brands, onClose, onSa
 
             {/* Live Storefront Preview Column */}
             {showLivePreview && (
-              <div className="lg:col-span-4 sticky top-0 space-y-3">
+              <div className="lg:col-span-4 sticky top-0 space-y-3 min-w-[280px] w-full">
                 <LiveProductCardPreview
                   name={draft.name_fr}
                   brandName={localBrands.find((b) => b.id === Number(draft.brand_id))?.name}

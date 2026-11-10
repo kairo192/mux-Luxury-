@@ -1480,7 +1480,7 @@ export default function App() {
               {/* Revenue */}
               <div className="bg-white p-4 rounded-2xl border border-[#063D2E]/10 shadow-sm hover:shadow-md hover:border-[#D4AF62]/40 transition-all duration-200 relative overflow-hidden group">
                 <div className="flex items-center justify-between text-gray-500">
-                  <span className="font-bold text-[10px] uppercase tracking-wider text-gray-400">Chiffre d'Affaires</span>
+                  <span className="font-bold text-[10px] uppercase tracking-wider text-gray-400">{t("dashboard_tab.revenue_title")}</span>
                   <div className="w-8 h-8 rounded-lg bg-emerald-50 text-emerald-800 flex items-center justify-center">
                     <DollarSign className="w-4 h-4 text-emerald-700" />
                   </div>
@@ -1497,42 +1497,42 @@ export default function App() {
               {/* Total Orders */}
               <div className="bg-white p-4 rounded-2xl border border-[#063D2E]/10 shadow-sm hover:shadow-md hover:border-[#D4AF62]/40 transition-all duration-200 relative overflow-hidden group">
                 <div className="flex items-center justify-between text-gray-500">
-                  <span className="font-bold text-[10px] uppercase tracking-wider text-gray-400">Commandes</span>
+                  <span className="font-bold text-[10px] uppercase tracking-wider text-gray-400">{t("dashboard_tab.orders_title")}</span>
                   <div className="w-8 h-8 rounded-lg bg-blue-50 text-blue-700 flex items-center justify-center">
                     <ShoppingBag className="w-4 h-4 text-blue-600" />
                   </div>
                 </div>
                 <p className="text-xl font-bold font-mono text-[#063D2E] mt-2">{dashboard.total_orders}</p>
                 <div className="text-[10px] text-blue-600 font-semibold mt-1">
-                  {dashboard.orders_by_status?.delivered || 0} livrée(s) COD
+                  {t("dashboard_tab.orders_delivered", { count: dashboard.orders_by_status?.delivered || 0 })}
                 </div>
               </div>
 
               {/* Active Products */}
               <div className="bg-white p-4 rounded-2xl border border-[#063D2E]/10 shadow-sm hover:shadow-md hover:border-[#D4AF62]/40 transition-all duration-200 relative overflow-hidden group">
                 <div className="flex items-center justify-between text-gray-500">
-                  <span className="font-bold text-[10px] uppercase tracking-wider text-gray-400">Articles Actifs</span>
+                  <span className="font-bold text-[10px] uppercase tracking-wider text-gray-400">{t("dashboard_tab.active_products")}</span>
                   <div className="w-8 h-8 rounded-lg bg-purple-50 text-purple-700 flex items-center justify-center">
                     <Boxes className="w-4 h-4 text-purple-600" />
                   </div>
                 </div>
                 <p className="text-xl font-bold font-mono text-[#063D2E] mt-2">{dashboard.total_active_products ?? dashboard.published_products}</p>
                 <div className="text-[10px] text-purple-600 font-semibold mt-1">
-                  En vente boutique
+                  {t("dashboard_tab.active_products_desc")}
                 </div>
               </div>
 
               {/* Categories */}
               <div className="bg-white p-4 rounded-2xl border border-[#063D2E]/10 shadow-sm hover:shadow-md hover:border-[#D4AF62]/40 transition-all duration-200 relative overflow-hidden group">
                 <div className="flex items-center justify-between text-gray-500">
-                  <span className="font-bold text-[10px] uppercase tracking-wider text-gray-400">Rayons &amp; Cat.</span>
+                  <span className="font-bold text-[10px] uppercase tracking-wider text-gray-400">{t("dashboard_tab.categories_title")}</span>
                   <div className="w-8 h-8 rounded-lg bg-amber-50 text-amber-800 flex items-center justify-center">
                     <Tags className="w-4 h-4 text-amber-700" />
                   </div>
                 </div>
                 <p className="text-xl font-bold font-mono text-[#063D2E] mt-2">{dashboard.total_categories}</p>
                 <div className="text-[10px] text-gray-400 mt-1">
-                  Schémas dynamiques
+                  {t("dashboard_tab.categories_desc")}
                 </div>
               </div>
 
@@ -1541,14 +1541,14 @@ export default function App() {
                 dashboard.low_stock_variants > 0 ? "border-amber-300 bg-amber-50/30" : "border-[#063D2E]/10"
               }`}>
                 <div className="flex items-center justify-between text-amber-800">
-                  <span className="font-bold text-[10px] uppercase tracking-wider text-amber-800">Stock Faible</span>
+                  <span className="font-bold text-[10px] uppercase tracking-wider text-amber-800">{t("dashboard_tab.low_stock_title")}</span>
                   <div className="w-8 h-8 rounded-lg bg-amber-100 text-amber-800 flex items-center justify-center">
                     <AlertTriangle className="w-4 h-4 text-amber-700" />
                   </div>
                 </div>
                 <p className="text-xl font-bold font-mono text-amber-700 mt-2">{dashboard.low_stock_variants}</p>
                 <div className="text-[10px] text-amber-700 font-semibold mt-1">
-                  Seuil critique ≤ 3
+                  {t("dashboard_tab.low_stock_desc")}
                 </div>
               </div>
 
@@ -1557,14 +1557,14 @@ export default function App() {
                 dashboard.out_of_stock_variants > 0 ? "border-red-300 bg-red-50/30" : "border-[#063D2E]/10"
               }`}>
                 <div className="flex items-center justify-between text-red-800">
-                  <span className="font-bold text-[10px] uppercase tracking-wider text-red-800">Ruptures</span>
+                  <span className="font-bold text-[10px] uppercase tracking-wider text-red-800">{t("dashboard_tab.out_of_stock_title")}</span>
                   <div className="w-8 h-8 rounded-lg bg-red-100 text-red-800 flex items-center justify-center">
                     <AlertCircle className="w-4 h-4 text-red-700" />
                   </div>
                 </div>
                 <p className="text-xl font-bold font-mono text-red-700 mt-2">{dashboard.out_of_stock_variants}</p>
                 <div className="text-[10px] text-red-700 font-semibold mt-1">
-                  0 pièce disponible
+                  {t("dashboard_tab.out_of_stock_desc")}
                 </div>
               </div>
             </div>
@@ -1604,8 +1604,8 @@ export default function App() {
                       <Clock className="w-4 h-4" />
                     </div>
                     <div>
-                      <h3 className="font-serif font-bold text-sm text-[#063D2E]">Commandes Clients Récentes</h3>
-                      <p className="text-[11px] text-gray-500">Flux d'expéditions et réceptions en direct</p>
+                      <h3 className="font-serif font-bold text-sm text-[#063D2E]">{t("dashboard_tab.recent_orders_title")}</h3>
+                      <p className="text-[11px] text-gray-500">{t("dashboard_tab.recent_orders_desc")}</p>
                     </div>
                   </div>
                   <button
@@ -1613,15 +1613,15 @@ export default function App() {
                     onClick={() => setActiveTab("orders")}
                     className="text-[11px] font-bold text-[#063D2E] hover:text-[#0A5C45] flex items-center gap-1 transition"
                   >
-                    <span>Toutes ({dashboard.total_orders})</span>
+                    <span>{t("dashboard_tab.view_all_orders", { count: dashboard.total_orders })}</span>
                     <ArrowUpRight className="w-3.5 h-3.5" />
                   </button>
                 </div>
 
                 {(dashboard.recent_orders || []).length === 0 ? (
                   <div className="p-8 text-center bg-[#F8F6F0] rounded-xl border border-dashed border-[#D4AF62]/40 text-gray-400">
-                    <p className="font-serif italic text-gray-600">Aucune commande enregistrée pour le moment.</p>
-                    <p className="text-[10px] text-gray-400 mt-1">Les commandes passées sur la boutique apparaîtront ici automatiquement.</p>
+                    <p className="font-serif italic text-gray-600">{t("dashboard_tab.empty_orders")}</p>
+                    <p className="text-[10px] text-gray-400 mt-1">{t("dashboard_tab.empty_orders_desc")}</p>
                   </div>
                 ) : (
                   <div className="space-y-2">
@@ -1660,11 +1660,11 @@ export default function App() {
                 </div>
                 <div>
                   <div className="flex items-center gap-2">
-                    <span className="font-bold text-sm text-[#E8D4A5]">Sécurité &amp; Infrastructure Haute Disponibilité</span>
+                    <span className="font-bold text-sm text-[#E8D4A5]">{t("dashboard_tab.security_title")}</span>
                     <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
                   </div>
                   <p className="text-[11px] text-gray-300 mt-0.5">
-                    SQLite WAL haute performance • Isolation OS Keychain Windows • Anti-Replay HMAC-SHA256 actif
+                    {t("dashboard_tab.security_desc")}
                   </p>
                 </div>
               </div>
@@ -1672,17 +1672,17 @@ export default function App() {
               <div className="flex items-center gap-3 text-[11px]">
                 {dashboard.last_backup ? (
                   <div className="px-3 py-1.5 rounded-xl bg-white/10 border border-white/10 font-mono text-gray-300">
-                    Dernier backup: <strong className="text-[#D4AF62]">{dashboard.last_backup.filename}</strong>
+                    {t("dashboard_tab.last_backup", { filename: dashboard.last_backup.filename })}
                   </div>
                 ) : (
-                  <span className="text-gray-400 font-mono">Backups automatisés prêts</span>
+                  <span className="text-gray-400 font-mono">{t("dashboard_tab.backups_ready")}</span>
                 )}
                 <button
                   type="button"
                   onClick={() => setActiveTab("backups")}
                   className="px-3.5 py-1.5 rounded-xl bg-[#D4AF62] text-[#02291F] font-bold hover:brightness-105 transition"
                 >
-                  Gérer
+                  {t("dashboard_tab.btn_manage")}
                 </button>
               </div>
             </div>
@@ -1709,8 +1709,8 @@ export default function App() {
                   <ShoppingBag className="w-5 h-5 text-[#D4AF62]" />
                 </div>
                 <div>
-                  <h2 className="text-base font-serif font-bold text-[#063D2E]">Catalogue &amp; Matrice Produits</h2>
-                  <p className="text-xs text-gray-500">Gestion des collections haute couture, marges commerciales et déclinaisons en temps réel</p>
+                  <h2 className="text-base font-serif font-bold text-[#063D2E]">{t("catalog.title")}</h2>
+                  <p className="text-xs text-gray-500">{t("catalog.subtitle")}</p>
                 </div>
               </div>
               <div className="flex flex-wrap items-center gap-2">
@@ -1720,18 +1720,18 @@ export default function App() {
                   className="px-3 py-1.5 rounded-xl bg-[#F8F6F0] text-[#063D2E] border border-[#D4AF62]/40 font-bold text-xs hover:bg-[#D4AF62]/20 transition flex items-center gap-1.5"
                 >
                   <Tags className="w-3.5 h-3.5 text-[#063D2E]" />
-                  <span>Gérer les Catégories</span>
+                  <span>{t("catalog.btn_categories")}</span>
                 </button>
                 <button
                   type="button"
                   onClick={async () => {
                     await loadAllWorkspaceData();
-                    notifyClientSuccess("Catalogue synchronisé", "Toutes les références ont été réactualisées depuis la base centrale.");
+                    notifyClientSuccess(t("catalog.sync_success_title"), t("catalog.sync_success_desc"));
                   }}
                   className="px-3 py-1.5 rounded-xl bg-[#063D2E] text-[#D4AF62] font-bold text-xs hover:bg-[#084e3b] transition flex items-center gap-1.5 shadow-xs"
                 >
                   <RefreshCw className="w-3.5 h-3.5 text-[#D4AF62]" />
-                  <span>Actualiser</span>
+                  <span>{t("catalog.btn_refresh")}</span>
                 </button>
               </div>
             </div>
@@ -1744,20 +1744,19 @@ export default function App() {
                     <PackagePlus className="w-6 h-6 text-[#D4AF62]" />
                   </div>
                   <div className="flex-1">
-                    <h2 className="text-lg font-serif font-bold text-[#063D2E]">Créer une pièce de collection</h2>
+                    <h2 className="text-lg font-serif font-bold text-[#063D2E]">{t("catalog.create_piece_title")}</h2>
                     <p className="text-xs text-gray-500 mt-1 leading-relaxed">
-                      Un éditeur complet en 4 étapes : informations multilingues, déclinaisons couleur/taille réelles,
-                      galerie de visuels et référencement. Chaque enregistrement est validé puis synchronisé avec la vitrine.
+                      {t("catalog.create_piece_desc")}
                     </p>
                   </div>
                 </div>
 
                 <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
                   {[
-                    { label: "Produits", value: products.length, tone: "text-[#063D2E]" },
-                    { label: "En vente", value: productCounts.published, tone: "text-emerald-700" },
-                    { label: "Brouillons", value: productCounts.draft, tone: "text-gray-600" },
-                    { label: "Stock faible", value: productCounts.low_stock, tone: "text-amber-700" },
+                    { label: t("catalog.stat_products"), value: products.length, tone: "text-[#063D2E]" },
+                    { label: t("catalog.stat_published"), value: productCounts.published, tone: "text-emerald-700" },
+                    { label: t("catalog.stat_draft"), value: productCounts.draft, tone: "text-gray-600" },
+                    { label: t("catalog.stat_low_stock"), value: productCounts.low_stock, tone: "text-amber-700" },
                   ].map((stat) => (
                     <div key={stat.label} className="p-3 rounded-xl bg-[#F8F6F0] border border-[#D4AF62]/30">
                       <p className="text-[10px] uppercase tracking-wide text-gray-500 font-bold">{stat.label}</p>
@@ -1774,7 +1773,7 @@ export default function App() {
                     className="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl bg-gradient-to-r from-[#D4AF62] to-[#E8D4A5] text-[#02291F] font-extrabold shadow-xs hover:brightness-105 transition disabled:opacity-50 disabled:cursor-not-allowed"
                   >
                     <Plus className="w-4 h-4" />
-                    <span>Nouveau produit</span>
+                    <span>{t("catalog.btn_new_product")}</span>
                   </button>
                   <button
                     type="button"
@@ -1782,12 +1781,12 @@ export default function App() {
                     className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl bg-white border border-[#D4AF62]/60 text-[#063D2E] font-bold hover:bg-[#F8F6F0] transition"
                   >
                     <Tags className="w-4 h-4" />
-                    <span>Attributs & catégories</span>
+                    <span>{t("catalog.btn_attributes_cats")}</span>
                   </button>
                 </div>
                 {categories.length === 0 && (
                   <p className="text-[11px] text-amber-800 bg-amber-50 border border-amber-200 rounded-xl px-3 py-2">
-                    Créez d'abord une catégorie pour débloquer la création de produits et les attributs dynamiques.
+                    {t("catalog.category_required_banner")}
                   </p>
                 )}
               </div>
@@ -1795,24 +1794,24 @@ export default function App() {
               <div className="bg-[#063D2E] p-6 rounded-2xl border border-[#D4AF62]/40 text-[#E8D4A5] space-y-3">
                 <p className="font-serif font-bold text-base flex items-center gap-2">
                   <Sparkles className="w-4 h-4 text-[#D4AF62]" />
-                  <span>Bonnes pratiques</span>
+                  <span>{t("catalog.best_practices_title")}</span>
                 </p>
                 <ul className="space-y-2 text-[11px] leading-relaxed text-white/80">
                   <li className="flex gap-2">
                     <CheckCircle2 className="w-3.5 h-3.5 text-[#D4AF62] shrink-0 mt-0.5" />
-                    <span>Un prix barré supérieur au prix de vente calcule automatiquement la remise affichée.</span>
+                    <span>{t("catalog.best_practices_1")}</span>
                   </li>
                   <li className="flex gap-2">
                     <CheckCircle2 className="w-3.5 h-3.5 text-[#D4AF62] shrink-0 mt-0.5" />
-                    <span>Les déclinaisons portent leur propre stock : la vitrine ne vend jamais une combinaison épuisée.</span>
+                    <span>{t("catalog.best_practices_2")}</span>
                   </li>
                   <li className="flex gap-2">
                     <CheckCircle2 className="w-3.5 h-3.5 text-[#D4AF62] shrink-0 mt-0.5" />
-                    <span>Les prix et stocks envoyés par le navigateur sont ignorés : le serveur recalcule toujours le total.</span>
+                    <span>{t("catalog.best_practices_3")}</span>
                   </li>
                   <li className="flex gap-2">
                     <CheckCircle2 className="w-3.5 h-3.5 text-[#D4AF62] shrink-0 mt-0.5" />
-                    <span>Un produit publié sans visuel ni déclinaison est refusé pour éviter les fiches incomplètes.</span>
+                    <span>{t("catalog.best_practices_4")}</span>
                   </li>
                 </ul>
               </div>
@@ -1823,15 +1822,15 @@ export default function App() {
               <div className="flex flex-col md:flex-row md:items-center justify-between gap-3">
                 <div className="flex flex-wrap items-center gap-3">
                   <h3 className="text-base font-serif font-bold text-[#063D2E]">
-                    Catalogue Produits ({filteredProducts.length})
+                    {t("catalog.title_list")} ({filteredProducts.length})
                   </h3>
                   <div className="flex flex-wrap rounded-xl bg-[#F8F6F0] p-1 border border-[#D4AF62]/40 text-[11px]">
                     {[
-                      { key: "all", label: `Toutes (${productCounts.all})` },
-                      { key: "published", label: `En vente (${productCounts.published})` },
-                      { key: "draft", label: `Brouillons (${productCounts.draft})` },
-                      { key: "archived", label: `Archivés (${productCounts.archived})` },
-                      { key: "low_stock", label: `Stock Faible (${productCounts.low_stock})` },
+                      { key: "all", label: `${t("catalog.filter_all")} (${productCounts.all})` },
+                      { key: "published", label: `${t("catalog.filter_published")} (${productCounts.published})` },
+                      { key: "draft", label: `${t("catalog.filter_draft")} (${productCounts.draft})` },
+                      { key: "archived", label: `${t("catalog.filter_archived")} (${productCounts.archived})` },
+                      { key: "low_stock", label: `${t("catalog.filter_low_stock")} (${productCounts.low_stock})` },
                     ].map((tab) => (
                       <button
                         key={tab.key}
@@ -1854,7 +1853,7 @@ export default function App() {
                     <input
                       value={prodSearch}
                       onChange={(e) => setProdSearch(e.target.value)}
-                      placeholder="Rechercher par nom ou SKU..."
+                      placeholder={t("catalog.search_placeholder")}
                       className="pl-8 pr-3 py-1.5 border rounded-xl w-60 bg-[#F8F6F0] focus:bg-white focus:border-[#063D2E] outline-none transition"
                     />
                     {prodSearch && (
@@ -1879,22 +1878,29 @@ export default function App() {
                       <PackagePlus className="w-8 h-8 text-[#D4AF62]" />
                     </div>
                     <div className="max-w-md mx-auto space-y-1">
-                      <h4 className="text-lg font-serif font-bold text-[#063D2E]">Votre Catalogue Mus Luxury est Vierge</h4>
+                      <h4 className="text-lg font-serif font-bold text-[#063D2E]">{t("catalog.empty_title")}</h4>
                       <p className="text-xs text-gray-600 leading-relaxed">
-                        Aucun article n'est encore enregistré dans la base de données. Utilisez le formulaire ci-dessus pour publier votre première pièce d'exception (maroquinerie, souliers, cosmétiques).
+                        {t("catalog.empty_desc")}
                       </p>
                     </div>
                     <div className="flex items-center justify-center gap-3 pt-2">
                       <button
                         type="button"
                         onClick={() => {
-                          const input = document.querySelector<HTMLInputElement>("input[placeholder*='Sac Émeraude']");
-                          input?.focus();
+                          if (categories.length === 0) {
+                            setActiveTab("categories");
+                            notifyClientWarning(
+                              t("catalog.category_required_title"),
+                              t("catalog.category_required_desc")
+                            );
+                          } else {
+                            openProductEditor(null);
+                          }
                         }}
                         className="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl bg-[#063D2E] text-[#D4AF62] font-extrabold text-xs shadow-xs hover:bg-[#084e3b] transition"
                       >
                         <Plus className="w-4 h-4 text-[#D4AF62]" />
-                        <span>Créer un Premier Produit</span>
+                        <span>{t("catalog.create_first_product")}</span>
                       </button>
                       {categories.length === 0 && (
                         <button
@@ -1903,7 +1909,7 @@ export default function App() {
                           className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl bg-white border border-[#D4AF62] text-[#063D2E] font-bold text-xs hover:bg-[#F8F6F0] transition"
                         >
                           <Tags className="w-4 h-4 text-[#063D2E]" />
-                          <span>Configurer les Catégories</span>
+                          <span>{t("catalog.configure_categories")}</span>
                         </button>
                       )}
                     </div>
@@ -1913,8 +1919,8 @@ export default function App() {
                   <div className="p-10 text-center bg-gray-50 rounded-2xl border border-gray-200 space-y-3">
                     <Search className="w-10 h-10 text-gray-300 mx-auto" />
                     <div>
-                      <p className="font-bold text-gray-700 text-sm">Aucun produit ne correspond à vos critères de recherche</p>
-                      {prodSearch && <p className="text-xs text-gray-500 mt-0.5">Aucun résultat pour « {prodSearch} »</p>}
+                      <p className="font-bold text-gray-700 text-sm">{t("catalog.no_match_title")}</p>
+                      {prodSearch && <p className="text-xs text-gray-500 mt-0.5">{t("catalog.no_match_desc", { query: prodSearch })}</p>}
                     </div>
                     <button
                       type="button"
@@ -1924,7 +1930,7 @@ export default function App() {
                       }}
                       className="px-4 py-2 rounded-xl bg-[#063D2E] text-[#D4AF62] font-bold text-xs hover:bg-[#084e3b] transition"
                     >
-                      Réinitialiser la recherche
+                      {t("catalog.reset_filter")}
                     </button>
                   </div>
                 )
@@ -1948,14 +1954,14 @@ export default function App() {
                           />
                         </th>
                         <th className="p-2.5">ID / SKU</th>
-                        <th className="p-2.5">Produit &amp; Catégorie</th>
+                        <th className="p-2.5">{t("catalog.th_product")}</th>
                         <th className="p-2.5 text-right">Prix Achat</th>
-                        <th className="p-2.5 text-right">Prix Vente</th>
-                        <th className="p-2.5 text-right">Marge Unitaire</th>
-                        <th className="p-2.5 text-center">Taux Marge</th>
-                        <th className="p-2.5 text-center">Stock &amp; Disponibilité</th>
-                        <th className="p-2.5 text-center">Statut</th>
-                        <th className="p-2.5 text-right">Actions</th>
+                        <th className="p-2.5 text-right">{t("catalog.th_selling_price")}</th>
+                        <th className="p-2.5 text-right">Marge</th>
+                        <th className="p-2.5 text-center">Taux</th>
+                        <th className="p-2.5 text-center">{t("catalog.th_stock_variants")}</th>
+                        <th className="p-2.5 text-center">{t("catalog.th_status")}</th>
+                        <th className="p-2.5 text-right">{t("catalog.th_actions")}</th>
                       </tr>
                     </thead>
                     <tbody className="divide-y">
@@ -2028,7 +2034,7 @@ export default function App() {
                               ) : (
                                 <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full bg-rose-50 text-rose-800 border border-rose-300 text-[11px]">
                                   <span className="w-2 h-2 rounded-full bg-rose-500" />
-                                  <span>Rupture</span>
+                                  <span>{t("preview.out_of_stock")}</span>
                                 </span>
                               )}
                             </td>
@@ -2045,17 +2051,17 @@ export default function App() {
                                 {p.status === "published" ? (
                                   <>
                                     <CheckCircle2 className="w-3 h-3 text-emerald-700" />
-                                    <span>En Vente</span>
+                                    <span>{t("catalog.badge_published")}</span>
                                   </>
                                 ) : p.status === "archived" ? (
                                   <>
                                     <Archive className="w-3 h-3 text-amber-700" />
-                                    <span>Archivé</span>
+                                    <span>{t("catalog.badge_archived")}</span>
                                   </>
                                 ) : (
                                   <>
                                     <Clock className="w-3 h-3 text-gray-600" />
-                                    <span>Brouillon</span>
+                                    <span>{t("catalog.badge_draft")}</span>
                                   </>
                                 )}
                               </span>
@@ -2065,30 +2071,30 @@ export default function App() {
                                 type="button"
                                 onClick={() => openProductEditor(p)}
                                 className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-[#F8F6F0] text-[#063D2E] border border-[#D4AF62]/40 font-bold hover:bg-[#D4AF62]/20 transition"
-                                title="Modifier la fiche et les variantes"
+                                title={t("catalog.btn_edit")}
                               >
                                 <Edit3 className="w-3 h-3 text-[#063D2E]" />
-                                <span>Modifier</span>
+                                <span>{t("catalog.btn_edit")}</span>
                               </button>
                               {p.status !== "archived" ? (
                                 <button
                                   type="button"
                                   onClick={() => handleArchiveProduct(p.id)}
                                   className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-amber-50 text-amber-800 border border-amber-200 font-bold hover:bg-amber-100 transition"
-                                  title="Archiver ce produit de la vitrine"
+                                  title={t("catalog.btn_archive")}
                                 >
                                   <Archive className="w-3 h-3 text-amber-800" />
-                                  <span>Archiver</span>
+                                  <span>{t("catalog.btn_archive")}</span>
                                 </button>
                               ) : (
                                 <button
                                   type="button"
                                   onClick={() => handleRestoreProduct(p.id)}
                                   className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-emerald-50 text-emerald-800 border border-emerald-200 font-bold hover:bg-emerald-100 transition"
-                                  title="Réactiver ce produit sur la vitrine"
+                                  title={t("catalog.btn_restore")}
                                 >
                                   <RotateCcw className="w-3 h-3 text-emerald-800" />
-                                  <span>Réactiver</span>
+                                  <span>{t("catalog.btn_restore")}</span>
                                 </button>
                               )}
                               <button
@@ -2099,10 +2105,10 @@ export default function App() {
                                   setError("");
                                 }}
                                 className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-red-50 text-red-700 border border-red-200 font-bold hover:bg-red-100 transition shadow-xs"
-                                title="Ouvrir les options de suppression"
+                                title={t("catalog.btn_delete")}
                               >
                                 <Trash2 className="w-3 h-3 text-red-700" />
-                                <span>Supprimer</span>
+                                <span>{t("catalog.btn_delete")}</span>
                               </button>
                             </td>
                           </tr>
@@ -2119,7 +2125,7 @@ export default function App() {
                   <div className="flex items-center gap-2">
                     <CheckSquare className="w-4 h-4 text-[#D4AF62]" />
                     <span className="font-bold text-xs text-[#E8D4A5]">
-                      {selectedProductIds.length} produit(s) sélectionné(s)
+                      {t("catalog.bulk_selected", { count: selectedProductIds.length })}
                     </span>
                   </div>
                   <div className="h-4 w-px bg-white/20" />
@@ -2130,7 +2136,7 @@ export default function App() {
                       className="inline-flex items-center gap-1 px-3 py-1.5 rounded-xl bg-emerald-700 hover:bg-emerald-600 text-white font-bold text-xs transition"
                     >
                       <CheckCircle2 className="w-3.5 h-3.5" />
-                      <span>Publier</span>
+                      <span>{t("catalog.bulk_publish")}</span>
                     </button>
                     <button
                       type="button"
@@ -2138,7 +2144,7 @@ export default function App() {
                       className="inline-flex items-center gap-1 px-3 py-1.5 rounded-xl bg-amber-600 hover:bg-amber-500 text-white font-bold text-xs transition"
                     >
                       <Archive className="w-3.5 h-3.5" />
-                      <span>Archiver</span>
+                      <span>{t("catalog.bulk_archive")}</span>
                     </button>
                     <button
                       type="button"
@@ -2167,16 +2173,16 @@ export default function App() {
         <div className={activeTab === "inventory" ? "block" : "hidden"}>
           <div className="space-y-6 text-xs">
             <div className="bg-white p-6 rounded-2xl border border-[#D4AF62]/40 space-y-3">
-              <h3 className="text-base font-serif font-bold text-[#063D2E]">Gestion des Stocks par Variante</h3>
+              <h3 className="text-base font-serif font-bold text-[#063D2E]">{t("sidebar.inventory")}</h3>
               <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                 {products.flatMap((p) =>
                   (p.variants || []).map((v: any) => (
                     <div key={v.id} className="p-3 rounded-xl border flex items-center justify-between">
                       <div>
                         <div className="font-bold text-[#063D2E]">{p.name_fr} — {v.title}</div>
-                        <div className="font-mono text-gray-500">SKU: {v.sku} • Stock actuel: <strong>{v.stock_qty}</strong></div>
+                        <div className="font-mono text-gray-500">SKU: {v.sku} • {t("stock_writeoff.current_stock_lbl")}: <strong>{v.stock_qty}</strong></div>
                         <div className="font-mono text-gray-400 text-[11px]">
-                          {v.barcode ? `⌗ ${v.barcode}` : "⌗ aucun code-barres"}
+                          {v.barcode ? `⌗ ${v.barcode}` : "⌗ —"}
                         </div>
                       </div>
                       <div className="flex items-center gap-1.5">
@@ -2184,16 +2190,16 @@ export default function App() {
                         <button type="button" onClick={() => handleAdjustStock(v.id, 1)} className="px-2.5 py-1 rounded bg-emerald-100 text-emerald-900 font-bold">+1</button>
                         <button type="button" onClick={() => handleAdjustStock(v.id, 5)} className="px-2.5 py-1 rounded bg-[#063D2E] text-[#D4AF62] font-bold">+5</button>
                         <button type="button" onClick={() => setBarcodeVariantId(v.id)} title="Code-barres & étiquette" className="px-2.5 py-1 rounded bg-[#D4AF62]/20 text-[#7a5c16] font-bold flex items-center gap-1">
-                          <ScanLine className="w-3.5 h-3.5" /> Étiquette
+                          <ScanLine className="w-3.5 h-3.5" /> {t("devices.label_printer")}
                         </button>
                         <button
                           type="button"
                           disabled={v.stock_qty <= 0}
                           onClick={() => setWriteOffTarget({ variantId: v.id, sku: v.sku, productName: p.name_fr, variantTitle: v.title, currentStock: v.stock_qty })}
-                          title="Sortie de stock (endommagé, perte, retour fournisseur…)"
+                          title="Sortie de stock"
                           className="px-2.5 py-1 rounded bg-red-100 text-red-700 font-bold disabled:opacity-40"
                         >
-                          Sortie
+                          {t("stock_writeoff.title")}
                         </button>
                       </div>
                     </div>
@@ -2203,16 +2209,16 @@ export default function App() {
             </div>
 
             <div className="bg-white p-6 rounded-2xl border border-[#D4AF62]/40 space-y-3">
-              <h3 className="text-base font-serif font-bold text-[#063D2E]">Historique des Mouvements de Stock ({movements.length})</h3>
+              <h3 className="text-base font-serif font-bold text-[#063D2E]">{t("inventory_report.title")} ({movements.length})</h3>
               <div className="overflow-x-auto">
                 <table className="w-full text-left border-collapse">
                   <thead>
                     <tr className="bg-[#063D2E] text-[#E8D4A5]">
                       <th className="p-2">ID</th>
-                      <th className="p-2">Produit / Variante</th>
-                      <th className="p-2">Variation</th>
-                      <th className="p-2">Avant → Après</th>
-                      <th className="p-2">Motif</th>
+                      <th className="p-2">{t("low_stock.th_product")}</th>
+                      <th className="p-2">{t("inventory_count.th_gap")}</th>
+                      <th className="p-2">{t("inventory_count.th_counted")}</th>
+                      <th className="p-2">{t("stock_writeoff.th_reason")}</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y">
@@ -2236,14 +2242,14 @@ export default function App() {
         <div className={activeTab === "orders" ? "block" : "hidden"}>
           <div className="bg-white p-6 rounded-2xl border border-[#D4AF62]/40 space-y-4 text-xs">
             <div className="flex flex-wrap items-center justify-between gap-3">
-              <h3 className="text-base font-serif font-bold text-[#063D2E]">Commandes Clients ({orders.length})</h3>
+              <h3 className="text-base font-serif font-bold text-[#063D2E]">{t("sidebar.orders")} ({orders.length})</h3>
               <div className="flex items-center gap-2">
                 <select
                   value={orderStatusFilter}
                   onChange={(e) => setOrderStatusFilter(e.target.value)}
                   className="px-3 py-1.5 border rounded-xl bg-[#F8F6F0] font-semibold"
                 >
-                  <option value="">Tous les statuts</option>
+                  <option value="">{t("common.all")}</option>
                   {["new", "pending_confirmation", "confirmed", "preparing", "ready_for_shipment", "shipped", "delivered", "cancelled", "returned"].map((st) => (
                     <option key={st} value={st}>{st}</option>
                   ))}
@@ -2253,7 +2259,7 @@ export default function App() {
                   onClick={handleExportOrdersCsv}
                   className="px-3.5 py-1.5 rounded-xl bg-[#063D2E] text-[#D4AF62] font-bold"
                 >
-                  ⬇ Exporter CSV
+                  ⬇ CSV
                 </button>
               </div>
             </div>
@@ -2299,33 +2305,32 @@ export default function App() {
                         onClick={() => handleOpenInvoice(o.id)}
                         className="px-3 py-1.5 rounded-lg bg-[#063D2E] text-[#D4AF62] font-bold"
                       >
-                        Facture
+                        {t("invoice_modal.title", { ref: "" }).replace("·", "").trim() || "Facture"}
                       </button>
                       <button
                         type="button"
                         onClick={() => setDeliveryNoteOrderId(o.id)}
                         className="px-3 py-1.5 rounded-lg bg-[#D4AF62] text-[#02291F] font-bold"
-                        title="Bon de livraison (document pour le livreur)"
+                        title={t("delivery_modal.doc_heading")}
                       >
-                        Bon de livraison
+                        {t("delivery_modal.doc_heading")}
                       </button>
                       <button
                         type="button"
                         onClick={() => handleNotifyOrderCustomerWhatsapp(o.id, "confirmation_call")}
                         className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-emerald-700 hover:bg-emerald-800 text-white font-bold"
-                        title="Envoyer la demande de confirmation WhatsApp au client"
+                        title="WhatsApp"
                       >
                         <MessageCircle className="w-3.5 h-3.5 text-white" />
-                        <span>WhatsApp Confirmer</span>
+                        <span>WhatsApp</span>
                       </button>
                       <button
                         type="button"
                         onClick={() => handleNotifyOrderCustomerWhatsapp(o.id, "shipped_notice")}
                         className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-[#F8F6F0] border border-[#063D2E] text-[#063D2E] font-bold hover:bg-gray-100 transition"
-                        title="Notifier le client de l'expédition du colis"
                       >
                         <Truck className="w-3.5 h-3.5 text-[#063D2E]" />
-                        <span>Avis Expédition</span>
+                        <span>Expédition</span>
                       </button>
                       {risk.is_blacklisted ? (
                         <button
@@ -2334,16 +2339,16 @@ export default function App() {
                           className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-emerald-700 text-white font-bold hover:bg-emerald-800 transition"
                         >
                           <CheckCircle2 className="w-3.5 h-3.5 text-white" />
-                          <span>Débloquer Numéro</span>
+                          <span>Débloquer</span>
                         </button>
                       ) : (
                         <button
                           type="button"
-                          onClick={() => handleBlockCustomerPhone(o.customer_phone, "Retours COD répétés / Non-récupération")}
+                          onClick={() => handleBlockCustomerPhone(o.customer_phone, "Retours COD")}
                           className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-red-50 text-red-800 border border-red-200 font-bold hover:bg-red-100 transition"
                         >
                           <Ban className="w-3.5 h-3.5 text-red-700" />
-                          <span>Bloquer Numéro (Anti-Retour)</span>
+                          <span>Bloquer</span>
                         </button>
                       )}
                     </div>

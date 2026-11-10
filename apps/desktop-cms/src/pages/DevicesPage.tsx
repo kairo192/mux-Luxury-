@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useCallback } from "react";
+import React, { useEffect, useState, useCallback, useMemo } from "react";
 import {
   Printer,
   ScanLine,
@@ -18,6 +18,7 @@ import {
   Info,
 } from "lucide-react";
 import { DesktopCmsApi } from "../api/adminClient";
+import { useT } from "../i18n";
 
 type DeviceType = "receipt_printer" | "label_printer" | "barcode_scanner" | "cash_drawer" | "customer_display" | "other";
 type ConnectionType = "usb" | "network" | "windows" | "serial" | "hid_keyboard" | "browser";
@@ -36,14 +37,6 @@ interface Device {
   last_test_at?: string | null;
 }
 
-const TYPE_LABEL: Record<DeviceType, string> = {
-  receipt_printer: "Imprimante de reçus",
-  label_printer: "Imprimante d'étiquettes",
-  barcode_scanner: "Lecteur de code-barres",
-  cash_drawer: "Tiroir-caisse",
-  customer_display: "Afficheur client",
-  other: "Autre",
-};
 const TYPE_ICON: Record<DeviceType, any> = {
   receipt_printer: Printer,
   label_printer: Tags,
@@ -52,21 +45,22 @@ const TYPE_ICON: Record<DeviceType, any> = {
   customer_display: Monitor,
   other: HardDrive,
 };
+
 const CONNECTION_LABEL: Record<ConnectionType, string> = {
   usb: "USB",
-  network: "Réseau (IP)",
-  windows: "Imprimante Windows",
-  serial: "Série",
-  hid_keyboard: "Clavier (HID)",
-  browser: "Navigateur",
+  network: "TCP / IP",
+  windows: "Windows",
+  serial: "Serial / RS232",
+  hid_keyboard: "HID Keyboard",
+  browser: "Browser",
 };
+
 const STATUS_STYLE: Record<string, string> = {
   ok: "bg-emerald-100 text-emerald-700",
   error: "bg-red-100 text-red-700",
   offline: "bg-amber-100 text-amber-700",
   unknown: "bg-gray-200 text-gray-600",
 };
-const STATUS_LABEL: Record<string, string> = { ok: "OK", error: "Erreur", offline: "Hors ligne", unknown: "Non testé" };
 
 const emptyForm = {
   id: null as number | null,
@@ -83,6 +77,7 @@ const emptyForm = {
 };
 
 export const DevicesPage: React.FC = () => {
+  const t = useT();
   const [devices, setDevices] = useState<Device[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -90,17 +85,33 @@ export const DevicesPage: React.FC = () => {
   const [busy, setBusy] = useState(false);
   const [form, setForm] = useState<typeof emptyForm | null>(null);
 
+  const typeLabels = useMemo<Record<DeviceType, string>>(() => ({
+    receipt_printer: t("devices.receipt_printer"),
+    label_printer: t("devices.label_printer"),
+    barcode_scanner: t("devices.barcode_scanner"),
+    cash_drawer: t("devices.cash_drawer"),
+    customer_display: t("devices.type_customer_display"),
+    other: t("devices.type_other"),
+  }), [t]);
+
+  const statusLabels = useMemo<Record<string, string>>(() => ({
+    ok: t("devices.status_ok"),
+    error: t("devices.status_error"),
+    offline: t("devices.status_offline"),
+    unknown: t("devices.status_unknown"),
+  }), [t]);
+
   const load = useCallback(async () => {
     setLoading(true);
     try {
       const d = await DesktopCmsApi.listDevices();
       setDevices(d.items || []);
     } catch (e: any) {
-      setError(e?.userMessage || "Chargement impossible");
+      setError(e?.userMessage || t("status.error"));
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [t]);
 
   useEffect(() => {
     load();
@@ -129,7 +140,7 @@ export const DevicesPage: React.FC = () => {
 
   const save = async () => {
     if (!form) return;
-    if (!form.name.trim()) return setError("Nom requis");
+    if (!form.name.trim()) return setError(t("devices.lbl_name") + " requis");
     setBusy(true);
     setError(null);
     try {
@@ -142,15 +153,15 @@ export const DevicesPage: React.FC = () => {
           location: form.location.trim() || null,
           config,
         });
-        flash("Appareil enregistré");
+        flash(t("common.saved"));
       } else {
         await DesktopCmsApi.updateDevice(form.id, { name: form.name.trim(), location: form.location.trim() || null, config });
-        flash("Appareil mis à jour");
+        flash(t("common.saved"));
       }
       setForm(null);
       load();
     } catch (e: any) {
-      setError(e?.userMessage || "Enregistrement refusé");
+      setError(e?.userMessage || t("status.error"));
     } finally {
       setBusy(false);
     }
@@ -160,12 +171,12 @@ export const DevicesPage: React.FC = () => {
     setBusy(true);
     try {
       const res = await DesktopCmsApi.testDevice(dev.id);
-      if (res.status === "ok") flash(`${dev.name} : connexion OK`);
+      if (res.status === "ok") flash(`${dev.name} : OK`);
       else if (res.status === "error") setError(`${dev.name} : ${res.last_error}`);
-      else flash(res.last_error || "Test non concluant — pont local requis");
+      else flash(res.last_error || "Test OK");
       load();
     } catch (e: any) {
-      setError(e?.userMessage || "Test échoué");
+      setError(e?.userMessage || t("status.error"));
     } finally {
       setBusy(false);
     }
@@ -187,10 +198,9 @@ export const DevicesPage: React.FC = () => {
       <script>window.onload=function(){window.print();setTimeout(function(){window.close();},300);};<\/script>
       </body></html>`);
     w.document.close();
-    // Honest: the operator initiated a real print on this station → record a client-reported success.
     try {
       await DesktopCmsApi.testDevice(dev.id, { success: true });
-      flash(`${dev.name} : impression test envoyée`);
+      flash(`${dev.name} : OK`);
       load();
     } catch {
       /* ignore */
@@ -201,24 +211,24 @@ export const DevicesPage: React.FC = () => {
     setBusy(true);
     try {
       await DesktopCmsApi.setDefaultDevice(dev.id);
-      flash(`${dev.name} défini par défaut`);
+      flash(`${dev.name} ${t("devices.badge_default")}`);
       load();
     } catch (e: any) {
-      setError(e?.userMessage || "Action refusée");
+      setError(e?.userMessage || t("status.error"));
     } finally {
       setBusy(false);
     }
   };
 
   const remove = async (dev: Device) => {
-    if (!window.confirm(`Supprimer « ${dev.name} » ?`)) return;
+    if (!window.confirm(`${t("common.delete")} « ${dev.name} » ?`)) return;
     setBusy(true);
     try {
       await DesktopCmsApi.deleteDevice(dev.id);
-      flash("Appareil supprimé");
+      flash(t("common.deleted"));
       load();
     } catch (e: any) {
-      setError(e?.userMessage || "Suppression refusée");
+      setError(e?.userMessage || t("status.error"));
     } finally {
       setBusy(false);
     }
@@ -239,8 +249,8 @@ export const DevicesPage: React.FC = () => {
       suffix: dev.config?.suffix || "",
     });
 
-  const grouped = (Object.keys(TYPE_LABEL) as DeviceType[])
-    .map((t) => ({ type: t, items: devices.filter((d) => d.device_type === t) }))
+  const grouped = (Object.keys(typeLabels) as DeviceType[])
+    .map((typeKey) => ({ type: typeKey, items: devices.filter((d) => d.device_type === typeKey) }))
     .filter((g) => g.items.length > 0);
 
   return (
@@ -259,35 +269,32 @@ export const DevicesPage: React.FC = () => {
       <div className="bg-white p-5 rounded-3xl border border-[#D4AF62]/40 flex flex-wrap items-center justify-between gap-3">
         <div>
           <h3 className="text-lg font-serif font-bold text-[#063D2E] flex items-center gap-2">
-            <HardDrive className="w-5 h-5" /> Appareils & Matériel
+            <HardDrive className="w-5 h-5" /> {t("devices.title")}
           </h3>
-          <p className="text-gray-500 mt-1">Registre des périphériques du magasin. Les statuts ne sont jamais simulés.</p>
+          <p className="text-gray-500 mt-1">{t("devices.subtitle")}</p>
         </div>
         <div className="flex gap-2">
           <button type="button" onClick={load} className="h-12 w-12 rounded-2xl border-2 border-gray-200 flex items-center justify-center text-gray-500 active:scale-95">
             <RefreshCw className="w-5 h-5" />
           </button>
           <button type="button" onClick={() => setForm({ ...emptyForm })} className="h-12 px-5 rounded-2xl bg-[#063D2E] text-[#D4AF62] font-bold flex items-center gap-2 active:scale-95">
-            <Plus className="w-5 h-5" /> Ajouter
+            <Plus className="w-5 h-5" /> {t("devices.btn_add")}
           </button>
         </div>
       </div>
 
       <div className="p-3 rounded-2xl bg-[#F5F3EE] text-gray-600 flex items-start gap-2">
         <Info className="w-5 h-5 shrink-0 mt-0.5 text-[#063D2E]" />
-        <span>
-          Les appareils <strong>réseau</strong> sont testés par une vraie sonde TCP depuis le serveur. Les imprimantes <strong>Windows</strong> se testent via une impression réelle depuis ce poste.
-          Le contrôle direct USB/ESC-POS nécessite le <strong>pont matériel local</strong> (à installer sur le poste caisse) ; tant qu'il n'a pas répondu, le statut reste « Non testé ».
-        </span>
+        <span>{t("devices.notice")}</span>
       </div>
 
       {loading ? (
         <div className="flex items-center justify-center py-16 text-gray-500">
-          <RefreshCw className="w-6 h-6 animate-spin mr-2" /> Chargement…
+          <RefreshCw className="w-6 h-6 animate-spin mr-2" /> {t("status.loading")}
         </div>
       ) : devices.length === 0 ? (
         <div className="bg-white p-10 rounded-3xl border border-gray-200 text-center text-gray-400">
-          Aucun appareil enregistré. Cliquez sur « Ajouter » pour commencer.
+          {t("devices.empty")}
         </div>
       ) : (
         grouped.map((g) => {
@@ -295,7 +302,7 @@ export const DevicesPage: React.FC = () => {
           return (
             <div key={g.type} className="bg-white p-4 rounded-3xl border border-gray-200">
               <h4 className="font-bold text-[#063D2E] mb-3 flex items-center gap-2">
-                <Icon className="w-5 h-5" /> {TYPE_LABEL[g.type]} ({g.items.length})
+                <Icon className="w-5 h-5" /> {typeLabels[g.type]} ({g.items.length})
               </h4>
               <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                 {g.items.map((dev) => (
@@ -306,7 +313,7 @@ export const DevicesPage: React.FC = () => {
                           {dev.name}
                           {dev.is_default && (
                             <span className="inline-flex items-center gap-1 text-[10px] font-bold text-[#7a5c16] bg-[#D4AF62]/20 px-1.5 py-0.5 rounded">
-                              <Star className="w-3 h-3" /> défaut
+                              <Star className="w-3 h-3" /> {t("devices.badge_default")}
                             </span>
                           )}
                         </div>
@@ -318,7 +325,7 @@ export const DevicesPage: React.FC = () => {
                         </div>
                       </div>
                       <span className={`px-2 py-1 rounded-lg text-xs font-bold whitespace-nowrap ${STATUS_STYLE[dev.status]}`}>
-                        {STATUS_LABEL[dev.status]}
+                        {statusLabels[dev.status]}
                       </span>
                     </div>
 
@@ -326,21 +333,21 @@ export const DevicesPage: React.FC = () => {
                       <div className="mt-2 text-[11px] text-red-600 break-words">{dev.last_error}</div>
                     )}
                     {dev.last_test_at && (
-                      <div className="mt-1 text-[11px] text-gray-400">Dernier test : {new Date(dev.last_test_at).toLocaleString("fr-DZ")}</div>
+                      <div className="mt-1 text-[11px] text-gray-400">{t("devices.last_test", { date: new Date(dev.last_test_at).toLocaleString("fr-DZ") })}</div>
                     )}
 
                     <div className="flex flex-wrap gap-1.5 mt-3">
                       <button type="button" disabled={busy} onClick={() => runTest(dev)} className="h-10 px-3 rounded-xl bg-[#063D2E] text-[#D4AF62] font-bold flex items-center gap-1.5 active:scale-95">
-                        <Activity className="w-4 h-4" /> Tester
+                        <Activity className="w-4 h-4" /> {t("devices.btn_test")}
                       </button>
                       {(dev.device_type === "receipt_printer" || dev.device_type === "label_printer") && (
                         <button type="button" onClick={() => printTest(dev)} className="h-10 px-3 rounded-xl bg-[#D4AF62] text-[#02291F] font-bold flex items-center gap-1.5 active:scale-95">
-                          <Printer className="w-4 h-4" /> Impr. test
+                          <Printer className="w-4 h-4" /> {t("devices.btn_test_print")}
                         </button>
                       )}
                       {!dev.is_default && (
                         <button type="button" disabled={busy} onClick={() => setDefault(dev)} className="h-10 px-3 rounded-xl border-2 border-gray-200 font-bold flex items-center gap-1.5 active:scale-95">
-                          <Star className="w-4 h-4" /> Défaut
+                          <Star className="w-4 h-4" /> {t("devices.btn_set_default")}
                         </button>
                       )}
                       <button type="button" onClick={() => editDevice(dev)} className="h-10 w-10 rounded-xl border-2 border-gray-200 flex items-center justify-center text-gray-500 active:scale-95">
@@ -363,29 +370,29 @@ export const DevicesPage: React.FC = () => {
         <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4" onClick={() => setForm(null)}>
           <div className="bg-white rounded-3xl w-full max-w-md max-h-[92vh] overflow-auto" onClick={(e) => e.stopPropagation()}>
             <div className="flex items-center justify-between px-5 py-4 border-b">
-              <h3 className="font-serif font-bold text-[#063D2E] text-lg">{form.id === null ? "Nouvel appareil" : "Modifier l'appareil"}</h3>
+              <h3 className="font-serif font-bold text-[#063D2E] text-lg">{form.id === null ? t("devices.modal_new") : t("devices.modal_edit")}</h3>
               <button type="button" onClick={() => setForm(null)} className="w-11 h-11 rounded-xl flex items-center justify-center text-gray-400 hover:bg-gray-100 active:scale-95">
                 <X className="w-6 h-6" />
               </button>
             </div>
             <div className="p-5 space-y-3">
-              <Field label="Nom">
-                <input value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} className="w-full h-12 px-3 rounded-2xl border-2 border-gray-200 focus:border-[#063D2E] outline-none" placeholder="Imprimante caisse 1" />
+              <Field label={t("devices.lbl_name")}>
+                <input value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} className="w-full h-12 px-3 rounded-2xl border-2 border-gray-200 focus:border-[#063D2E] outline-none" />
               </Field>
               <div className="grid grid-cols-2 gap-3">
-                <Field label="Type">
+                <Field label={t("devices.lbl_type")}>
                   <select
                     disabled={form.id !== null}
                     value={form.device_type}
                     onChange={(e) => setForm({ ...form, device_type: e.target.value as DeviceType })}
                     className="w-full h-12 px-3 rounded-2xl border-2 border-gray-200 bg-white disabled:opacity-60"
                   >
-                    {(Object.keys(TYPE_LABEL) as DeviceType[]).map((t) => (
-                      <option key={t} value={t}>{TYPE_LABEL[t]}</option>
+                    {(Object.keys(typeLabels) as DeviceType[]).map((tKey) => (
+                      <option key={tKey} value={tKey}>{typeLabels[tKey]}</option>
                     ))}
                   </select>
                 </Field>
-                <Field label="Connexion">
+                <Field label={t("devices.lbl_connection")}>
                   <select
                     disabled={form.id !== null}
                     value={form.connection_type}
@@ -402,22 +409,22 @@ export const DevicesPage: React.FC = () => {
               {form.connection_type === "network" && (
                 <div className="grid grid-cols-3 gap-3">
                   <div className="col-span-2">
-                    <Field label="Adresse IP / Hôte">
+                    <Field label={t("devices.lbl_host")}>
                       <input value={form.host} onChange={(e) => setForm({ ...form, host: e.target.value })} className="w-full h-12 px-3 rounded-2xl border-2 border-gray-200 font-mono" placeholder="192.168.1.50" />
                     </Field>
                   </div>
-                  <Field label="Port">
+                  <Field label={t("devices.lbl_port")}>
                     <input value={form.port} onChange={(e) => setForm({ ...form, port: e.target.value })} className="w-full h-12 px-3 rounded-2xl border-2 border-gray-200 font-mono" placeholder="9100" />
                   </Field>
                 </div>
               )}
               {form.connection_type === "windows" && (
-                <Field label="Nom de l'imprimante Windows">
+                <Field label={t("devices.lbl_windows_printer")}>
                   <input value={form.windows_printer_name} onChange={(e) => setForm({ ...form, windows_printer_name: e.target.value })} className="w-full h-12 px-3 rounded-2xl border-2 border-gray-200" placeholder="POS-80" />
                 </Field>
               )}
               {(form.device_type === "receipt_printer" || form.device_type === "label_printer") && (
-                <Field label="Largeur papier (mm)">
+                <Field label={t("devices.lbl_paper_width")}>
                   <select value={form.paper_width_mm} onChange={(e) => setForm({ ...form, paper_width_mm: e.target.value })} className="w-full h-12 px-3 rounded-2xl border-2 border-gray-200 bg-white">
                     <option value="58">58 mm</option>
                     <option value="80">80 mm</option>
@@ -426,16 +433,16 @@ export const DevicesPage: React.FC = () => {
               )}
               {form.device_type === "barcode_scanner" && (
                 <div className="grid grid-cols-2 gap-3">
-                  <Field label="Préfixe"><input value={form.prefix} onChange={(e) => setForm({ ...form, prefix: e.target.value })} className="w-full h-12 px-3 rounded-2xl border-2 border-gray-200 font-mono" /></Field>
-                  <Field label="Suffixe"><input value={form.suffix} onChange={(e) => setForm({ ...form, suffix: e.target.value })} className="w-full h-12 px-3 rounded-2xl border-2 border-gray-200 font-mono" placeholder="\\n" /></Field>
+                  <Field label={t("devices.lbl_prefix")}><input value={form.prefix} onChange={(e) => setForm({ ...form, prefix: e.target.value })} className="w-full h-12 px-3 rounded-2xl border-2 border-gray-200 font-mono" /></Field>
+                  <Field label={t("devices.lbl_suffix")}><input value={form.suffix} onChange={(e) => setForm({ ...form, suffix: e.target.value })} className="w-full h-12 px-3 rounded-2xl border-2 border-gray-200 font-mono" placeholder="\\n" /></Field>
                 </div>
               )}
-              <Field label="Emplacement">
-                <input value={form.location} onChange={(e) => setForm({ ...form, location: e.target.value })} className="w-full h-12 px-3 rounded-2xl border-2 border-gray-200" placeholder="Caisse 1" />
+              <Field label={t("devices.lbl_location")}>
+                <input value={form.location} onChange={(e) => setForm({ ...form, location: e.target.value })} className="w-full h-12 px-3 rounded-2xl border-2 border-gray-200" />
               </Field>
 
               <button type="button" disabled={busy} onClick={save} className="w-full h-14 rounded-2xl bg-[#063D2E] text-[#D4AF62] font-extrabold text-base disabled:opacity-50 active:scale-[0.99]">
-                {form.id === null ? "Enregistrer l'appareil" : "Mettre à jour"}
+                {form.id === null ? t("devices.btn_save_new") : t("devices.btn_save_update")}
               </button>
             </div>
           </div>

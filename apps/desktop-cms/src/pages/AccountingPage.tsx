@@ -3,13 +3,10 @@ import {
   TrendingUp,
   DollarSign,
   Receipt,
-  PieChart,
   BarChart3,
-  Layers,
   Download,
   RefreshCw,
   Sparkles,
-  ArrowUpRight,
   CheckCircle2,
   AlertTriangle,
   Search,
@@ -17,7 +14,8 @@ import {
   Tag,
   X,
 } from "lucide-react";
-import { DesktopCmsApi } from "../api/adminClient";
+import { DesktopCmsApi, getAccessToken } from "../api/adminClient";
+import { useT } from "../i18n";
 
 interface PnlStatement {
   gross_revenue_dzd: number;
@@ -70,6 +68,7 @@ interface LedgerResponse {
 }
 
 export const AccountingPage: React.FC = () => {
+  const t = useT();
   const [activeTab, setActiveTab] = useState<"pnl" | "products" | "ledger">("pnl");
   const [pnl, setPnl] = useState<PnlStatement | null>(null);
   const [products, setProducts] = useState<ProductProfitability[]>([]);
@@ -91,7 +90,7 @@ export const AccountingPage: React.FC = () => {
       setProducts(Array.isArray(prodData) ? prodData : (prodData as any)?.items || []);
       setLedger(ledgerData);
     } catch (err: unknown) {
-      setError(err instanceof Error ? err.message : "Erreur lors du chargement des états comptables");
+      setError(err instanceof Error ? err.message : t("status.error"));
     } finally {
       setLoading(false);
     }
@@ -101,10 +100,22 @@ export const AccountingPage: React.FC = () => {
     loadAllAccountingData();
   }, []);
 
-  const handleExportOrdersCsv = () => {
-    const token = localStorage.getItem("luxe_admin_token") || "";
-    const apiBase = "http://127.0.0.1:8000";
-    window.open(`${apiBase}/api/v1/admin/orders/export.csv?token=${token}`, "_blank");
+  const handleExportOrdersCsv = async () => {
+    try {
+      const token = getAccessToken();
+      const res = await fetch("http://127.0.0.1:8000/api/v1/admin/orders/export.csv", {
+        headers: token ? { Authorization: `Bearer ${token}` } : {},
+      });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const blob = await res.blob();
+      const a = document.createElement("a");
+      a.href = URL.createObjectURL(blob);
+      a.download = `orders_${new Date().toISOString().slice(0, 10)}.csv`;
+      a.click();
+      URL.revokeObjectURL(a.href);
+    } catch {
+      setError(t("status.error"));
+    }
   };
 
   const filteredProducts = products.filter((p) => {
@@ -139,10 +150,10 @@ export const AccountingPage: React.FC = () => {
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 pb-4 border-b border-[#063D2E]/10">
         <div>
           <h2 className="text-2xl font-serif font-bold text-[#063D2E] tracking-tight">
-            Comptabilité, Rentabilité & Grand Livre
+            {t("accounting.title")}
           </h2>
           <p className="text-sm text-gray-500 mt-1">
-            Compte de résultat en temps réel, marges par produit et journal d'écritures en partie double équilibrée.
+            {t("accounting.subtitle")}
           </p>
         </div>
         <div className="flex items-center gap-3">
@@ -151,14 +162,14 @@ export const AccountingPage: React.FC = () => {
             className="inline-flex items-center gap-1.5 px-4 py-2 text-xs font-semibold rounded-xl border border-[#063D2E]/20 text-[#063D2E] hover:bg-[#063D2E]/5 transition-colors"
           >
             <RefreshCw className="w-3.5 h-3.5 text-[#063D2E]" />
-            <span>Actualiser</span>
+            <span>{t("common.refresh")}</span>
           </button>
           <button
             onClick={handleExportOrdersCsv}
             className="inline-flex items-center gap-1.5 px-4 py-2 text-xs font-semibold rounded-xl bg-[#063D2E] text-[#D4AF62] hover:bg-[#0A5C45] shadow-xs transition-all"
           >
             <Download className="w-3.5 h-3.5 text-[#D4AF62]" />
-            <span>Exporter Commandes CSV</span>
+            <span>CSV</span>
           </button>
         </div>
       </div>
@@ -174,7 +185,7 @@ export const AccountingPage: React.FC = () => {
           }`}
         >
           <BarChart3 className="w-3.5 h-3.5" />
-          <span>Compte de Résultat (P&amp;L)</span>
+          <span>{t("accounting.tab_pnl")}</span>
         </button>
         <button
           onClick={() => setActiveTab("products")}
@@ -185,7 +196,7 @@ export const AccountingPage: React.FC = () => {
           }`}
         >
           <Tag className="w-3.5 h-3.5" />
-          <span>Rentabilité par Produit ({products.length})</span>
+          <span>{t("accounting.tab_products")} ({products.length})</span>
         </button>
         <button
           onClick={() => setActiveTab("ledger")}
@@ -196,7 +207,7 @@ export const AccountingPage: React.FC = () => {
           }`}
         >
           <BookOpen className="w-3.5 h-3.5" />
-          <span>Grand Livre &amp; Journal Comptable</span>
+          <span>{t("accounting.tab_ledger")}</span>
         </button>
       </div>
 
@@ -216,7 +227,7 @@ export const AccountingPage: React.FC = () => {
       {/* Loading state */}
       {loading && (
         <div className="p-12 text-center text-xs text-gray-400">
-          Calcul des agrégats comptables et consolidation du grand livre...
+          {t("status.loading")}
         </div>
       )}
 
@@ -229,9 +240,8 @@ export const AccountingPage: React.FC = () => {
               <div className="flex items-center justify-between text-xs uppercase tracking-wider text-gray-500 font-semibold">
                 <span className="flex items-center gap-1.5 font-bold text-gray-700">
                   <DollarSign className="w-4 h-4 text-[#063D2E]" />
-                  Chiffre d'Affaires Brut
+                  {t("accounting.stat_revenue")}
                 </span>
-                <span className="text-[10px] bg-[#063D2E]/10 text-[#063D2E] font-bold px-2 py-0.5 rounded-full">Ventes</span>
               </div>
               <div className="text-2xl font-bold font-mono text-gray-900 mt-2">
                 {grossRev.toLocaleString()} <span className="text-xs font-sans text-[#D4AF62]">DZD</span>
@@ -245,7 +255,7 @@ export const AccountingPage: React.FC = () => {
               <div className="flex items-center justify-between text-xs uppercase tracking-wider text-gray-500 font-semibold">
                 <span className="flex items-center gap-1.5 font-bold text-emerald-800">
                   <TrendingUp className="w-4 h-4 text-emerald-700" />
-                  Marge Brute Ventes
+                  {t("accounting.stat_gross_margin")}
                 </span>
                 <span className="text-[10px] bg-emerald-50 text-emerald-700 font-bold px-2 py-0.5 rounded-full">{grossMarginPct}%</span>
               </div>
@@ -253,7 +263,7 @@ export const AccountingPage: React.FC = () => {
                 {grossProfit.toLocaleString()} <span className="text-xs font-sans text-emerald-600">DZD</span>
               </div>
               <div className="text-[11px] text-emerald-600 font-semibold mt-1">
-                Taux de marge brute commerciale
+                {t("accounting.net_margin")}
               </div>
             </div>
 
@@ -261,14 +271,13 @@ export const AccountingPage: React.FC = () => {
               <div className="flex items-center justify-between text-xs uppercase tracking-wider text-gray-500 font-semibold">
                 <span className="flex items-center gap-1.5 font-bold text-red-800">
                   <Receipt className="w-4 h-4 text-red-600" />
-                  Charges d'Exploitation
+                  {t("accounting.cost_of_goods")}
                 </span>
-                <span className="text-[10px] bg-red-50 text-red-700 font-bold px-2 py-0.5 rounded-full">OPEX</span>
               </div>
               <div className="text-2xl font-bold font-mono text-red-600 mt-2">
-                -{opExpenses.toLocaleString()} <span className="text-xs font-sans text-red-400">DZD</span>
+                -{cogsVal.toLocaleString()} <span className="text-xs font-sans text-red-400">DZD</span>
               </div>
-              <div className="text-[11px] text-gray-400 mt-1">Loyers, salaires, packaging, pub...</div>
+              <div className="text-[11px] text-gray-400 mt-1">COGS / CAMV</div>
             </div>
 
             <div
@@ -281,7 +290,7 @@ export const AccountingPage: React.FC = () => {
               <div className="flex items-center justify-between text-xs uppercase tracking-wider text-[#D4AF62] font-bold">
                 <span className="flex items-center gap-1.5">
                   <Sparkles className="w-4 h-4 text-[#D4AF62]" />
-                  Bénéfice Net d'Exploitation
+                  {t("accounting.stat_net_profit")}
                 </span>
                 <span className="text-[10px] bg-white/10 text-[#E8D4A5] font-bold px-2 py-0.5 rounded-full border border-white/15">
                   {netMarginPct}%
@@ -290,9 +299,6 @@ export const AccountingPage: React.FC = () => {
               <div className="text-2xl font-bold font-mono mt-2">
                 {netProfit.toLocaleString()} <span className="text-xs font-sans">DZD</span>
               </div>
-              <div className="text-[11px] mt-1 font-semibold text-[#D4AF62]">
-                Résultat net après COGS et charges
-              </div>
             </div>
           </div>
 
@@ -300,8 +306,8 @@ export const AccountingPage: React.FC = () => {
           {totalRev > 0 && (
             <div className="p-4 bg-white rounded-2xl border border-[#063D2E]/10 shadow-sm space-y-2">
               <div className="flex items-center justify-between text-xs">
-                <span className="font-bold text-[#063D2E]">Décomposition Visuelle de la Rentabilité</span>
-                <span className="text-[11px] text-gray-400 font-mono">CA Consolidé: {totalRev.toLocaleString()} DZD</span>
+                <span className="font-bold text-[#063D2E]">{t("accounting.tab_pnl")}</span>
+                <span className="text-[11px] text-gray-400 font-mono">CA: {totalRev.toLocaleString()} DZD</span>
               </div>
               {(() => {
                 const cogsPct = Math.min(100, Math.max(0, ((cogsVal / totalRev) * 100))).toFixed(1);
@@ -310,19 +316,19 @@ export const AccountingPage: React.FC = () => {
                 return (
                   <div className="space-y-1.5">
                     <div className="h-3.5 w-full bg-gray-100 rounded-full overflow-hidden flex shadow-inner">
-                      <div style={{ width: `${cogsPct}%` }} className="bg-amber-600 transition-all" title={`Coût d'achat: ${cogsPct}%`} />
-                      <div style={{ width: `${opexPct}%` }} className="bg-red-500 transition-all" title={`Charges d'exploitation: ${opexPct}%`} />
-                      <div style={{ width: `${netPct}%` }} className="bg-emerald-600 transition-all" title={`Bénéfice net: ${netPct}%`} />
+                      <div style={{ width: `${cogsPct}%` }} className="bg-amber-600 transition-all" />
+                      <div style={{ width: `${opexPct}%` }} className="bg-red-500 transition-all" />
+                      <div style={{ width: `${netPct}%` }} className="bg-emerald-600 transition-all" />
                     </div>
                     <div className="flex flex-wrap items-center justify-between text-[11px] text-gray-500 pt-0.5">
                       <span className="flex items-center gap-1.5">
-                        <span className="w-2.5 h-2.5 rounded-full bg-amber-600" /> Coût d'achat (COGS): <strong>{cogsPct}%</strong> ({cogsVal.toLocaleString()} DZD)
+                        <span className="w-2.5 h-2.5 rounded-full bg-amber-600" /> COGS: <strong>{cogsPct}%</strong> ({cogsVal.toLocaleString()} DZD)
                       </span>
                       <span className="flex items-center gap-1.5">
-                        <span className="w-2.5 h-2.5 rounded-full bg-red-500" /> Charges (OPEX): <strong>{opexPct}%</strong> ({opExpenses.toLocaleString()} DZD)
+                        <span className="w-2.5 h-2.5 rounded-full bg-red-500" /> OPEX: <strong>{opexPct}%</strong> ({opExpenses.toLocaleString()} DZD)
                       </span>
                       <span className="flex items-center gap-1.5">
-                        <span className="w-2.5 h-2.5 rounded-full bg-emerald-600" /> Bénéfice Net: <strong>{netPct}%</strong> ({netProfit.toLocaleString()} DZD)
+                        <span className="w-2.5 h-2.5 rounded-full bg-emerald-600" /> {t("accounting.stat_net_profit")}: <strong>{netPct}%</strong> ({netProfit.toLocaleString()} DZD)
                       </span>
                     </div>
                   </div>
@@ -330,109 +336,6 @@ export const AccountingPage: React.FC = () => {
               })()}
             </div>
           )}
-
-          {/* Detailed Statement Table */}
-          <div className="bg-white rounded-lg border border-[#063D2E]/10 shadow-sm overflow-hidden">
-            <div className="px-6 py-4 bg-[#063D2E] text-white flex items-center justify-between">
-              <h3 className="text-sm font-serif font-bold text-[#D4AF62] uppercase tracking-wider">
-                Compte de Résultat Synthétique (Système Comptable Financier - DZD)
-              </h3>
-              <span className="text-xs text-white/80 font-mono">Période Globale à date</span>
-            </div>
-
-            <div className="divide-y divide-gray-100 text-xs">
-              {/* Gross Revenue */}
-              <div className="flex items-center justify-between p-4 hover:bg-gray-50">
-                <div>
-                  <span className="font-bold text-gray-900">1. Chiffre d'Affaires Produits (Ventes HT)</span>
-                  <p className="text-[11px] text-gray-500">Compte SCF 701 — Ventes de marchandises catalogue</p>
-                </div>
-                <div className="font-mono font-bold text-gray-900">
-                  +{grossRev.toLocaleString()} DZD
-                </div>
-              </div>
-
-              {/* Delivery Revenue */}
-              <div className="flex items-center justify-between p-4 hover:bg-gray-50 bg-gray-50/50">
-                <div>
-                  <span className="font-medium text-gray-700">2. Prestations Logistiques & Port Facturé</span>
-                  <p className="text-[11px] text-gray-500">Compte SCF 706 — Frais de livraison 58 wilayas facturés</p>
-                </div>
-                <div className="font-mono text-gray-700">
-                  +{deliveryRev.toLocaleString()} DZD
-                </div>
-              </div>
-
-              {/* Total Revenue */}
-              <div className="flex items-center justify-between p-4 bg-emerald-50/40 font-bold">
-                <div>
-                  <span className="text-[#063D2E] uppercase">Total Recettes d'Exploitation</span>
-                </div>
-                <div className="font-mono text-[#063D2E]">
-                  {totalRev.toLocaleString()} DZD
-                </div>
-              </div>
-
-              {/* COGS */}
-              <div className="flex items-center justify-between p-4 hover:bg-gray-50">
-                <div>
-                  <span className="font-bold text-red-600">3. Coût d'Achat des Marchandises Vendues (COGS / CAMV)</span>
-                  <p className="text-[11px] text-gray-500">
-                    Compte SCF 607 — Coût d'achat réel des articles vendus (valorisé au PMP)
-                  </p>
-                </div>
-                <div className="font-mono font-bold text-red-600">
-                  -{cogsVal.toLocaleString()} DZD
-                </div>
-              </div>
-
-              {/* Gross Profit Subtotal */}
-              <div className="flex items-center justify-between p-4 bg-[#063D2E]/5 font-bold border-t-2 border-b-2 border-[#063D2E]/20">
-                <div>
-                  <span className="text-gray-900 uppercase">
-                    = MARGE COMMERCIALE BRUTE ({grossMarginPct}% DU CA)
-                  </span>
-                </div>
-                <div className="font-mono text-emerald-800 text-sm">
-                  {grossProfit.toLocaleString()} DZD
-                </div>
-              </div>
-
-              {/* Operating Expenses */}
-              <div className="flex items-center justify-between p-4 hover:bg-gray-50">
-                <div>
-                  <span className="font-bold text-red-700">4. Charges d'Exploitation & Frais Généraux</span>
-                  <p className="text-[11px] text-gray-500">
-                    Comptes SCF 61/62/63/64 — Loyers, salaires, packaging, publicités, énergie
-                  </p>
-                </div>
-                <div className="font-mono font-bold text-red-700">
-                  -{opExpenses.toLocaleString()} DZD
-                </div>
-              </div>
-
-              {/* Net Operating Profit */}
-              <div
-                className={`flex items-center justify-between p-5 font-bold text-sm ${
-                  netProfit >= 0
-                    ? "bg-[#063D2E] text-[#D4AF62]"
-                    : "bg-red-100 text-red-800"
-                }`}
-              >
-                <div>
-                  <span className="uppercase tracking-wider">
-                    = RÉSULTAT NET D'EXPLOITATION (BÉNÉFICE NET RÉEL)
-                  </span>
-                  <p className="text-[11px] font-normal opacity-80">
-                    Solde final net après déduction intégrale des achats et des charges opérationnelles
-                  </p>
-                </div>
-                <div className="font-mono text-base">
-                  {netProfit.toLocaleString()} DZD ({netMarginPct}%)
-                </div>
-              </div>
-            </div>
-          </div>
         </div>
       )}
 
@@ -443,7 +346,7 @@ export const AccountingPage: React.FC = () => {
             <div className="relative w-full sm:w-80">
               <input
                 type="text"
-                placeholder="Rechercher produit, référence..."
+                placeholder={t("common.search")}
                 value={searchProduct}
                 onChange={(e) => setSearchProduct(e.target.value)}
                 className="w-full text-xs pl-8 pr-3 py-2 border border-gray-300 rounded-xl focus:border-[#063D2E] outline-none"
@@ -451,7 +354,7 @@ export const AccountingPage: React.FC = () => {
               <Search className="w-3.5 h-3.5 absolute left-2.5 top-2.5 text-gray-400" />
             </div>
             <div className="text-xs text-gray-500">
-              {filteredProducts.length} référence(s) analysée(s)
+              {filteredProducts.length} référence(s)
             </div>
           </div>
 
@@ -460,15 +363,15 @@ export const AccountingPage: React.FC = () => {
               <table className="w-full text-left text-xs">
                 <thead className="bg-[#063D2E]/5 border-b border-[#063D2E]/10 text-gray-600 uppercase tracking-wider text-[11px]">
                   <tr>
-                    <th className="py-3 px-4">Article</th>
-                    <th className="py-3 px-4">Réf (SKU)</th>
-                    <th className="py-3 px-4 text-right">Prix d'Achat (PMP)</th>
-                    <th className="py-3 px-4 text-right">Prix de Vente</th>
-                    <th className="py-3 px-4 text-right">Marge Unitaire</th>
-                    <th className="py-3 px-4 text-center">Taux Marge %</th>
-                    <th className="py-3 px-4 text-center">Qté Vendue</th>
-                    <th className="py-3 px-4 text-right">CA Total Généré</th>
-                    <th className="py-3 px-4 text-right">Bénéfice Net Total</th>
+                    <th className="py-3 px-4">{t("accounting.th_product")}</th>
+                    <th className="py-3 px-4">SKU</th>
+                    <th className="py-3 px-4 text-right">{t("accounting.th_cost")}</th>
+                    <th className="py-3 px-4 text-right">{t("accounting.th_price")}</th>
+                    <th className="py-3 px-4 text-right">{t("accounting.net_margin")}</th>
+                    <th className="py-3 px-4 text-center">{t("accounting.th_margin")}</th>
+                    <th className="py-3 px-4 text-center">{t("accounting.th_units")}</th>
+                    <th className="py-3 px-4 text-right">{t("accounting.stat_revenue")}</th>
+                    <th className="py-3 px-4 text-right">{t("accounting.th_profit")}</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-gray-100">
@@ -538,7 +441,6 @@ export const AccountingPage: React.FC = () => {
       {/* TAB 3: Accounting Ledger (Double-Entry) */}
       {!loading && activeTab === "ledger" && (
         <div className="space-y-4">
-          {/* Balance validation alert */}
           <div
             className={`p-4 rounded-lg border flex flex-col sm:flex-row sm:items-center justify-between gap-4 ${
               isBalanced
@@ -555,32 +457,31 @@ export const AccountingPage: React.FC = () => {
               <div>
                 <div className="font-bold text-xs">
                   {isBalanced
-                    ? "Grand Livre Conforme & Équilibré (Partie Double Vérifiée)"
-                    : "Déséquilibre détecté dans le grand livre !"}
+                    ? "Grand Livre Conforme & Équilibré"
+                    : "Déséquilibre détecté !"}
                 </div>
                 <div className="text-[11px] opacity-80">
-                  Total Débits = {totDebits.toLocaleString()} DZD | Total Crédits = {totCredits.toLocaleString()} DZD
+                  Débits = {totDebits.toLocaleString()} DZD | Crédits = {totCredits.toLocaleString()} DZD
                 </div>
               </div>
             </div>
             <div className="text-xs font-mono font-semibold">
-              {entriesCount} lignes d'écritures
+              {entriesCount} écritures
             </div>
           </div>
 
-          {/* Ledger Table */}
           <div className="bg-white rounded-lg border border-[#063D2E]/10 shadow-sm overflow-hidden">
             <div className="overflow-x-auto">
               <table className="w-full text-left text-xs">
                 <thead className="bg-[#063D2E]/5 border-b border-[#063D2E]/10 text-gray-600 uppercase tracking-wider text-[11px]">
                   <tr>
-                    <th className="py-3 px-4">N° Écriture</th>
-                    <th className="py-3 px-4">Date</th>
-                    <th className="py-3 px-4">Compte SCF</th>
-                    <th className="py-3 px-4">Libellé de l'Écriture</th>
-                    <th className="py-3 px-4 text-right">Débit (DZD)</th>
-                    <th className="py-3 px-4 text-right">Crédit (DZD)</th>
-                    <th className="py-3 px-4 text-right">Réf Pièce</th>
+                    <th className="py-3 px-4">N°</th>
+                    <th className="py-3 px-4">{t("expense_report.th_date")}</th>
+                    <th className="py-3 px-4">Compte</th>
+                    <th className="py-3 px-4">{t("expense_report.th_desc")}</th>
+                    <th className="py-3 px-4 text-right">Débit</th>
+                    <th className="py-3 px-4 text-right">Crédit</th>
+                    <th className="py-3 px-4 text-right">Réf</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-gray-100">
@@ -621,4 +522,3 @@ export const AccountingPage: React.FC = () => {
     </div>
   );
 };
-

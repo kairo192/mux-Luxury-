@@ -13,6 +13,7 @@ import {
   UserX,
 } from "lucide-react";
 import { DesktopCmsApi } from "../api/adminClient";
+import { useT } from "../i18n";
 
 interface Role {
   id: number;
@@ -43,6 +44,7 @@ const ROLE_LABEL: Record<string, string> = {
 const roleLabel = (n: string) => ROLE_LABEL[n] || n;
 
 export const UsersRolesPage: React.FC = () => {
+  const t = useT();
   const [users, setUsers] = useState<AdminUser[]>([]);
   const [roles, setRoles] = useState<Role[]>([]);
   const [loading, setLoading] = useState(true);
@@ -99,14 +101,14 @@ export const UsersRolesPage: React.FC = () => {
           role_id: Number(form.role_id),
           password: form.password,
         });
-        flash("Utilisateur créé");
+        flash(t("users_roles.flash_created"));
       } else {
         await DesktopCmsApi.updateUser(form.id, {
           full_name: form.full_name.trim(),
           phone: form.phone.trim() || null,
           role_id: Number(form.role_id),
         });
-        flash("Utilisateur mis à jour");
+        flash(t("users_roles.flash_updated"));
       }
       setForm(null);
       load();
@@ -136,7 +138,7 @@ export const UsersRolesPage: React.FC = () => {
     setBusy(true);
     try {
       await DesktopCmsApi.resetUserPassword(pwTarget.id, pwValue);
-      flash(`Mot de passe réinitialisé pour ${pwTarget.email}`);
+      flash(t("users_roles.flash_password"));
       setPwTarget(null);
       setPwValue("");
     } catch (e: any) {
@@ -162,7 +164,7 @@ export const UsersRolesPage: React.FC = () => {
       <div className="bg-white p-5 rounded-3xl border border-[#D4AF62]/40 flex flex-wrap items-center justify-between gap-3">
         <div>
           <h3 className="text-lg font-serif font-bold text-[#063D2E] flex items-center gap-2">
-            <Users className="w-5 h-5" /> Utilisateurs & Rôles
+            <Users className="w-5 h-5" /> {t("users_roles.title")}
           </h3>
           <p className="text-gray-500 mt-1">Créez des comptes employés (caissier, gestionnaire…). Les permissions sont appliquées côté serveur.</p>
         </div>
@@ -171,25 +173,27 @@ export const UsersRolesPage: React.FC = () => {
             <RefreshCw className="w-5 h-5" />
           </button>
           <button type="button" onClick={openCreate} className="h-12 px-5 rounded-2xl bg-[#063D2E] text-[#D4AF62] font-bold flex items-center gap-2 active:scale-95">
-            <Plus className="w-5 h-5" /> Nouvel utilisateur
+            <Plus className="w-5 h-5" /> {t("users_roles.btn_new")}
           </button>
         </div>
       </div>
 
       {loading ? (
         <div className="flex items-center justify-center py-16 text-gray-500">
-          <RefreshCw className="w-6 h-6 animate-spin mr-2" /> Chargement…
+          <RefreshCw className="w-6 h-6 animate-spin mr-2" /> {t("users_roles.loading")}
         </div>
+      ) : users.length === 0 ? (
+        <div className="bg-white p-10 rounded-3xl border border-gray-200 text-center text-gray-400">{t("users_roles.empty")}</div>
       ) : (
         <div className="bg-white rounded-3xl border border-gray-200 overflow-hidden">
           <table className="w-full text-left">
             <thead className="bg-[#063D2E] text-[#E8D4A5] text-xs uppercase">
               <tr>
-                <th className="px-4 py-3">Utilisateur</th>
-                <th className="px-4 py-3">Rôle</th>
-                <th className="px-4 py-3">Statut</th>
+                <th className="px-4 py-3">{t("users_roles.th_user")}</th>
+                <th className="px-4 py-3">{t("users_roles.th_role")}</th>
+                <th className="px-4 py-3">{t("users_roles.th_status")}</th>
                 <th className="px-4 py-3 hidden md:table-cell">Dernière connexion</th>
-                <th className="px-4 py-3 text-right">Actions</th>
+                <th className="px-4 py-3 text-right">{t("users_roles.th_actions")}</th>
               </tr>
             </thead>
             <tbody>
@@ -206,7 +210,7 @@ export const UsersRolesPage: React.FC = () => {
                     </td>
                     <td className="px-4 py-3">
                       <span className={`px-2 py-1 rounded-lg text-xs font-bold ${active ? "bg-emerald-100 text-emerald-700" : "bg-gray-200 text-gray-500"}`}>
-                        {active ? "Actif" : "Inactif"}
+                        {active ? t("users_roles.active") : t("users_roles.inactive")}
                       </span>
                     </td>
                     <td className="px-4 py-3 hidden md:table-cell text-gray-500 text-[11px]">
@@ -259,16 +263,16 @@ export const UsersRolesPage: React.FC = () => {
         <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4" onClick={() => setForm(null)}>
           <div className="bg-white rounded-3xl w-full max-w-md max-h-[92vh] overflow-auto" onClick={(e) => e.stopPropagation()}>
             <div className="flex items-center justify-between px-5 py-4 border-b">
-              <h3 className="font-serif font-bold text-[#063D2E] text-lg">{form.id === null ? "Nouvel utilisateur" : "Modifier l'utilisateur"}</h3>
+              <h3 className="font-serif font-bold text-[#063D2E] text-lg">{form.id === null ? t("users_roles.modal_new_title") : t("users_roles.modal_edit_title")}</h3>
               <button type="button" onClick={() => setForm(null)} className="w-11 h-11 rounded-xl flex items-center justify-center text-gray-400 hover:bg-gray-100 active:scale-95">
                 <X className="w-6 h-6" />
               </button>
             </div>
             <div className="p-5 space-y-3">
-              <Field label="Nom complet">
+              <Field label={t("users_roles.lbl_fullname")}>
                 <input value={form.full_name} onChange={(e) => setForm({ ...form, full_name: e.target.value })} className="w-full h-12 px-3 rounded-2xl border-2 border-gray-200 focus:border-[#063D2E] outline-none" />
               </Field>
-              <Field label="E-mail">
+              <Field label={t("users_roles.lbl_email")}>
                 <input
                   value={form.email}
                   disabled={form.id !== null}
@@ -278,10 +282,10 @@ export const UsersRolesPage: React.FC = () => {
                 />
               </Field>
               <div className="grid grid-cols-2 gap-3">
-                <Field label="Téléphone">
+                <Field label={t("users_roles.lbl_phone")}>
                   <input value={form.phone} onChange={(e) => setForm({ ...form, phone: e.target.value })} className="w-full h-12 px-3 rounded-2xl border-2 border-gray-200 font-mono" placeholder="+213…" />
                 </Field>
-                <Field label="Rôle">
+                <Field label={t("users_roles.lbl_role")}>
                   <select value={form.role_id} onChange={(e) => setForm({ ...form, role_id: e.target.value })} className="w-full h-12 px-3 rounded-2xl border-2 border-gray-200 bg-white">
                     {roles.map((r) => (
                       <option key={r.id} value={r.id}>{roleLabel(r.name)}</option>
@@ -290,12 +294,12 @@ export const UsersRolesPage: React.FC = () => {
                 </Field>
               </div>
               {form.id === null && (
-                <Field label="Mot de passe (min. 10 caractères)">
+                <Field label={t("users_roles.lbl_password")}>
                   <input type="password" value={form.password} onChange={(e) => setForm({ ...form, password: e.target.value })} className="w-full h-12 px-3 rounded-2xl border-2 border-gray-200" />
                 </Field>
               )}
               <button type="button" disabled={busy} onClick={save} className="w-full h-14 rounded-2xl bg-[#063D2E] text-[#D4AF62] font-extrabold text-base disabled:opacity-50 active:scale-[0.99]">
-                {form.id === null ? "Créer l'utilisateur" : "Enregistrer"}
+                {t("users_roles.btn_save")}
               </button>
             </div>
           </div>
@@ -307,7 +311,7 @@ export const UsersRolesPage: React.FC = () => {
         <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4" onClick={() => setPwTarget(null)}>
           <div className="bg-white rounded-3xl w-full max-w-sm" onClick={(e) => e.stopPropagation()}>
             <div className="flex items-center justify-between px-5 py-4 border-b">
-              <h3 className="font-serif font-bold text-[#063D2E] text-lg">Réinitialiser le mot de passe</h3>
+              <h3 className="font-serif font-bold text-[#063D2E] text-lg">{t("users_roles.modal_pw_title")}</h3>
               <button type="button" onClick={() => setPwTarget(null)} className="w-11 h-11 rounded-xl flex items-center justify-center text-gray-400 hover:bg-gray-100 active:scale-95">
                 <X className="w-6 h-6" />
               </button>
@@ -316,7 +320,7 @@ export const UsersRolesPage: React.FC = () => {
               <p className="text-gray-500">{pwTarget.full_name} — <span className="font-mono">{pwTarget.email}</span></p>
               <input type="password" value={pwValue} onChange={(e) => setPwValue(e.target.value)} placeholder="Nouveau mot de passe (min. 10)" className="w-full h-12 px-3 rounded-2xl border-2 border-gray-200" />
               <button type="button" disabled={busy} onClick={resetPw} className="w-full h-12 rounded-2xl bg-[#063D2E] text-[#D4AF62] font-bold disabled:opacity-50 active:scale-95">
-                Réinitialiser
+                {t("users_roles.modal_pw_title")}
               </button>
             </div>
           </div>
