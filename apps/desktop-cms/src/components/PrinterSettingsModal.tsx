@@ -16,6 +16,7 @@ import {
 } from "../utils/posHardware";
 import { mirrorStatus, mirrorClear, type MirrorStatus } from "../utils/posMirror";
 import { syncCatalog } from "../utils/posMirrorSync";
+import { confirmClientAction } from "../utils/clientNotifier";
 import { useT } from "../i18n";
 
 // ---------------------------------------------------------------------------
@@ -77,7 +78,12 @@ export const PrinterSettingsModal: React.FC<Props> = ({ open, onClose, onFlash }
   };
 
   const onClearMirror = async () => {
-    if (!window.confirm(t("printer_settings.prompt_clear"))) return;
+    const confirmed = await confirmClientAction({
+      title: t("common.delete"),
+      message: t("printer_settings.prompt_clear"),
+      danger: true,
+    });
+    if (!confirmed) return;
     setMirrorBusy("clear");
     await mirrorClear();
     await refreshMirrorStat();

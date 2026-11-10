@@ -13,6 +13,7 @@ import {
   History,
 } from "lucide-react";
 import { DesktopCmsApi } from "../api/adminClient";
+import { confirmClientAction } from "../utils/clientNotifier";
 import { useT } from "../i18n";
 
 interface Count {
@@ -176,7 +177,12 @@ export const InventoryCountPage: React.FC<{ onInventoryUpdated?: () => void }> =
 
   const apply = async () => {
     if (!active) return;
-    if (!window.confirm(`${t("inventory_count.btn_apply")} ${active.reference} ?`)) return;
+    const confirmed = await confirmClientAction({
+      title: t("inventory_count.btn_apply"),
+      message: `${t("inventory_count.btn_apply")} ${active.reference} ?`,
+      danger: false,
+    });
+    if (!confirmed) return;
     setBusy(true);
     try {
       const applied = await DesktopCmsApi.applyInventoryCount(active.id);
@@ -193,7 +199,12 @@ export const InventoryCountPage: React.FC<{ onInventoryUpdated?: () => void }> =
 
   const cancel = async () => {
     if (!active) return;
-    if (!window.confirm(`${t("inventory_count.btn_cancel")} ${active.reference} ?`)) return;
+    const confirmed = await confirmClientAction({
+      title: t("inventory_count.btn_cancel"),
+      message: `${t("inventory_count.btn_cancel")} ${active.reference} ?`,
+      danger: true,
+    });
+    if (!confirmed) return;
     try {
       const upd = await DesktopCmsApi.cancelInventoryCount(active.id);
       setActive(upd);

@@ -2,10 +2,12 @@ import { readDraft, writeDraft, clearDraft } from "./utils/draftStorage";
 import { useT, LanguageToggle } from "./i18n";
 import {
   ClientNotificationItem,
+  ClientConfirmRequest,
   notifyClientError,
   notifyClientSuccess,
   notifyClientWarning,
   subscribeClientNotifications,
+  subscribeClientConfirm,
 } from "./utils/clientNotifier";
 import {
   NetworkTelemetryState,
@@ -127,9 +129,10 @@ export default function App() {
   const [successMsg, setSuccessMsg] = useState("");
   const [toastQueue, setToastQueue] = useState<ClientNotificationItem[]>([]);
   const [activeMessageBox, setActiveMessageBox] = useState<ClientNotificationItem | null>(null);
+  const [activeConfirm, setActiveConfirm] = useState<ClientConfirmRequest | null>(null);
 
   useEffect(() => {
-    const unsub = subscribeClientNotifications((item) => {
+    const unsubNotifs = subscribeClientNotifications((item) => {
       setToastQueue((prev) => [item, ...prev.slice(0, 4)]);
       if (item.showModalBox) {
         setActiveMessageBox(item);
@@ -137,6 +140,10 @@ export default function App() {
       setTimeout(() => {
         setToastQueue((prev) => prev.filter((t) => t.id !== item.id));
       }, 5500);
+    });
+
+    const unsubConfirm = subscribeClientConfirm((req) => {
+      setActiveConfirm(req);
     });
 
     // POS / Server compatibility check on startup
@@ -158,7 +165,10 @@ export default function App() {
         // Offline or unreachable — normal on startup with no network
       });
 
-    return unsub;
+    return () => {
+      unsubNotifs();
+      unsubConfirm();
+    };
   }, []);
   const [activeTab, setActiveTab] = useState<CmsTab>(() => readDraft("luxe_cms_active_tab", "dashboard"));
   const [barcodeVariantId, setBarcodeVariantId] = useState<number | null>(null);
@@ -977,6 +987,62 @@ export default function App() {
             </div>
           </div>
         )}
+
+        {/* Modal Confirmation Dialog */}
+        {activeConfirm && (
+          <div className="fixed inset-0 z-50 bg-black/75 backdrop-blur-sm flex items-center justify-center p-4">
+            <div
+              role="dialog"
+              aria-modal="true"
+              className="bg-white text-[#202923] rounded-2xl max-w-md w-full overflow-hidden shadow-2xl border-2 border-[#D4AF62]"
+            >
+              <div
+                className={`px-5 py-3.5 flex items-center justify-between ${
+                  activeConfirm.danger ? "bg-red-900 text-white" : "bg-[#063D2E] text-white"
+                }`}
+              >
+                <div className="flex items-center gap-2">
+                  <ShieldAlert className="w-5 h-5 text-[#D4AF62]" />
+                  <span className="text-base font-extrabold text-[#D4AF62]">
+                    {activeConfirm.title}
+                  </span>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => activeConfirm.resolve(false)}
+                  className="w-7 h-7 rounded-full bg-black/25 text-white font-bold text-xs flex items-center justify-center hover:bg-black/40 transition"
+                >
+                  <X className="w-4 h-4" />
+                </button>
+              </div>
+              <div className="p-6 space-y-4 text-xs">
+                <p className="text-sm text-gray-700 leading-relaxed bg-[#F8F6F0] p-3.5 rounded-xl border border-[#D4AF62]/30">
+                  {activeConfirm.message}
+                </p>
+                <div className="flex justify-end gap-3 pt-2">
+                  <button
+                    type="button"
+                    onClick={() => activeConfirm.resolve(false)}
+                    className="px-5 py-2.5 rounded-xl border border-gray-300 text-gray-700 font-bold hover:bg-gray-100 transition"
+                  >
+                    {activeConfirm.cancelLabel || t("common.cancel")}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => activeConfirm.resolve(true)}
+                    className={`px-6 py-2.5 rounded-xl font-extrabold text-xs shadow transition ${
+                      activeConfirm.danger
+                        ? "bg-red-600 hover:bg-red-700 text-white"
+                        : "bg-[#063D2E] hover:bg-[#02291F] text-[#D4AF62]"
+                    }`}
+                  >
+                    {activeConfirm.confirmLabel || "Confirmer"}
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
       </>
     );
   }
@@ -1186,9 +1252,12 @@ export default function App() {
 
   if (!user) {
     return (
-      <div className="min-h-screen bg-[#02291F] text-white flex items-center justify-center p-6">
+      <div className="min-h-screen bg-[#02291F] text-white flex items-center justify-center p-6 relative">
+        <div className="absolute top-5 right-5 z-20">
+          <LanguageToggle />
+        </div>
         {renderClientNotificationCenter()}
-      {renderDeleteProductModal()}
+        {renderDeleteProductModal()}
         <div className="max-w-md w-full bg-[#063D2E] p-8 rounded-2xl border border-[#D4AF62]/40 space-y-4 shadow-2xl">
           <form onSubmit={handleLogin} className="space-y-4">
             <div className="text-center">
@@ -1357,50 +1426,50 @@ export default function App() {
       </header>
 
       {/* Navigation Tabs */}
-      <nav className="bg-[#063D2E] text-[#E8D4A5] px-6 py-2.5 flex flex-wrap gap-1.5 text-xs font-bold border-b border-[#D4AF62]/30 shadow-inner">
+      <nav className="bg-[#063D2E] text-[#E8D4A5] px-4 py-2 flex items-center gap-1.5 overflow-x-auto text-xs font-bold border-b border-[#D4AF62]/30 shadow-inner whitespace-nowrap scrollbar-thin scrollbar-thumb-[#D4AF62]/30">
         {[
           { id: "dashboard", label: t("sidebar.dashboard"), icon: LayoutDashboard },
-          { id: "business", label: "★ " + t("sidebar.dashboard"), icon: TrendingUp },
-          { id: "pos", label: "★ " + t("sidebar.pos"), icon: ScanLine },
+          { id: "business", label: t("sidebar.business_intelligence"), icon: TrendingUp },
+          { id: "pos", label: t("sidebar.pos"), icon: ScanLine },
           { id: "products", label: t("sidebar.products"), icon: ShoppingBag },
           { id: "categories", label: t("sidebar.categories"), icon: Tags },
           { id: "purchases", label: t("sidebar.purchases"), icon: PackageCheck },
           { id: "inventory", label: t("sidebar.inventory"), icon: Boxes },
           { id: "orders", label: t("sidebar.orders"), icon: FileText },
+          { id: "customers", label: t("sidebar.customers"), icon: Users },
+          { id: "suppliers", label: t("sidebar.suppliers"), icon: Truck },
           { id: "expenses", label: t("sidebar.expenses"), icon: Receipt },
           { id: "treasury", label: t("sidebar.treasury"), icon: Landmark },
           { id: "accounting", label: t("sidebar.accounting"), icon: TrendingUp },
-          { id: "delivery_wilayas", label: t("sidebar.reports"), icon: Truck },
-          { id: "content", label: t("sidebar.settings"), icon: Palette },
+          { id: "delivery_wilayas", label: t("sidebar.delivery_wilayas"), icon: Truck },
+          { id: "content", label: t("sidebar.content"), icon: Palette },
           { id: "devices", label: t("sidebar.devices"), icon: HardDrive },
-          { id: "customers", label: "13. Clients", icon: Users },
-          { id: "users", label: "14. Utilisateurs & Rôles", icon: Users },
-          { id: "inventory_count", label: "15. Inventaire physique", icon: Boxes },
-          { id: "sales_report", label: "16. Rapport de ventes", icon: FileText },
-          { id: "fiscal", label: "17. Fiscalité & identité", icon: Landmark },
-          { id: "audit", label: "18. Journal d'audit", icon: CheckSquare },
-          { id: "suppliers", label: "19. Fournisseurs", icon: Truck },
-          { id: "low_stock", label: "20. Alertes stock", icon: AlertTriangle },
-          { id: "expense_report", label: "21. Rapport dépenses", icon: Receipt },
-          { id: "stock_movements", label: "22. Rapport mouvements stock", icon: Boxes },
-          { id: "treasury_report", label: "23. Rapport trésorerie", icon: Landmark },
-          { id: "backups", label: "24. Sauvegardes & Sécurité", icon: ShieldCheck },
-        ].map((t) => {
-          const Icon = t.icon;
-          const isActive = activeTab === t.id;
+          { id: "users", label: t("sidebar.users_roles"), icon: Users },
+          { id: "inventory_count", label: t("sidebar.inventory_count"), icon: Boxes },
+          { id: "sales_report", label: t("sidebar.sales_report"), icon: FileText },
+          { id: "fiscal", label: t("sidebar.fiscal_settings"), icon: Landmark },
+          { id: "audit", label: t("sidebar.audit_log"), icon: CheckSquare },
+          { id: "low_stock", label: t("sidebar.low_stock"), icon: AlertTriangle },
+          { id: "expense_report", label: t("sidebar.expense_report"), icon: Receipt },
+          { id: "stock_movements", label: t("sidebar.stock_movements"), icon: Boxes },
+          { id: "treasury_report", label: t("sidebar.treasury_report"), icon: Landmark },
+          { id: "backups", label: t("sidebar.backups"), icon: ShieldCheck },
+        ].map((item) => {
+          const Icon = item.icon;
+          const isActive = activeTab === item.id;
           return (
             <button
-              key={t.id}
+              key={item.id}
               type="button"
-              onClick={() => setActiveTab(t.id as CmsTab)}
-              className={`group flex items-center gap-2 px-3.5 py-2 rounded-xl transition-all duration-200 ${
+              onClick={() => setActiveTab(item.id as CmsTab)}
+              className={`group inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl transition-all duration-200 shrink-0 ${
                 isActive
                   ? "bg-gradient-to-r from-[#D4AF62] to-[#E8D4A5] text-[#02291F] font-extrabold shadow-luxe-gold scale-[1.02]"
                   : "hover:bg-white/10 text-[#E8D4A5] hover:text-white"
               }`}
             >
-              <Icon className={`w-4 h-4 shrink-0 transition-transform ${isActive ? "text-[#02291F]" : "text-[#D4AF62] group-hover:scale-110"}`} />
-              <span>{t.label}</span>
+              <Icon className={`w-3.5 h-3.5 shrink-0 transition-transform ${isActive ? "text-[#02291F]" : "text-[#D4AF62] group-hover:scale-110"}`} />
+              <span>{item.label}</span>
             </button>
           );
         })}

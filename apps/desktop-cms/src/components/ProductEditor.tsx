@@ -511,7 +511,13 @@ export function ProductEditor({ open, product, categories, brands, onClose, onSa
   );
 
   return (
-    <div className="fixed inset-0 z-50 bg-black/50 backdrop-blur-sm flex items-start justify-center overflow-y-auto p-4">
+    <div
+      role="dialog"
+      aria-modal="true"
+      data-testid="product-editor-modal"
+      aria-label={isCreate ? t("product_editor.title_create") : t("product_editor.title_edit", { name: draft.name_fr || "produit" })}
+      className="fixed inset-0 z-50 bg-black/50 backdrop-blur-sm flex items-start justify-center overflow-y-auto p-4"
+    >
       <form
         onSubmit={handleSubmit}
         className="w-full max-w-7xl bg-white rounded-3xl shadow-2xl border border-[#D4AF62]/50 my-6 overflow-hidden text-xs"

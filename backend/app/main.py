@@ -4315,9 +4315,6 @@ def admin_delete_supplier(
 
 # --- PURCHASING & PURCHASE ORDERS ENDPOINTS ---
 
-@app.get("/api/v1/admin/purchases")
-# Must be registered BEFORE the generic /purchases list route so FastAPI matches
-# the more specific path first when the list route reuses the "/purchases" prefix.
 @app.get("/api/v1/admin/purchases/{po_id}/document")
 def admin_get_purchase_order_document(
     po_id: int,
@@ -4362,6 +4359,7 @@ def admin_get_purchase_order_document(
         return d
 
 
+@app.get("/api/v1/admin/purchases")
 def admin_list_purchases(admin: dict = Depends(require_permission("dashboard:read"))):
     with db_session() as conn:
         cur = conn.cursor()

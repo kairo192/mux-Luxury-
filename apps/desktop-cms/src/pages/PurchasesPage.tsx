@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from "react";
 import { DesktopCmsApi } from "../api/adminClient";
-import { notifyClientError, notifyClientSuccess, notifyClientWarning } from "../utils/clientNotifier";
+import { notifyClientError, notifyClientSuccess, notifyClientWarning, confirmClientAction } from "../utils/clientNotifier";
 import {
   PackageCheck,
   Building2,
@@ -229,7 +229,12 @@ export function PurchasesPage({ onInventoryUpdated }: { onInventoryUpdated?: () 
       const confirmMsg = missing > 0
         ? `Imprimer ${totalCopies} étiquettes maintenant ?\n(${missing} article(s) sans code-barres seront ignorés — à assigner dans Produits.)`
         : `Imprimer ${totalCopies} étiquettes pour le bon ${reference} ?`;
-      if (!window.confirm(confirmMsg)) return;
+      const confirmed = await confirmClientAction({
+        title: "Impression d'étiquettes",
+        message: confirmMsg,
+        danger: false,
+      });
+      if (!confirmed) return;
       const labels: LabelPayload[] = printable.map((l: any) => ({
         header: l.header,
         product_name: l.product_name,

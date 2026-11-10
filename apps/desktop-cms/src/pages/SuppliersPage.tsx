@@ -15,6 +15,7 @@ import {
   Archive,
 } from "lucide-react";
 import { DesktopCmsApi } from "../api/adminClient";
+import { confirmClientAction } from "../utils/clientNotifier";
 import { useT } from "../i18n";
 
 const fmt = (dzd: number) => `${Number(dzd || 0).toLocaleString("fr-DZ")} DA`;
@@ -109,7 +110,12 @@ export const SuppliersPage: React.FC = () => {
   };
 
   const remove = async (s: Supplier) => {
-    if (!window.confirm(t("suppliers.delete_confirm", { name: s.name }))) return;
+    const confirmed = await confirmClientAction({
+      title: t("common.delete"),
+      message: t("suppliers.delete_confirm", { name: s.name }),
+      danger: true,
+    });
+    if (!confirmed) return;
     setBusy(true);
     try {
       await DesktopCmsApi.deleteSupplier(s.id);

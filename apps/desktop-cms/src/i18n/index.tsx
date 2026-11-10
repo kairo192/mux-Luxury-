@@ -126,6 +126,7 @@ export const LanguageToggle: React.FC<{ className?: string }> = ({ className }) 
       {SUPPORTED_LANGS.map((l) => (
         <button
           key={l}
+          data-lang={l}
           type="button"
           onClick={() => setLang(l)}
           className={

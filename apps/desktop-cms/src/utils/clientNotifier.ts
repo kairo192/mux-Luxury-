@@ -370,3 +370,47 @@ export function notifyClientError(
   });
   return translated;
 }
+
+export interface ClientConfirmRequest {
+  id: string;
+  title: string;
+  message: string;
+  confirmLabel?: string;
+  cancelLabel?: string;
+  danger?: boolean;
+  resolve: (val: boolean) => void;
+}
+
+type ConfirmListener = (req: ClientConfirmRequest | null) => void;
+const confirmListeners: Set<ConfirmListener> = new Set();
+
+export function subscribeClientConfirm(fn: ConfirmListener): () => void {
+  confirmListeners.add(fn);
+  return () => {
+    confirmListeners.delete(fn);
+  };
+}
+
+export function confirmClientAction(opts: {
+  title: string;
+  message: string;
+  confirmLabel?: string;
+  cancelLabel?: string;
+  danger?: boolean;
+}): Promise<boolean> {
+  return new Promise<boolean>((resolve) => {
+    const req: ClientConfirmRequest = {
+      id: `confirm_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`,
+      title: opts.title,
+      message: opts.message,
+      confirmLabel: opts.confirmLabel,
+      cancelLabel: opts.cancelLabel,
+      danger: opts.danger,
+      resolve: (val: boolean) => {
+        resolve(val);
+        confirmListeners.forEach((fn) => fn(null));
+      },
+    };
+    confirmListeners.forEach((fn) => fn(req));
+  });
+}

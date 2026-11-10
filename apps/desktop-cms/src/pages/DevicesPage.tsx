@@ -18,6 +18,7 @@ import {
   Info,
 } from "lucide-react";
 import { DesktopCmsApi } from "../api/adminClient";
+import { confirmClientAction } from "../utils/clientNotifier";
 import { useT } from "../i18n";
 
 type DeviceType = "receipt_printer" | "label_printer" | "barcode_scanner" | "cash_drawer" | "customer_display" | "other";
@@ -221,7 +222,12 @@ export const DevicesPage: React.FC = () => {
   };
 
   const remove = async (dev: Device) => {
-    if (!window.confirm(`${t("common.delete")} « ${dev.name} » ?`)) return;
+    const confirmed = await confirmClientAction({
+      title: t("common.delete"),
+      message: `${t("common.delete")} « ${dev.name} » ?`,
+      danger: true,
+    });
+    if (!confirmed) return;
     setBusy(true);
     try {
       await DesktopCmsApi.deleteDevice(dev.id);
