@@ -16,6 +16,7 @@ import {
 } from "../utils/posHardware";
 import { mirrorStatus, mirrorClear, type MirrorStatus } from "../utils/posMirror";
 import { syncCatalog } from "../utils/posMirrorSync";
+import { useT } from "../i18n";
 
 // ---------------------------------------------------------------------------
 // PrinterSettingsModal — configure the thermal receipt printer, cash drawer
@@ -30,6 +31,7 @@ interface Props {
 }
 
 export const PrinterSettingsModal: React.FC<Props> = ({ open, onClose, onFlash }) => {
+  const t = useT();
   const [printers, setPrinters] = useState<PrinterInfo[]>([]);
   const [settings, setSettings] = useState<PrinterTarget>(() => loadHardwareSettings());
   const [labelSettings, setLabelSettings] = useState<LabelPrinterTarget>(() => loadLabelPrinterSettings());
@@ -75,12 +77,12 @@ export const PrinterSettingsModal: React.FC<Props> = ({ open, onClose, onFlash }
   };
 
   const onClearMirror = async () => {
-    if (!window.confirm("Effacer le catalogue local ? La prochaine synchronisation rechargera tout.")) return;
+    if (!window.confirm(t("printer_settings.prompt_clear"))) return;
     setMirrorBusy("clear");
     await mirrorClear();
     await refreshMirrorStat();
     setMirrorBusy(null);
-    flash("ok", "Catalogue local effacé.");
+    flash("ok", t("printer_settings.flash_cache_cleared"));
   };
 
   if (!open) return null;
@@ -117,7 +119,7 @@ export const PrinterSettingsModal: React.FC<Props> = ({ open, onClose, onFlash }
   const saveAll = () => {
     saveReceipt();
     saveLabel();
-    flash("ok", "Paramètres enregistrés");
+    flash("ok", t("printer_settings.flash_saved"));
   };
 
   const onTestPrint = async () => {
@@ -125,7 +127,7 @@ export const PrinterSettingsModal: React.FC<Props> = ({ open, onClose, onFlash }
     setTesting("print");
     const r = await testPrint(settings);
     setTesting(null);
-    if (r.ok) flash("ok", "Test envoyé à l'imprimante de reçus");
+    if (r.ok) flash("ok", t("printer_settings.flash_test_receipt"));
     else flash("err", r.error);
   };
 
@@ -134,7 +136,7 @@ export const PrinterSettingsModal: React.FC<Props> = ({ open, onClose, onFlash }
     setTesting("drawer");
     const r = await openCashDrawer(settings);
     setTesting(null);
-    if (r.ok) flash("ok", "Impulsion envoyée au tiroir");
+    if (r.ok) flash("ok", t("printer_settings.flash_drawer"));
     else flash("err", r.error);
   };
 
@@ -143,7 +145,7 @@ export const PrinterSettingsModal: React.FC<Props> = ({ open, onClose, onFlash }
     setTesting("label");
     const r = await testPrintLabel(labelSettings);
     setTesting(null);
-    if (r.ok) flash("ok", "Étiquette de test envoyée");
+    if (r.ok) flash("ok", t("printer_settings.flash_test_label"));
     else flash("err", r.error);
   };
 
@@ -152,7 +154,7 @@ export const PrinterSettingsModal: React.FC<Props> = ({ open, onClose, onFlash }
       <div className="bg-white w-full max-w-xl rounded-3xl shadow-2xl border-2 border-[#063D2E] overflow-hidden">
         <div className="flex items-center justify-between p-5 bg-[#063D2E] text-[#D4AF62]">
           <div className="flex items-center gap-2 font-bold text-lg">
-            <Printer className="w-6 h-6" /> Imprimante & tiroir-caisse
+            <Printer className="w-6 h-6" /> {t("printer_settings.title")}
           </div>
           <button type="button" onClick={onClose} className="h-10 w-10 flex items-center justify-center rounded-full hover:bg-white/10 active:scale-95">
             <X className="w-5 h-5" />
@@ -165,21 +167,21 @@ export const PrinterSettingsModal: React.FC<Props> = ({ open, onClose, onFlash }
             onClick={() => setTab("receipt")}
             className={`flex-1 h-11 rounded-2xl font-bold flex items-center justify-center gap-2 active:scale-95 ${tab === "receipt" ? "bg-[#063D2E] text-[#D4AF62]" : "bg-gray-100 text-gray-500"}`}
           >
-            <Printer className="w-4 h-4" /> Reçus
+            <Printer className="w-4 h-4" /> {t("printer_settings.tab_receipts")}
           </button>
           <button
             type="button"
             onClick={() => setTab("label")}
             className={`flex-1 h-11 rounded-2xl font-bold flex items-center justify-center gap-2 active:scale-95 ${tab === "label" ? "bg-[#063D2E] text-[#D4AF62]" : "bg-gray-100 text-gray-500"}`}
           >
-            <Tag className="w-4 h-4" /> Étiquettes
+            <Tag className="w-4 h-4" /> {t("printer_settings.tab_labels")}
           </button>
           <button
             type="button"
             onClick={() => setTab("mirror")}
             className={`flex-1 h-11 rounded-2xl font-bold flex items-center justify-center gap-2 active:scale-95 ${tab === "mirror" ? "bg-[#063D2E] text-[#D4AF62]" : "bg-gray-100 text-gray-500"}`}
           >
-            <Database className="w-4 h-4" /> Catalogue
+            <Database className="w-4 h-4" /> {t("printer_settings.tab_catalog")}
           </button>
         </div>
 
@@ -188,8 +190,7 @@ export const PrinterSettingsModal: React.FC<Props> = ({ open, onClose, onFlash }
             <div className="p-3 rounded-2xl bg-amber-50 border-2 border-amber-200 text-amber-900 flex gap-2 items-start">
               <AlertTriangle className="w-5 h-5 shrink-0 mt-0.5" />
               <div>
-                Vous utilisez le navigateur. L'impression et le tiroir-caisse
-                nécessitent l'application de bureau Mus Luxury.
+                {t("printer_settings.browser_warning")}
               </div>
             </div>
           )}
@@ -204,9 +205,9 @@ export const PrinterSettingsModal: React.FC<Props> = ({ open, onClose, onFlash }
           {tab === "receipt" ? <>
           <div className="space-y-2">
             <label className="flex items-center justify-between gap-2 font-bold text-[#063D2E]">
-              <span className="flex items-center gap-2"><Wifi className="w-4 h-4" /> Imprimante système</span>
+              <span className="flex items-center gap-2"><Wifi className="w-4 h-4" /> {t("printer_settings.sys_printer")}</span>
               <button type="button" onClick={refresh} className="h-9 px-3 rounded-xl bg-[#063D2E]/10 text-[#063D2E] font-bold flex items-center gap-1.5 active:scale-95">
-                <RefreshCw className={`w-4 h-4 ${loadingPrinters ? "animate-spin" : ""}`} /> Rafraîchir
+                <RefreshCw className={`w-4 h-4 ${loadingPrinters ? "animate-spin" : ""}`} /> {t("printer_settings.btn_refresh")}
               </button>
             </label>
             <select
@@ -215,23 +216,23 @@ export const PrinterSettingsModal: React.FC<Props> = ({ open, onClose, onFlash }
               className="w-full h-12 px-3 rounded-2xl border-2 border-gray-200 focus:border-[#063D2E] text-base"
               disabled={!inTauri}
             >
-              <option value="">— Utiliser l'imprimante par défaut du système —</option>
+              <option value="">{t("printer_settings.default_printer_opt")}</option>
               {printers.map(p => (
                 <option key={p.name} value={p.name}>
-                  {p.name}{p.is_default ? " (par défaut)" : ""} · {p.state}
+                  {p.name}{p.is_default ? t("printer_settings.default_suffix") : ""} · {p.state}
                 </option>
               ))}
             </select>
             {inTauri && !printers.length && !loadingPrinters && (
               <div className="text-xs text-gray-500">
-                Aucune imprimante détectée. Vérifiez que l'imprimante est allumée et installée dans Windows / macOS / CUPS.
+                {t("printer_settings.no_printers_detected")}
               </div>
             )}
           </div>
 
           <div className="space-y-2">
             <label className="font-bold text-[#063D2E]">
-              …ou chemin d'appareil brut (optionnel)
+              {t("printer_settings.raw_device_path")}
             </label>
             <input
               type="text"
@@ -241,13 +242,13 @@ export const PrinterSettingsModal: React.FC<Props> = ({ open, onClose, onFlash }
               className="w-full h-12 px-3 rounded-2xl border-2 border-gray-200 focus:border-[#063D2E] font-mono text-sm"
             />
             <div className="text-xs text-gray-500">
-              Utilisez cette option pour les imprimantes série ou USB-CDC qui n'apparaissent pas comme imprimante système.
+              {t("printer_settings.raw_device_hint")}
             </div>
           </div>
 
           <div className="grid grid-cols-2 gap-3">
             <div className="space-y-2">
-              <label className="font-bold text-[#063D2E]">Largeur du ticket</label>
+              <label className="font-bold text-[#063D2E]">{t("printer_settings.ticket_width")}</label>
               <select
                 value={settings.line_width ?? 32}
                 onChange={(e) => setSettings(s => ({ ...s, line_width: Number(e.target.value) }))}
@@ -259,7 +260,7 @@ export const PrinterSettingsModal: React.FC<Props> = ({ open, onClose, onFlash }
               </select>
             </div>
             <div className="space-y-2">
-              <label className="font-bold text-[#063D2E]">Pin du tiroir-caisse</label>
+              <label className="font-bold text-[#063D2E]">{t("printer_settings.drawer_pin")}</label>
               <select
                 value={settings.drawer_pin ?? 2}
                 onChange={(e) => setSettings(s => ({ ...s, drawer_pin: (Number(e.target.value) === 5 ? 5 : 2) }))}
@@ -278,7 +279,7 @@ export const PrinterSettingsModal: React.FC<Props> = ({ open, onClose, onFlash }
               disabled={testing !== null || !inTauri}
               className="h-14 rounded-2xl bg-[#063D2E] text-[#D4AF62] font-bold flex items-center justify-center gap-2 disabled:opacity-40 active:scale-95"
             >
-              <Zap className="w-5 h-5" /> {testing === "print" ? "Envoi…" : "Imprimer un test"}
+              <Zap className="w-5 h-5" /> {testing === "print" ? t("printer_settings.btn_test_print_sending") : t("printer_settings.btn_test_print")}
             </button>
             <button
               type="button"
@@ -286,7 +287,7 @@ export const PrinterSettingsModal: React.FC<Props> = ({ open, onClose, onFlash }
               disabled={testing !== null || !inTauri}
               className="h-14 rounded-2xl bg-[#D4AF62] text-[#063D2E] font-bold flex items-center justify-center gap-2 disabled:opacity-40 active:scale-95"
             >
-              <DoorOpen className="w-5 h-5" /> {testing === "drawer" ? "Envoi…" : "Ouvrir le tiroir"}
+              <DoorOpen className="w-5 h-5" /> {testing === "drawer" ? t("printer_settings.btn_open_drawer_sending") : t("printer_settings.btn_open_drawer")}
             </button>
           </div>
           </> : tab === "label" ? (
@@ -294,7 +295,7 @@ export const PrinterSettingsModal: React.FC<Props> = ({ open, onClose, onFlash }
             {/* ========== LABEL PRINTER TAB ========== */}
             <div className="space-y-2">
               <label className="flex items-center justify-between gap-2 font-bold text-[#063D2E]">
-                <span className="flex items-center gap-2"><Tag className="w-4 h-4" /> Étiqueteuse de produits</span>
+                <span className="flex items-center gap-2"><Tag className="w-4 h-4" /> {t("printer_settings.label_printer")}</span>
               </label>
               <select
                 value={labelSettings.printer_name ?? ""}
@@ -302,20 +303,20 @@ export const PrinterSettingsModal: React.FC<Props> = ({ open, onClose, onFlash }
                 className="w-full h-12 px-3 rounded-2xl border-2 border-gray-200 focus:border-[#063D2E] text-base"
                 disabled={!inTauri}
               >
-                <option value="">— Aucune étiqueteuse configurée —</option>
+                <option value="">{t("printer_settings.no_label_printer_opt")}</option>
                 {printers.map(p => (
                   <option key={`lbl-${p.name}`} value={p.name}>
-                    {p.name}{p.is_default ? " (par défaut)" : ""} · {p.state}
+                    {p.name}{p.is_default ? t("printer_settings.default_suffix") : ""} · {p.state}
                   </option>
                 ))}
               </select>
               <div className="text-xs text-gray-500">
-                Choisissez l'étiqueteuse si elle est installée comme imprimante système (Zebra, OKI, …).
+                {t("printer_settings.label_printer_hint")}
               </div>
             </div>
 
             <div className="space-y-2">
-              <label className="font-bold text-[#063D2E]">…ou chemin d'appareil brut</label>
+              <label className="font-bold text-[#063D2E]">{t("printer_settings.raw_device_path")}</label>
               <input
                 type="text"
                 value={labelSettings.device_path ?? ""}
@@ -327,18 +328,18 @@ export const PrinterSettingsModal: React.FC<Props> = ({ open, onClose, onFlash }
 
             <div className="grid grid-cols-2 gap-3">
               <div className="space-y-2">
-                <label className="font-bold text-[#063D2E]">Protocole</label>
+                <label className="font-bold text-[#063D2E]">{t("printer_settings.protocol")}</label>
                 <select
                   value={labelSettings.format ?? "zpl"}
                   onChange={(e) => setLabelSettings(s => ({ ...s, format: e.target.value === "escpos-text" ? "escpos-text" : "zpl" }))}
                   className="w-full h-12 px-3 rounded-2xl border-2 border-gray-200 focus:border-[#063D2E] text-base"
                 >
-                  <option value="zpl">ZPL — Zebra & compatibles (recommandé)</option>
-                  <option value="escpos-text">ESC/POS texte — étiqueteuses thermiques classiques</option>
+                  <option value="zpl">{t("printer_settings.protocol_zpl")}</option>
+                  <option value="escpos-text">{t("printer_settings.protocol_escpos")}</option>
                 </select>
               </div>
               <div className="space-y-2">
-                <label className="font-bold text-[#063D2E]">Résolution</label>
+                <label className="font-bold text-[#063D2E]">{t("printer_settings.resolution")}</label>
                 <select
                   value={labelSettings.dpi ?? 203}
                   onChange={(e) => setLabelSettings(s => ({ ...s, dpi: (Number(e.target.value) === 300 ? 300 : Number(e.target.value) === 600 ? 600 : 203) }))}
@@ -354,7 +355,7 @@ export const PrinterSettingsModal: React.FC<Props> = ({ open, onClose, onFlash }
 
             <div className="grid grid-cols-2 gap-3">
               <div className="space-y-2">
-                <label className="font-bold text-[#063D2E]">Largeur (mm)</label>
+                <label className="font-bold text-[#063D2E]">{t("printer_settings.width_mm")}</label>
                 <input
                   type="number" min={10} max={210}
                   value={labelSettings.width_mm ?? 50}
@@ -363,7 +364,7 @@ export const PrinterSettingsModal: React.FC<Props> = ({ open, onClose, onFlash }
                 />
               </div>
               <div className="space-y-2">
-                <label className="font-bold text-[#063D2E]">Hauteur (mm)</label>
+                <label className="font-bold text-[#063D2E]">{t("printer_settings.height_mm")}</label>
                 <input
                   type="number" min={10} max={297}
                   value={labelSettings.height_mm ?? 30}
@@ -380,7 +381,7 @@ export const PrinterSettingsModal: React.FC<Props> = ({ open, onClose, onFlash }
                 disabled={testing !== null || !inTauri}
                 className="w-full h-14 rounded-2xl bg-[#063D2E] text-[#D4AF62] font-bold flex items-center justify-center gap-2 disabled:opacity-40 active:scale-95"
               >
-                <Zap className="w-5 h-5" /> {testing === "label" ? "Envoi…" : "Imprimer une étiquette de test"}
+                <Zap className="w-5 h-5" /> {testing === "label" ? t("printer_settings.btn_test_print_sending") : t("printer_settings.btn_test_label")}
               </button>
             </div>
           </>) : (
@@ -388,34 +389,31 @@ export const PrinterSettingsModal: React.FC<Props> = ({ open, onClose, onFlash }
             {/* ========== LOCAL CATALOG MIRROR TAB ========== */}
             <div className="space-y-3">
               <label className="flex items-center gap-2 font-bold text-[#063D2E]">
-                <Database className="w-4 h-4" /> Catalogue local (vente hors ligne)
+                <Database className="w-4 h-4" /> {t("printer_settings.catalog_mirror_title")}
               </label>
               <div className="text-xs text-gray-500">
-                Copie locale du catalogue stockée dans l'application : la caisse peut
-                chercher, scanner et vendre un produit même sans internet. La
-                synchronisation se fait automatiquement au démarrage et après chaque
-                reconnexion.
+                {t("printer_settings.catalog_mirror_desc")}
               </div>
 
               <div className="grid grid-cols-3 gap-2">
                 <div className="p-3 rounded-2xl bg-[#FCFBF8] border border-gray-100 text-center">
-                  <div className="text-[11px] text-gray-500 uppercase tracking-wide">Produits</div>
+                  <div className="text-[11px] text-gray-500 uppercase tracking-wide">{t("printer_settings.stat_products")}</div>
                   <div className="font-mono font-bold text-xl text-[#063D2E]">{mirror?.product_count ?? "—"}</div>
                 </div>
                 <div className="p-3 rounded-2xl bg-[#FCFBF8] border border-gray-100 text-center">
-                  <div className="text-[11px] text-gray-500 uppercase tracking-wide">Variantes</div>
+                  <div className="text-[11px] text-gray-500 uppercase tracking-wide">{t("printer_settings.stat_variants")}</div>
                   <div className="font-mono font-bold text-xl text-[#063D2E]">{mirror?.variant_count ?? "—"}</div>
                 </div>
                 <div className="p-3 rounded-2xl bg-[#FCFBF8] border border-gray-100 text-center">
-                  <div className="text-[11px] text-gray-500 uppercase tracking-wide">Codes-barres</div>
+                  <div className="text-[11px] text-gray-500 uppercase tracking-wide">{t("printer_settings.stat_barcodes")}</div>
                   <div className="font-mono font-bold text-xl text-[#063D2E]">{mirror?.variants_with_barcode ?? "—"}</div>
                 </div>
               </div>
 
               <div className="text-xs text-gray-500 font-mono break-all">
                 {mirror?.last_synced_at
-                  ? `Dernière sync: ${new Date(mirror.last_synced_at).toLocaleString("fr-DZ")}`
-                  : "Jamais synchronisé."}
+                  ? t("printer_settings.last_sync", { date: new Date(mirror.last_synced_at).toLocaleString("fr-DZ") })
+                  : t("printer_settings.never_synced")}
               </div>
 
               <div className="grid grid-cols-2 gap-3 pt-1">
@@ -426,7 +424,7 @@ export const PrinterSettingsModal: React.FC<Props> = ({ open, onClose, onFlash }
                   className="h-14 rounded-2xl bg-[#063D2E] text-[#D4AF62] font-bold flex items-center justify-center gap-2 disabled:opacity-40 active:scale-95"
                 >
                   <RefreshCw className={`w-5 h-5 ${mirrorBusy === "sync" ? "animate-spin" : ""}`} />
-                  Synchroniser
+                  {t("printer_settings.btn_sync")}
                 </button>
                 <button
                   type="button"
@@ -435,7 +433,7 @@ export const PrinterSettingsModal: React.FC<Props> = ({ open, onClose, onFlash }
                   className="h-14 rounded-2xl bg-[#D4AF62] text-[#063D2E] font-bold flex items-center justify-center gap-2 disabled:opacity-40 active:scale-95"
                   title="Recharge la totalité du catalogue"
                 >
-                  <Database className="w-5 h-5" /> Recharger complet
+                  <Database className="w-5 h-5" /> {t("printer_settings.btn_full_reload")}
                 </button>
               </div>
 
@@ -445,7 +443,7 @@ export const PrinterSettingsModal: React.FC<Props> = ({ open, onClose, onFlash }
                 onClick={onClearMirror}
                 className="w-full h-11 rounded-2xl border-2 border-red-200 text-red-600 font-bold text-sm flex items-center justify-center gap-2 disabled:opacity-40 active:scale-95"
               >
-                <Trash2 className="w-4 h-4" /> Effacer le cache local
+                <Trash2 className="w-4 h-4" /> {t("printer_settings.btn_clear_cache")}
               </button>
             </div>
           </>)}
@@ -453,10 +451,10 @@ export const PrinterSettingsModal: React.FC<Props> = ({ open, onClose, onFlash }
 
         <div className="p-4 bg-gray-50 border-t-2 border-gray-100 flex items-center justify-end gap-2">
           <button type="button" onClick={onClose} className="h-11 px-4 rounded-xl bg-white border-2 border-gray-200 font-bold active:scale-95">
-            Fermer
+            {t("printer_settings.btn_close")}
           </button>
           <button type="button" onClick={() => { saveAll(); onClose(); }} className="h-11 px-5 rounded-xl bg-[#063D2E] text-[#D4AF62] font-bold flex items-center gap-2 active:scale-95">
-            <CheckCircle2 className="w-4 h-4" /> Enregistrer
+            <CheckCircle2 className="w-4 h-4" /> {t("printer_settings.btn_save")}
           </button>
         </div>
       </div>

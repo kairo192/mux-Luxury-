@@ -1,18 +1,20 @@
 import React, { useEffect, useState } from "react";
 import { X, Printer, RefreshCw, AlertTriangle } from "lucide-react";
 import { DesktopCmsApi } from "../api/adminClient";
+import { useT } from "../i18n";
 
 const fmt = (dzd: number) => `${Number(dzd || 0).toLocaleString("fr-DZ")} DA`;
 
 export const InvoiceModal: React.FC<{ saleId: number; onClose: () => void }> = ({ saleId, onClose }) => {
+  const t = useT();
   const [data, setData] = useState<any | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     DesktopCmsApi.posGetSaleInvoice(saleId)
       .then(setData)
-      .catch((e) => setError(e?.userMessage || "Chargement impossible"));
-  }, [saleId]);
+      .catch((e) => setError(e?.userMessage || t("invoice_modal.load_error")));
+  }, [saleId, t]);
 
   const printIt = () => window.print();
 
@@ -26,10 +28,10 @@ export const InvoiceModal: React.FC<{ saleId: number; onClose: () => void }> = (
         onClick={(e) => e.stopPropagation()}
       >
         <div className="flex items-center justify-between px-5 py-4 border-b print:hidden">
-          <h3 className="font-serif font-bold text-[#063D2E] text-lg">Facture · {data?.sale_reference || "…"}</h3>
+          <h3 className="font-serif font-bold text-[#063D2E] text-lg">{t("invoice_modal.title", { ref: data?.sale_reference || "…" })}</h3>
           <div className="flex gap-2">
             <button type="button" onClick={printIt} disabled={!data} className="h-11 px-4 rounded-xl bg-[#063D2E] text-[#D4AF62] font-bold flex items-center gap-2 active:scale-95 disabled:opacity-50">
-              <Printer className="w-4 h-4" /> Imprimer
+              <Printer className="w-4 h-4" /> {t("invoice_modal.btn_print")}
             </button>
             <button type="button" onClick={onClose} className="w-11 h-11 rounded-xl flex items-center justify-center text-gray-400 hover:bg-gray-100 active:scale-95">
               <X className="w-6 h-6" />
@@ -41,7 +43,7 @@ export const InvoiceModal: React.FC<{ saleId: number; onClose: () => void }> = (
           <div className="p-5"><div className="p-3 rounded-2xl bg-red-50 text-red-800 font-bold flex items-center gap-2"><AlertTriangle className="w-4 h-4" /> {error}</div></div>
         ) : !data ? (
           <div className="flex items-center justify-center py-16 text-gray-500">
-            <RefreshCw className="w-6 h-6 animate-spin mr-2" /> Chargement…
+            <RefreshCw className="w-6 h-6 animate-spin mr-2" /> {t("invoice_modal.loading")}
           </div>
         ) : (
           <div id="invoice-sheet" className="p-10 text-[12px] text-gray-800 print:p-6">
@@ -72,14 +74,14 @@ export const InvoiceModal: React.FC<{ saleId: number; onClose: () => void }> = (
 
             {/* CUSTOMER */}
             <div className="mb-6 p-3 rounded-2xl border border-gray-200">
-              <div className="text-[10px] uppercase tracking-wide text-gray-400 font-bold mb-1">Client</div>
+              <div className="text-[10px] uppercase tracking-wide text-gray-400 font-bold mb-1">{t("invoice_modal.client_title")}</div>
               {c ? (
                 <>
                   <div className="font-bold text-[#063D2E]">{c.full_name}</div>
                   <div className="text-gray-500 text-[11px] font-mono">{c.phone}</div>
                 </>
               ) : (
-                <div className="text-gray-500">Client de passage</div>
+                <div className="text-gray-500">{t("invoice_modal.walk_in_client")}</div>
               )}
             </div>
 
@@ -87,11 +89,11 @@ export const InvoiceModal: React.FC<{ saleId: number; onClose: () => void }> = (
             <table className="w-full mb-6 border border-gray-200">
               <thead className="bg-[#063D2E] text-[#E8D4A5] text-[11px] uppercase">
                 <tr>
-                  <th className="px-3 py-2 text-left">Désignation</th>
-                  <th className="px-3 py-2 text-right w-20">Qté</th>
-                  <th className="px-3 py-2 text-right w-32">P.U.</th>
-                  <th className="px-3 py-2 text-right w-24">Remise</th>
-                  <th className="px-3 py-2 text-right w-32">Total</th>
+                  <th className="px-3 py-2 text-left">{t("invoice_modal.th_designation")}</th>
+                  <th className="px-3 py-2 text-right w-20">{t("invoice_modal.th_qty")}</th>
+                  <th className="px-3 py-2 text-right w-32">{t("invoice_modal.th_unit_price")}</th>
+                  <th className="px-3 py-2 text-right w-24">{t("invoice_modal.th_discount")}</th>
+                  <th className="px-3 py-2 text-right w-32">{t("invoice_modal.th_total")}</th>
                 </tr>
               </thead>
               <tbody>
@@ -113,16 +115,16 @@ export const InvoiceModal: React.FC<{ saleId: number; onClose: () => void }> = (
             {/* TOTALS */}
             <div className="flex justify-end mb-6">
               <div className="w-72 space-y-1">
-                <div className="flex justify-between"><span className="text-gray-500">Sous-total HT</span><span className="font-mono">{fmt(data.subtotal_dzd)}</span></div>
-                {data.discount_dzd > 0 && <div className="flex justify-between text-amber-700"><span>Remise</span><span className="font-mono">-{fmt(data.discount_dzd)}</span></div>}
+                <div className="flex justify-between"><span className="text-gray-500">{t("invoice_modal.subtotal_ht")}</span><span className="font-mono">{fmt(data.subtotal_dzd)}</span></div>
+                {data.discount_dzd > 0 && <div className="flex justify-between text-amber-700"><span>{t("invoice_modal.discount")}</span><span className="font-mono">-{fmt(data.discount_dzd)}</span></div>}
                 {data.tax_dzd > 0 && (
                   <div className="flex justify-between">
-                    <span className="text-gray-500">TVA ({data.tax_percent}%)</span>
+                    <span className="text-gray-500">{t("invoice_modal.vat", { percent: data.tax_percent })}</span>
                     <span className="font-mono">{fmt(data.tax_dzd)}</span>
                   </div>
                 )}
                 <div className="flex justify-between text-base font-bold border-t border-gray-300 pt-2">
-                  <span>Total TTC</span>
+                  <span>{t("invoice_modal.total_ttc")}</span>
                   <span className="font-mono">{fmt(data.total_dzd)}</span>
                 </div>
               </div>
@@ -130,17 +132,17 @@ export const InvoiceModal: React.FC<{ saleId: number; onClose: () => void }> = (
 
             {/* PAYMENT */}
             <div className="mb-6 p-3 rounded-2xl bg-[#FCFBF8] border border-gray-200">
-              <div className="text-[10px] uppercase tracking-wide text-gray-400 font-bold mb-1">Règlement</div>
+              <div className="text-[10px] uppercase tracking-wide text-gray-400 font-bold mb-1">{t("invoice_modal.payment_title")}</div>
               {data.payments.map((p: any) => (
                 <div key={p.id} className="flex justify-between text-[11px]">
-                  <span>{p.method === "cash" ? "Espèces" : p.method === "card" ? "Carte" : p.method === "transfer" ? "Virement" : p.method}</span>
+                  <span>{p.method === "cash" ? t("invoice_modal.payment_cash") : p.method === "card" ? t("invoice_modal.payment_card") : p.method === "transfer" ? t("invoice_modal.payment_transfer") : p.method}</span>
                   <span className="font-mono">{fmt(p.amount_dzd)}</span>
                 </div>
               ))}
             </div>
 
             {b.footer_line && <div className="text-center text-[11px] text-gray-500">{b.footer_line}</div>}
-            {data.cashier_name && <div className="text-center text-[10px] text-gray-400 mt-2">Caissier : {data.cashier_name}</div>}
+            {data.cashier_name && <div className="text-center text-[10px] text-gray-400 mt-2">{t("invoice_modal.cashier", { name: data.cashier_name })}</div>}
           </div>
         )}
 

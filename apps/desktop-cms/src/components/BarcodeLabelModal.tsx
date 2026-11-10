@@ -10,6 +10,7 @@ import {
   type LabelPayload,
 } from "../utils/posHardware";
 import { openSystemPrint, renderLabelsHtml } from "../utils/systemPrint";
+import { useT } from "../i18n";
 
 interface LabelData {
   store_name: string;
@@ -29,6 +30,7 @@ export const BarcodeLabelModal: React.FC<{
   onClose: () => void;
   onChanged?: () => void;
 }> = ({ variantId, onClose, onChanged }) => {
+  const t = useT();
   const [label, setLabel] = useState<LabelData | null>(null);
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
@@ -46,11 +48,11 @@ export const BarcodeLabelModal: React.FC<{
       const d = await DesktopCmsApi.getVariantLabel(variantId);
       setLabel(d);
     } catch (e: any) {
-      setError(e?.userMessage || "Chargement impossible");
+      setError(e?.userMessage || t("barcode_modal.load_error"));
     } finally {
       setLoading(false);
     }
-  }, [variantId]);
+  }, [variantId, t]);
 
   useEffect(() => {
     load();
@@ -87,10 +89,10 @@ export const BarcodeLabelModal: React.FC<{
       await DesktopCmsApi.assignVariantBarcode(variantId, code);
       await load();
       setCustomCode("");
-      flash(code ? "Code-barres assigné" : "Code-barres interne généré");
+      flash(code ? t("barcode_modal.flash_assigned") : t("barcode_modal.flash_generated"));
       onChanged?.();
     } catch (e: any) {
-      setError(e?.userMessage || "Assignation refusée");
+      setError(e?.userMessage || t("barcode_modal.assign_error"));
     } finally {
       setBusy(false);
     }
@@ -101,10 +103,10 @@ export const BarcodeLabelModal: React.FC<{
     try {
       await DesktopCmsApi.clearVariantBarcode(variantId);
       await load();
-      flash("Code-barres effacé");
+      flash(t("barcode_modal.flash_cleared"));
       onChanged?.();
     } catch (e: any) {
-      setError(e?.userMessage || "Suppression refusée");
+      setError(e?.userMessage || t("barcode_modal.delete_error"));
     } finally {
       setBusy(false);
     }
@@ -131,7 +133,7 @@ export const BarcodeLabelModal: React.FC<{
       const settings = loadLabelPrinterSettings();
       const r = await printLabels(settings, [payload]);
       if (r.ok) {
-        flash(copies === 1 ? "Étiquette envoyée" : `${copies} étiquettes envoyées`);
+        flash(copies === 1 ? t("barcode_modal.flash_printed") : t("barcode_modal.flash_printed_n", { copies }));
       } else {
         setError(r.error);
       }
@@ -183,7 +185,7 @@ export const BarcodeLabelModal: React.FC<{
     <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4" onClick={onClose}>
       <div className="bg-white rounded-3xl w-full max-w-md max-h-[92vh] overflow-auto" onClick={(e) => e.stopPropagation()}>
         <div className="flex items-center justify-between px-5 py-4 border-b">
-          <h3 className="font-serif font-bold text-[#063D2E] text-lg">Code-barres & Étiquette</h3>
+          <h3 className="font-serif font-bold text-[#063D2E] text-lg">{t("barcode_modal.title")}</h3>
           <button type="button" onClick={onClose} className="w-11 h-11 rounded-xl flex items-center justify-center text-gray-400 hover:text-gray-700 hover:bg-gray-100 active:scale-95">
             <X className="w-6 h-6" />
           </button>
@@ -203,7 +205,7 @@ export const BarcodeLabelModal: React.FC<{
 
           {loading ? (
             <div className="flex items-center justify-center py-10 text-gray-500">
-              <RefreshCw className="w-5 h-5 animate-spin mr-2" /> Chargement…
+              <RefreshCw className="w-5 h-5 animate-spin mr-2" /> {t("barcode_modal.loading")}
             </div>
           ) : label ? (
             <>
@@ -217,7 +219,7 @@ export const BarcodeLabelModal: React.FC<{
                   {barcodeSvg ? (
                     <div dangerouslySetInnerHTML={{ __html: barcodeSvg }} />
                   ) : (
-                    <div className="text-gray-400 py-4">Aucun code-barres assigné</div>
+                    <div className="text-gray-400 py-4">{t("barcode_modal.no_barcode")}</div>
                   )}
                 </div>
                 {label.barcode && (
@@ -232,7 +234,7 @@ export const BarcodeLabelModal: React.FC<{
               {label.barcode && (
                 <div className="rounded-2xl border-2 border-gray-200 p-3 space-y-2 bg-white">
                   <div className="flex items-center justify-between gap-3">
-                    <span className="font-bold text-[#063D2E]">Nombre d'étiquettes</span>
+                    <span className="font-bold text-[#063D2E]">{t("barcode_modal.label_qty")}</span>
                     <div className="flex items-center gap-1">
                       <button
                         type="button"
@@ -259,15 +261,15 @@ export const BarcodeLabelModal: React.FC<{
                   <div className="flex items-center gap-1 text-xs text-gray-500">
                     {inTauri && labelPrinterReady ? (
                       <span className="flex items-center gap-1 text-emerald-700 font-bold">
-                        <Tag className="w-3.5 h-3.5" /> Étiqueteuse native détectée — impression directe
+                        <Tag className="w-3.5 h-3.5" /> {t("barcode_modal.tauri_label_detected")}
                       </span>
                     ) : inTauri ? (
                       <span className="flex items-center gap-1 text-amber-700">
-                        <AlertTriangle className="w-3.5 h-3.5" /> Aucune étiqueteuse configurée — aperçu navigateur
+                        <AlertTriangle className="w-3.5 h-3.5" /> {t("barcode_modal.tauri_no_label")}
                       </span>
                     ) : (
                       <span className="flex items-center gap-1 text-gray-500">
-                        <AlertTriangle className="w-3.5 h-3.5" /> Mode navigateur — impression via le navigateur
+                        <AlertTriangle className="w-3.5 h-3.5" /> {t("barcode_modal.browser_mode")}
                       </span>
                     )}
                   </div>
@@ -281,7 +283,7 @@ export const BarcodeLabelModal: React.FC<{
                   onClick={() => assign()}
                   className="h-12 rounded-2xl bg-[#063D2E] text-[#D4AF62] font-bold flex items-center justify-center gap-2 disabled:opacity-50 active:scale-95"
                 >
-                  <Wand2 className="w-5 h-5" /> Générer
+                  <Wand2 className="w-5 h-5" /> {t("barcode_modal.btn_generate")}
                 </button>
                 <button
                   type="button"
@@ -290,7 +292,7 @@ export const BarcodeLabelModal: React.FC<{
                   className="h-12 rounded-2xl bg-[#D4AF62] text-[#02291F] font-bold flex items-center justify-center gap-2 disabled:opacity-40 active:scale-95"
                 >
                   {inTauri && labelPrinterReady ? <Zap className="w-5 h-5" /> : <Printer className="w-5 h-5" />}
-                  {inTauri && labelPrinterReady ? `Imprimer × ${copies}` : "Imprimer"}
+                  {inTauri && labelPrinterReady ? t("barcode_modal.btn_print_n", { copies }) : t("barcode_modal.btn_print")}
                 </button>
               </div>
               {inTauri && labelPrinterReady && (
@@ -300,18 +302,18 @@ export const BarcodeLabelModal: React.FC<{
                   onClick={printLabelInBrowser}
                   className="w-full h-10 rounded-2xl border-2 border-gray-200 text-gray-600 font-bold text-xs flex items-center justify-center gap-2 active:scale-95"
                 >
-                  <Printer className="w-4 h-4" /> Aperçu navigateur (fallback)
+                  <Printer className="w-4 h-4" /> {t("barcode_modal.btn_browser_preview")}
                 </button>
               )}
 
               {/* Custom barcode */}
               <div>
-                <label className="block font-bold text-[#063D2E] mb-1">Code-barres personnalisé</label>
+                <label className="block font-bold text-[#063D2E] mb-1">{t("barcode_modal.custom_barcode")}</label>
                 <div className="flex gap-2">
                   <input
                     value={customCode}
                     onChange={(e) => setCustomCode(e.target.value)}
-                    placeholder="EAN-13 ou SKU (Code 128)"
+                    placeholder={t("barcode_modal.custom_placeholder")}
                     className="flex-1 h-12 px-3 rounded-2xl border-2 border-gray-200 font-mono focus:border-[#063D2E] outline-none"
                   />
                   <button
@@ -320,7 +322,7 @@ export const BarcodeLabelModal: React.FC<{
                     onClick={() => assign(customCode.trim())}
                     className="h-12 px-4 rounded-2xl bg-[#063D2E] text-[#D4AF62] font-bold disabled:opacity-40 active:scale-95"
                   >
-                    Assigner
+                    {t("barcode_modal.btn_assign")}
                   </button>
                 </div>
                 {codeCheck && (
@@ -339,7 +341,7 @@ export const BarcodeLabelModal: React.FC<{
                   onClick={clear}
                   className="w-full h-11 rounded-2xl border-2 border-red-200 text-red-600 font-bold flex items-center justify-center gap-2 disabled:opacity-50 active:scale-95"
                 >
-                  <Trash2 className="w-4 h-4" /> Effacer le code-barres
+                  <Trash2 className="w-4 h-4" /> {t("barcode_modal.btn_delete_barcode")}
                 </button>
               )}
             </>
