@@ -8,10 +8,10 @@ Set under **Settings → Secrets and variables → Actions → Secrets**.
 
 | Name                               | Used by               | What it is                                          |
 | ---------------------------------- | --------------------- | --------------------------------------------------- |
-| `STAGING_SSH_HOST`                 | cd-staging.yml        | `<ip>` or `staging.musluxury.dz`                    |
+| `STAGING_SSH_HOST`                 | cd-staging.yml        | `<ip>` or `staging.mus-luxury.com`                  |
 | `STAGING_SSH_USER`                 | cd-staging.yml        | `luxe`                                              |
 | `STAGING_SSH_PRIVATE_KEY`          | cd-staging.yml        | Ed25519 PEM, matching VPS authorized_keys           |
-| `PRODUCTION_SSH_HOST`              | cd-production.yml     | `<ip>` or `musluxury.dz`                            |
+| `PRODUCTION_SSH_HOST`              | cd-production.yml     | `<ip>` or `mus-luxury.com`                          |
 | `PRODUCTION_SSH_USER`              | cd-production.yml     | `luxe`                                              |
 | `PRODUCTION_SSH_PRIVATE_KEY`       | cd-production.yml     | Ed25519 PEM                                         |
 | `TAURI_SIGNING_PRIVATE_KEY`        | build-desktop-cms.yml | `tauri signer generate` output                      |
@@ -24,10 +24,10 @@ Under **Variables** in the same screen.
 
 | Name                      | Example value                                  |
 | ------------------------- | ---------------------------------------------- |
-| `STAGING_URL`             | `https://staging.musluxury.dz`                 |
-| `STAGING_HEALTH_URL`      | `https://staging-api.musluxury.dz/api/v1/health` |
-| `PRODUCTION_URL`          | `https://musluxury.dz`                         |
-| `PRODUCTION_HEALTH_URL`   | `https://api.musluxury.dz/api/v1/health`       |
+| `STAGING_URL`             | `https://staging.mus-luxury.com`               |
+| `STAGING_HEALTH_URL`      | `https://staging-api.mus-luxury.com/api/v1/health` |
+| `PRODUCTION_URL`          | `https://mus-luxury.com`                       |
+| `PRODUCTION_HEALTH_URL`   | `https://api.mus-luxury.com/api/v1/health`     |
 
 ## 3. VPS runtime secrets
 

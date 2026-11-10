@@ -1,6 +1,6 @@
 # Storefront (`apps/storefront`)
 
-This app is the public boutique served at `https://musluxury.dz`.
+This app is the public boutique served at `https://mus-luxury.com`.
 
 ## What ships
 

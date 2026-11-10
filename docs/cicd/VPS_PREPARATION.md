@@ -33,8 +33,8 @@ git clone https://github.com/kairo192/mux-Luxury-.git luxe
 cd /root/luxe
 # Paste the public key of your GitHub Actions deploy private key here.
 # It must be the PUBLIC half of the key you'll put in secrets.PRODUCTION_SSH_PRIVATE_KEY.
-export DEPLOY_PUBLIC_KEY='ssh-ed25519 AAAA... deploy@musluxury'
-export DOMAIN=musluxury.dz
+export DEPLOY_PUBLIC_KEY='ssh-ed25519 AAAA... deploy@mus-luxury'
+export DOMAIN=mus-luxury.com
 sudo bash infrastructure/scripts/vps-bootstrap.sh
 ```
 
@@ -58,10 +58,10 @@ ENV
 ```bash
 sudo apt-get install -y certbot python3-certbot-nginx
 sudo certbot certonly --standalone \
-    -d musluxury.dz -d www.musluxury.dz -d api.musluxury.dz \
-    --agree-tos -m contact@musluxury.dz --non-interactive
-sudo install -m 0644 /etc/letsencrypt/live/musluxury.dz/fullchain.pem /opt/luxe/shared/nginx-ssl/
-sudo install -m 0640 -o luxe -g luxe /etc/letsencrypt/live/musluxury.dz/privkey.pem /opt/luxe/shared/nginx-ssl/
+    -d mus-luxury.com -d www.mus-luxury.com -d api.mus-luxury.com \
+    --agree-tos -m contact@mus-luxury.com --non-interactive
+sudo install -m 0644 /etc/letsencrypt/live/mus-luxury.com/fullchain.pem /opt/luxe/shared/nginx-ssl/
+sudo install -m 0640 -o luxe -g luxe /etc/letsencrypt/live/mus-luxury.com/privkey.pem /opt/luxe/shared/nginx-ssl/
 ```
 
 Renewal: certbot installs its own systemd timer. The cron that reloads nginx
@@ -71,8 +71,8 @@ after a successful renewal:
 sudo tee /etc/letsencrypt/renewal-hooks/deploy/reload-nginx-container.sh >/dev/null <<'HOOK'
 #!/usr/bin/env bash
 set -e
-cp /etc/letsencrypt/live/musluxury.dz/fullchain.pem /opt/luxe/shared/nginx-ssl/fullchain.pem
-cp /etc/letsencrypt/live/musluxury.dz/privkey.pem   /opt/luxe/shared/nginx-ssl/privkey.pem
+cp /etc/letsencrypt/live/mus-luxury.com/fullchain.pem /opt/luxe/shared/nginx-ssl/fullchain.pem
+cp /etc/letsencrypt/live/mus-luxury.com/privkey.pem   /opt/luxe/shared/nginx-ssl/privkey.pem
 chown luxe:luxe /opt/luxe/shared/nginx-ssl/*.pem
 su -c 'docker exec luxe_proxy nginx -s reload' luxe || true
 HOOK
@@ -89,14 +89,14 @@ ssh -i ~/.ssh/github-actions-deploy luxe@<vps-ip> 'echo ok && docker info | head
 
 Add the public key's fingerprint to GitHub repo **Settings → Secrets and variables → Actions** as:
 
-- `PRODUCTION_SSH_HOST` → `<vps-ip>` or `musluxury.dz`
+- `PRODUCTION_SSH_HOST` → `<vps-ip>` or `mus-luxury.com`
 - `PRODUCTION_SSH_USER` → `luxe`
 - `PRODUCTION_SSH_PRIVATE_KEY` → the matching PRIVATE key, PEM-encoded
 
 Add the corresponding variables (Settings → Variables → Actions → Variables):
 
-- `PRODUCTION_URL` → `https://musluxury.dz`
-- `PRODUCTION_HEALTH_URL` → `https://api.musluxury.dz/api/v1/health`
+- `PRODUCTION_URL` → `https://mus-luxury.com`
+- `PRODUCTION_HEALTH_URL` → `https://api.mus-luxury.com/api/v1/health`
 
 Repeat for staging (`STAGING_*`).
 

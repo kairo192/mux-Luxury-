@@ -9,8 +9,8 @@
 #
 # Expose via Nginx (not here) — Kuma listens on 127.0.0.1:3001 only.
 # Configure monitors from the UI:
-#   - HTTP(S) monitor: https://musluxury.dz/                       (storefront)
-#   - HTTP(S) monitor: https://api.musluxury.dz/api/v1/health       (API)
+#   - HTTP(S) monitor: https://mus-luxury.com/                       (storefront)
+#   - HTTP(S) monitor: https://api.mus-luxury.com/api/v1/health       (API)
 #   - Push monitor:    "VPS metrics heartbeat" — vps-metrics.sh posts to it
 #   - Keyword monitor: /api/v1/pos/compat        keyword: "supported"
 #
