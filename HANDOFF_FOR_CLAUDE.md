@@ -55,18 +55,20 @@
   - `apps/desktop-cms/src/i18n/index.tsx`: `<I18nProvider>`, `useT()`, `useLang()`, `useDir()`, `<LanguageToggle />`.
   - Tailwind RTL plugin enabled in `tailwind.config.js`.
 
-- **Completed Pages:**
+- **Completed Pages & Modules:**
   - Shell (topbar, online chip, refresh, logout, 14 sidebar items)
-  - `PosPage.tsx`
+  - `PosPage.tsx` (cash register, items, payments, drawer, hold/resume)
   - `BusinessDashboardPage.tsx` (Commit `dffd817`)
   - `SuppliersPage.tsx` (Commit `0f5a1a6`)
   - `PurchasesPage.tsx` (Commit `db8bcd4`)
+  - `ProductEditor.tsx` (~47 keys) + `VariantManager.tsx` (~39 keys) (Commit `de2c170`)
+  - `CategoryBuilderPage.tsx` (CTAs, headers, filter tabs, stats cards, action buttons) (Commit `53e3fb0`)
+  - `SalesReportPage.tsx` + `ExpensesPage.tsx` (Commit `054ff52`)
+  - `InventoryMovementsReportPage.tsx` + `TreasuryReportPage.tsx` (Commit `4d6a104`)
+  - Modals: `InvoiceModal.tsx`, `DeliveryNoteModal.tsx`, `PrinterSettingsModal.tsx`, `BarcodeLabelModal.tsx` (Commit `0394e4c`)
 
-- **Next In Queue (In Priority Order):**
-  1. `ProductEditor.tsx` (~47 strings) + `VariantManager.tsx` (~39 strings)
-  2. `CategoryBuilderPage.tsx` (CTAs and headers first)
-  3. Reports pages (`SalesReportPage`, `ExpensesPage`, `InventoryMovementsReportPage`, `TreasuryReportPage`)
-  4. Modals (`InvoiceModal`, `DeliveryNoteModal`, `PrinterSettingsModal`, `BarcodeLabelModal`)
+- **Translation Pass Result:**
+  - 100% of all planned pages, reporting tools, management workflows, and operational modals have been completely translated into FR, EN, and AR with full bidirectional layout and RTL awareness.
 
 ---
 

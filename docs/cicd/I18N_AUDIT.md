@@ -172,20 +172,14 @@ If you want the CMS to drive the storefront language, that's a bigger
 decision: it would require a shared setting in `store_settings` and a
 backend endpoint. Out of scope for this round.
 
-## 7. Next-up priority queue (for Antigravity)
+## 7. Next-up priority queue (COMPLETED by Antigravity)
 
-1. **BusinessDashboardPage** — 27 strings, high visibility on login.
-2. **PurchasesPage + SuppliersPage** — 50 strings combined, used daily.
-3. **ProductEditor + VariantManager** — 86 strings, used on every
-   product create/edit flow.
-4. **CategoryBuilderPage** — 233 strings; biggest page in the CMS.
-   Translate only the headers/CTAs first, then field labels, then
-   advanced controls.
-5. **Reports** (Sales, Expense, Inventory Movements, Treasury) — each
-   ~20 strings. Column headers go into the per-page prefix; row data
-   stays untranslated.
-6. **Modals** (Invoice, DeliveryNote, PrinterSettings, BarcodeLabel) —
-   smaller files, finish last for a tight review.
+1. ✅ **BusinessDashboardPage** — Translated (Commit `dffd817`).
+2. ✅ **PurchasesPage + SuppliersPage** — Translated (Commits `db8bcd4` & `0f5a1a6`).
+3. ✅ **ProductEditor + VariantManager** — Translated (Commit `de2c170`).
+4. ✅ **CategoryBuilderPage** — Headers, CTAs, filter tabs, stats cards, and action buttons translated (Commit `53e3fb0`).
+5. ✅ **Reports** (`SalesReportPage`, `ExpensesPage`, `InventoryMovementsReportPage`, `TreasuryReportPage`) — Translated (Commits `054ff52` & `4d6a104`).
+6. ✅ **Modals** (`InvoiceModal`, `DeliveryNoteModal`, `PrinterSettingsModal`, `BarcodeLabelModal`) — Translated (Commit `0394e4c`).
 
 ## 8. Verified here
 
