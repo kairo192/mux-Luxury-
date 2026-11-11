@@ -2389,7 +2389,7 @@ export default function App() {
                         </div>
                       </div>
                       <div className="flex items-center gap-1.5">
-                        <button type="button" onClick={() => handleAdjustStock(v.id, -1)} className="px-2.5 py-1 rounded bg-gray-100 font-bold">-1</button>
+                        <button type="button" aria-label="Retirer une unité" disabled={Number(v.stock_qty) <= 0} title={Number(v.stock_qty) <= 0 ? "Stock déjà à 0" : undefined} onClick={() => handleAdjustStock(v.id, -1)} className="px-2.5 py-1 rounded bg-gray-100 font-bold disabled:opacity-40">-1</button>
                         <button type="button" onClick={() => handleAdjustStock(v.id, 1)} className="px-2.5 py-1 rounded bg-emerald-100 text-emerald-900 font-bold">+1</button>
                         <button type="button" onClick={() => handleAdjustStock(v.id, 5)} className="px-2.5 py-1 rounded bg-[#063D2E] text-[#D4AF62] font-bold">+5</button>
                         <button type="button" onClick={() => setBarcodeVariantId(v.id)} title="Code-barres & étiquette" className="px-2.5 py-1 rounded bg-[#D4AF62]/20 text-[#7a5c16] font-bold flex items-center gap-1">

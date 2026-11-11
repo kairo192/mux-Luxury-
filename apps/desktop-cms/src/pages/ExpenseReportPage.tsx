@@ -11,6 +11,7 @@ import {
 } from "lucide-react";
 import { DesktopCmsApi, getAccessToken } from "../api/adminClient";
 import { useT } from "../i18n";
+import { codeLabel } from "../utils/codeLabels";
 
 const fmt = (dzd: number) => `${Number(dzd || 0).toLocaleString("fr-DZ")} DA`;
 
@@ -127,7 +128,7 @@ export const ExpenseReportPage: React.FC = () => {
                   return (
                     <div key={c.category}>
                       <div className="flex items-center justify-between text-[12px]">
-                        <span className="font-bold text-[#063D2E] truncate">{c.category}</span>
+                        <span className="font-bold text-[#063D2E] truncate">{codeLabel(c.category)}</span>
                         <span className="font-mono font-bold whitespace-nowrap ml-2">{fmt(c.total_dzd)} <span className="text-gray-400 text-[10px]">({pct}%)</span></span>
                       </div>
                       <div className="h-2 rounded bg-gray-100 mt-1 overflow-hidden">
@@ -157,7 +158,7 @@ export const ExpenseReportPage: React.FC = () => {
                         <td className="px-3 py-2 font-mono text-[11px] whitespace-nowrap">{it.expense_date}</td>
                         <td className="px-3 py-2">
                           <div className="truncate">{it.description}</div>
-                          <div className="text-gray-400 text-[11px]">{it.category} · {it.payment_method}{it.payment_status === "pending" ? <span className="text-amber-700 font-bold ml-1">· {t("expense_report.badge_pending")}</span> : ""}</div>
+                          <div className="text-gray-400 text-[11px]">{codeLabel(it.category)} · {codeLabel(it.payment_method)}{it.payment_status === "pending" ? <span className="text-amber-700 font-bold ml-1">· {t("expense_report.badge_pending")}</span> : ""}</div>
                         </td>
                         <td className="px-3 py-2 text-right font-mono font-bold">{fmt(it.amount_dzd)}</td>
                       </tr>

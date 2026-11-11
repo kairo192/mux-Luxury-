@@ -115,9 +115,9 @@ class TestSalesReport(unittest.TestCase):
         r = self.client.get("/api/v1/admin/reports/sales.csv", headers=self.headers, params={"from": today, "to": today})
         self.assertEqual(r.status_code, 200, r.text)
         self.assertIn("text/csv", r.headers["content-type"])
-        self.assertIn('attachment; filename="sales_', r.headers["content-disposition"])
+        self.assertIn('attachment; filename="ventes_', r.headers["content-disposition"])
         body = r.text
-        self.assertIn("day,online_count,online_revenue_dzd", body.splitlines()[0])
+        self.assertIn("Jour;Commandes en ligne;CA en ligne (DA)", body.lstrip("\ufeff").splitlines()[0])
         self.assertIn("TOTAL", body)
 
 

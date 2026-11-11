@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from "react";
 import { DesktopCmsApi } from "../api/adminClient";
 import { useT } from "../i18n";
+import { codeLabel } from "../utils/codeLabels";
 import {
   RefreshCw,
   Plus,
@@ -329,7 +330,7 @@ export const ExpensesPage: React.FC = () => {
                             ? t("expenses.method_bank")
                             : exp.payment_method === "check"
                               ? t("expenses.method_check")
-                              : exp.payment_method}
+                              : codeLabel(exp.payment_method)}
                       </td>
                       <td className="py-3 px-4 text-right font-mono font-bold text-red-600 whitespace-nowrap">
                         -{Number(exp.amount_dzd || 0).toLocaleString()} DZD
@@ -585,7 +586,7 @@ export const ExpensesPage: React.FC = () => {
                 </div>
                 <div className="flex justify-between text-gray-500">
                   <span>Catégorie :</span>
-                  <span>{expenseToDelete.category}</span>
+                  <span>{codeLabel(expenseToDelete.category)}</span>
                 </div>
               </div>
               <p className="text-[11px] text-amber-800 bg-amber-50 p-2.5 rounded-xl border border-amber-200 flex items-center gap-1.5">

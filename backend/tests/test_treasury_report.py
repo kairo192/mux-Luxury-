@@ -75,7 +75,7 @@ class TestTreasuryReport(unittest.TestCase):
         self.assertEqual(r.status_code, 200)
         self.assertIn("text/csv", r.headers["content-type"])
         body = r.text
-        self.assertTrue(body.splitlines()[0].startswith("date,account,movement_type"))
+        self.assertTrue(body.lstrip("\ufeff").splitlines()[0].startswith("Date;Compte;Sens"))
         self.assertIn("TOTAL", body)
 
 

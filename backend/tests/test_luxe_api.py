@@ -796,7 +796,7 @@ class TestLuxeEcommercePlatform(unittest.TestCase):
         # Verify CSV export
         r_csv = self.client.get("/api/v1/admin/orders/export.csv", headers=headers)
         self.assertEqual(r_csv.status_code, 200)
-        self.assertIn("order_reference", r_csv.text)
+        self.assertIn("Référence", r_csv.text)
 
     # 26. Real Compressed Backup Archive Creation & Isolated Non-Destructive Restoration Test (Section 7)
     def test_26_isolated_backup_creation_and_non_destructive_restore_verification(self):

@@ -112,8 +112,10 @@ class TestInventoryCounts(unittest.TestCase):
         again = self.client.post(f"/api/v1/admin/inventory/counts/{cid}/apply", headers=self.headers)
         self.assertEqual(again.status_code, 409, again.text)
 
-    def test_05_apply_recomputes_delta_against_live_stock(self):
-        # Count at 10, sell 2 BEFORE applying, apply counted=10 → stock becomes 10 (not 12).
+    def test_05_apply_keeps_sales_made_after_counting(self):
+        # System 10, counted 10 (no gap); 2 sold before applying → 8 left on the
+        # shelf. Applying must keep 8 — setting it back to 10 would create 2
+        # phantom units that the shop could sell and never deliver.
         cid = self._open()
         va = self.variants[0]
         self.client.put(f"/api/v1/admin/inventory/counts/{cid}/lines", headers=self.headers, json={"variant_id": va["id"], "counted_qty": 10})
@@ -125,7 +127,23 @@ class TestInventoryCounts(unittest.TestCase):
         self.client.post("/api/v1/admin/pos/register/close", headers=self.headers, json={"counted_cash_dzd": 0})
         self.assertEqual(self._stock(va["sku"]), 8)  # after sale
         self.client.post(f"/api/v1/admin/inventory/counts/{cid}/apply", headers=self.headers)
-        self.assertEqual(self._stock(va["sku"]), 10)  # applied to live, becomes exactly counted
+        self.assertEqual(self._stock(va["sku"]), 8)  # the count found no gap: the sale stays
+
+    def test_05b_apply_adds_the_gap_found_to_live_stock(self):
+        # System 10, counted 7 (3 missing); 1 sold before applying → 9 in the
+        # system, 6 really on the shelf. Applying gives 6.
+        cid = self._open()
+        va = self.variants[0]
+        base = self._stock(va["sku"])
+        self.client.put(f"/api/v1/admin/inventory/counts/{cid}/lines", headers=self.headers, json={"variant_id": va["id"], "counted_qty": base - 3})
+        self.client.post("/api/v1/admin/pos/register/open", headers=self.headers, json={"opening_float_dzd": 0})
+        self.client.post("/api/v1/admin/pos/sales", headers=self.headers, json={
+            "items": [{"variant_id": va["id"], "quantity": 1}],
+            "payments": [{"method": "cash", "amount_dzd": 3000}],
+        })
+        self.client.post("/api/v1/admin/pos/register/close", headers=self.headers, json={"counted_cash_dzd": 0})
+        self.client.post(f"/api/v1/admin/inventory/counts/{cid}/apply", headers=self.headers)
+        self.assertEqual(self._stock(va["sku"]), base - 3 - 1)
 
     def test_06_cannot_modify_applied(self):
         cid = self._open()

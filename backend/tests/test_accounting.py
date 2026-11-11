@@ -155,6 +155,62 @@ class TestAccounting(unittest.TestCase):
         e1 = (reg1.get("session") or reg1).get("expected_cash_dzd", 0)
         self.assertEqual(e1 - e0, 0, "sold 18 000 cash, refunded 18 000 cash: drawer unchanged")
 
+    def _treasury(self):
+        t = self.client.get("/api/v1/admin/treasury/summary", headers=self.h).json()
+        return t["cash_balance_dzd"], t["bank_balance_dzd"]
+
+    def test_treasury_receives_sales_refunds_and_delivered_orders(self):
+        _, vid = self._product()
+        cash0, bank0 = self._treasury()
+        self.client.post("/api/v1/admin/pos/register/open", headers=self.h, json={"register_name": "Compta", "opening_float_dzd": 0})
+        cash_sale = self.client.post("/api/v1/admin/pos/sales", headers={**self.h, "Idempotency-Key": uuid.uuid4().hex}, json={
+            "items": [{"variant_id": vid, "quantity": 1}], "payments": [{"method": "cash", "amount_dzd": PRICE}]})
+        self.assertEqual(cash_sale.status_code, 201, cash_sale.text)
+        card_sale = self.client.post("/api/v1/admin/pos/sales", headers={**self.h, "Idempotency-Key": uuid.uuid4().hex}, json={
+            "items": [{"variant_id": vid, "quantity": 1}], "payments": [{"method": "card", "amount_dzd": PRICE}]})
+        self.assertEqual(card_sale.status_code, 201, card_sale.text)
+        cash1, bank1 = self._treasury()
+        self.assertEqual((cash1 - cash0, bank1 - bank0), (PRICE, PRICE), "cash → cash box, card → bank")
+
+        r = self.client.post(f"/api/v1/admin/pos/sales/{cash_sale.json()['id']}/refund", headers=self.h, json={"refund_method": "cash"})
+        self.assertEqual(r.status_code, 201, r.text)
+        cash2, _ = self._treasury()
+        self.assertEqual(cash2 - cash1, -PRICE, "refund leaves the cash box")
+
+        o = self._order(vid, 1)
+        for st in ("confirmed", "shipped", "delivered"):
+            self.client.patch(f"/api/v1/admin/orders/{o['order_id']}", headers=self.h, json={"status": st})
+        cash3, _ = self._treasury()
+        self.assertEqual(cash3 - cash2, o["total_dzd"], "delivered COD order = money collected")
+        self.client.patch(f"/api/v1/admin/orders/{o['order_id']}", headers=self.h, json={"status": "returned"})
+        cash4, _ = self._treasury()
+        self.assertEqual(cash4 - cash3, -o["total_dzd"], "return after delivery gives it back")
+
+    def test_treasury_backfill_adds_missing_history_once(self):
+        from app.database import db_session
+        from app.seed import TREASURY_BACKFILL_MARKER, backfill_treasury_from_sales
+        _, vid = self._product()
+        self.client.post("/api/v1/admin/pos/register/open", headers=self.h, json={"register_name": "Compta", "opening_float_dzd": 0})
+        sale = self.client.post("/api/v1/admin/pos/sales", headers={**self.h, "Idempotency-Key": uuid.uuid4().hex}, json={
+            "items": [{"variant_id": vid, "quantity": 1}], "payments": [{"method": "cash", "amount_dzd": PRICE}]}).json()
+        ref = sale["sale_reference"]
+        with db_session(commit=True) as conn:
+            cur = conn.cursor()
+            # Pretend the sale was made before the treasury followed sales.
+            cur.execute("DELETE FROM cash_movements WHERE source_reference = ?", (ref,))
+            cur.execute("DELETE FROM store_settings WHERE setting_key = ?", (TREASURY_BACKFILL_MARKER,))
+        with db_session(commit=True) as conn:
+            first = backfill_treasury_from_sales(conn.cursor())
+        with db_session(commit=True) as conn:
+            second = backfill_treasury_from_sales(conn.cursor())
+        self.assertGreaterEqual(first["added"], 1)
+        self.assertEqual(second["added"], 0, "runs once")
+        with db_session() as conn:
+            cur = conn.cursor()
+            cur.execute("SELECT COUNT(*) AS c, COALESCE(SUM(amount_dzd), 0) AS s FROM cash_movements WHERE source_reference = ?", (ref,))
+            row = cur.fetchone()
+        self.assertEqual((int(row["c"]), int(row["s"])), (1, PRICE), "added exactly once")
+
 
 if __name__ == "__main__":
     unittest.main()

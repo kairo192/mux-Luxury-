@@ -79,7 +79,7 @@ class TestInventoryMovementsReport(unittest.TestCase):
         self.assertEqual(r.status_code, 200)
         self.assertIn("text/csv", r.headers["content-type"])
         body = r.text
-        self.assertTrue(body.splitlines()[0].startswith("date,sku,product_name"))
+        self.assertTrue(body.lstrip("\ufeff").splitlines()[0].startswith("Date;SKU;Produit"))
         self.assertIn("TOTAL", body)
 
     def test_05_invalid_dates(self):

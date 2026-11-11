@@ -13,7 +13,7 @@ import re
 import secrets
 import time
 from datetime import datetime, timedelta, timezone
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, Iterable, List, Optional
 from fastapi import Depends, FastAPI, File, Header, HTTPException, Query, Request, Response, UploadFile, status
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field, validator
@@ -2352,6 +2352,18 @@ def update_order_status(
                WHERE id = ?""",
             (payload.status, payload.internal_notes, stock_deducted, order_id)
         )
+        # Treasury: a delivered cash-on-delivery order is money collected; a
+        # return after delivery gives it back.
+        if payload.status == "delivered" and prev_status != "delivered":
+            _record_cash_movement(cur, account="cash_box", movement="inflow", amount=int(ord_row["total_dzd"]),
+                                  source_type="cod_collection", reference=ord_row["order_reference"],
+                                  description=f"Commande livrée {ord_row['order_reference']} (paiement à la livraison)",
+                                  user_id=int(admin["sub"]))
+        elif payload.status == "returned" and prev_status == "delivered":
+            _record_cash_movement(cur, account="cash_box", movement="outflow", amount=int(ord_row["total_dzd"]),
+                                  source_type="cod_refund", reference=ord_row["order_reference"],
+                                  description=f"Retour après livraison {ord_row['order_reference']}",
+                                  user_id=int(admin["sub"]))
         log_audit(conn, int(admin["sub"]), "update_order_status", "order", str(order_id), {"from": prev_status, "to": payload.status})
         cur.execute("SELECT * FROM orders WHERE id = ?", (order_id,))
         return dict(cur.fetchone())
@@ -3305,7 +3317,7 @@ def admin_adjust_variant_stock(
             (payload.change_qty, variant_id, payload.change_qty)
         )
         if cur.rowcount == 0:
-            raise HTTPException(status_code=400, detail="Stock quantity cannot become negative")
+            raise HTTPException(status_code=400, detail="Le stock ne peut pas devenir négatif : il n'y a plus d'unité à retirer pour cette variante.")
         cur.execute("SELECT stock_qty FROM product_variants WHERE id = ?", (variant_id,))
         new_qty = int(cur.fetchone()["stock_qty"])
         prev_qty = new_qty - payload.change_qty
@@ -3820,40 +3832,92 @@ def admin_list_inventory_movements(
             )
         return {"items": [dict(r) for r in cur.fetchall()]}
 
+# ---------------------------------------------------------------- CSV ----
+# Every CSV export opens directly in Excel (French Windows): UTF-8 with BOM
+# so accents display, ";" as separator, French headers and values, short
+# dates. Cells that would be read as formulas are neutralised.
+_FR_CODES = {
+    # orders
+    "new": "Nouvelle", "pending_confirmation": "À confirmer", "confirmed": "Confirmée", "preparing": "En préparation",
+    "ready_for_shipment": "Prête à expédier", "shipped": "Expédiée", "delivered": "Livrée", "cancelled": "Annulée",
+    "returned": "Retournée", "home": "À domicile", "stop_desk": "Point relais", "cod": "Paiement à la livraison",
+    # payments / accounts / treasury
+    "cash": "Espèces", "card": "Carte", "transfer": "Virement", "bank_transfer": "Virement", "check": "Chèque",
+    "other": "Autre", "paid": "Payée", "pending": "À régler", "unpaid": "À régler", "partial": "Partiellement payée",
+    "cash_box": "Caisse", "bank_account": "Banque / CCP", "inflow": "Entrée", "outflow": "Sortie",
+    "deposit": "Dépôt", "withdrawal": "Retrait",
+    "pos_sale": "Vente magasin", "pos_refund": "Remboursement magasin", "cod_collection": "Commande livrée (COD)",
+    "cod_refund": "Retour après livraison", "expense_payment": "Paiement dépense",
+    "purchase_payment": "Paiement fournisseur", "manual_adjustment": "Mouvement manuel",
+    # stock movements
+    "order_reserved": "Commande en ligne", "order_cancelled": "Commande annulée", "order_returned": "Commande retournée",
+    "pos_sale_offline": "Vente hors ligne synchronisée", "physical_count_reconcile": "Inventaire physique",
+    "cms_manual_adjustment": "Ajustement manuel", "stock_write_off": "Sortie de stock",
+    "variant_created": "Création de la variante", "create_variant": "Création de la variante",
+    "variant_edit": "Modification de la variante", "purchase_received": "Réception fournisseur",
+    "writeoff_damaged": "Démarque — endommagé", "writeoff_lost": "Démarque — perte/vol",
+    "writeoff_return_to_supplier": "Retour fournisseur", "writeoff_promotional_giveaway": "Cadeau / promo",
+    "writeoff_stocktake_correction": "Correction d'inventaire",
+    # expense categories
+    "loyer": "Loyer & local", "rent": "Loyer & local", "salaires": "Salaires", "electricite_eau": "Électricité, gaz & eau",
+    "internet_tel": "Internet & télécoms", "packaging": "Emballages", "publicite_marketing": "Publicité",
+    "transport_logistique": "Transport & coursiers", "maintenance": "Maintenance", "abonnements_logiciels": "Logiciels",
+    "autre": "Autres charges",
+}
+
+
+def _fr(code: Any) -> str:
+    c = "" if code is None else str(code)
+    return _FR_CODES.get(c, c.replace("_", " "))
+
+
+def _csv_cell(value: Any) -> Any:
+    if value is None:
+        return ""
+    if isinstance(value, (int, float)):
+        return value
+    text = str(value)
+    stripped = text.lstrip()
+    # Formula injection: =, -, @, tab/CR, or a "+" that is not an Algerian phone.
+    if stripped.startswith(("=", "-", "@", "\t", "\r")) or (stripped.startswith("+") and not re.match(r"^\+213\d+$", stripped)):
+        return "'" + text
+    return text
+
+
+def _csv_date(value: Any) -> str:
+    return str(value or "")[:16].replace("T", " ")
+
+
+def _excel_csv_response(filename: str, header: List[str], rows: Iterable[Iterable[Any]]) -> Response:
+    buf = io.StringIO()
+    writer = csv.writer(buf, delimiter=";")
+    writer.writerow(header)
+    for row in rows:
+        writer.writerow([_csv_cell(v) for v in row])
+    return Response(
+        content="\ufeff" + buf.getvalue(),
+        media_type="text/csv; charset=utf-8",
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )
+
+
 @app.get("/api/v1/admin/orders/export.csv")
 def admin_export_orders_csv(admin: dict = Depends(require_permission("orders:write"))):
     with db_session() as conn:
         cur = conn.cursor()
         cur.execute("SELECT * FROM orders ORDER BY id DESC")
-        output = io.StringIO()
-        writer = csv.writer(output)
-        writer.writerow([
-            "order_id", "order_reference", "status", "payment_method",
-            "customer_name", "customer_phone", "wilaya_code", "wilaya_name",
-            "commune", "delivery_method", "subtotal_dzd", "delivery_fee_dzd",
-            "total_dzd", "created_at"
-        ])
-        def _safe_csv_cell(val: Any) -> Any:
-            if not isinstance(val, str):
-                return val
-            stripped = val.lstrip()
-            # Prevent CSV Formula Injection in Excel/Calc while preserving +213 phone numbers
-            if stripped.startswith(("=", "-", "@", "\t", "\r")) or (stripped.startswith("+") and not re.match(r"^\+213\d+$", stripped)):
-                return f"'{val}"
-            return val
-
-        for r in cur.fetchall():
-            writer.writerow([
-                r["id"], _safe_csv_cell(r["order_reference"]), _safe_csv_cell(r["status"]), _safe_csv_cell(r["payment_method"]),
-                _safe_csv_cell(r["customer_name"]), _safe_csv_cell(r["customer_phone"]), _safe_csv_cell(r["wilaya_code"]), _safe_csv_cell(r["wilaya_name"]),
-                _safe_csv_cell(r["commune"]), _safe_csv_cell(r["delivery_method"]), r["subtotal_dzd"], r["delivery_fee_dzd"],
-                r["total_dzd"], r["created_at"]
-            ])
-        return Response(
-            content=output.getvalue(),
-            media_type="text/csv; charset=utf-8",
-            headers={"Content-Disposition": "attachment; filename=mus_luxury_orders.csv"}
-        )
+        rows = [
+            [r["order_reference"], _csv_date(r["created_at"]), _fr(r["status"]), r["customer_name"], r["customer_phone"],
+             f'{r["wilaya_code"]} - {r["wilaya_name"]}', r["commune"], _fr(r["delivery_method"]),
+             r["subtotal_dzd"], r["delivery_fee_dzd"], r["total_dzd"], _fr(r["payment_method"])]
+            for r in cur.fetchall()
+        ]
+    return _excel_csv_response(
+        "commandes_mus_luxury.csv",
+        ["Référence", "Date", "Statut", "Client", "Téléphone", "Wilaya", "Commune", "Livraison",
+         "Articles (DA)", "Frais de livraison (DA)", "Total (DA)", "Paiement"],
+        rows,
+    )
 
 @app.get("/api/v1/admin/orders/{order_id}/delivery-note")
 def admin_get_order_delivery_note(
@@ -5916,6 +5980,9 @@ def pos_create_sale(
                    VALUES (?, ?, ?, ?, ?)""",
                 (sale_id, pm.method, int(pm.amount_dzd), pm.tendered_dzd, change),
             )
+            _record_cash_movement(cur, account=_account_for_method(pm.method), movement="inflow",
+                                  amount=int(pm.amount_dzd), source_type="pos_sale", reference=sale_ref,
+                                  description=f"Vente magasin {sale_ref}", user_id=int(admin["sub"]))
 
         log_audit(conn, int(admin["sub"]), "pos_sale", "pos_sale", str(sale_id), {
             "sale_reference": sale_ref, "total_dzd": total_dzd, "items": len(resolved),
@@ -5965,6 +6032,26 @@ def pos_get_sale_invoice(sale_id: int, admin: dict = Depends(require_permission(
         sale["document_title"] = "Facture" if sale["sale_type"] == "sale" else "Avoir (remboursement)"
         return sale
 
+
+
+def _record_cash_movement(cur, *, account: str, movement: str, amount: int, source_type: str,
+                          reference: str, description: str, user_id: Optional[int]) -> None:
+    """Treasury (Trésorerie): money that really entered or left the cash box
+    or the bank. Called where the money moves: till sales/refunds, delivered
+    cash-on-delivery orders, expense and supplier payments, manual entries."""
+    amount = int(amount or 0)
+    if amount <= 0:
+        return
+    cur.execute(
+        """INSERT INTO cash_movements (account_type, movement_type, amount_dzd, source_type, source_reference, description, recorded_by)
+           VALUES (?, ?, ?, ?, ?, ?, ?)""",
+        (account, movement, amount, source_type, reference, description[:255], user_id),
+    )
+
+
+def _account_for_method(method: str) -> str:
+    """Cash goes to the cash box; card, transfer, cheque, CCP… to the bank."""
+    return "cash_box" if (method or "cash") == "cash" else "bank_account"
 
 @app.post("/api/v1/admin/pos/sales/{sale_id}/refund", status_code=201)
 def pos_refund_sale(
@@ -6108,6 +6195,9 @@ def pos_refund_sale(
             "INSERT INTO pos_payments (sale_id, method, amount_dzd, change_dzd) VALUES (?, ?, ?, 0)",
             (refund_id, payload.refund_method, refund_total),
         )
+        _record_cash_movement(cur, account=_account_for_method(payload.refund_method), movement="outflow",
+                              amount=refund_total, source_type="pos_refund", reference=ref,
+                              description=f"Remboursement {ref} (vente {orig['sale_reference']})", user_id=int(admin["sub"]))
 
         # Update original sale status: fully vs partially refunded
         total_refunded_after = {vid: refunded_qty.get(vid, 0) for vid in sold}
@@ -6728,6 +6818,9 @@ def _process_offline_sale(conn, op: PosSyncOperation, cashier_id: int) -> dict:
             "INSERT INTO pos_payments (sale_id, method, amount_dzd, tendered_dzd, change_dzd) VALUES (?, ?, ?, ?, ?)",
             (sale_id, pm.method, int(pm.amount_dzd), pm.tendered_dzd, change),
         )
+        _record_cash_movement(cur, account=_account_for_method(pm.method), movement="inflow",
+                              amount=int(pm.amount_dzd), source_type="pos_sale", reference=sale_ref,
+                              description=f"Vente magasin {sale_ref} (hors ligne)", user_id=cashier_id)
 
     log_audit(conn, cashier_id, "pos_sale_offline_sync", "pos_sale", str(sale_id), {
         "client_txn_id": txn, "sale_reference": sale_ref, "total_dzd": total_dzd,
@@ -7460,7 +7553,7 @@ def admin_apply_count(count_id: int, admin: dict = Depends(require_permission("i
         if c["status"] != "open":
             raise HTTPException(status_code=409, detail=f"Inventaire déjà {c['status']}")
         cur.execute(
-            "SELECT id, variant_id, counted_qty FROM inventory_count_items WHERE count_id = ?",
+            "SELECT id, variant_id, expected_qty, counted_qty FROM inventory_count_items WHERE count_id = ?",
             (count_id,),
         )
         lines = [dict(r) for r in cur.fetchall()]
@@ -7469,16 +7562,18 @@ def admin_apply_count(count_id: int, admin: dict = Depends(require_permission("i
 
         applied = 0
         for line in lines:
-            # Re-read stock inside the transaction to compute the delta vs the LIVE
-            # stock (sales may have happened between counting and applying). This
-            # guarantees stock becomes exactly the counted value without double-
-            # counting intermediate sales.
+            # Apply the DIFFERENCE the count found (counted − stock the system
+            # showed when the item was counted) to the live stock. Sales or
+            # receptions made between counting and applying are therefore kept:
+            # counted 5 of 5, then 1 sold → stays 4 (setting it to 5 would
+            # "un-sell" the item).
             cur.execute("SELECT stock_qty FROM product_variants WHERE id = ?", (line["variant_id"],))
             v = cur.fetchone()
             if not v:
                 continue
             prev_q = int(v["stock_qty"])
-            new_q = int(line["counted_qty"])
+            diff = int(line["counted_qty"]) - int(line["expected_qty"])
+            new_q = max(0, prev_q + diff)
             delta = new_q - prev_q
             if delta == 0:
                 continue
@@ -7964,28 +8059,14 @@ def admin_treasury_report_csv(
     with db_session() as conn:
         data = _treasury_report_data(conn, date_from, date_to)
 
-    buf = io.StringIO()
-    writer = csv.writer(buf)
-    def _s(v: Any) -> str:
-        s = str(v if v is not None else "")
-        if s and s[0] in ("=", "+", "-", "@"):
-            s = "'" + s
-        return s
-
-    writer.writerow(["date", "account", "movement_type", "source_type", "source_reference", "description", "amount_dzd", "admin"])
-    for it in data["items"]:
-        writer.writerow([
-            _s(it["created_at"]), _s(it["account_type"]), _s(it["movement_type"]), _s(it["source_type"]),
-            _s(it.get("source_reference") or ""), _s(it["description"]), it["amount_dzd"], _s(it.get("admin_name") or ""),
-        ])
-    writer.writerow([])
     t = data["totals"]
-    writer.writerow(["TOTAL", "", "", "", "", f"net={t['net_dzd']}", f"in={t['inflow_dzd']} out={t['outflow_dzd']}", ""])
-    return Response(
-        content=buf.getvalue(),
-        media_type="text/csv; charset=utf-8",
-        headers={"Content-Disposition": f'attachment; filename="treasury_{date_from}_{date_to}.csv"'},
-    )
+    rows = [[_csv_date(it["created_at"]), _fr(it["account_type"]), _fr(it["movement_type"]), _fr(it["source_type"]),
+             it.get("source_reference") or "", it["description"], it["amount_dzd"], it.get("admin_name") or ""]
+            for it in data["items"]]
+    rows += [[], ["TOTAL entrées", "", "", "", "", "", t["inflow_dzd"], ""],
+             ["TOTAL sorties", "", "", "", "", "", t["outflow_dzd"], ""], ["Flux net", "", "", "", "", "", t["net_dzd"], ""]]
+    return _excel_csv_response(f"tresorerie_{date_from}_{date_to}.csv",
+                               ["Date", "Compte", "Sens", "Origine", "Référence", "Libellé", "Montant (DA)", "Saisi par"], rows)
 
 
 # ============================================================================
@@ -8080,29 +8161,13 @@ def admin_inventory_movements_report_csv(
     with db_session() as conn:
         data = _inventory_movements_data(conn, date_from, date_to, variant_id)
 
-    buf = io.StringIO()
-    writer = csv.writer(buf)
-    def _s(v: Any) -> str:
-        s = str(v if v is not None else "")
-        if s and s[0] in ("=", "+", "-", "@"):
-            s = "'" + s
-        return s
-
-    writer.writerow(["date", "sku", "product_name", "variant_title", "change_qty", "previous_qty", "new_qty", "reason", "admin"])
-    for it in data["items"]:
-        writer.writerow([
-            _s(it["created_at"]), _s(it["sku"]), _s(it["product_name"]), _s(it["variant_title"]),
-            it["change_qty"], it["previous_qty"], it["new_qty"],
-            _s(it["reason"]), _s(it.get("admin_name") or ""),
-        ])
-    writer.writerow([])
     t = data["totals"]
-    writer.writerow(["TOTAL", "", "", "", t["net_change"], "", "", f"{t['count']} mouvements", ""])
-    return Response(
-        content=buf.getvalue(),
-        media_type="text/csv; charset=utf-8",
-        headers={"Content-Disposition": f'attachment; filename="inventory_{date_from}_{date_to}.csv"'},
-    )
+    rows = [[_csv_date(it["created_at"]), it["sku"], it["product_name"], it["variant_title"],
+             it["change_qty"], it["previous_qty"], it["new_qty"], _fr(it["reason"]), it.get("admin_name") or ""]
+            for it in data["items"]]
+    rows += [[], ["TOTAL", "", "", "", t["net_change"], "", "", f"{t['count']} mouvement(s)", ""]]
+    return _excel_csv_response(f"mouvements_stock_{date_from}_{date_to}.csv",
+                               ["Date", "SKU", "Produit", "Variante", "Variation", "Avant", "Après", "Motif", "Par"], rows)
 
 
 # ============================================================================
@@ -8190,28 +8255,12 @@ def admin_expense_report_csv(
     with db_session() as conn:
         data = _expenses_report_data(conn, date_from, date_to)
 
-    buf = io.StringIO()
-    writer = csv.writer(buf)
-    def _s(v: Any) -> str:
-        s = str(v if v is not None else "")
-        if s and s[0] in ("=", "+", "-", "@"):
-            s = "'" + s
-        return s
-
-    writer.writerow(["date", "category", "description", "recipient", "payment_method", "payment_status", "amount_dzd", "receipt_reference"])
-    for it in data["items"]:
-        writer.writerow([
-            _s(it["expense_date"]), _s(it["category"]), _s(it["description"]), _s(it.get("recipient") or ""),
-            _s(it["payment_method"]), _s(it["payment_status"]), it["amount_dzd"], _s(it.get("receipt_reference") or ""),
-        ])
-    writer.writerow([])
-    writer.writerow(["TOTAL", "", "", "", "", "", data["totals"]["total_dzd"], ""])
-
-    return Response(
-        content=buf.getvalue(),
-        media_type="text/csv; charset=utf-8",
-        headers={"Content-Disposition": f'attachment; filename="expenses_{date_from}_{date_to}.csv"'},
-    )
+    rows = [[it["expense_date"], _fr(it["category"]), it["description"], it.get("recipient") or "",
+             _fr(it["payment_method"]), _fr(it["payment_status"]), it["amount_dzd"], it.get("receipt_reference") or ""]
+            for it in data["items"]]
+    rows += [[], ["TOTAL", "", "", "", "", "", data["totals"]["total_dzd"], ""]]
+    return _excel_csv_response(f"depenses_{date_from}_{date_to}.csv",
+                               ["Date", "Catégorie", "Description", "Bénéficiaire", "Paiement", "Statut", "Montant (DA)", "N° de reçu"], rows)
 
 
 @app.get("/api/v1/admin/reports/sales")
@@ -8241,40 +8290,14 @@ def admin_sales_report_csv(
     with db_session() as conn:
         data = _sales_report_data(conn, date_from, date_to)
 
-    buf = io.StringIO()
-    writer = csv.writer(buf)
-    writer.writerow([
-        "day", "online_count", "online_revenue_dzd",
-        "in_store_count", "in_store_revenue_dzd",
-        "in_store_refunds_count", "in_store_refunds_dzd",
-        "net_revenue_dzd",
-    ])
-    # CSV formula-injection defence: prefix leading =/+/-/@ with a single quote.
-    def _s(v: Any) -> str:
-        s = str(v if v is not None else "")
-        if s and s[0] in ("=", "+", "-", "@"):
-            s = "'" + s
-        return s
-
-    for d in data["by_day"]:
-        writer.writerow([
-            _s(d["day"]), d["online_count"], d["online_revenue_dzd"],
-            d["in_store_count"], d["in_store_revenue_dzd"],
-            d["in_store_refunds_count"], d["in_store_refunds_dzd"],
-            d["net_revenue_dzd"],
-        ])
     t = data["totals"]
-    writer.writerow([])
-    writer.writerow(["TOTAL", t["online_count"], t["online_revenue_dzd"],
-                     t["in_store_count"], t["in_store_revenue_dzd"],
-                     t["in_store_refunds_count"], t["in_store_refunds_dzd"],
-                     t["net_revenue_dzd"]])
-
-    return Response(
-        content=buf.getvalue(),
-        media_type="text/csv; charset=utf-8",
-        headers={"Content-Disposition": f'attachment; filename="sales_{date_from}_{date_to}.csv"'},
-    )
+    rows = [[d["day"], d["online_count"], d["online_revenue_dzd"], d["in_store_count"], d["in_store_revenue_dzd"],
+             d["in_store_refunds_count"], d["in_store_refunds_dzd"], d["net_revenue_dzd"]] for d in data["by_day"]]
+    rows += [[], ["TOTAL", t["online_count"], t["online_revenue_dzd"], t["in_store_count"], t["in_store_revenue_dzd"],
+                  t["in_store_refunds_count"], t["in_store_refunds_dzd"], t["net_revenue_dzd"]]]
+    return _excel_csv_response(f"ventes_{date_from}_{date_to}.csv",
+                               ["Jour", "Commandes en ligne", "CA en ligne (DA)", "Ventes magasin", "CA magasin (DA)",
+                                "Remboursements", "Remboursé (DA)", "CA net (DA)"], rows)
 
 
 @app.post("/api/v1/admin/inventory/counts/{count_id}/cancel")

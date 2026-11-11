@@ -78,7 +78,8 @@ class TestExpenseReport(unittest.TestCase):
         self.assertEqual(r.status_code, 200)
         self.assertIn("text/csv", r.headers["content-type"])
         body = r.text
-        self.assertTrue(body.splitlines()[0].startswith("date,category,description"))
+        self.assertTrue(body.startswith("\ufeff"), "UTF-8 BOM for Excel")
+        self.assertTrue(body.lstrip("\ufeff").splitlines()[0].startswith("Date;Catégorie;Description"))
         self.assertIn("TOTAL", body)
 
     def test_05_invalid_dates(self):

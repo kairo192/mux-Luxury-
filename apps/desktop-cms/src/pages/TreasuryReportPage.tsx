@@ -2,6 +2,7 @@ import React, { useEffect, useState, useCallback } from "react";
 import { Landmark, Download, RefreshCw, AlertTriangle, ArrowUp, ArrowDown, Wallet, Banknote, Building2 } from "lucide-react";
 import { DesktopCmsApi, getAccessToken } from "../api/adminClient";
 import { useT } from "../i18n";
+import { codeLabel } from "../utils/codeLabels";
 
 const fmt = (dzd: number) => `${Number(dzd || 0).toLocaleString("fr-DZ")} DA`;
 
@@ -69,7 +70,7 @@ export const TreasuryReportPage: React.FC = () => {
 
   const accountIcon = (acc: string) => (acc === "bank_account" ? Building2 : Banknote);
   const accountLabel = (acc: string) => (acc === "bank_account" ? t("treasury_report.acc_bank") : acc === "cash_box" ? t("treasury_report.acc_cash") : acc);
-  const sourceLabel = (s: string) => SOURCE_LABEL[s] || s;
+  const sourceLabel = (s: string) => SOURCE_LABEL[s] || codeLabel(s);
 
   return (
     <div className="space-y-4 text-sm">
@@ -151,7 +152,7 @@ export const TreasuryReportPage: React.FC = () => {
                 {data.by_source.map((s: any, idx: number) => (
                   <div key={idx} className="flex items-center justify-between py-1.5 border-b border-gray-50 last:border-0 text-[11px]">
                     <span>
-                      {sourceLabel(s.source_type)} <span className="text-gray-400">· {s.movement_type} · {accountLabel(s.account_type)}</span>
+                      {sourceLabel(s.source_type)} <span className="text-gray-400">· {codeLabel(s.movement_type)} · {accountLabel(s.account_type)}</span>
                     </span>
                     <span className="font-mono font-bold">{fmt(s.total)} <span className="text-gray-400 text-[10px]">({s.c})</span></span>
                   </div>

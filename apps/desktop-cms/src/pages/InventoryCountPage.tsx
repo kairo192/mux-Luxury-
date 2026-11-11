@@ -179,7 +179,11 @@ export const InventoryCountPage: React.FC<{ onInventoryUpdated?: () => void }> =
     if (!active) return;
     const confirmed = await confirmClientAction({
       title: t("inventory_count.btn_apply"),
-      message: `${t("inventory_count.btn_apply")} ${active.reference} ?`,
+      message:
+        `${active.reference} : le stock de ${(active.items || []).length} article(s) compté(s) sera corrigé ` +
+        "de l'écart trouvé (compté − stock affiché au moment du comptage). Les ventes faites depuis le comptage sont conservées ; " +
+        "les articles non comptés ne changent pas. Cette opération est définitive.",
+      confirmLabel: t("inventory_count.btn_apply"),
       danger: false,
     });
     if (!confirmed) return;

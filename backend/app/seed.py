@@ -288,6 +288,61 @@ def remove_legacy_demo_content(cur, *, force: bool = False) -> dict:
     return found
 
 
+TREASURY_BACKFILL_MARKER = "system_treasury_backfill_v1"
+
+
+def backfill_treasury_from_sales(cur) -> dict:
+    """One-time catch-up (first start after the update that made the
+    treasury follow sales): till sales and refunds, and delivered
+    cash-on-delivery orders made BEFORE that update are added to the
+    treasury once. Anything already there (same reference) is skipped, so it
+    can never double-count; entries are marked "(rattrapage)"."""
+    cur.execute("SELECT 1 AS done FROM store_settings WHERE setting_key = ?", (TREASURY_BACKFILL_MARKER,))
+    if cur.fetchone():
+        return {"added": 0}
+    cur.execute("SELECT DISTINCT source_reference FROM cash_movements WHERE source_reference IS NOT NULL")
+    already = {r["source_reference"] for r in cur.fetchall()}
+    added = 0
+
+    def put(account, movement, amount, source, ref, desc, created_at):
+        nonlocal added
+        if not amount or int(amount) <= 0 or ref in already:
+            return
+        cur.execute(
+            """INSERT INTO cash_movements (account_type, movement_type, amount_dzd, source_type, source_reference, description, recorded_by, created_at)
+               VALUES (?, ?, ?, ?, ?, ?, NULL, ?)""",
+            (account, movement, int(amount), source, ref, desc[:255], created_at),
+        )
+        added += 1
+
+    cur.execute(
+        """SELECT s.sale_reference, s.sale_type, s.created_at, p.method, p.amount_dzd
+           FROM pos_sales s JOIN pos_payments p ON p.sale_id = s.id ORDER BY s.id"""
+    )
+    for r in cur.fetchall():
+        account = "cash_box" if (r["method"] or "cash") == "cash" else "bank_account"
+        if r["sale_type"] == "refund":
+            put(account, "outflow", r["amount_dzd"], "pos_refund", r["sale_reference"], f"Remboursement {r['sale_reference']} (rattrapage)", r["created_at"])
+        else:
+            put(account, "inflow", r["amount_dzd"], "pos_sale", r["sale_reference"], f"Vente magasin {r['sale_reference']} (rattrapage)", r["created_at"])
+    cur.execute("SELECT order_reference, total_dzd, updated_at FROM orders WHERE status = 'delivered' ORDER BY id")
+    for r in cur.fetchall():
+        put("cash_box", "inflow", r["total_dzd"], "cod_collection", r["order_reference"],
+            f"Commande livrée {r['order_reference']} (rattrapage)", r["updated_at"])
+
+    cur.execute(
+        """INSERT INTO store_settings (setting_key, setting_value, updated_at)
+           VALUES (?, ?, CURRENT_TIMESTAMP) ON CONFLICT(setting_key) DO NOTHING""",
+        (TREASURY_BACKFILL_MARKER, json.dumps({"added": added})),
+    )
+    if added:
+        cur.execute(
+            "INSERT INTO audit_logs (admin_user_id, action, entity_type, entity_id, details_json) VALUES (?, ?, ?, ?, ?)",
+            (None, "treasury_backfill", "treasury", "system", json.dumps({"entries_added": added})),
+        )
+    return {"added": added}
+
+
 def seed_initial_data() -> None:
     init_db()
     sync_wilaya_communes()
@@ -295,6 +350,7 @@ def seed_initial_data() -> None:
         cur = conn.cursor()
         ensure_operational_rbac(conn)
         remove_legacy_demo_content(cur)
+        backfill_treasury_from_sales(cur)
         cur.execute("SELECT COUNT(*) AS cnt FROM roles")
         if cur.fetchone()["cnt"] > 0:
             return
