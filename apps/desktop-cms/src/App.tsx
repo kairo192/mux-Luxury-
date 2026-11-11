@@ -2532,7 +2532,7 @@ export default function App() {
                       )}
                       <div className="font-bold text-[#063D2E]">
                         Articles : {Number(o.subtotal_dzd).toLocaleString("fr-FR")} DA
-                        {Number(o.subtotal_dzd) + Number(o.delivery_fee_dzd) !== Number(o.total_dzd) ? ` − remise ${(Number(o.subtotal_dzd) + Number(o.delivery_fee_dzd) - Number(o.total_dzd)).toLocaleString("fr-FR")} DA` : ""}
+                        {Number(o.subtotal_dzd) + Number(o.delivery_fee_dzd) !== Number(o.total_dzd) ? ` − remise ${(Number(o.subtotal_dzd) + Number(o.delivery_fee_dzd) - Number(o.total_dzd)).toLocaleString("fr-FR")} DA${o.coupon_code ? ` (code ${o.coupon_code})` : ""}` : ""}
                         {" "}+ livraison : {Number(o.delivery_fee_dzd) === 0 ? "offerte" : `${Number(o.delivery_fee_dzd).toLocaleString("fr-FR")} DA`}
                         {" "}= à encaisser : {Number(o.total_dzd).toLocaleString("fr-FR")} DA
                       </div>
@@ -2867,7 +2867,7 @@ export default function App() {
                     {coupons.slice(0, 6).map((cpn: any) => (
                       <div key={cpn.id} className="flex items-center justify-between bg-[#F8F6F0] px-3 py-1.5 rounded-lg border">
                         <span>
-                          <strong className="font-mono text-[#063D2E]">{cpn.code}</strong> ({cpn.discount_value}{cpn.discount_type === "percentage" ? "%" : " DA"}) • Utilisations: {cpn.usage_count}{cpn.usage_limit ? `/${cpn.usage_limit}` : ""}
+                          <strong className="font-mono text-[#063D2E]">{cpn.code}</strong> ({cpn.discount_value}{cpn.discount_type === "percentage" ? "%" : " DA"}) • Utilisations: {cpn.usage_count}{cpn.usage_limit ? `/${cpn.usage_limit}` : ""}{cpn.orders_count !== undefined ? ` • ${cpn.orders_count} commande(s) gardée(s), ${Number(cpn.discount_given_dzd || 0).toLocaleString("fr-FR")} DA de remise` : ""}
                         </span>
                         {cpn.is_active ? (
                           <button type="button" onClick={() => handleDeactivateCoupon(cpn.id, cpn.code)} className="px-2 py-0.5 rounded bg-red-50 text-red-700 font-bold">

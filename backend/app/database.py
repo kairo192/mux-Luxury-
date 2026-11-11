@@ -371,6 +371,9 @@ _ADDITIVE_COLUMNS = [
     # Customer management: optional contact + CRM notes (walk-in friendly)
     ("customers", "email", "VARCHAR(255)"),
     ("customers", "notes", "TEXT"),
+    # Orders keep the promo code used and the discount it gave
+    ("orders", "coupon_code", "VARCHAR(32)"),
+    ("orders", "discount_dzd", "INTEGER NOT NULL DEFAULT 0"),
 ]
 
 

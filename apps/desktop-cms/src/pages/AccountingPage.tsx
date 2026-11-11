@@ -27,6 +27,7 @@ interface PnlStatement {
   gross_margin_percent: number;
   operating_expenses_dzd: number;
   operating_expenses_unpaid_dzd?: number;
+  stock_losses_dzd?: number;
   net_operating_profit_dzd: number;
   net_margin_percent: number;
   orders_count: number;
@@ -335,6 +336,11 @@ export const AccountingPage: React.FC = () => {
                       <span className="flex items-center gap-1.5">
                         <span className="w-2.5 h-2.5 rounded-full bg-red-500" /> Charges: <strong>{opexPct}%</strong> ({opExpenses.toLocaleString()} DZD{Number(pnl?.operating_expenses_unpaid_dzd || 0) > 0 ? `, dont ${Number(pnl?.operating_expenses_unpaid_dzd).toLocaleString()} DZD à régler` : ""})
                       </span>
+                      {Number(pnl?.stock_losses_dzd || 0) !== 0 && (
+                        <span className="flex items-center gap-1.5">
+                          <span className="w-2.5 h-2.5 rounded-full bg-gray-500" /> Pertes de stock: <strong>{Number(pnl?.stock_losses_dzd).toLocaleString()} DZD</strong>
+                        </span>
+                      )}
                       <span className="flex items-center gap-1.5">
                         <span className="w-2.5 h-2.5 rounded-full bg-emerald-600" /> {t("accounting.stat_net_profit")}: <strong>{netPct}%</strong> ({netProfit.toLocaleString()} DZD)
                       </span>

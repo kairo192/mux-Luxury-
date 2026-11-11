@@ -1067,9 +1067,11 @@ def create_guest_order(
         )
         bl_row = chk_cur.fetchone()
         if bl_row:
+            shop = _boutique_info_from_settings(chk_conn)
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
-                detail=f"Commande refusée (Protection Anti-Retour COD) : Ce numéro ({local_chk}) ne peut pas passer de commande automatique. Contactez le service client Mus Luxury sur WhatsApp au 0655534154."
+                detail=(f"Commande refusée (Protection Anti-Retour COD) : Ce numéro ({local_chk}) ne peut pas passer de "
+                        f"commande automatique. Contactez le service client {shop['name']} sur WhatsApp au {shop['phone']}.")
             )
 
     if not payload.items:
@@ -1155,6 +1157,7 @@ def create_guest_order(
             resolved_lines.append((v, item.quantity, unit_price, line_total))
 
         discount_dzd = 0
+        coupon_used: Optional[str] = None
         if payload.coupon_code:
             cur.execute(
                 "SELECT * FROM coupons WHERE UPPER(code) = ? AND is_active = 1",
@@ -1162,7 +1165,7 @@ def create_guest_order(
             )
             cpn = cur.fetchone()
             if not cpn:
-                raise HTTPException(status_code=400, detail="Invalid or inactive coupon code")
+                raise HTTPException(status_code=400, detail="Code promo inconnu ou expiré")
             if dict(cpn).get("usage_limit") is not None and int(cpn["usage_count"]) >= int(dict(cpn)["usage_limit"]):
                 raise HTTPException(status_code=400, detail=f"Le code promo '{cpn['code']}' n'est plus utilisable (limite atteinte)")
             if subtotal_dzd < int(cpn["min_order_dzd"]):
@@ -1183,6 +1186,7 @@ def create_guest_order(
             )
             if cur.rowcount == 0:
                 raise HTTPException(status_code=400, detail=f"Le code promo '{cpn['code']}' n'est plus utilisable (limite atteinte)")
+            coupon_used = str(cpn["code"])
 
         # Free delivery promised by the shop (CMS threshold) is applied HERE, so
         # the stored order (what the courier collects) matches what the
@@ -1223,14 +1227,16 @@ def create_guest_order(
                     """INSERT INTO orders
                        (order_reference, customer_id, customer_name, customer_phone, wilaya_code, wilaya_name,
                         commune, delivery_address, delivery_method, payment_method,
-                        subtotal_dzd, delivery_fee_dzd, total_dzd, status, customer_notes, stock_deducted, idempotency_hash)
-                       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'cod', ?, ?, ?, 'new', ?, 1, ?)""",
+                        subtotal_dzd, delivery_fee_dzd, total_dzd, status, customer_notes, stock_deducted, idempotency_hash,
+                        coupon_code, discount_dzd)
+                       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'cod', ?, ?, ?, 'new', ?, 1, ?, ?, ?)""",
                     (
                         order_ref, customer_id, payload.full_name, payload.phone,
                         payload.wilaya_code, zone["wilaya_name_fr"], payload.commune,
                         payload.delivery_address, payload.delivery_method,
                         subtotal_dzd, delivery_fee_dzd, total_dzd,
                         payload.customer_notes, idem_hash,
+                        coupon_used, discount_dzd,
                     ),
                 )
                 order_id = cur.lastrowid
@@ -2347,6 +2353,16 @@ def update_order_status(
                     detail=f"Une commande {_fr(prev_status).lower()} ne peut plus changer de statut"
                 )
 
+        # A cancelled order gives its promo-code use back (a limited code is not
+        # used up by orders that never happened). A returned parcel keeps it.
+        if payload.status == "cancelled":
+            code_used = dict(ord_row).get("coupon_code")
+            if code_used:
+                cur.execute(
+                    "UPDATE coupons SET usage_count = CASE WHEN usage_count > 0 THEN usage_count - 1 ELSE 0 END WHERE UPPER(code) = ?",
+                    (str(code_used).upper(),),
+                )
+
         # If order is cancelled or returned and stock was deducted, restore stock atomically (H-2 & M-14)
         if payload.status in ("cancelled", "returned") and stock_deducted == 1:
             cur.execute("SELECT * FROM order_items WHERE order_id = ?", (order_id,))
@@ -3013,7 +3029,16 @@ def create_coupon(
 def admin_list_coupons(admin: dict = Depends(require_permission("content:write"))):
     with db_session() as conn:
         cur = conn.cursor()
-        cur.execute("SELECT * FROM coupons ORDER BY id DESC")
+        # Real results per code: orders kept (not cancelled / returned) and the
+        # discount they gave.
+        cur.execute(
+            """SELECT c.*,
+                      (SELECT COUNT(*) FROM orders o WHERE UPPER(o.coupon_code) = UPPER(c.code)
+                         AND o.status NOT IN ('cancelled', 'returned')) AS orders_count,
+                      (SELECT COALESCE(SUM(o.discount_dzd), 0) FROM orders o WHERE UPPER(o.coupon_code) = UPPER(c.code)
+                         AND o.status NOT IN ('cancelled', 'returned')) AS discount_given_dzd
+               FROM coupons c ORDER BY c.id DESC"""
+        )
         return {"items": [dict(r) for r in cur.fetchall()]}
 
 @app.delete("/api/v1/admin/coupons/{coupon_id}")
@@ -3999,14 +4024,8 @@ def admin_get_order_invoice(
         items = [dict(r) for r in cur.fetchall()]
         od["items"] = items
         od["boutique_info"] = {
-            "name": "Mus Luxury (LUXE)",
-            "address": "FVX6+GCJ Mus luxury, Ouled Yaïch, Blida (09), Algérie",
-            "phone": "0655534154",
-            "whatsapp": "+213655534154",
-            "instagram": "https://www.instagram.com/musluxury09?rpxt=emk3bjBhdjV5d2Ux",
-            "tiktok": "https://www.tiktok.com/@musluxury.092?_r=1&_t=ZS-9B2mO0gpA7V",
-            "currency": "DZD (DA)",
-            "payment_notice": "Paiement en espèces à la livraison (Cash on Delivery)"
+            **_boutique_info_from_settings(conn),
+            "payment_notice": "Paiement en espèces à la livraison",
         }
         return od
 
@@ -5094,6 +5113,15 @@ def admin_receive_purchase_order(
             else:
                 weighted_unit_cost = new_unit
             cur.execute("UPDATE products SET purchase_cost_dzd = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?", (weighted_unit_cost, it["product_id"]))
+            # A variant with its own cost keeps its own weighted average (the
+            # cost used for its margin is "variant cost, else product cost").
+            if v_row:
+                cur.execute("SELECT purchase_cost_dzd FROM product_variants WHERE id = ?", (v_row["id"],))
+                v_cost = cur.fetchone()["purchase_cost_dzd"]
+                if v_cost is not None:
+                    v_before = max(int(old_stock), 0)
+                    v_new = int(round((v_before * int(v_cost) + qty_in * new_unit) / (v_before + qty_in)))
+                    cur.execute("UPDATE product_variants SET purchase_cost_dzd = ? WHERE id = ?", (v_new, v_row["id"]))
             cur.execute("UPDATE purchase_order_items SET quantity_received = quantity_ordered WHERE id = ?", (it["id"],))
 
         # Update purchase order status
@@ -5408,7 +5436,8 @@ def admin_get_pnl_statement(admin: dict = Depends(require_permission("finance:re
     Compte de résultat since the shop opened, BOTH channels:
       revenue  = online merchandise + delivery fees + in-store sales − in-store refunds
       COGS     = units sold × purchase cost (variant cost, else product cost)
-      gross    = revenue − COGS;  net = gross − paid operating expenses
+      gross    = revenue − COGS;  net = gross − operating expenses (paid or
+                 not) − stock losses (write-offs, count gaps, at cost)
     Online sales = orders neither cancelled nor returned (a returned COD parcel
     was never paid). Same rules as the business dashboard and sales report.
     """
@@ -5465,6 +5494,8 @@ def admin_get_pnl_statement(admin: dict = Depends(require_permission("finance:re
             FROM product_variants pv JOIN products p ON p.id = pv.product_id
             WHERE pv.is_active = 1 AND p.deleted_at IS NULL AND p.status != 'archived' AND pv.stock_qty > 0""")
 
+        stock_losses = _stock_losses_dzd(cur)
+
         online_merch = int(online["merch_dzd"])
         delivery_fees = int(online["delivery_fee_dzd"])
         store_net = pos["sale"][1] - pos["refund"][1]
@@ -5475,7 +5506,7 @@ def admin_get_pnl_statement(admin: dict = Depends(require_permission("finance:re
         # expenses) — same figure as the business dashboard.
         gross_profit = total_revenue - cogs
         gross_pct = round(gross_profit / total_revenue * 100, 1) if total_revenue > 0 else 0.0
-        net_profit = gross_profit - total_expenses
+        net_profit = gross_profit - total_expenses - stock_losses
         net_pct = round(net_profit / total_revenue * 100, 1) if total_revenue > 0 else 0.0
         delivered_profit = int(delivered["total_dzd"]) - delivered_cogs
 
@@ -5488,6 +5519,7 @@ def admin_get_pnl_statement(admin: dict = Depends(require_permission("finance:re
             "gross_margin_percent": gross_pct,
             "operating_expenses_dzd": total_expenses,
             "operating_expenses_unpaid_dzd": unpaid_expenses,
+            "stock_losses_dzd": stock_losses,
             "net_operating_profit_dzd": net_profit,
             "net_margin_percent": net_pct,
             "orders_count": int(online["count"]),
@@ -5627,6 +5659,7 @@ def admin_export_accounting_csv(
             ["Marge brute (%)", d["gross_margin_percent"]],
             ["Charges d'exploitation", -int(d["operating_expenses_dzd"])],
             ["  dont charges encore à régler", -int(d.get("operating_expenses_unpaid_dzd") or 0)],
+            ["Pertes et écarts de stock (au coût)", -int(d.get("stock_losses_dzd") or 0)],
             ["Bénéfice net d'exploitation", d["net_operating_profit_dzd"]],
             ["Bénéfice net (%)", d["net_margin_percent"]],
             ["Commandes en ligne comptées", d["orders_count"]],
@@ -5744,12 +5777,25 @@ def _boutique_info_from_settings(conn) -> dict:
         return _BOUTIQUE_INFO
     legal = (f.get("fiscal_legal_name") or "").strip()
     commercial = (f.get("fiscal_commercial_name") or "").strip()
+    # Shop contacts edited in CMS → Contenu (the same ones the website shows).
+    shop: Dict[str, str] = {}
+    try:
+        cur = conn.cursor()
+        cur.execute(
+            "SELECT setting_key, setting_value FROM store_settings WHERE setting_key IN "
+            "('store_name', 'store_phone', 'store_location', 'whatsapp_contact_number', 'instagram_url', 'tiktok_url')"
+        )
+        shop = {r["setting_key"]: str(r["setting_value"] or "").strip().strip('"') for r in cur.fetchall()}
+    except Exception:
+        shop = {}
     return {
-        "name": commercial or legal or _BOUTIQUE_INFO["name"],
-        "legal_name": legal or commercial or _BOUTIQUE_INFO["name"],
-        "address": (f.get("fiscal_address") or "").strip() or _BOUTIQUE_INFO["address"],
-        "phone": (f.get("fiscal_phone") or "").strip() or _BOUTIQUE_INFO["phone"],
-        "whatsapp": _BOUTIQUE_INFO["whatsapp"],
+        "name": commercial or legal or shop.get("store_name") or _BOUTIQUE_INFO["name"],
+        "legal_name": legal or commercial or shop.get("store_name") or _BOUTIQUE_INFO["name"],
+        "address": (f.get("fiscal_address") or "").strip() or shop.get("store_location") or _BOUTIQUE_INFO["address"],
+        "phone": (f.get("fiscal_phone") or "").strip() or shop.get("store_phone") or _BOUTIQUE_INFO["phone"],
+        "whatsapp": shop.get("whatsapp_contact_number") or _BOUTIQUE_INFO["whatsapp"],
+        "instagram": shop.get("instagram_url") or "",
+        "tiktok": shop.get("tiktok_url") or "",
         "currency": _BOUTIQUE_INFO["currency"],
         "nif": f.get("fiscal_nif") or "",
         "nis": f.get("fiscal_nis") or "",
@@ -7195,6 +7241,23 @@ def _process_offline_sale(conn, op: PosSyncOperation, cashier_id: int) -> dict:
 # Unit cost expression shared by COGS/valuation queries (variant cost, else product cost).
 _UNIT_COST_SQL = "COALESCE(pv.purchase_cost_dzd, p.purchase_cost_dzd, 0)"
 
+# Stock that left (or came back) without a sale: write-offs (damaged, lost,
+# gift, correction) and the gaps found by a physical count, valued at cost.
+# A return to the supplier is not a loss (the supplier credits it).
+_STOCK_LOSS_REASONS_SQL = (
+    "(substr(im.reason, 1, 9) = 'writeoff_' AND im.reason != 'writeoff_return_to_supplier')"
+    " OR im.reason = 'physical_count_reconcile'"
+)
+
+
+def _stock_losses_dzd(cur, since_utc: Optional[str] = None) -> int:
+    """Value at cost of stock lost (positive) minus stock found (count surplus)."""
+    where = f"({_STOCK_LOSS_REASONS_SQL})" + (" AND im.created_at >= ?" if since_utc else "")
+    return -_scalar(cur, f"""SELECT COALESCE(SUM(im.change_qty * {_UNIT_COST_SQL}), 0) AS v
+        FROM inventory_movements im
+        JOIN product_variants pv ON pv.id = im.variant_id JOIN products p ON p.id = pv.product_id
+        WHERE {where}""", (since_utc,) if since_utc else ())
+
 
 def _scalar(cur, sql: str, params=(), key: str = "v") -> int:
     cur.execute(sql, params)
@@ -7278,6 +7341,7 @@ def admin_business_dashboard(admin: dict = Depends(require_permission("finance:r
         cogs_month = online_cogs + instore_sale_cogs - instore_refund_cogs
         gross_margin = revenue_month - cogs_month
         opex_month = _scalar(cur, "SELECT COALESCE(SUM(amount_dzd),0) AS v FROM expenses WHERE expense_date >= ?", (month_start_date,))
+        losses_month = _stock_losses_dzd(cur, month_start)
         margin_pct = round((gross_margin / revenue_month) * 100, 1) if revenue_month > 0 else 0.0
 
         margin_month = {
@@ -7286,7 +7350,8 @@ def admin_business_dashboard(admin: dict = Depends(require_permission("finance:r
             "gross_margin_dzd": gross_margin,
             "gross_margin_percent": margin_pct,
             "operating_expenses_dzd": opex_month,
-            "net_profit_dzd": gross_margin - opex_month,
+            "stock_losses_dzd": losses_month,
+            "net_profit_dzd": gross_margin - opex_month - losses_month,
         }
 
         # --- Inventory valuation + stock health ---

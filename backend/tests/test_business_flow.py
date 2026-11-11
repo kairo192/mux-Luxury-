@@ -197,7 +197,28 @@ class TestBusinessFlow(unittest.TestCase):
         self.assertEqual(f7["cash"] - f6["cash"], -order_total, "the customer is paid back")
         self.assertEqual(self.customer(phone)["total_spent_dzd"], 9500)
 
-        # 7. Today's reports tell the same story as the dashboards.
+        # 7. Stock that leaves without a sale is a loss in the accounts.
+        def net_both():
+            pnl = self.get("/admin/accounting/pnl")
+            biz = self.get("/admin/dashboard/business")["margin_month"]
+            return pnl["net_operating_profit_dzd"], biz["net_profit_dzd"], pnl["inventory_valuation_dzd"]
+        n0 = net_both()
+        self.post("/admin/inventory/write-off", {"variant_id": vN, "quantity": 1, "reason": "damaged"})
+        n1 = net_both()
+        self.assertEqual((n1[0] - n0[0], n1[1] - n0[1], n1[2] - n0[2]), (-5083, -5083, -5083),
+                         "damaged bag: loss at cost in Comptabilité and Analytique, stock value down")
+        self.post("/admin/inventory/write-off", {"variant_id": vN, "quantity": 1, "reason": "return_to_supplier"})
+        n2 = net_both()
+        self.assertEqual((n2[0], n2[1]), (n1[0], n1[1]), "a return to the supplier is not a loss")
+        count = self.post("/admin/inventory/counts", {"name": "Comptage flux"})
+        self.ok(self.c.put(f"/api/v1/admin/inventory/counts/{count['id']}/lines", headers=self.h,
+                           json={"variant_id": vN, "counted_qty": self.stock()[0][vN] + 1}))
+        self.post(f"/admin/inventory/counts/{count['id']}/apply")
+        n3 = net_both()
+        self.assertEqual(n3[0] - n2[0], 5083, "a unit found at the count reduces the losses")
+        self.assertEqual(self.stock()[0][vN], 9, "10 - damaged - returned + found")
+
+        # 8. Today's reports tell the same story as the dashboards.
         today = _shop_today()
         rng = {"from": today, "to": today}
         sales = self.get("/admin/reports/sales", **rng)["totals"]
@@ -206,8 +227,52 @@ class TestBusinessFlow(unittest.TestCase):
         self.assertEqual(biz - f0["today"], 9500, "the day's net: one red bag kept")
         mv = self.get("/admin/reports/inventory-movements", **rng, variant_id=vN)
         summary = mv.get("summary") or mv.get("totals")
-        self.assertEqual(summary["net_change"], 10, "movements add up to the stock: +10 -2 +2")
+        self.assertEqual(summary["net_change"], 9, "movements add up to the stock: +10 -2 +2 -1 -1 +1")
         self.assertEqual(self.get("/admin/accounting/ledger")["is_balanced"], True)
+
+
+    def test_promo_code_is_kept_on_the_order_and_given_back_on_cancel(self):
+        code = "FLX" + uuid.uuid4().hex[:6].upper()
+        self.post("/admin/coupons", {"code": code, "discount_type": "fixed_dzd", "discount_value": 1000, "usage_limit": 1})
+        sfx = uuid.uuid4().hex[:5]
+        cat = self.post("/admin/categories", {"slug": f"cp-{sfx}", "name_fr": "Promo", "name_ar": "x", "name_en": "x",
+                                              "display_order": 1, "is_active": True, "show_on_homepage": False})
+        self.post("/admin/category-attributes", {"category_id": cat["id"], "attr_key": "size", "label_fr": "Taille",
+                                                 "input_type": "single_select", "is_variant_axis": True,
+                                                 "options": [{"value": "u", "label_fr": "U"}]})
+        self.post("/admin/products", {"category_id": cat["id"], "slug": f"cp-{sfx}", "sku": f"CP-{sfx.upper()}", "name_fr": "Promo",
+                                      "selling_price_dzd": PRICE, "status": "published",
+                                      "variants": [{"sku": f"CP-{sfx.upper()}-U", "title": "U", "stock_qty": 5, "attributes": {"size": "u"}}]})
+        vid = self.c.get(f"/api/v1/products/cp-{sfx}").json()["variants"][0]["id"]
+
+        def order():
+            return self.c.post("/api/v1/orders", headers={"Idempotency-Key": uuid.uuid4().hex}, json={
+                "full_name": "Client Promo", "phone": "0770" + str(uuid.uuid4().int)[:6], "wilaya_code": "16",
+                "commune": "Alger Centre", "delivery_address": "2 rue Promo, Alger", "delivery_method": "home",
+                "coupon_code": code.lower(), "items": [{"variant_id": vid, "quantity": 1}]})
+
+        first = order()
+        self.assertEqual(first.status_code, 201, first.text)
+        listed = next(o for o in self.get("/admin/orders")["items"] if o["id"] == first.json()["order_id"])
+        self.assertEqual((listed["coupon_code"], listed["discount_dzd"]), (code, 1000), "the order shows the code used")
+        self.assertEqual(order().status_code, 400, "single-use code already used")
+        cpn = next(c for c in self.get("/admin/coupons")["items"] if c["code"] == code)
+        self.assertEqual((cpn["usage_count"], cpn["orders_count"], cpn["discount_given_dzd"]), (1, 1, 1000))
+        self.patch(f"/admin/orders/{first.json()['order_id']}", {"status": "cancelled"})
+        cpn = next(c for c in self.get("/admin/coupons")["items"] if c["code"] == code)
+        self.assertEqual((cpn["usage_count"], cpn["orders_count"]), (0, 0), "cancelled: the use is given back")
+        self.assertEqual(order().status_code, 201, "the code works again")
+
+        # The invoice of that order carries the discount and the shop's contacts
+        # from the settings (not fixed text).
+        self.c.put("/api/v1/admin/settings", headers=self.h, json={"settings": {"store_phone": "0550001122", "fiscal_phone": ""}})
+        try:
+            inv = self.get(f"/admin/orders/{first.json()['order_id']}/invoice")
+            self.assertEqual(inv["discount_dzd"], 1000)
+            self.assertEqual(inv["coupon_code"], code)
+            self.assertEqual(inv["boutique_info"]["phone"], "0550001122")
+        finally:
+            self.c.put("/api/v1/admin/settings", headers=self.h, json={"settings": {"store_phone": "0655534154", "fiscal_phone": "0655534154"}})
 
 
 if __name__ == "__main__":
