@@ -94,7 +94,7 @@ class TestAccounting(unittest.TestCase):
         self.assertEqual(sale.status_code, 201, sale.text)
         self.client.post("/api/v1/admin/expenses", headers=self.h, json={
             "description": "Compta test", "category": "rent", "amount_dzd": 3000,
-            "expense_date": __import__("datetime").date.today().isoformat(),
+            "expense_date": __import__("app.main", fromlist=["_shop_today"])._shop_today(),
             "payment_method": "cash", "payment_status": "paid"})
 
         after = self._pnl()
@@ -217,7 +217,7 @@ class TestAccounting(unittest.TestCase):
         def exp(method, status, amount):
             r = self.client.post("/api/v1/admin/expenses", headers=self.h, json={
                 "description": f"Test {method} {status}", "category": "loyer", "amount_dzd": amount,
-                "expense_date": _d.date.today().isoformat(), "payment_method": method, "payment_status": status})
+                "expense_date": __import__("app.main", fromlist=["_shop_today"])._shop_today(), "payment_method": method, "payment_status": status})
             self.assertEqual(r.status_code, 201, r.text)
             return r.json()
         exp("bank_transfer", "paid", 7000)

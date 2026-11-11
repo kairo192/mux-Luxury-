@@ -3,6 +3,7 @@ import { DesktopCmsApi } from "../api/adminClient";
 import { useT } from "../i18n";
 import { codeLabel } from "../utils/codeLabels";
 import { confirmClientAction, notifyClientError, notifyClientSuccess } from "../utils/clientNotifier";
+import { localDateIso } from "../utils/serverDate";
 import {
   RefreshCw,
   Plus,
@@ -60,7 +61,7 @@ export const ExpensesPage: React.FC = () => {
   const [formDesc, setFormDesc] = useState<string>("");
   const [formCategory, setFormCategory] = useState<string>("loyer");
   const [formAmount, setFormAmount] = useState<string>("");
-  const [formDate, setFormDate] = useState<string>(new Date().toISOString().slice(0, 10));
+  const [formDate, setFormDate] = useState<string>(localDateIso());
   const [formMethod, setFormMethod] = useState<string>("cash");
   const [formBeneficiary, setFormBeneficiary] = useState<string>("");
   const [formReceiptRef, setFormReceiptRef] = useState<string>("");

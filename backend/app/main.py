@@ -1426,18 +1426,24 @@ def admin_dashboard(admin: dict = Depends(require_permission("dashboard:read")))
 
         # Real day-by-day revenue for the dashboard chart (last 30 days, same
         # orders as the revenue card: everything except cancelled/returned).
-        since_day = (datetime.utcnow() - timedelta(days=29)).strftime("%Y-%m-%d")
+        # Shop days (Algeria), not UTC days: grouped by UTC hour, then mapped.
+        shop_today = _shop_now().date()
+        since_utc, _ = _utc_range_for_days((shop_today - timedelta(days=29)).isoformat(), shop_today.isoformat())
         cur.execute(
-            """SELECT DATE(created_at) AS day, COUNT(*) AS cnt, COALESCE(SUM(total_dzd), 0) AS rev
+            """SELECT substr(created_at, 1, 13) AS hour, COUNT(*) AS cnt, COALESCE(SUM(total_dzd), 0) AS rev
                FROM orders
-               WHERE status NOT IN ('cancelled', 'returned') AND DATE(created_at) >= ?
-               GROUP BY DATE(created_at)""",
-            (since_day,),
+               WHERE status NOT IN ('cancelled', 'returned') AND created_at >= ?
+               GROUP BY substr(created_at, 1, 13)""",
+            (since_utc,),
         )
-        by_day = {str(r["day"])[:10]: (int(r["rev"]), int(r["cnt"])) for r in cur.fetchall()}
+        by_day: Dict[str, tuple] = {}
+        for r in cur.fetchall():
+            d = _shop_day_of(r["hour"])
+            rev0, cnt0 = by_day.get(d, (0, 0))
+            by_day[d] = (rev0 + int(r["rev"]), cnt0 + int(r["cnt"]))
         revenue_by_day = []
         for i in range(30):
-            day = (datetime.utcnow() - timedelta(days=29 - i)).strftime("%Y-%m-%d")
+            day = (shop_today - timedelta(days=29 - i)).isoformat()
             rev, cnt = by_day.get(day, (0, 0))
             revenue_by_day.append({"date": day, "revenue_dzd": rev, "orders": cnt})
 
@@ -3911,7 +3917,9 @@ def _csv_cell(value: Any) -> Any:
 
 
 def _csv_date(value: Any) -> str:
-    return str(value or "")[:16].replace("T", " ")
+    """Stored UTC timestamp -> shop local 'YYYY-MM-DD HH:MM'; plain dates unchanged."""
+    text = str(value or "").replace("T", " ")
+    return _shop_time_text(text) if len(text) >= 19 else text[:16]
 
 
 def _excel_csv_response(filename: str, header: List[str], rows: Iterable[Iterable[Any]]) -> Response:
@@ -5032,7 +5040,7 @@ def admin_receive_purchase_order(
         cur.execute("SELECT * FROM purchase_order_items WHERE purchase_order_id = ?", (po_id,))
         items = [dict(it) for it in cur.fetchall()]
 
-        today_str = datetime.now().strftime("%Y-%m-%d")
+        today_str = _shop_today()
         for it in items:
             v_id = it["variant_id"]
             if not v_id:
@@ -5124,7 +5132,7 @@ def admin_pay_purchase_order(
         )
 
         # Double-entry ledger: Debit 4010 (Fournisseurs) / Credit 5300 (Caisse) or 5120 (Banque)
-        today_str = datetime.now().strftime("%Y-%m-%d")
+        today_str = _shop_today()
         credit_acc = "5120" if payment_method == "bank_transfer" else "5300"
         credit_name = "Banque" if payment_method == "bank_transfer" else "Caisse Boutique"
         cur.execute(
@@ -5163,7 +5171,7 @@ def admin_create_expense(
 ):
     with db_session(commit=True) as conn:
         cur = conn.cursor()
-        exp_date = payload.expense_date or datetime.now().strftime("%Y-%m-%d")
+        exp_date = payload.expense_date or _shop_today()
         cur.execute(
             """INSERT INTO expenses (description, category, amount_dzd, expense_date, payment_method, recipient, receipt_reference, payment_status, notes, created_by)
                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
@@ -6919,6 +6927,22 @@ def admin_test_device(device_id: int, payload: DeviceTestInput, admin: dict = De
 _ISO_CREATED_RE = re.compile(r"^\d{4}-\d{2}-\d{2}[ T]\d{2}:\d{2}:\d{2}")
 
 
+def _client_ts_to_utc_text(value: Optional[str]) -> Optional[str]:
+    """Offline sale time sent by the POS ('2026-11-11T21:30:00', '…Z', '…+01:00')
+    -> stored form 'YYYY-MM-DD HH:MM:SS' in UTC (no zone = already UTC, as
+    sent by toISOString). None when missing or unreadable."""
+    text = (value or "").strip()
+    if not text or not _ISO_CREATED_RE.match(text):
+        return None
+    try:
+        dt = datetime.fromisoformat(text.replace("Z", "+00:00").replace(" ", "T", 1))
+    except ValueError:
+        return None
+    if dt.tzinfo is not None:
+        dt = dt.astimezone(timezone.utc).replace(tzinfo=None)
+    return dt.strftime("%Y-%m-%d %H:%M:%S")
+
+
 class PosSyncOperation(BaseModel):
     client_txn_id: str = Field(..., min_length=8, max_length=128)
     type: str = Field("sale", regex=r"^sale$")
@@ -7001,7 +7025,8 @@ def _process_offline_sale(conn, op: PosSyncOperation, cashier_id: int) -> dict:
         open_s = _get_open_register(conn)
         reg = int(open_s["id"]) if open_s else None
 
-    created_at_valid = bool(op.created_at_client and _ISO_CREATED_RE.match(op.created_at_client.strip()))
+    client_ts = _client_ts_to_utc_text(op.created_at_client)
+    created_at_valid = client_ts is not None
 
     # 4. Create the sale (idempotency_key = client txn id)
     sale_ref = ""
@@ -7016,7 +7041,7 @@ def _process_offline_sale(conn, op: PosSyncOperation, cashier_id: int) -> dict:
                         subtotal_dzd, discount_dzd, tax_dzd, total_dzd, status, idempotency_key, notes, created_at)
                        VALUES (?, ?, ?, ?, 'sale', ?, ?, ?, ?, 'completed', ?, ?, ?)""",
                     (sale_ref, reg, cashier_id, payload.customer_id, subtotal_dzd, discount_dzd, tax_dzd,
-                     total_dzd, txn, payload.notes, op.created_at_client.strip()),
+                     total_dzd, txn, payload.notes, client_ts),
                 )
             else:
                 cur.execute(
@@ -7098,9 +7123,11 @@ def _scalar(cur, sql: str, params=(), key: str = "v") -> int:
 @app.get("/api/v1/admin/dashboard/business")
 def admin_business_dashboard(admin: dict = Depends(require_permission("finance:read"))):
     now = datetime.now(timezone.utc)
-    today_start = now.strftime("%Y-%m-%d 00:00:00")
-    month_start = now.strftime("%Y-%m-01 00:00:00")
-    month_start_date = now.strftime("%Y-%m-01")
+    shop_now = _shop_now().replace(tzinfo=None)
+    # "Today" / "this month" are the shop's (Algeria), converted to stored UTC.
+    today_start = _shop_local_to_utc(shop_now.replace(hour=0, minute=0, second=0, microsecond=0))
+    month_start = _shop_local_to_utc(shop_now.replace(day=1, hour=0, minute=0, second=0, microsecond=0))
+    month_start_date = shop_now.strftime("%Y-%m-01")
 
     with db_session() as conn:
         cur = conn.cursor()
@@ -7936,6 +7963,68 @@ def admin_stock_write_off(payload: WriteOffInput, admin: dict = Depends(require_
 _DATE_RE = re.compile(r"^\d{4}-\d{2}-\d{2}$")
 
 
+# ----------------------------------------------------------------------------
+# Shop time zone. Timestamps are stored in UTC (no zone marker); days, "today"
+# and "this month" are the SHOP's days (Algeria: UTC+1, no daylight saving).
+# ----------------------------------------------------------------------------
+def _load_shop_tz():
+    name = os.getenv("SHOP_TIMEZONE", "Africa/Algiers").strip() or "Africa/Algiers"
+    try:
+        from zoneinfo import ZoneInfo
+        return ZoneInfo(name)
+    except Exception:  # no tz database on this machine: Algeria is a fixed UTC+1
+        return timezone(timedelta(hours=1), "UTC+01:00")
+
+
+SHOP_TZ = _load_shop_tz()
+_UTC_FMT = "%Y-%m-%d %H:%M:%S"
+
+
+def _shop_now() -> datetime:
+    return datetime.now(timezone.utc).astimezone(SHOP_TZ)
+
+
+def _shop_today() -> str:
+    return _shop_now().strftime("%Y-%m-%d")
+
+
+def _shop_local_to_utc(local_naive: datetime) -> str:
+    """Shop wall-clock time -> stored UTC text."""
+    return local_naive.replace(tzinfo=SHOP_TZ).astimezone(timezone.utc).strftime(_UTC_FMT)
+
+
+def _utc_range_for_days(date_from: str, date_to: str) -> tuple:
+    """Shop days [date_from .. date_to] -> UTC [start, end) for `created_at >= ? AND created_at < ?`."""
+    d0 = datetime.strptime(date_from, "%Y-%m-%d")
+    d1 = datetime.strptime(date_to, "%Y-%m-%d") + timedelta(days=1)
+    return _shop_local_to_utc(d0), _shop_local_to_utc(d1)
+
+
+def _shop_day_of(utc_text: Any) -> str:
+    """Stored UTC timestamp (or an 'YYYY-MM-DD HH' hour bucket) -> shop day."""
+    s = str(utc_text or "").replace("T", " ")
+    if len(s) < 10:
+        return s
+    try:
+        if len(s) == 13:  # hour bucket from substr(created_at, 1, 13)
+            dt = datetime.strptime(s, "%Y-%m-%d %H")
+        else:
+            dt = datetime.strptime(s[:19], _UTC_FMT) if len(s) >= 19 else datetime.strptime(s[:10], "%Y-%m-%d")
+    except ValueError:
+        return s[:10]
+    return dt.replace(tzinfo=timezone.utc).astimezone(SHOP_TZ).strftime("%Y-%m-%d")
+
+
+def _shop_time_text(utc_text: Any) -> str:
+    """Stored UTC timestamp -> 'YYYY-MM-DD HH:MM' in shop time (CSV exports)."""
+    s = str(utc_text or "").replace("T", " ")
+    try:
+        dt = datetime.strptime(s[:19], _UTC_FMT)
+    except ValueError:
+        return s
+    return dt.replace(tzinfo=timezone.utc).astimezone(SHOP_TZ).strftime("%Y-%m-%d %H:%M")
+
+
 def _parse_date_or_422(s: str, field: str) -> str:
     if not s or not _DATE_RE.match(s):
         raise HTTPException(status_code=422, detail=f"{field}: date attendue au format YYYY-MM-DD")
@@ -7944,32 +8033,37 @@ def _parse_date_or_422(s: str, field: str) -> str:
 
 def _sales_report_data(conn, date_from: str, date_to: str) -> dict:
     cur = conn.cursor()
-    start = f"{date_from} 00:00:00"
-    end = f"{date_to} 23:59:59"
+    start, end = _utc_range_for_days(date_from, date_to)  # shop days -> UTC [start, end)
 
     # Per-day online revenue & count
     cur.execute(
-        """SELECT substr(created_at, 1, 10) AS day,
+        """SELECT substr(created_at, 1, 13) AS hour,
                   COUNT(*) AS c, COALESCE(SUM(total_dzd), 0) AS r
            FROM orders
-           WHERE status NOT IN ('cancelled', 'returned') AND created_at BETWEEN ? AND ?
-           GROUP BY day ORDER BY day""",
+           WHERE status NOT IN ('cancelled', 'returned') AND created_at >= ? AND created_at < ?
+           GROUP BY substr(created_at, 1, 13)""",
         (start, end),
     )
-    online_by_day = {r["day"]: {"count": int(r["c"]), "revenue_dzd": int(r["r"])} for r in cur.fetchall()}
+    # Grouped by UTC hour, folded into SHOP days (a 00:30 order in Algiers
+    # belongs to that day, not to the previous UTC day).
+    online_by_day: Dict[str, Dict[str, int]] = {}
+    for r in cur.fetchall():
+        d = online_by_day.setdefault(_shop_day_of(r["hour"]), {"count": 0, "revenue_dzd": 0})
+        d["count"] += int(r["c"])
+        d["revenue_dzd"] += int(r["r"])
 
     # Per-day in-store (sales minus refunds)
     cur.execute(
-        """SELECT substr(created_at, 1, 10) AS day, sale_type,
+        """SELECT substr(created_at, 1, 13) AS hour, sale_type,
                   COUNT(*) AS c, COALESCE(SUM(total_dzd), 0) AS r
            FROM pos_sales
-           WHERE created_at BETWEEN ? AND ?
-           GROUP BY day, sale_type ORDER BY day""",
+           WHERE created_at >= ? AND created_at < ?
+           GROUP BY substr(created_at, 1, 13), sale_type""",
         (start, end),
     )
     instore_by_day: Dict[str, Dict[str, int]] = {}
     for r in cur.fetchall():
-        d = instore_by_day.setdefault(r["day"], {"sales_count": 0, "sales_revenue_dzd": 0, "refunds_dzd": 0, "refunds_count": 0})
+        d = instore_by_day.setdefault(_shop_day_of(r["hour"]), {"sales_count": 0, "sales_revenue_dzd": 0, "refunds_dzd": 0, "refunds_count": 0})
         if r["sale_type"] == "sale":
             d["sales_count"] += int(r["c"])
             d["sales_revenue_dzd"] += int(r["r"])
@@ -8013,11 +8107,11 @@ def _sales_report_data(conn, date_from: str, date_to: str) -> dict:
         """SELECT variant_id, MAX(product_name) AS product_name, MAX(sku) AS sku, SUM(q) AS qty, SUM(r) AS rev FROM (
              SELECT oi.variant_id, oi.product_name, oi.sku, oi.quantity AS q, oi.line_total_dzd AS r
              FROM order_items oi JOIN orders o ON o.id = oi.order_id
-             WHERE o.status NOT IN ('cancelled', 'returned') AND o.created_at BETWEEN ? AND ?
+             WHERE o.status NOT IN ('cancelled', 'returned') AND o.created_at >= ? AND o.created_at < ?
              UNION ALL
              SELECT psi.variant_id, psi.product_name, psi.sku, psi.quantity AS q, psi.line_total_dzd AS r
              FROM pos_sale_items psi JOIN pos_sales ps ON ps.id = psi.sale_id
-             WHERE ps.sale_type = 'sale' AND ps.created_at BETWEEN ? AND ?
+             WHERE ps.sale_type = 'sale' AND ps.created_at >= ? AND ps.created_at < ?
            ) AS sold GROUP BY variant_id ORDER BY qty DESC LIMIT 20""",
         (start, end, start, end),
     )
@@ -8028,7 +8122,7 @@ def _sales_report_data(conn, date_from: str, date_to: str) -> dict:
     cur.execute(
         """SELECT pp.method, COUNT(*) AS c, COALESCE(SUM(CASE WHEN ps.sale_type = 'sale' THEN pp.amount_dzd ELSE -pp.amount_dzd END), 0) AS total
            FROM pos_payments pp JOIN pos_sales ps ON ps.id = pp.sale_id
-           WHERE ps.created_at BETWEEN ? AND ?
+           WHERE ps.created_at >= ? AND ps.created_at < ?
            GROUP BY pp.method""",
         (start, end),
     )
@@ -8215,8 +8309,7 @@ def admin_low_stock_report(
 
 def _treasury_report_data(conn, date_from: str, date_to: str) -> dict:
     cur = conn.cursor()
-    start = f"{date_from} 00:00:00"
-    end = f"{date_to} 23:59:59"
+    start, end = _utc_range_for_days(date_from, date_to)  # shop days -> UTC [start, end)
 
     # Per-source inflow/outflow by account
     cur.execute(
@@ -8224,7 +8317,7 @@ def _treasury_report_data(conn, date_from: str, date_to: str) -> dict:
                   COUNT(*) AS c,
                   COALESCE(SUM(amount_dzd), 0) AS total
            FROM cash_movements
-           WHERE created_at BETWEEN ? AND ?
+           WHERE created_at >= ? AND created_at < ?
            GROUP BY account_type, movement_type, source_type
            ORDER BY total DESC""",
         (start, end),
@@ -8242,21 +8335,25 @@ def _treasury_report_data(conn, date_from: str, date_to: str) -> dict:
 
     # Per-day net (for a mini-trend)
     cur.execute(
-        """SELECT substr(created_at, 1, 10) AS day,
+        """SELECT substr(created_at, 1, 13) AS hour,
                   COALESCE(SUM(CASE WHEN movement_type IN ('inflow','deposit') THEN amount_dzd ELSE -amount_dzd END), 0) AS net
            FROM cash_movements
-           WHERE created_at BETWEEN ? AND ?
-           GROUP BY day ORDER BY day""",
+           WHERE created_at >= ? AND created_at < ?
+           GROUP BY substr(created_at, 1, 13)""",
         (start, end),
     )
-    by_day = [{"day": r["day"], "net_dzd": int(r["net"])} for r in cur.fetchall()]
+    net_by_day: Dict[str, int] = {}
+    for r in cur.fetchall():
+        day = _shop_day_of(r["hour"])
+        net_by_day[day] = net_by_day.get(day, 0) + int(r["net"])
+    by_day = [{"day": d, "net_dzd": v} for d, v in sorted(net_by_day.items())]
 
     # List of movements for the detail table and CSV
     cur.execute(
         """SELECT cm.*, au.full_name AS admin_name
            FROM cash_movements cm
            LEFT JOIN admin_users au ON au.id = cm.recorded_by
-           WHERE cm.created_at BETWEEN ? AND ?
+           WHERE cm.created_at >= ? AND cm.created_at < ?
            ORDER BY cm.id DESC LIMIT 2000""",
         (start, end),
     )
@@ -8328,10 +8425,9 @@ def admin_treasury_report_csv(
 
 def _inventory_movements_data(conn, date_from: str, date_to: str, variant_id: Optional[int] = None) -> dict:
     cur = conn.cursor()
-    start = f"{date_from} 00:00:00"
-    end = f"{date_to} 23:59:59"
+    start, end = _utc_range_for_days(date_from, date_to)  # shop days -> UTC [start, end)
     params: List[Any] = [start, end]
-    where = ["im.created_at BETWEEN ? AND ?"]
+    where = ["im.created_at >= ? AND im.created_at < ?"]
     if variant_id is not None:
         where.append("im.variant_id = ?")
         params.append(variant_id)

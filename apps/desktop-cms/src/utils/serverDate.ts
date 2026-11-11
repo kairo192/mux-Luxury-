@@ -19,3 +19,10 @@ export function formatServerDateTime(value: string | null | undefined, locale = 
   const d = serverDate(value);
   return Number.isNaN(d.getTime()) ? String(value) : d.toLocaleString(locale);
 }
+
+/** Local calendar date "YYYY-MM-DD" (toISOString() would give the UTC date:
+ *  between midnight and 1 am in Algeria that is still "yesterday"). */
+export function localDateIso(d: Date = new Date()): string {
+  const p = (n: number) => String(n).padStart(2, "0");
+  return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}`;
+}

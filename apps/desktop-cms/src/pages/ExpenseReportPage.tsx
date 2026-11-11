@@ -12,10 +12,11 @@ import {
 import { DesktopCmsApi, getAccessToken } from "../api/adminClient";
 import { useT } from "../i18n";
 import { codeLabel } from "../utils/codeLabels";
+import { localDateIso } from "../utils/serverDate";
 
 const fmt = (dzd: number) => `${Number(dzd || 0).toLocaleString("fr-DZ")} DA`;
 
-function todayIso(): string { return new Date().toISOString().slice(0, 10); }
+function todayIso(): string { return localDateIso(); }
 function monthStartIso(): string { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-01`; }
 
 export const ExpenseReportPage: React.FC = () => {
@@ -60,9 +61,9 @@ export const ExpenseReportPage: React.FC = () => {
   const applyPreset = (preset: "today" | "7d" | "month" | "30d" | "year") => {
     const tToday = todayIso();
     let f = tToday;
-    if (preset === "7d") { const d = new Date(); d.setDate(d.getDate() - 6); f = d.toISOString().slice(0, 10); }
+    if (preset === "7d") { const d = new Date(); d.setDate(d.getDate() - 6); f = localDateIso(d); }
     if (preset === "month") f = monthStartIso();
-    if (preset === "30d") { const d = new Date(); d.setDate(d.getDate() - 29); f = d.toISOString().slice(0, 10); }
+    if (preset === "30d") { const d = new Date(); d.setDate(d.getDate() - 29); f = localDateIso(d); }
     if (preset === "year") f = `${new Date().getFullYear()}-01-01`;
     setFrom(f); setTo(tToday); load(f, tToday);
   };

@@ -16,6 +16,7 @@ import {
 } from "lucide-react";
 import { DesktopCmsApi, getAccessToken } from "../api/adminClient";
 import { useT } from "../i18n";
+import { localDateIso } from "../utils/serverDate";
 
 interface PnlStatement {
   gross_revenue_dzd: number;
@@ -110,7 +111,7 @@ export const AccountingPage: React.FC = () => {
       const blob = await res.blob();
       const a = document.createElement("a");
       a.href = URL.createObjectURL(blob);
-      a.download = `orders_${new Date().toISOString().slice(0, 10)}.csv`;
+      a.download = `orders_${localDateIso()}.csv`;
       a.click();
       URL.revokeObjectURL(a.href);
     } catch {

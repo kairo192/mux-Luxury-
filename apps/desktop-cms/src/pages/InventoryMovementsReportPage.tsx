@@ -3,9 +3,9 @@ import { Boxes, Download, RefreshCw, AlertTriangle, ArrowUp, ArrowDown, Calendar
 import { DesktopCmsApi, getAccessToken } from "../api/adminClient";
 import { useT } from "../i18n";
 import { movementReasonLabel } from "../utils/movementReasons";
-import { serverDate } from "../utils/serverDate";
+import { serverDate, localDateIso } from "../utils/serverDate";
 
-function todayIso(): string { return new Date().toISOString().slice(0, 10); }
+function todayIso(): string { return localDateIso(); }
 function monthStartIso(): string { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-01`; }
 
 
@@ -51,9 +51,9 @@ export const InventoryMovementsReportPage: React.FC = () => {
   const applyPreset = (preset: "7d" | "month" | "30d" | "year") => {
     const today = todayIso();
     let f = today;
-    if (preset === "7d") { const d = new Date(); d.setDate(d.getDate() - 6); f = d.toISOString().slice(0, 10); }
+    if (preset === "7d") { const d = new Date(); d.setDate(d.getDate() - 6); f = localDateIso(d); }
     if (preset === "month") f = monthStartIso();
-    if (preset === "30d") { const d = new Date(); d.setDate(d.getDate() - 29); f = d.toISOString().slice(0, 10); }
+    if (preset === "30d") { const d = new Date(); d.setDate(d.getDate() - 29); f = localDateIso(d); }
     if (preset === "year") f = `${new Date().getFullYear()}-01-01`;
     setFrom(f); setTo(today); load(f, today);
   };

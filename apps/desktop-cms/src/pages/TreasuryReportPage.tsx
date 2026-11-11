@@ -3,11 +3,11 @@ import { Landmark, Download, RefreshCw, AlertTriangle, ArrowUp, ArrowDown, Walle
 import { DesktopCmsApi, getAccessToken } from "../api/adminClient";
 import { useT } from "../i18n";
 import { codeLabel } from "../utils/codeLabels";
-import { serverDate } from "../utils/serverDate";
+import { serverDate, localDateIso } from "../utils/serverDate";
 
 const fmt = (dzd: number) => `${Number(dzd || 0).toLocaleString("fr-DZ")} DA`;
 
-function todayIso(): string { return new Date().toISOString().slice(0, 10); }
+function todayIso(): string { return localDateIso(); }
 function monthStartIso(): string { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-01`; }
 
 const SOURCE_LABEL: Record<string, string> = {
@@ -62,9 +62,9 @@ export const TreasuryReportPage: React.FC = () => {
   const applyPreset = (p: "7d" | "month" | "30d" | "year") => {
     const today = todayIso();
     let f = today;
-    if (p === "7d") { const d = new Date(); d.setDate(d.getDate() - 6); f = d.toISOString().slice(0, 10); }
+    if (p === "7d") { const d = new Date(); d.setDate(d.getDate() - 6); f = localDateIso(d); }
     if (p === "month") f = monthStartIso();
-    if (p === "30d") { const d = new Date(); d.setDate(d.getDate() - 29); f = d.toISOString().slice(0, 10); }
+    if (p === "30d") { const d = new Date(); d.setDate(d.getDate() - 29); f = localDateIso(d); }
     if (p === "year") f = `${new Date().getFullYear()}-01-01`;
     setFrom(f); setTo(today); load(f, today);
   };

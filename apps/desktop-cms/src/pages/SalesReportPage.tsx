@@ -14,10 +14,11 @@ import {
 } from "lucide-react";
 import { DesktopCmsApi, getAccessToken } from "../api/adminClient";
 import { useT } from "../i18n";
+import { localDateIso } from "../utils/serverDate";
 
 const fmt = (dzd: number) => `${Number(dzd || 0).toLocaleString("fr-DZ")} DA`;
 
-function todayIso(): string { return new Date().toISOString().slice(0, 10); }
+function todayIso(): string { return localDateIso(); }
 function monthStartIso(): string { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-01`; }
 
 export const SalesReportPage: React.FC = () => {
@@ -63,9 +64,9 @@ export const SalesReportPage: React.FC = () => {
     const today = todayIso();
     let f = today;
     if (preset === "today") f = today;
-    if (preset === "7d") { const d = new Date(); d.setDate(d.getDate() - 6); f = d.toISOString().slice(0, 10); }
+    if (preset === "7d") { const d = new Date(); d.setDate(d.getDate() - 6); f = localDateIso(d); }
     if (preset === "month") f = monthStartIso();
-    if (preset === "30d") { const d = new Date(); d.setDate(d.getDate() - 29); f = d.toISOString().slice(0, 10); }
+    if (preset === "30d") { const d = new Date(); d.setDate(d.getDate() - 29); f = localDateIso(d); }
     setFrom(f); setTo(today); load(f, today);
   };
 
