@@ -200,12 +200,53 @@ def ensure_operational_rbac(conn) -> None:
             )
 
 
+# Example content that older versions put in every new database. Matched on
+# ALL its original values, so anything the owner created or edited is kept.
+_LEGACY_DEMO_BANNERS = [
+    ("hero", "Votre style, notre passion", "/categories/sacs", "/assets/hero_bag_clean.jpg"),
+    ("promo_grid", "CHAUSSURES — Jusqu'à -20%", "/categories/chaussures", "/assets/prod_baskets_elegantes.jpg"),
+]
+_LEGACY_DEMO_COUPONS = [
+    ("BIENVENUE10", "percentage", 10, 4000),
+    ("ALGERIE500", "fixed_dzd", 500, 5000),
+]
+
+
+def _demo_mode() -> bool:
+    return (
+        os.getenv("APP_ENV", "").strip().lower() in {"test", "testing"}
+        or os.getenv("LUXE_SEED_DEMO_PRODUCTS") == "1"
+    )
+
+
+def remove_legacy_demo_content(cur) -> None:
+    """Runs at every start (PC and server). Removes the example banners and
+    switches off the example promo codes left by older versions, so the shop
+    shows only what the owner created. Never touches demo/test databases,
+    edited banners, or codes that customers have already used."""
+    if _demo_mode():
+        return
+    for pos, title, link, img in _LEGACY_DEMO_BANNERS:
+        cur.execute(
+            "DELETE FROM banners WHERE position = ? AND title_fr = ? AND cta_link = ? AND image_url = ?",
+            (pos, title, link, img),
+        )
+    for code, dtype, value, min_order in _LEGACY_DEMO_COUPONS:
+        cur.execute(
+            """UPDATE coupons SET is_active = 0
+               WHERE code = ? AND discount_type = ? AND discount_value = ? AND min_order_dzd = ?
+                 AND COALESCE(usage_count, 0) = 0 AND is_active = 1""",
+            (code, dtype, value, min_order),
+        )
+
+
 def seed_initial_data() -> None:
     init_db()
     sync_wilaya_communes()
     with db_session(commit=True) as conn:
         cur = conn.cursor()
         ensure_operational_rbac(conn)
+        remove_legacy_demo_content(cur)
         cur.execute("SELECT COUNT(*) AS cnt FROM roles")
         if cur.fetchone()["cnt"] > 0:
             return
@@ -360,10 +401,7 @@ def seed_initial_data() -> None:
         # request. A PC in development mode starts EMPTY like production, so a
         # shop that was emptied never gets the 9 demo categories back when its
         # database file is recreated.
-        seed_demo_catalog = (
-            os.getenv("APP_ENV", "").strip().lower() in {"test", "testing"}
-            or os.getenv("LUXE_SEED_DEMO_PRODUCTS") == "1"
-        )
+        seed_demo_catalog = _demo_mode()
 
         if seed_demo_catalog:
             # 4. Seed Promotional Coupons (Section 4.9)

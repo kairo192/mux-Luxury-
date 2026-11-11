@@ -209,6 +209,49 @@ class TestStorefrontContent(unittest.TestCase):
         # low_stock_only never includes the out-of-stock ones
         self.assertLessEqual(after["low_stock_only_variants"], after["low_stock_variants"])
 
+    # ------------------------------------------- old example content --
+    def test_legacy_demo_banners_and_codes_removed_but_owner_content_kept(self):
+        from unittest import mock
+        from app.database import db_session
+        from app.seed import remove_legacy_demo_content
+        with db_session(commit=True) as conn:
+            cur = conn.cursor()
+            ins = ("INSERT INTO banners (position, title_fr, cta_link, image_url, is_active, display_order) "
+                   "VALUES (?, ?, ?, ?, 1, 9)")
+            cur.execute(ins, ("promo_grid", "CHAUSSURES — Jusqu'à -20%", "/categories/chaussures", "/assets/prod_baskets_elegantes.jpg"))
+            demo_id = cur.lastrowid
+            # Same title but the owner changed the photo: kept.
+            cur.execute(ins, ("promo_grid", "CHAUSSURES — Jusqu'à -20%", "/categories/chaussures", "/uploads/mine.jpg"))
+            owner_id = cur.lastrowid
+            cur.execute("DELETE FROM coupons WHERE code IN ('BIENVENUE10', 'ALGERIE500')")
+            cur.execute("INSERT INTO coupons (code, discount_type, discount_value, min_order_dzd, is_active, usage_count) "
+                        "VALUES ('BIENVENUE10', 'percentage', 10, 4000, 1, 0)")
+            cur.execute("INSERT INTO coupons (code, discount_type, discount_value, min_order_dzd, is_active, usage_count) "
+                        "VALUES ('ALGERIE500', 'fixed_dzd', 500, 5000, 1, 3)")
+        try:
+            # Demo / test databases are never cleaned.
+            with db_session(commit=True) as conn:
+                remove_legacy_demo_content(conn.cursor())
+            with db_session() as conn:
+                cur = conn.cursor()
+                cur.execute("SELECT COUNT(*) AS cnt FROM banners WHERE id = ?", (demo_id,))
+                self.assertEqual(cur.fetchone()["cnt"], 1)
+
+            with mock.patch.dict(os.environ, {"APP_ENV": "production", "LUXE_SEED_DEMO_PRODUCTS": "0"}):
+                with db_session(commit=True) as conn:
+                    remove_legacy_demo_content(conn.cursor())
+            with db_session() as conn:
+                cur = conn.cursor()
+                cur.execute("SELECT id FROM banners WHERE id IN (?, ?)", (demo_id, owner_id))
+                self.assertEqual([r["id"] for r in cur.fetchall()], [owner_id])
+                cur.execute("SELECT code, is_active FROM coupons WHERE code IN ('BIENVENUE10', 'ALGERIE500')")
+                codes = {r["code"]: r["is_active"] for r in cur.fetchall()}
+                self.assertEqual(codes["BIENVENUE10"], 0, "unused example code must be switched off")
+                self.assertEqual(codes["ALGERIE500"], 1, "a code customers already used is kept")
+        finally:
+            with db_session(commit=True) as conn:
+                conn.cursor().execute("DELETE FROM banners WHERE id IN (?, ?)", (demo_id, owner_id))
+
 
 if __name__ == "__main__":
     unittest.main()

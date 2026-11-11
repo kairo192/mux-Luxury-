@@ -249,11 +249,14 @@ Tested in a browser: created a hero banner (with photo, Arabic title, link to a 
 promotion card in the CMS, switched off the guarantees bar, set free delivery at 30 000 DA and a new
 Instagram link → all visible on the shop within a minute; the banner button opens the chosen
 category; the dashboard chart shows the real 5 510 DA order of the test database.
-New tests: `backend/tests/test_storefront_content.py` (7).
+New tests: `backend/tests/test_storefront_content.py` (8).
 
-**On your PC's local database:** if it was created before the demo data was removed, it may still
-contain old example banners (e.g. "CHAUSSURES — Jusqu'à -20%"). Delete or edit them in
-**Contenu & Bannières**. The server (VPS) database never had them.
+**Old example content is removed automatically.** Older versions put two example banners (including
+"CHAUSSURES — Jusqu'à -20%") and two example promo codes (**BIENVENUE10** −10 %, **ALGERIE500**
+−500 DA) in every new database, and the codes were **active**: any customer typing them got a
+discount. At every start (PC and server) the system now deletes those two banners and switches off
+those two codes. It only touches rows that still have all their original values: a banner you edited
+is kept, and a code that customers have already used stays on (you decide in the CMS).
 
 ---
 
@@ -261,7 +264,7 @@ contain old example banners (e.g. "CHAUSSURES — Jusqu'à -20%"). Delete or edi
 
 | Check | Result |
 |---|---|
-| Backend tests | 263 run (7 new in round 14, 7 for backups/categories). Only 4 failures, all caused by `@babel/core` missing in the cloud container; those 4 pass with a substitute TypeScript compiler and pass in CI. |
+| Backend tests | 264 run (8 new in round 14, 7 for backups/categories). Only 4 failures, all caused by `@babel/core` missing in the cloud container; those 4 pass with a substitute TypeScript compiler and pass in CI. |
 | CMS TypeScript + build | OK |
 | Rust (`cargo check`) | OK |
 | Browser tests (Playwright) | Notifications, message box queue, bell, update dialog, new-order alert, Arabic layout, category delete + reload, archived tab, database panel, backup, reset: all OK |
