@@ -252,7 +252,7 @@ export const CmsSidebar: React.FC<CmsSidebarProps> = ({ activeTab, onSelect, bad
               className="w-full h-10 ps-9 pe-14 rounded-xl bg-white/[0.06] border border-[#D4AF62]/20 text-sm text-white placeholder:text-[#E8D4A5]/50 outline-none focus:border-[#D4AF62]/70 focus:bg-white/10 transition"
             />
             {query ? (
-              <button
+              <button aria-label="Effacer la recherche"
                 type="button"
                 onClick={() => setQuery("")}
                 className="absolute end-2 top-1/2 -translate-y-1/2 w-6 h-6 rounded-md flex items-center justify-center text-[#E8D4A5]/70 hover:text-white hover:bg-white/10"

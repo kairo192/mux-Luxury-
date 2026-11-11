@@ -3304,12 +3304,36 @@ def admin_adjust_variant_stock(
         })
         return {"variant_id": variant_id, "sku": v["sku"], "previous_qty": prev_qty, "new_qty": new_qty}
 
+# What a customer really spent, computed from the source (same rules as the
+# customer detail and the reports): online orders neither cancelled nor
+# returned + in-store sales − in-store refunds. The customers.total_spent_dzd
+# column is only a counter bumped when an order is placed, so it is not used.
+_CUSTOMER_SPENT_SQL = """
+    (SELECT COALESCE(SUM(o.total_dzd), 0) FROM orders o
+      WHERE o.customer_id = c.id AND o.status NOT IN ('cancelled', 'returned'))
+  + (SELECT COALESCE(SUM(CASE WHEN ps.sale_type = 'refund' THEN -ps.total_dzd ELSE ps.total_dzd END), 0)
+       FROM pos_sales ps WHERE ps.customer_id = c.id)"""
+_CUSTOMER_COUNT_SQL = """
+    (SELECT COUNT(*) FROM orders o WHERE o.customer_id = c.id AND o.status NOT IN ('cancelled', 'returned'))
+  + (SELECT COUNT(*) FROM pos_sales ps WHERE ps.customer_id = c.id AND ps.sale_type = 'sale')"""
+
 @app.get("/api/v1/admin/customers")
 def admin_list_customers(admin: dict = Depends(require_permission("orders:write"))):
     with db_session() as conn:
         cur = conn.cursor()
-        cur.execute("SELECT * FROM customers ORDER BY total_spent_dzd DESC, id DESC")
-        return {"items": [dict(r) for r in cur.fetchall()]}
+        cur.execute(
+            f"""SELECT * FROM (
+                   SELECT c.*, {_CUSTOMER_SPENT_SQL} AS spent_live, {_CUSTOMER_COUNT_SQL} AS count_live
+                   FROM customers c
+               ) AS x ORDER BY spent_live DESC, id DESC"""
+        )
+        items = []
+        for r in cur.fetchall():
+            d = dict(r)
+            d["total_spent_dzd"] = int(d.pop("spent_live") or 0)
+            d["orders_count"] = int(d.pop("count_live") or 0)
+            items.append(d)
+        return {"items": items}
 
 @app.get("/api/v1/admin/reports")
 def admin_analytics_reports(admin: dict = Depends(require_permission("dashboard:read"))):
@@ -3500,10 +3524,12 @@ def admin_safe_delete_or_archive_product(
     admin: dict = Depends(require_permission("products:write"))
 ):
     """
-    Safely archives or permanently deletes a product without destroying historical order records.
-    If hard_delete=True and the product has never been ordered, it is permanently deleted from database.
-    If historical orders exist and force=False, it is safely archived to preserve customer invoices.
-    If hard_delete=True and force=True, historical test order attachments are purged and product is deleted.
+    Archive (default) or permanently delete a product.
+
+    A product that has ANY history — sold online, sold in store, bought from a
+    supplier — can only be archived: deleting it would change past invoices,
+    reports and supplier accounts. Customer orders are never deleted here.
+    `force` is accepted for compatibility and ignored.
     """
     with db_session(commit=True) as conn:
         cur = conn.cursor()
@@ -3512,52 +3538,60 @@ def admin_safe_delete_or_archive_product(
         if not prod:
             raise HTTPException(status_code=404, detail="Product not found")
 
-        cur.execute(
-            "SELECT COUNT(*) AS cnt FROM order_items WHERE product_id = ? OR variant_id IN (SELECT id FROM product_variants WHERE product_id = ?)",
-            (product_id, product_id)
-        )
-        order_refs = cur.fetchone()["cnt"]
+        variant_ids_sql = "SELECT id FROM product_variants WHERE product_id = ?"
+        history = {}
+        for label, sql in (
+            ("online_order_lines", f"SELECT COUNT(*) AS cnt FROM order_items WHERE product_id = ? OR variant_id IN ({variant_ids_sql})"),
+            ("in_store_sale_lines", f"SELECT COUNT(*) AS cnt FROM pos_sale_items WHERE product_id = ? OR variant_id IN ({variant_ids_sql})"),
+            ("purchase_lines", f"SELECT COUNT(*) AS cnt FROM purchase_order_items WHERE product_id = ? OR variant_id IN ({variant_ids_sql})"),
+        ):
+            cur.execute(sql, (product_id, product_id))
+            history[label] = int(cur.fetchone()["cnt"])
+        has_history = any(history.values())
+
+        def _archive(reason: str):
+            cur.execute(
+                "UPDATE products SET status = 'archived', deleted_at = CURRENT_TIMESTAMP, updated_at = CURRENT_TIMESTAMP WHERE id = ?",
+                (product_id,),
+            )
+            cur.execute("UPDATE product_variants SET is_active = 0 WHERE product_id = ?", (product_id,))
+            log_audit(conn, int(admin["sub"]), "archive_product", "product", str(product_id), {
+                "sku": prod["sku"], "history": history, "reason": reason,
+            })
+
+        if hard_delete and has_history:
+            _archive("delete requested; product has history")
+            parts = []
+            if history["online_order_lines"]:
+                parts.append(f"{history['online_order_lines']} ligne(s) de commande en ligne")
+            if history["in_store_sale_lines"]:
+                parts.append(f"{history['in_store_sale_lines']} vente(s) en magasin")
+            if history["purchase_lines"]:
+                parts.append(f"{history['purchase_lines']} achat(s) fournisseur")
+            return {
+                "archived": True,
+                "deleted": False,
+                "has_orders": True,
+                "product_id": product_id,
+                "status": "archived",
+                "historical_order_items_preserved": history["online_order_lines"],
+                "history": history,
+                "message": (
+                    f"« {prod['name_fr']} » a un historique ({', '.join(parts)}) : il a été archivé, "
+                    "pas supprimé, pour garder les factures et la comptabilité exactes. Il n'est plus en vente."
+                ),
+            }
 
         if hard_delete:
-            if order_refs > 0 and not force:
-                # Historical orders exist: preserve accounting & invoice immutability unless forced
-                cur.execute(
-                    "UPDATE products SET status = 'archived', deleted_at = CURRENT_TIMESTAMP, updated_at = CURRENT_TIMESTAMP WHERE id = ?",
-                    (product_id,)
-                )
-                cur.execute("UPDATE product_variants SET is_active = 0 WHERE product_id = ?", (product_id,))
-                log_audit(conn, int(admin["sub"]), "archive_product", "product", str(product_id), {
-                    "sku": prod["sku"],
-                    "historical_order_items_preserved": order_refs,
-                    "reason": "Hard delete converted to archive to protect orders"
-                })
-                return {
-                    "archived": True,
-                    "deleted": False,
-                    "has_orders": True,
-                    "product_id": product_id,
-                    "status": "archived",
-                    "historical_order_items_preserved": order_refs,
-                    "message": f"Ce produit a {order_refs} commande(s) rattachée(s) : archivé pour protéger la comptabilité. Utilisez l'option 'Forcer' pour le retirer définitivement."
-                }
-
-            if force and order_refs > 0:
-                cur.execute("DELETE FROM order_items WHERE product_id = ? OR variant_id IN (SELECT id FROM product_variants WHERE product_id = ?)", (product_id, product_id))
-                cur.execute("DELETE FROM orders WHERE id NOT IN (SELECT DISTINCT order_id FROM order_items)")
-
-            # Hard delete: permanently remove product and all dependent data
-            cur.execute("DELETE FROM purchase_order_items WHERE product_id = ? OR variant_id IN (SELECT id FROM product_variants WHERE product_id = ?)", (product_id, product_id))
-            cur.execute("DELETE FROM inventory_movements WHERE variant_id IN (SELECT id FROM product_variants WHERE product_id = ?)", (product_id,))
-            cur.execute("DELETE FROM variant_attribute_values WHERE variant_id IN (SELECT id FROM product_variants WHERE product_id = ?)", (product_id,))
+            # Never sold nor bought: remove the product and its own data.
+            cur.execute(f"DELETE FROM inventory_movements WHERE variant_id IN ({variant_ids_sql})", (product_id,))
+            cur.execute(f"DELETE FROM variant_attribute_values WHERE variant_id IN ({variant_ids_sql})", (product_id,))
             cur.execute("DELETE FROM product_variants WHERE product_id = ?", (product_id,))
             cur.execute("DELETE FROM product_images WHERE product_id = ?", (product_id,))
             cur.execute("DELETE FROM product_attribute_values WHERE product_id = ?", (product_id,))
             cur.execute("DELETE FROM products WHERE id = ?", (product_id,))
-
             log_audit(conn, int(admin["sub"]), "delete_product", "product", str(product_id), {
-                "sku": prod["sku"],
-                "name_fr": prod["name_fr"],
-                "forced": force
+                "sku": prod["sku"], "name_fr": prod["name_fr"],
             })
             return {
                 "deleted": True,
@@ -3565,26 +3599,17 @@ def admin_safe_delete_or_archive_product(
                 "product_id": product_id,
                 "status": "deleted",
                 "historical_order_items_preserved": 0,
-                "message": f"Produit \"{prod['name_fr']}\" supprimé définitivement du catalogue et de la base."
+                "message": f"Produit « {prod['name_fr']} » supprimé définitivement (il n'avait jamais été vendu ni acheté).",
             }
 
-        # Soft archive (default)
-        cur.execute(
-            "UPDATE products SET status = 'archived', deleted_at = CURRENT_TIMESTAMP, updated_at = CURRENT_TIMESTAMP WHERE id = ?",
-            (product_id,)
-        )
-        cur.execute("UPDATE product_variants SET is_active = 0 WHERE product_id = ?", (product_id,))
-        log_audit(conn, int(admin["sub"]), "archive_product", "product", str(product_id), {
-            "sku": prod["sku"],
-            "historical_order_items_preserved": order_refs
-        })
+        _archive("archive requested")
         return {
             "archived": True,
             "deleted": False,
             "product_id": product_id,
             "status": "archived",
-            "historical_order_items_preserved": order_refs,
-            "message": f"Produit \"{prod['name_fr']}\" archivé avec succès."
+            "historical_order_items_preserved": history["online_order_lines"],
+            "message": f"Produit « {prod['name_fr']} » archivé : il n'est plus en vente, son historique est conservé.",
         }
 
 @app.post("/api/v1/admin/products/bulk-status")
@@ -3598,11 +3623,27 @@ def admin_bulk_update_product_status(
         cur = conn.cursor()
         updated = 0
         for pid in payload.product_ids:
-            cur.execute(
-                "UPDATE products SET status = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?",
-                (payload.status, pid)
-            )
-            updated += cur.rowcount
+            if payload.status == "archived":
+                # Same effect as the Archive button.
+                cur.execute(
+                    "UPDATE products SET status = 'archived', deleted_at = COALESCE(deleted_at, CURRENT_TIMESTAMP), updated_at = CURRENT_TIMESTAMP WHERE id = ?",
+                    (pid,),
+                )
+                updated += cur.rowcount
+                cur.execute("UPDATE product_variants SET is_active = 0 WHERE product_id = ?", (pid,))
+            else:
+                # Published / draft: really bring an archived product back
+                # (the archive also hid it with deleted_at and switched its
+                # variants off — otherwise it would stay invisible).
+                cur.execute(
+                    "UPDATE products SET status = ?, deleted_at = NULL, updated_at = CURRENT_TIMESTAMP WHERE id = ?",
+                    (payload.status, pid),
+                )
+                updated += cur.rowcount
+                cur.execute(
+                    "UPDATE product_variants SET is_active = 1 WHERE product_id = ? AND is_active = 0",
+                    (pid,),
+                )
         log_audit(conn, int(admin["sub"]), "bulk_product_status", "product", "bulk", {"count": updated, "status": payload.status})
         return {"updated_count": updated, "status": payload.status}
 
@@ -7128,8 +7169,11 @@ def admin_search_customers(q: str = Query(..., min_length=1, max_length=120), ad
     with db_session() as conn:
         cur = conn.cursor()
         cur.execute(
-            """SELECT id, full_name, phone, email, wilaya_code, commune, orders_count, total_spent_dzd
-               FROM customers WHERE full_name LIKE ? OR phone LIKE ? ORDER BY total_spent_dzd DESC, id DESC LIMIT 20""",
+            f"""SELECT * FROM (
+                   SELECT c.id, c.full_name, c.phone, c.email, c.wilaya_code, c.commune,
+                          {_CUSTOMER_COUNT_SQL} AS orders_count, {_CUSTOMER_SPENT_SQL} AS total_spent_dzd
+                   FROM customers c WHERE c.full_name LIKE ? OR c.phone LIKE ?
+               ) AS x ORDER BY total_spent_dzd DESC, id DESC LIMIT 20""",
             (like, like),
         )
         return {"items": [dict(r) for r in cur.fetchall()]}

@@ -1360,7 +1360,7 @@ export function CategoryBuilderPage({ onCategoryChanged }: { onCategoryChanged?:
             <Check className="w-4 h-4 text-emerald-800" />
             <span>{statusMsg}</span>
           </span>
-          <button onClick={() => setStatusMsg("")} className="text-emerald-800 font-bold hover:opacity-75 transition">
+          <button aria-label="Masquer le message" onClick={() => setStatusMsg("")} className="text-emerald-800 font-bold hover:opacity-75 transition">
             <X className="w-4 h-4" />
           </button>
         </div>
@@ -1371,7 +1371,7 @@ export function CategoryBuilderPage({ onCategoryChanged }: { onCategoryChanged?:
             <AlertTriangle className="w-4 h-4 text-red-800" />
             <span>{error}</span>
           </span>
-          <button onClick={() => setError("")} className="text-red-800 font-bold hover:opacity-75 transition">
+          <button aria-label="Masquer le message" onClick={() => setError("")} className="text-red-800 font-bold hover:opacity-75 transition">
             <X className="w-4 h-4" />
           </button>
         </div>
@@ -1811,7 +1811,7 @@ export function CategoryBuilderPage({ onCategoryChanged }: { onCategoryChanged?:
                           >
                             <span className="w-3.5 h-3.5 rounded-full border border-gray-400" style={{ backgroundColor: col.color_hex }} />
                             <span>{col.value}</span>
-                            <button
+                            <button aria-label="Retirer cette couleur"
                               type="button"
                               onClick={() => removeColorFromRichList(col.value)}
                               className="text-gray-400 hover:text-red-600 transition"
@@ -2310,7 +2310,7 @@ export function CategoryBuilderPage({ onCategoryChanged }: { onCategoryChanged?:
                   <p className="text-xs text-gray-500">Mettez à jour les traductions, le slug et la visibilité.</p>
                 </div>
               </div>
-              <button
+              <button aria-label="Fermer"
                 type="button"
                 onClick={() => setEditingCategory(null)}
                 className="text-gray-400 hover:text-gray-700"
@@ -2551,7 +2551,7 @@ export function CategoryBuilderPage({ onCategoryChanged }: { onCategoryChanged?:
                   <p className="text-gray-500 font-medium">Adapte le formulaire produit et les filtres boutique.</p>
                 </div>
               </div>
-              <button
+              <button aria-label="Fermer"
                 type="button"
                 onClick={() => setQuickAttrCategory(null)}
                 className="text-gray-400 hover:text-gray-700"

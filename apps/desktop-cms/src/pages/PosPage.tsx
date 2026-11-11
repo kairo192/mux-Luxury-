@@ -147,7 +147,7 @@ const Keypad: React.FC<{
         <button type="button" onClick={() => press("0")} className={keyCls}>
           0
         </button>
-        <button type="button" onClick={() => press("del")} className={`${keyCls} text-[#B91C1C]`}>
+        <button aria-label="Effacer le dernier chiffre" type="button" onClick={() => press("del")} className={`${keyCls} text-[#B91C1C]`}>
           <Delete className="w-7 h-7" />
         </button>
       </div>
@@ -960,7 +960,7 @@ export const PosPage: React.FC<{ onInventoryUpdated?: () => void }> = ({ onInven
                 <div className="bg-white p-4 rounded-3xl border border-gray-200">
                   <div className="flex items-center justify-between mb-2">
                     <h4 className="font-bold text-[#063D2E] text-base">Résultats</h4>
-                    <button type="button" onClick={() => setSearchResults([])} className="text-gray-400 hover:text-gray-700">
+                    <button aria-label="Effacer les résultats" type="button" onClick={() => setSearchResults([])} className="text-gray-400 hover:text-gray-700">
                       <X className="w-5 h-5" />
                     </button>
                   </div>
@@ -1003,7 +1003,7 @@ export const PosPage: React.FC<{ onInventoryUpdated?: () => void }> = ({ onInven
               <div className="bg-white p-4 rounded-3xl border border-gray-200">
                 <div className="flex items-center justify-between mb-2">
                   <h4 className="font-bold text-[#063D2E] text-base">Ventes récentes</h4>
-                  <button type="button" onClick={loadRecentSales} className="w-10 h-10 rounded-xl flex items-center justify-center text-gray-400 hover:text-[#063D2E] active:scale-95">
+                  <button aria-label="Actualiser" type="button" onClick={loadRecentSales} className="w-10 h-10 rounded-xl flex items-center justify-center text-gray-400 hover:text-[#063D2E] active:scale-95">
                     <RefreshCw className="w-5 h-5" />
                   </button>
                 </div>

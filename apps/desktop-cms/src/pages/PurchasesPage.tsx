@@ -637,7 +637,7 @@ export function PurchasesPage({ onInventoryUpdated }: { onInventoryUpdated?: () 
             <h4 className="text-base font-serif font-bold text-[#063D2E]">
               {t("purchases.edit_sup_title", { id: editingSupplier.id, name: editingSupplier.name })}
             </h4>
-            <button
+            <button aria-label="Fermer"
               type="button"
               onClick={() => setEditingSupplier(null)}
               className="p-1 rounded-lg text-gray-500 hover:text-black transition"
@@ -796,7 +796,7 @@ export function PurchasesPage({ onInventoryUpdated }: { onInventoryUpdated?: () 
                   <p className="text-[11px] text-[#E8D4A5]/80">{t("purchases.modal_receive_sub", { ref: poToReceive.reference })}</p>
                 </div>
               </div>
-              <button
+              <button aria-label="Fermer"
                 type="button"
                 onClick={() => setPoToReceive(null)}
                 className="w-8 h-8 rounded-full bg-white/10 hover:bg-white/20 text-[#E8D4A5] flex items-center justify-center transition"
@@ -861,7 +861,7 @@ export function PurchasesPage({ onInventoryUpdated }: { onInventoryUpdated?: () 
                   <p className="text-[11px] text-[#E8D4A5]/80">{t("purchases.modal_delete_sup_sub")}</p>
                 </div>
               </div>
-              <button
+              <button aria-label="Fermer"
                 type="button"
                 onClick={() => setSupplierToDelete(null)}
                 className="w-8 h-8 rounded-full bg-white/10 hover:bg-white/20 text-[#E8D4A5] flex items-center justify-center transition"

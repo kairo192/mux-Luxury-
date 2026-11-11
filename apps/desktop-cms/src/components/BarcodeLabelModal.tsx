@@ -238,7 +238,7 @@ export const BarcodeLabelModal: React.FC<{
                   <div className="flex items-center justify-between gap-3">
                     <span className="font-bold text-[#063D2E]">{t("barcode_modal.label_qty")}</span>
                     <div className="flex items-center gap-1">
-                      <button
+                      <button aria-label="Diminuer"
                         type="button"
                         onClick={() => setCopies(c => Math.max(1, c - 1))}
                         className="w-10 h-10 rounded-xl bg-gray-100 text-[#063D2E] font-bold flex items-center justify-center active:scale-95"
@@ -251,7 +251,7 @@ export const BarcodeLabelModal: React.FC<{
                         onChange={(e) => setCopies(Math.max(1, Math.min(100, Number(e.target.value) || 1)))}
                         className="w-16 h-10 text-center rounded-xl border-2 border-gray-200 font-mono font-bold focus:border-[#063D2E] outline-none"
                       />
-                      <button
+                      <button aria-label="Augmenter"
                         type="button"
                         onClick={() => setCopies(c => Math.min(100, c + 1))}
                         className="w-10 h-10 rounded-xl bg-gray-100 text-[#063D2E] font-bold flex items-center justify-center active:scale-95"

@@ -25,6 +25,10 @@ class TestPostgresCompat(unittest.TestCase):
         self.assertEqual(t("SELECT COALESCE(MAX(display_order), 0) FROM banners")[0],
                          "SELECT COALESCE(MAX(display_order), 0) FROM banners")
 
+    def test_like_is_case_insensitive_like_sqlite(self):
+        self.assertEqual(t("SELECT 1 FROM customers WHERE full_name LIKE ? OR phone NOT LIKE ?")[0],
+                         "SELECT 1 FROM customers WHERE full_name ILIKE %s OR phone NOT ILIKE %s")
+
     def test_returning_id_only_for_tables_with_an_id(self):
         self.assertTrue(t("INSERT INTO banners (title_fr) VALUES (?)")[1])
         for table in TABLES_WITHOUT_ID:

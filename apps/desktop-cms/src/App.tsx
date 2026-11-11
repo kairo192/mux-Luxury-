@@ -295,6 +295,25 @@ export default function App() {
   // restoreReport state removed with the admin-facing backup page.
   const [selectedInvoice, setSelectedInvoice] = useState<any | null>(null);
   const closeInvoice = React.useCallback(() => setSelectedInvoice(null), []);
+  // Escape closes the top-most open window, on every screen: it presses that
+  // window's "Fermer" button. Confirmation / message boxes handle Escape
+  // themselves and are left alone.
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key !== "Escape") return;
+      if (document.querySelector('[aria-labelledby="active-confirm-title"], [aria-labelledby="active-message-box-title"]')) return;
+      const overlays = Array.from(document.querySelectorAll<HTMLElement>("div.fixed.inset-0")).filter((el) => el.offsetParent !== null || el.getClientRects().length > 0);
+      const top = overlays[overlays.length - 1];
+      const close = top?.querySelector<HTMLButtonElement>('button[aria-label="Fermer"]');
+      if (close) {
+        e.stopPropagation();
+        e.preventDefault();
+        close.click();
+      }
+    };
+    document.addEventListener("keydown", onKey, true);
+    return () => document.removeEventListener("keydown", onKey, true);
+  }, []);
   useEscapeToClose(closeInvoice, Boolean(selectedInvoice));
   const [loadingWorkspace, setLoadingWorkspace] = useState(false);
   const [selectedProductIds, setSelectedProductIds] = useState<number[]>([]);
@@ -319,7 +338,6 @@ export default function App() {
   const [productEditorOpen, setProductEditorOpen] = useState(false);
   const [productEditorTarget, setProductEditorTarget] = useState<any | null>(null);
   const [productToDelete, setProductToDelete] = useState<any | null>(null);
-  const [forceDeleteProduct, setForceDeleteProduct] = useState(false);
   const [productFilterTab, setProductFilterTab] = useState<"all" | "published" | "draft" | "archived" | "low_stock">("all");
   const [deletingProduct, setDeletingProduct] = useState(false);
 
@@ -653,11 +671,12 @@ export default function App() {
     setDeletingProduct(true);
     setError("");
     try {
-      const res = await DesktopCmsApi.deleteProduct(productToDelete.id, hard, hard && forceDeleteProduct);
+      const res = await DesktopCmsApi.deleteProduct(productToDelete.id, hard, false);
       if (res?.archived && !res?.deleted && hard) {
-        const warnMsg = res.message || "Ce produit possède des commandes rattachées et a été archivé au lieu d'être supprimé.";
-        setError(warnMsg);
-        notifyClientError(warnMsg, "Produit archivé (commandes existantes)");
+        const infoMsg = res.message || "Cet article a un historique de ventes ou d'achats : il a été archivé au lieu d'être supprimé.";
+        setSuccessMsg(infoMsg);
+        notifyClientWarning("Article archivé (historique conservé)", infoMsg);
+        setProductToDelete(null);
       } else {
         const okMsg =
           res?.message ||
@@ -667,7 +686,6 @@ export default function App() {
         setSuccessMsg(okMsg);
         notifyClientSuccess(hard ? "Produit supprimé" : "Produit archivé", okMsg);
         setProductToDelete(null);
-        setForceDeleteProduct(false);
       }
       await loadAllWorkspaceData();
     } catch (err: any) {
@@ -1212,9 +1230,9 @@ export default function App() {
                 <p className="text-[11px] text-[#E8D4A5]">Gestion du catalogue — Maison Mus Luxury</p>
               </div>
             </div>
-            <button
+            <button aria-label="Fermer"
               type="button"
-              onClick={() => { setProductToDelete(null); setForceDeleteProduct(false); setError(""); }}
+              onClick={() => { setProductToDelete(null); setError(""); }}
               disabled={deletingProduct}
               className="w-8 h-8 rounded-full bg-white/10 hover:bg-white/20 text-white font-bold flex items-center justify-center transition"
             >
@@ -1275,17 +1293,11 @@ export default function App() {
                       Option 1 : Suppression Définitive de la Base
                     </strong>
                     <span className="text-[11px] text-red-700 leading-relaxed block mt-0.5">
-                      Supprime intégralement la fiche, ses variantes et images de la base de données.
+                      Seulement pour un article jamais vendu ni acheté (créé par erreur). S'il a déjà été vendu
+                      (en ligne ou en magasin) ou acheté à un fournisseur, il est archivé à la place : les factures,
+                      rapports et comptes fournisseurs restent exacts. Aucune commande n'est jamais effacée.
                     </span>
-                    <label className="flex items-center gap-2 mt-2 pt-2 border-t border-red-200 text-red-900 cursor-pointer font-bold text-[11px]">
-                      <input
-                        type="checkbox"
-                        checked={forceDeleteProduct}
-                        onChange={(e) => setForceDeleteProduct(e.target.checked)}
-                        className="rounded text-red-600 w-4 h-4"
-                      />
-                      <span>Forcer la suppression définitive (efface également les commandes tests rattachées)</span>
-                    </label>
+
                   </div>
                   <button
                     type="button"
@@ -1327,7 +1339,7 @@ export default function App() {
               <button
                 type="button"
                 disabled={deletingProduct}
-                onClick={() => { setProductToDelete(null); setForceDeleteProduct(false); setError(""); }}
+                onClick={() => { setProductToDelete(null); setError(""); }}
                 className="px-5 py-2 rounded-xl bg-gray-100 hover:bg-gray-200 text-gray-700 font-bold"
               >
                 Annuler
@@ -2049,7 +2061,7 @@ export default function App() {
                       className="pl-8 pr-3 py-1.5 border rounded-xl w-60 bg-[#F8F6F0] focus:bg-white focus:border-[#063D2E] outline-none transition"
                     />
                     {prodSearch && (
-                      <button
+                      <button aria-label="Effacer la recherche"
                         type="button"
                         onClick={() => setProdSearch("")}
                         className="absolute right-2.5 top-2 text-gray-400 hover:text-gray-700 text-xs font-bold"
@@ -2293,7 +2305,6 @@ export default function App() {
                                 type="button"
                                 onClick={() => {
                                   setProductToDelete(p);
-                                  setForceDeleteProduct(false);
                                   setError("");
                                 }}
                                 className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-red-50 text-red-700 border border-red-200 font-bold hover:bg-red-100 transition shadow-xs"
@@ -2338,7 +2349,7 @@ export default function App() {
                       <Archive className="w-3.5 h-3.5" />
                       <span>{t("catalog.bulk_archive")}</span>
                     </button>
-                    <button
+                    <button aria-label="Tout désélectionner"
                       type="button"
                       onClick={() => setSelectedProductIds([])}
                       className="p-1.5 rounded-lg text-white/60 hover:text-white transition"
@@ -2679,7 +2690,7 @@ export default function App() {
                   <h4 className="font-serif font-bold text-base text-[#063D2E]">
                     Facture COD #{selectedInvoice.order_reference} — {selectedInvoice.boutique_info?.name}
                   </h4>
-                  <button
+                  <button aria-label="Fermer"
                     type="button"
                     onClick={() => setSelectedInvoice(null)}
                     className="p-1 rounded-lg text-gray-500 hover:text-black transition"

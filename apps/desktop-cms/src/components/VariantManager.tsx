@@ -579,7 +579,7 @@ export function VariantManager({
                         <span>{v}</span>
                         {active && <Check className="w-3 h-3 text-[#D4AF62]" />}
                       </button>
-                      <button
+                      <button aria-label="Retirer cette valeur"
                         type="button"
                         onClick={() => removeCustomValue(axis.attr_key, v)}
                         className={`px-1.5 py-1 rounded-r-lg border border-l-0 text-xs transition ${
@@ -822,7 +822,7 @@ export function VariantManager({
             <button type="button" onClick={() => runBulk("deactivate")} className="px-2.5 py-1 rounded-lg bg-amber-50 border border-amber-300 font-bold text-amber-800">
               {t("variant_mgr.bulk_deactivate")}
             </button>
-            <button type="button" onClick={() => setSelectedIds([])} className="ml-auto p-1 rounded text-gray-500 hover:text-black">
+            <button aria-label="Tout désélectionner" type="button" onClick={() => setSelectedIds([])} className="ml-auto p-1 rounded text-gray-500 hover:text-black">
               <X className="w-3.5 h-3.5" />
             </button>
           </div>

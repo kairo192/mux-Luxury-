@@ -22,15 +22,20 @@ TABLES_WITHOUT_ID = frozenset({"role_permissions", "store_settings", "schema_mig
 #   substr(col, a, b)  -> substr(CAST(col AS TEXT), a, b)   (timestamps → "YYYY-MM-DD ...")
 #   datetime(x)        -> CAST(x AS TIMESTAMP)
 #   MAX(a, b) (scalar) -> GREATEST(a, b)   (the 1-argument aggregate MAX is untouched)
+#   LIKE               -> ILIKE (case-insensitive, as on SQLite)
 _SUBSTR_RE = re.compile(r"\bsubstr\(\s*([A-Za-z_][A-Za-z0-9_.]*)\s*,", re.I)
 _DATETIME_RE = re.compile(r"\bdatetime\(\s*([A-Za-z_][A-Za-z0-9_.]*|%s)\s*\)", re.I)
 _SCALAR_MAX_RE = re.compile(r"\bMAX\(\s*([^(),]+?)\s*,\s*([^(),]+?)\s*\)", re.I)
+# SQLite's LIKE ignores letter case; PostgreSQL's does not → ILIKE, so a
+# search for "karim" finds "Karim" on the server too.
+_LIKE_RE = re.compile(r"\b(NOT\s+)?LIKE\b", re.I)
 
 
 def _translate_sqlite_functions(pg_sql: str) -> str:
     pg_sql = _SUBSTR_RE.sub(r"substr(CAST(\1 AS TEXT),", pg_sql)
     pg_sql = _DATETIME_RE.sub(r"CAST(\1 AS TIMESTAMP)", pg_sql)
     pg_sql = _SCALAR_MAX_RE.sub(r"GREATEST(\1, \2)", pg_sql)
+    pg_sql = _LIKE_RE.sub(lambda m: (m.group(1) or "") + "ILIKE", pg_sql)
     return pg_sql
 
 
