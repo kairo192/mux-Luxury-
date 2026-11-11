@@ -1,5 +1,6 @@
 import { readDraft, writeDraft, clearDraft } from "./utils/draftStorage";
 import { useT, LanguageToggle } from "./i18n";
+import { CmsSidebar } from "./components/CmsSidebar";
 import {
   ClientNotificationItem,
   ClientConfirmRequest,
@@ -1367,6 +1368,13 @@ export default function App() {
     low_stock: products.filter((p) => (p.total_stock ?? 0) <= 3 && p.status !== "archived").length,
   };
 
+  // Live counters shown on the sidebar — derived from data already loaded.
+  const navBadges = {
+    orders: orders.filter((o) => o.status === "new" || o.status === "pending_confirmation").length,
+    // Same per-variant figure as the dashboard's "stock faible" + "ruptures" cards.
+    low_stock: Number(dashboard?.low_stock_variants || 0) + Number(dashboard?.out_of_stock_variants || 0),
+  };
+
   const filteredProducts = products.filter((p) => {
     const matchesSearch =
       !prodSearch ||
@@ -1379,11 +1387,11 @@ export default function App() {
   });
 
   return (
-    <div className="min-h-screen bg-[#F8F6F0] text-[#202923] flex flex-col">
+    <div className="h-screen bg-[#F8F6F0] text-[#202923] flex flex-col overflow-hidden">
       {renderClientNotificationCenter()}
       {renderDeleteProductModal()}
       {/* Top Header */}
-      <header className="bg-gradient-to-r from-[#011C15] via-[#063D2E] to-[#02291F] text-[#D4AF62] px-6 py-3.5 flex flex-wrap justify-between items-center gap-4 border-b border-[#D4AF62]/30 shadow-md">
+      <header className="shrink-0 bg-gradient-to-r from-[#011C15] via-[#063D2E] to-[#02291F] text-[#D4AF62] px-6 py-3.5 flex flex-wrap justify-between items-center gap-4 border-b border-[#D4AF62]/30 shadow-md">
         <div className="flex items-center gap-3.5">
           <div className="w-10 h-10 rounded-2xl bg-gradient-to-br from-[#D4AF62] via-[#E8D4A5] to-[#C59E50] p-0.5 shadow-luxe-gold flex items-center justify-center shrink-0">
             <div className="w-full h-full rounded-[14px] bg-[#02291F] flex items-center justify-center">
@@ -1445,55 +1453,10 @@ export default function App() {
         </div>
       </header>
 
-      {/* Navigation Tabs */}
-      <nav className="bg-[#063D2E] text-[#E8D4A5] px-4 py-2 flex items-center gap-1.5 overflow-x-auto text-xs font-bold border-b border-[#D4AF62]/30 shadow-inner whitespace-nowrap scrollbar-thin scrollbar-thumb-[#D4AF62]/30">
-        {[
-          { id: "dashboard", label: t("sidebar.dashboard"), icon: LayoutDashboard },
-          { id: "business", label: t("sidebar.business_intelligence"), icon: TrendingUp },
-          { id: "pos", label: t("sidebar.pos"), icon: ScanLine },
-          { id: "products", label: t("sidebar.products"), icon: ShoppingBag },
-          { id: "categories", label: t("sidebar.categories"), icon: Tags },
-          { id: "purchases", label: t("sidebar.purchases"), icon: PackageCheck },
-          { id: "inventory", label: t("sidebar.inventory"), icon: Boxes },
-          { id: "orders", label: t("sidebar.orders"), icon: FileText },
-          { id: "customers", label: t("sidebar.customers"), icon: Users },
-          { id: "suppliers", label: t("sidebar.suppliers"), icon: Truck },
-          { id: "expenses", label: t("sidebar.expenses"), icon: Receipt },
-          { id: "treasury", label: t("sidebar.treasury"), icon: Landmark },
-          { id: "accounting", label: t("sidebar.accounting"), icon: TrendingUp },
-          { id: "delivery_wilayas", label: t("sidebar.delivery_wilayas"), icon: Truck },
-          { id: "content", label: t("sidebar.content"), icon: Palette },
-          { id: "devices", label: t("sidebar.devices"), icon: HardDrive },
-          { id: "users", label: t("sidebar.users_roles"), icon: Users },
-          { id: "inventory_count", label: t("sidebar.inventory_count"), icon: Boxes },
-          { id: "sales_report", label: t("sidebar.sales_report"), icon: FileText },
-          { id: "fiscal", label: t("sidebar.fiscal_settings"), icon: Landmark },
-          { id: "audit", label: t("sidebar.audit_log"), icon: CheckSquare },
-          { id: "low_stock", label: t("sidebar.low_stock"), icon: AlertTriangle },
-          { id: "expense_report", label: t("sidebar.expense_report"), icon: Receipt },
-          { id: "stock_movements", label: t("sidebar.stock_movements"), icon: Boxes },
-          { id: "treasury_report", label: t("sidebar.treasury_report"), icon: Landmark },
-          { id: "backups", label: t("sidebar.backups"), icon: ShieldCheck },
-        ].map((item) => {
-          const Icon = item.icon;
-          const isActive = activeTab === item.id;
-          return (
-            <button
-              key={item.id}
-              type="button"
-              onClick={() => setActiveTab(item.id as CmsTab)}
-              className={`group inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl transition-all duration-200 shrink-0 ${
-                isActive
-                  ? "bg-gradient-to-r from-[#D4AF62] to-[#E8D4A5] text-[#02291F] font-extrabold shadow-luxe-gold scale-[1.02]"
-                  : "hover:bg-white/10 text-[#E8D4A5] hover:text-white"
-              }`}
-            >
-              <Icon className={`w-3.5 h-3.5 shrink-0 transition-transform ${isActive ? "text-[#02291F]" : "text-[#D4AF62] group-hover:scale-110"}`} />
-              <span>{item.label}</span>
-            </button>
-          );
-        })}
-      </nav>
+      {/* Sidebar + scrolling workspace */}
+      <div className="flex flex-1 min-h-0">
+      <CmsSidebar activeTab={activeTab} onSelect={(id) => setActiveTab(id as CmsTab)} badges={navBadges} />
+      <div className="flex-1 min-w-0 overflow-y-auto flex flex-col">
 
       {/* Global Status / Error Banner */}
       <div className="max-w-7xl w-full mx-auto px-6 pt-4 space-y-2">
@@ -2816,6 +2779,8 @@ export default function App() {
           <DeliveryNoteModal orderId={deliveryNoteOrderId} onClose={() => setDeliveryNoteOrderId(null)} />
         )}
     </main>
+      </div>
+      </div>
     </div>
   );
 }
