@@ -7,7 +7,26 @@
 
 ---
 
-## 0d. SHOP CONTENT FROM CMS, NO FAKE DATA (2026-11-11, latest)
+## 0e. EVERY CMS SCREEN TESTED ONE BY ONE (2026-11-11, latest)
+Commits `a54a23f` → `e61c4a8`, details in `docs/WORK_SUMMARY_2026-11-11.md` §17. Rules now in force:
+- **Permissions**: `finance:read` (owner, Administrateur) guards every money endpoint; permissions,
+  role and `is_active` are read from the DB on each request (`get_current_admin`), not from the token.
+- **Time**: DB stores UTC text without zone. Server: `SHOP_TZ` / `_shop_today()` / `_utc_range_for_days()`
+  (half-open `created_at >= ? AND created_at < ?`) / `_shop_day_of()` (group by `substr(created_at,1,13)`
+  then fold) / `_csv_date()` in shop time. PostgreSQL sessions use `timezone=UTC`. CMS: always
+  `serverDate()` / `formatServerDateTime()` / `localDateIso()` from `utils/serverDate.ts`, never
+  `new Date(server_string)` or `toISOString().slice(0,10)`.
+- **Audit names**: add every new `log_audit` action/entity to `_AUDIT_ACTION_FR` / `_AUDIT_ENTITY_FR`
+  (a test fails otherwise).
+- **Accounting**: sales = orders not cancelled/returned + POS sales − refunds; charges = all expenses
+  (paid or pending). `accounting_ledger` holds purchases/expenses only. CSV: `/admin/accounting/export.csv?part=`.
+- **Devices**: printer tests run in the desktop app (`testPrint` / `testPrintLabel`) and report
+  `{success, error}`; the server never probes private LAN addresses as a failure.
+- **Products** with history are archived, never hard-deleted; treasury rows are written for POS
+  sales/refunds, COD delivered/returned, expenses, purchases and manual entries.
+- No hard-coded `127.0.0.1` in CMS calls: use `getApiBaseUrl()` / `adminFetch`.
+
+## 0d. SHOP CONTENT FROM CMS, NO FAKE DATA (2026-11-11)
 - Storefront home is driven by `GET /api/v1/store/layout` (settings + ALL homepage_sections with
   `is_active` + active banners). Fixed promo cards / hero texts / contacts were removed from
   `apps/storefront/index.html`: see `renderHero()`, `renderPromos()`, `renderFooterCollections()`,

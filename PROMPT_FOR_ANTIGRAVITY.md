@@ -56,7 +56,7 @@ cd ..\..\..
 - Push the merge: `git push origin feat/pos-core-cash-register`
 
 ## Part B. Verify on real Windows (things the cloud could not test)
-1. **Backend tests** (from `backend`): `python -m unittest discover -s tests`. Expected: 249 tests,
+1. **Backend tests** (from `backend`): `python -m unittest discover -s tests`. Expected: 295 tests,
    **all passing** on this PC (the 4 `@babel/core` failures only happen in the cloud container). Report
    any failure with its output; do not skip or delete tests.
 2. **CMS build:** `cd apps\desktop-cms; npm run build` then `npm run tauri dev`.
@@ -70,6 +70,11 @@ cd ..\..\..
      NOT come back; the **Archivées** tab shows the archived one with **Restaurer**.
    - **Sauvegardes & Sécurité → Base de données & sauvegardes:** the panel loads (SQLite on the PC),
      **Sauvegarder maintenant** works.
+   - **Appareils → Tester** on a receipt printer (Windows printer name filled in): a real test ticket
+     prints and the status becomes "OK"; unplug it and test again → a clear error, status "Erreur".
+     **Impr. test** asks whether the ticket came out and records the answer.
+   - **Times:** a sale made now shows the Windows clock time (not 1 hour earlier) in Commandes,
+     Trésorerie and Journal d'audit.
 4. **Dry-run the PowerShell script syntax** (no keys created yet):
    `powershell -NoProfile -Command "$null = [ScriptBlock]::Create((Get-Content -Raw infrastructure\scripts\setup-github-secrets.ps1)); 'syntax OK'"`
    Fix any syntax error you find, commit, push.

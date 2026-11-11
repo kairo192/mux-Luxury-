@@ -280,10 +280,34 @@ can be intercepted. Recovery happens on the server, so only someone with access 
    ```
    They type the new password twice (hidden, at least 10 characters). The account is re-activated,
    signed out of every PC, and the action is written to **Journal d'audit**
-   (`reset_admin_password_server`).
+   (« Mot de passe réinitialisé (commande serveur) »).
 3. Log in with the new password and change it if someone else typed it.
 
 Keep the owner password in a password manager.
+
+## 7c. Good to know when using the CMS (checked screen by screen, 11 Nov 2026)
+
+- **Who sees the money.** Only the owner and the *Administrateur* role see revenue, margins,
+  accounting, treasury, expenses and purchase costs. A cashier sees the till, customers and devices.
+  A role change applies immediately; a deactivated account is refused at once.
+- **Days and times are Algeria time.** "Aujourd'hui", "Ce mois-ci", the reports and the CSV files use
+  the shop's days (an order at 00:30 counts on that day). Times are stored in UTC on the server and shown
+  in local time. The setting is `SHOP_TIMEZONE` in the server `.env` (default `Africa/Algiers`; leave it).
+- **Charges in the accounts.** An expense counts from the day it is recorded, paid or still "à
+  régler" (the unpaid part is shown apart). Comptabilité and Analytique give the same result.
+  The **CSV** button in Comptabilité exports the tab you are looking at.
+- **"Journal achats & dépenses"** (Comptabilité) lists the accounting entries of supplier purchases and
+  expenses. Sales are in the *Compte de résultat*, the reports and *Trésorerie*.
+- **Testing a printer.** Use **Tester** in *Appareils* on the shop PC (desktop app): it prints a real
+  ticket or label and records the result. The online server cannot see the shop's network, so a test
+  from a browser elsewhere only says to test from the shop PC. **Impr. test** uses Windows printing and
+  asks you whether the ticket came out.
+- **Receipt numbers.** The prefixes in *Paramètres fiscaux* (sale, refund, inventory) are used for every
+  new document.
+- **Journal d'audit.** Every action has a French name. The search understands French words
+  ("connexion", "caisse", "dépense"…) and names or e-mails of the person.
+- **Products with history are never deleted.** A product that was sold or bought is archived, so past
+  orders stay intact. "Réactiver" puts it back on the shop and at the till.
 
 ## 8. Keys and passwords — status
 

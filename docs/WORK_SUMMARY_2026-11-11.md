@@ -312,11 +312,39 @@ business dashboard). All 269 tests pass on SQLite and on PostgreSQL 16 (except t
 
 ---
 
+## 17. Every CMS screen, every action, one by one (production mode, PostgreSQL)
+
+Method: API in **production** mode on PostgreSQL 16, CMS in a real browser (Playwright, Algiers time
+zone). On each screen every button, form, filter, export and dialog was used, the result checked on the
+screen **and** in the database, then fixed and re-tested. One commit per screen group.
+
+| Screen | Problems found → fixed |
+|---|---|
+| Commandes (`a54a23f`) | WhatsApp buttons said "envoyé" but nothing was sent → the CMS opens WhatsApp on the PC with the message written; the server records "prepared", never "delivered". Cards show items, address, note, discount; only allowed status changes; cancel/return asks first |
+| Point de vente (`9cfaa3a`) | Refunds paid back the **list** price, ignoring discounts → each unit refunded at its share of what was paid. Change computed from the pre-discount total → fixed. Open register showed 0 sales → live totals |
+| Clients & Produits (`ea3216e`) | "Forcer" on a product **deleted customer orders** → products with history are archived, never deleted. "Réactiver" left the product hidden → really visible again. Customer totals counted cancelled orders → recomputed. PostgreSQL search was case-sensitive → ILIKE |
+| Catégories (`5394ce9`) | Photos were typed file paths or example photos → upload field. New categories/products got invented photos → empty. Deleting an attribute used by products was silently forced → explained and confirmed; variant attributes protected |
+| Stock, inventaire, rapports (`1328509`) | Treasury ignored till sales, refunds and delivered COD → recorded (with an audited one-time catch-up). Applying a stock count erased sales made after counting → applies the gap. CSV files open correctly in French Excel |
+| Achats, fournisseurs, dépenses, trésorerie (`c245f1f`) | Purchases always went to the first variant → variant selector. Bank-paid expenses could not be saved; unpaid expenses could never be paid; deleting a paid expense left its money out; every manual treasury entry failed → all fixed, transfers recorded on both accounts |
+| Utilisateurs & rôles (`35d3ee7`) | **A cashier could read accounting, margins, treasury and purchase costs** → new `finance:read` permission (owner, Administrateur) on 18 endpoints. Permissions were frozen in the login token → read live; a deactivated account is refused at once |
+| Livraison & Wilayas (`222eb3a`) | A stop-desk switched off in the CMS was still offered by the shop (order failed at the end) → greyed out, never an invented price |
+| Paramètres fiscaux, Appareils, Journal d'audit (`8fba426`) | Receipt/refund/inventory prefixes were saved but never used → used. "Tester" a printer asked the **cloud server** to reach a shop-LAN address (always "error") → the desktop app prints a real test and reports it; the server says "test from the shop PC" for LAN addresses. "Impr. test" recorded success blindly → asks if the ticket came out. Audit log showed raw codes → French names, French search, search by person |
+| Times (`8fba426`, `507596e`) | Stored UTC times were shown as local (**1 hour early**) → fixed on every screen, 24-hour format. Days, "today", "this month" and reports used the UTC date: an order at 00:30 in Algiers counted on the previous day → shop days (`SHOP_TIMEZONE`, default `Africa/Algiers`). Last second of each day was dropped on PostgreSQL → half-open ranges. CSV times in shop time |
+| Tableau de bord, Analytique, Comptabilité (`e61c4a8`) | Infrastructure card was fixed text ("SQLite WAL…", false on the server) → real engine and failed backups. "Nouveau Produit" did not open the form. **Comptabilité and Analytique gave different net profits** (unpaid expenses counted in one only) → same rule everywhere, unpaid part shown. The accounting CSV exported the orders list from a hard-coded `127.0.0.1` address (broken on the VPS) → exports the open tab through the configured server. The "Grand livre" only holds purchases/expenses → renamed "Journal achats & dépenses" |
+| Sauvegardes & Sécurité | Backup now, list, refresh, "Créer une base vide" dialog (cancelled): all correct, no change needed |
+
+New tests this round: `test_product_lifecycle.py`, `test_roles_finance.py`, `test_shop_timezone.py`, plus
+refund, treasury, expense, transfer, purchase-variant, device, audit-label (fails if an audited action has
+no French name) and accounting-export tests. **295 tests** pass on SQLite and PostgreSQL 16 (the 4
+`@babel/core` ones pass with the substitute compiler).
+
+---
+
 ## Verification
 
 | Check | Result |
 |---|---|
-| Backend tests | 269 run on SQLite and on PostgreSQL 16 (8 new in round 14, 3 in round 15, 7 for backups/categories). Only 4 failures, all caused by `@babel/core` missing in the cloud container; those 4 pass with a substitute TypeScript compiler and pass in CI. |
+| Backend tests | 295 run on SQLite and on PostgreSQL 16 (26 new in round 17). Only 4 failures, all caused by `@babel/core` missing in the cloud container; those 4 pass with a substitute TypeScript compiler and pass in CI. |
 | CMS TypeScript + build | OK |
 | Rust (`cargo check`) | OK |
 | Browser tests (Playwright) | Notifications, message box queue, bell, update dialog, new-order alert, Arabic layout, category delete + reload, archived tab, database panel, backup, reset: all OK |
