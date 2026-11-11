@@ -82,6 +82,7 @@ import {
   Users,
 } from "lucide-react";
 import { HomepageContentPanel } from "./components/HomepageContentPanel";
+import { movementReasonLabel } from "./utils/movementReasons";
 import { RevenueTrendChart, OrderStatusDistributionChart, InventoryHealthWidget } from "./components/CmsCharts";
 import { DesktopCmsApi, restoreSessionFromOsKeychain, getApiBaseUrl, configureApiBaseUrl, mediaUrl } from "./api/adminClient";
 import { CategoryBuilderPage } from "./pages/CategoryBuilderPage";
@@ -596,9 +597,11 @@ export default function App() {
       if (res?.user) {
         setUser(res.user);
       }
-      const okMsg = `Accès propriétaire configuré avec succès. Code de secours sécurisé : ${res.emergency_code_backup}. Vos accès sont désormais verrouillés.`;
+      const okMsg =
+        "Compte propriétaire créé. Gardez votre mot de passe dans un gestionnaire de mots de passe : " +
+        "en cas d'oubli, il est réinitialisé sur le serveur par la personne qui gère le VPS (guide d'exploitation, § Mot de passe oublié).";
       setSuccessMsg(okMsg);
-      notifyClientSuccess("Initialisation Propriétaire Verrouillée", okMsg, true);
+      notifyClientSuccess("Compte propriétaire créé", okMsg, true);
     } catch (err: any) {
       const tr = notifyClientError(err, "Initialisation du propriétaire refusée");
       setError(tr.message);
@@ -2388,8 +2391,8 @@ export default function App() {
                       <th className="p-2">ID</th>
                       <th className="p-2">{t("low_stock.th_product")}</th>
                       <th className="p-2">{t("inventory_count.th_gap")}</th>
-                      <th className="p-2">{t("inventory_count.th_counted")}</th>
-                      <th className="p-2">{t("stock_writeoff.th_reason")}</th>
+                      <th className="p-2">{t("inventory_report.th_before_after")}</th>
+                      <th className="p-2">{t("inventory_report.th_reason")}</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y">
@@ -2399,7 +2402,7 @@ export default function App() {
                         <td className="p-2 font-bold">{m.product_name} ({m.variant_title})</td>
                         <td className="p-2 font-extrabold">{m.change_qty > 0 ? `+${m.change_qty}` : m.change_qty}</td>
                         <td className="p-2 font-mono">{m.previous_qty} → {m.new_qty}</td>
-                        <td className="p-2">{m.reason}</td>
+                        <td className="p-2">{movementReasonLabel(m.reason)}</td>
                       </tr>
                     ))}
                   </tbody>

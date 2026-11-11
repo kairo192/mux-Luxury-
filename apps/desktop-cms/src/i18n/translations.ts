@@ -687,6 +687,7 @@ const fr: Dict = {
   "inventory_report.th_date": "Date",
   "inventory_report.th_variant": "Variante",
   "inventory_report.th_reason": "Motif",
+  "inventory_report.th_before_after": "Avant → après",
   "inventory_report.th_delta": "Δ",
   "inventory_report.th_new_qty": "Nouveau",
   "inventory_report.no_items": "Aucune écriture.",
@@ -1086,10 +1087,10 @@ const fr: Dict = {
 
   // ----- accounting
   "accounting.title": "Comptabilité & Bilan Périodique",
-  "accounting.subtitle": "Rapprochement des ventes, achats, TVA et marges nettes",
+  "accounting.subtitle": "Depuis l'ouverture : ventes en ligne + magasin, coût d'achat, dépenses et résultat (commandes annulées ou retournées exclues)",
   "accounting.gross_sales": "Ventes Brutes",
   "accounting.cost_of_goods": "Coût d'Achat",
-  "accounting.net_margin": "Marge Nette",
+  "accounting.net_margin": "Marge unitaire",
   "accounting.vat_collected": "TVA Collectée",
 
   // ----- treasury
@@ -1900,6 +1901,7 @@ const en: Dict = {
   "inventory_report.th_date": "Date",
   "inventory_report.th_variant": "Variant",
   "inventory_report.th_reason": "Reason",
+  "inventory_report.th_before_after": "Before → after",
   "inventory_report.th_delta": "Δ",
   "inventory_report.th_new_qty": "New",
   "inventory_report.no_items": "No entries.",
@@ -2299,10 +2301,10 @@ const en: Dict = {
 
   // ----- accounting
   "accounting.title": "Accounting & Periodic Balance",
-  "accounting.subtitle": "Reconciliation of sales, purchases, VAT and net margins",
+  "accounting.subtitle": "Since opening: online + in-store sales, cost of goods, expenses and result (cancelled or returned orders excluded)",
   "accounting.gross_sales": "Gross Sales",
   "accounting.cost_of_goods": "Cost of Goods",
-  "accounting.net_margin": "Net Margin",
+  "accounting.net_margin": "Unit margin",
   "accounting.vat_collected": "VAT Collected",
 
   // ----- treasury
@@ -3113,6 +3115,7 @@ const ar: Dict = {
   "inventory_report.th_date": "التاريخ",
   "inventory_report.th_variant": "المتغير",
   "inventory_report.th_reason": "السبب",
+  "inventory_report.th_before_after": "قبل ← بعد",
   "inventory_report.th_delta": "Δ",
   "inventory_report.th_new_qty": "الجديد",
   "inventory_report.no_items": "لا توجد قيود.",
@@ -3512,10 +3515,10 @@ const ar: Dict = {
 
   // ----- accounting
   "accounting.title": "المحاسبة والميزانية الدورية",
-  "accounting.subtitle": "مطابقة المبيعات والمشتريات وضريبة القيمة المضافة وصافي الأرباح",
+  "accounting.subtitle": "منذ الافتتاح: مبيعات الإنترنت والمتجر، تكلفة الشراء، المصاريف والنتيجة (دون الطلبات الملغاة أو المرتجعة)",
   "accounting.gross_sales": "إجمالي المبيعات",
   "accounting.cost_of_goods": "تكلفة المشتريات",
-  "accounting.net_margin": "هامش الربح الصافي",
+  "accounting.net_margin": "هامش الوحدة",
   "accounting.vat_collected": "ضريبة القيمة المضافة المحصلة",
 
   // ----- treasury

@@ -31,6 +31,11 @@
   suite on PostgreSQL too (CI job "PostgreSQL 16"); write SQL valid on both (no bare GROUP BY with
   non-aggregated columns). Tests: `tests/test_pg_compat.py`.
 - Tests: `backend/tests/test_storefront_content.py`.
+- Round 16: "sale" = online order NOT IN ('cancelled','returned') everywhere money is counted;
+  `/admin/accounting/pnl` + `/products-profitability` include POS sales − refunds and use
+  `_UNIT_COST_SQL`; gross profit = revenue incl. delivery − COGS (same as dashboard/business).
+  No owner "emergency code" any more; recovery = `python -m app.admin_cli reset-password` (VPS).
+  `utils/movementReasons.ts` = labels for inventory_movements.reason.
 
 ## 0c. CMS PRODUCT EDITOR (2026-11-11)
 - `mediaUrl()` / `storefrontBaseUrl()` / `PLACEHOLDER_IMG` in `src/api/adminClient.ts`: ALWAYS wrap stored

@@ -3103,15 +3103,9 @@ def initialize_primary_owner(payload: OwnerInitializeInput, request: Request):
         )
         owner_id = cur.lastrowid
 
-        # Seed emergency recovery token tied to secondary emergency phone (or fallback)
-        emergency_code = f"EMERGENCY-{secrets.token_hex(6).upper()}"
-        code_hash = hashlib.sha256(emergency_code.encode("utf-8")).hexdigest()
-        recovery_phone = payload.emergency_phone or payload.whatsapp_phone or "+213000000000"
-        cur.execute(
-            """INSERT INTO admin_recovery_codes (admin_user_id, phone, code_hash, channel, max_attempts, expires_at)
-               VALUES (?, ?, ?, 'offline_emergency', 3, ?)""",
-            (owner_id, recovery_phone, code_hash, int(time.time()) + 86400 * 365)
-        )
+        # No "emergency code": nothing could ever use one (the WhatsApp
+        # recovery flow was removed). A forgotten password is reset on the
+        # server: `python -m app.admin_cli reset-password --email ...`.
 
         # Mark system as permanently initialized in database
         cur.execute(
@@ -3138,7 +3132,7 @@ def initialize_primary_owner(payload: OwnerInitializeInput, request: Request):
         return {
             "initialized": True,
             "message": "Super Administrator successfully provisioned. Setup is permanently locked.",
-            "emergency_code_backup": emergency_code,
+            "password_recovery": "server: python -m app.admin_cli reset-password --email <email>",
             "access_token": token,
             "user": {
                 "id": owner_id,
@@ -5021,140 +5015,123 @@ def admin_record_cash_movement(
 @app.get("/api/v1/admin/accounting/pnl")
 def admin_get_pnl_statement(admin: dict = Depends(require_permission("dashboard:read"))):
     """
-    Authoritative Financial Statement (Compte de Résultat & Analyse des Marges):
-    1. Chiffre d'Affaires Brut (Sales Revenue).
-    2. Frais de port collectés.
-    3. Coût d'Achat des Marchandises Vendues (COGS).
-    4. Marge Brute Réalisée (Gross Profit = Ventes - Coût Achat).
-    5. Taux de Marge Brute (%).
-    6. Dépenses d'Exploitation (Loyer, Salaires, Pub, Packaging).
-    7. Résultat Net d'Exploitation (Net Profit = Marge Brute - Dépenses).
-    8. Taux de Marge Nette (%).
+    Compte de résultat since the shop opened, BOTH channels:
+      revenue  = online merchandise + delivery fees + in-store sales − in-store refunds
+      COGS     = units sold × purchase cost (variant cost, else product cost)
+      gross    = revenue − COGS;  net = gross − paid operating expenses
+    Online sales = orders neither cancelled nor returned (a returned COD parcel
+    was never paid). Same rules as the business dashboard and sales report.
     """
     with db_session() as conn:
         cur = conn.cursor()
-        # All orders non-cancelled
+        sold = "status NOT IN ('cancelled', 'returned')"
         cur.execute(
-            """SELECT COUNT(*) AS count,
-                      COALESCE(SUM(subtotal_dzd), 0) AS subtotal_dzd,
+            f"""SELECT COUNT(*) AS count,
+                      COALESCE(SUM(total_dzd - delivery_fee_dzd), 0) AS merch_dzd,  -- after coupons
                       COALESCE(SUM(delivery_fee_dzd), 0) AS delivery_fee_dzd,
                       COALESCE(SUM(total_dzd), 0) AS total_dzd
-               FROM orders
-               WHERE status != 'cancelled'"""
+               FROM orders WHERE {sold}"""
         )
-        ord_stats = dict(cur.fetchone())
-
-        # Delivered (Collected) Orders
+        online = dict(cur.fetchone())
         cur.execute(
-            """SELECT COUNT(*) AS count,
-                      COALESCE(SUM(subtotal_dzd), 0) AS subtotal_dzd,
-                      COALESCE(SUM(total_dzd), 0) AS total_dzd
-               FROM orders
-               WHERE status = 'delivered'"""
+            """SELECT COUNT(*) AS count, COALESCE(SUM(total_dzd), 0) AS total_dzd
+               FROM orders WHERE status = 'delivered'"""
         )
-        deliv_stats = dict(cur.fetchone())
+        delivered = dict(cur.fetchone())
+        pos = {}
+        for kind in ("sale", "refund"):
+            cur.execute("SELECT COUNT(*) AS c, COALESCE(SUM(total_dzd), 0) AS t FROM pos_sales WHERE sale_type = ?", (kind,))
+            r = cur.fetchone()
+            pos[kind] = (int(r["c"]), int(r["t"]))
 
-        # Cost of Goods Sold (COGS) for all active orders
-        cur.execute(
-            """SELECT COALESCE(SUM(oi.quantity * COALESCE(p.purchase_cost_dzd, 0)), 0) AS cogs_total
-               FROM order_items oi
-               JOIN orders o ON o.id = oi.order_id
-               JOIN products p ON p.id = oi.product_id
-               WHERE o.status != 'cancelled'"""
-        )
-        cogs_all = int(cur.fetchone()["cogs_total"])
+        online_cogs = _scalar(cur, f"""SELECT COALESCE(SUM(oi.quantity * {_UNIT_COST_SQL}), 0) AS v
+            FROM order_items oi JOIN orders o ON o.id = oi.order_id
+            JOIN product_variants pv ON pv.id = oi.variant_id JOIN products p ON p.id = pv.product_id
+            WHERE o.{sold}""")
+        delivered_cogs = _scalar(cur, f"""SELECT COALESCE(SUM(oi.quantity * {_UNIT_COST_SQL}), 0) AS v
+            FROM order_items oi JOIN orders o ON o.id = oi.order_id
+            JOIN product_variants pv ON pv.id = oi.variant_id JOIN products p ON p.id = pv.product_id
+            WHERE o.status = 'delivered'""")
+        pos_cogs = {}
+        for kind in ("sale", "refund"):
+            pos_cogs[kind] = _scalar(cur, f"""SELECT COALESCE(SUM(psi.quantity * {_UNIT_COST_SQL}), 0) AS v
+                FROM pos_sale_items psi JOIN pos_sales ps ON ps.id = psi.sale_id
+                JOIN product_variants pv ON pv.id = psi.variant_id JOIN products p ON p.id = pv.product_id
+                WHERE ps.sale_type = ?""", (kind,))
+        units_online = _scalar(cur, f"""SELECT COALESCE(SUM(oi.quantity), 0) AS v FROM order_items oi
+            JOIN orders o ON o.id = oi.order_id WHERE o.{sold}""")
+        units_store = _scalar(cur, """SELECT COALESCE(SUM(CASE WHEN ps.sale_type = 'sale' THEN psi.quantity ELSE -psi.quantity END), 0) AS v
+            FROM pos_sale_items psi JOIN pos_sales ps ON ps.id = psi.sale_id""")
 
-        # Cost of Goods Sold (COGS) for delivered orders only
-        cur.execute(
-            """SELECT COALESCE(SUM(oi.quantity * COALESCE(p.purchase_cost_dzd, 0)), 0) AS cogs_deliv
-               FROM order_items oi
-               JOIN orders o ON o.id = oi.order_id
-               JOIN products p ON p.id = oi.product_id
-               WHERE o.status = 'delivered'"""
-        )
-        cogs_delivered = int(cur.fetchone()["cogs_deliv"])
-
-        # Total Operating Expenses
-        cur.execute("SELECT COALESCE(SUM(amount_dzd), 0) AS s FROM expenses WHERE payment_status = 'paid'")
-        total_expenses = int(cur.fetchone()["s"])
-
-        # Expenses by category breakdown
-        cur.execute("SELECT category, COALESCE(SUM(amount_dzd), 0) AS total_dzd, COUNT(*) AS count FROM expenses GROUP BY category")
+        total_expenses = _scalar(cur, "SELECT COALESCE(SUM(amount_dzd), 0) AS v FROM expenses WHERE payment_status = 'paid'")
+        cur.execute("SELECT category, COALESCE(SUM(amount_dzd), 0) AS total_dzd, COUNT(*) AS count FROM expenses WHERE payment_status = 'paid' GROUP BY category")
         expenses_by_cat = [dict(r) for r in cur.fetchall()]
 
-        # Financial Calculations (in DZD integers)
-        subtotal = int(ord_stats["subtotal_dzd"])
-        gross_profit_all = subtotal - cogs_all
-        gross_margin_pct_all = round((gross_profit_all / subtotal * 100), 1) if subtotal > 0 else 0.0
+        inv_val = _scalar(cur, f"""SELECT COALESCE(SUM(pv.stock_qty * {_UNIT_COST_SQL}), 0) AS v
+            FROM product_variants pv JOIN products p ON p.id = pv.product_id
+            WHERE pv.is_active = 1 AND p.deleted_at IS NULL AND p.status != 'archived' AND pv.stock_qty > 0""")
 
-        subtotal_deliv = int(deliv_stats["subtotal_dzd"])
-        gross_profit_delivered = subtotal_deliv - cogs_delivered
-        gross_margin_pct_deliv = round((gross_profit_delivered / subtotal_deliv * 100), 1) if subtotal_deliv > 0 else 0.0
-
-        net_profit_all = gross_profit_all - total_expenses
-        net_margin_pct_all = round((net_profit_all / subtotal * 100), 1) if subtotal > 0 else 0.0
-
-        net_profit_delivered = gross_profit_delivered - total_expenses
-
-        # Count total units sold across non-cancelled orders
-        cur.execute(
-            """SELECT COALESCE(SUM(oi.quantity), 0) AS total_units
-               FROM order_items oi
-               JOIN orders o ON o.id = oi.order_id
-               WHERE o.status != 'cancelled'"""
-        )
-        total_units_sold = int(cur.fetchone()["total_units"])
-
-        # Current total inventory valuation
-        cur.execute(
-            """SELECT COALESCE(SUM(pv.stock_qty * COALESCE(p.purchase_cost_dzd, 0)), 0) AS total_val
-               FROM product_variants pv
-               JOIN products p ON p.id = pv.product_id"""
-        )
-        inv_val = int(cur.fetchone()["total_val"])
+        online_merch = int(online["merch_dzd"])
+        delivery_fees = int(online["delivery_fee_dzd"])
+        store_net = pos["sale"][1] - pos["refund"][1]
+        merchandise = online_merch + store_net            # what the goods sold for
+        total_revenue = merchandise + delivery_fees        # everything collected
+        cogs = online_cogs + pos_cogs["sale"] - pos_cogs["refund"]
+        # Delivery fees collected are revenue (courier invoices are entered as
+        # expenses) — same figure as the business dashboard.
+        gross_profit = total_revenue - cogs
+        gross_pct = round(gross_profit / total_revenue * 100, 1) if total_revenue > 0 else 0.0
+        net_profit = gross_profit - total_expenses
+        net_pct = round(net_profit / total_revenue * 100, 1) if total_revenue > 0 else 0.0
+        delivered_profit = int(delivered["total_dzd"]) - delivered_cogs
 
         return {
-            "gross_revenue_dzd": subtotal,
-            "delivery_revenue_dzd": int(ord_stats["delivery_fee_dzd"]),
-            "total_revenue_dzd": int(ord_stats["total_dzd"]),
-            "cogs_dzd": cogs_all,
-            "gross_profit_dzd": gross_profit_all,
-            "gross_margin_percent": gross_margin_pct_all,
+            "gross_revenue_dzd": merchandise,
+            "delivery_revenue_dzd": delivery_fees,
+            "total_revenue_dzd": total_revenue,
+            "cogs_dzd": cogs,
+            "gross_profit_dzd": gross_profit,
+            "gross_margin_percent": gross_pct,
             "operating_expenses_dzd": total_expenses,
-            "net_operating_profit_dzd": net_profit_all,
-            "net_margin_percent": net_margin_pct_all,
-            "orders_count": int(ord_stats["count"]),
-            "units_sold": total_units_sold,
+            "net_operating_profit_dzd": net_profit,
+            "net_margin_percent": net_pct,
+            "orders_count": int(online["count"]),
+            "in_store_sales_count": pos["sale"][0],
+            "units_sold": units_online + units_store,
             "inventory_valuation_dzd": inv_val,
+            "period": "since_opening",
             "revenue": {
-                "total_sales_dzd": int(ord_stats["total_dzd"]),
-                "subtotal_merchandise_dzd": subtotal,
-                "delivery_fees_dzd": int(ord_stats["delivery_fee_dzd"]),
-                "orders_count": int(ord_stats["count"]),
-                "delivered_sales_dzd": int(deliv_stats["total_dzd"]),
-                "delivered_subtotal_dzd": subtotal_deliv,
-                "delivered_orders_count": int(deliv_stats["count"]),
+                "online_merchandise_dzd": online_merch,
+                "in_store_net_dzd": store_net,
+                "in_store_refunds_dzd": pos["refund"][1],
+                "subtotal_merchandise_dzd": merchandise,
+                "delivery_fees_dzd": delivery_fees,
+                "total_sales_dzd": total_revenue,
+                "orders_count": int(online["count"]),
+                "delivered_sales_dzd": int(delivered["total_dzd"]),
+                "delivered_orders_count": int(delivered["count"]),
             },
             "cogs": {
-                "cogs_all_orders_dzd": cogs_all,
-                "cogs_delivered_orders_dzd": cogs_delivered,
+                "cogs_all_orders_dzd": cogs,
+                "cogs_online_dzd": online_cogs,
+                "cogs_in_store_dzd": pos_cogs["sale"] - pos_cogs["refund"],
+                "cogs_delivered_orders_dzd": delivered_cogs,
             },
             "margins": {
-                "gross_profit_all_dzd": gross_profit_all,
-                "gross_margin_pct_all": gross_margin_pct_all,
-                "gross_profit_delivered_dzd": gross_profit_delivered,
-                "gross_margin_pct_delivered": gross_margin_pct_deliv,
+                "gross_profit_all_dzd": gross_profit,
+                "gross_margin_pct_all": gross_pct,
+                "gross_profit_delivered_dzd": delivered_profit,
             },
             "operating_expenses": {
                 "total_expenses_dzd": total_expenses,
                 "breakdown_by_category": expenses_by_cat,
             },
             "net_results": {
-                "net_profit_all_dzd": net_profit_all,
-                "net_margin_pct_all": net_margin_pct_all,
-                "net_profit_delivered_dzd": net_profit_delivered,
-            }
+                "net_profit_all_dzd": net_profit,
+                "net_margin_pct_all": net_pct,
+            },
         }
+
 
 @app.get("/api/v1/admin/accounting/products-profitability")
 def admin_get_products_profitability(
@@ -5167,16 +5144,33 @@ def admin_get_products_profitability(
     with db_session() as conn:
         cur = conn.cursor()
         where_clause = "" if include_archived else "WHERE p.deleted_at IS NULL"
+        # Units and revenue from BOTH channels; online = orders neither
+        # cancelled nor returned, in-store = sales minus refunds.
         cur.execute(
             f"""SELECT p.id, p.sku, p.name_fr, p.selling_price_dzd,
                       COALESCE(p.purchase_cost_dzd, 0) AS purchase_cost_dzd,
                       p.status,
-                      COALESCE(SUM(oi.quantity), 0) AS units_sold,
-                      COALESCE(SUM(oi.line_total_dzd), 0) AS total_revenue_dzd
+                      COALESCE(s.units, 0) AS units_sold,
+                      COALESCE(s.revenue, 0) AS total_revenue_dzd,
+                      COALESCE(s.cost, 0) AS cost_sold
                FROM products p
-               LEFT JOIN order_items oi ON oi.product_id = p.id
+               LEFT JOIN (
+                   SELECT pv.product_id, SUM(x.q) AS units, SUM(x.r) AS revenue, SUM(x.q * {_UNIT_COST_SQL}) AS cost
+                   FROM (
+                       SELECT oi.variant_id, oi.quantity AS q, oi.line_total_dzd AS r
+                       FROM order_items oi JOIN orders o ON o.id = oi.order_id
+                       WHERE o.status NOT IN ('cancelled', 'returned')
+                       UNION ALL
+                       SELECT psi.variant_id,
+                              CASE WHEN ps.sale_type = 'refund' THEN -psi.quantity ELSE psi.quantity END,
+                              CASE WHEN ps.sale_type = 'refund' THEN -psi.line_total_dzd ELSE psi.line_total_dzd END
+                       FROM pos_sale_items psi JOIN pos_sales ps ON ps.id = psi.sale_id
+                   ) AS x
+                   JOIN product_variants pv ON pv.id = x.variant_id
+                   JOIN products p ON p.id = pv.product_id
+                   GROUP BY pv.product_id
+               ) AS s ON s.product_id = p.id
                {where_clause}
-               GROUP BY p.id
                ORDER BY total_revenue_dzd DESC, p.id ASC"""
         )
         items = []
@@ -5187,7 +5181,7 @@ def admin_get_products_profitability(
             unit_profit = sell - cost
             gross_margin_pct = round((unit_profit / sell * 100), 1) if sell > 0 else 0.0
             markup_pct = round((unit_profit / cost * 100), 1) if cost > 0 else 0.0
-            total_cost_sold = cost * int(d["units_sold"])
+            total_cost_sold = int(d.pop("cost_sold") or 0)
             total_profit = int(d["total_revenue_dzd"]) - total_cost_sold
             d["unit_profit_dzd"] = unit_profit
             d["gross_margin_pct"] = gross_margin_pct
@@ -6647,7 +6641,7 @@ def admin_business_dashboard(admin: dict = Depends(require_permission("dashboard
 
         def online(period_clause: str, params=()):
             cur.execute(
-                f"SELECT COUNT(*) AS c, COALESCE(SUM(total_dzd),0) AS r FROM orders WHERE status != 'cancelled' {period_clause}",
+                f"SELECT COUNT(*) AS c, COALESCE(SUM(total_dzd),0) AS r FROM orders WHERE status NOT IN ('cancelled', 'returned') {period_clause}",
                 params,
             )
             row = cur.fetchone()
@@ -6691,7 +6685,7 @@ def admin_business_dashboard(admin: dict = Depends(require_permission("dashboard
                 FROM order_items oi JOIN orders o ON o.id = oi.order_id
                 JOIN product_variants pv ON pv.id = oi.variant_id
                 JOIN products p ON p.id = pv.product_id
-                WHERE o.status != 'cancelled' AND o.created_at >= ?""", (month_start,))
+                WHERE o.status NOT IN ('cancelled', 'returned') AND o.created_at >= ?""", (month_start,))
         instore_sale_cogs = _scalar(cur,
             f"""SELECT COALESCE(SUM(psi.quantity * {_UNIT_COST_SQL}),0) AS v
                 FROM pos_sale_items psi JOIN pos_sales ps ON ps.id = psi.sale_id
@@ -6770,7 +6764,7 @@ def admin_business_dashboard(admin: dict = Depends(require_permission("dashboard
         cur.execute(
             """SELECT variant_id, MAX(product_name) AS product_name, MAX(sku) AS sku, SUM(q) AS qty FROM (
                  SELECT variant_id, product_name, sku, quantity AS q
-                 FROM order_items oi JOIN orders o ON o.id = oi.order_id WHERE o.status != 'cancelled'
+                 FROM order_items oi JOIN orders o ON o.id = oi.order_id WHERE o.status NOT IN ('cancelled', 'returned')
                  UNION ALL
                  SELECT variant_id, product_name, sku, quantity AS q
                  FROM pos_sale_items psi JOIN pos_sales ps ON ps.id = psi.sale_id WHERE ps.sale_type = 'sale'
@@ -7050,7 +7044,7 @@ class CustomerUpdate(BaseModel):
 
 def _customer_totals_and_history(conn, customer_id: int) -> dict:
     cur = conn.cursor()
-    cur.execute("SELECT COUNT(*) AS c, COALESCE(SUM(total_dzd),0) AS s FROM orders WHERE customer_id = ? AND status != 'cancelled'", (customer_id,))
+    cur.execute("SELECT COUNT(*) AS c, COALESCE(SUM(total_dzd),0) AS s FROM orders WHERE customer_id = ? AND status NOT IN ('cancelled', 'returned')", (customer_id,))
     on = cur.fetchone()
     cur.execute("SELECT COUNT(*) AS c, COALESCE(SUM(total_dzd),0) AS s FROM pos_sales WHERE customer_id = ? AND sale_type = 'sale'", (customer_id,))
     ins = cur.fetchone()
@@ -7487,7 +7481,7 @@ def _sales_report_data(conn, date_from: str, date_to: str) -> dict:
         """SELECT substr(created_at, 1, 10) AS day,
                   COUNT(*) AS c, COALESCE(SUM(total_dzd), 0) AS r
            FROM orders
-           WHERE status != 'cancelled' AND created_at BETWEEN ? AND ?
+           WHERE status NOT IN ('cancelled', 'returned') AND created_at BETWEEN ? AND ?
            GROUP BY day ORDER BY day""",
         (start, end),
     )
@@ -7548,7 +7542,7 @@ def _sales_report_data(conn, date_from: str, date_to: str) -> dict:
         """SELECT variant_id, MAX(product_name) AS product_name, MAX(sku) AS sku, SUM(q) AS qty, SUM(r) AS rev FROM (
              SELECT oi.variant_id, oi.product_name, oi.sku, oi.quantity AS q, oi.line_total_dzd AS r
              FROM order_items oi JOIN orders o ON o.id = oi.order_id
-             WHERE o.status != 'cancelled' AND o.created_at BETWEEN ? AND ?
+             WHERE o.status NOT IN ('cancelled', 'returned') AND o.created_at BETWEEN ? AND ?
              UNION ALL
              SELECT psi.variant_id, psi.product_name, psi.sku, psi.quantity AS q, psi.line_total_dzd AS r
              FROM pos_sale_items psi JOIN pos_sales ps ON ps.id = psi.sale_id
@@ -7711,7 +7705,7 @@ def admin_low_stock_report(
                 """SELECT (
                       SELECT COALESCE(SUM(oi.quantity), 0)
                       FROM order_items oi JOIN orders o ON o.id = oi.order_id
-                      WHERE oi.variant_id = ? AND o.status != 'cancelled' AND o.created_at >= ?
+                      WHERE oi.variant_id = ? AND o.status NOT IN ('cancelled', 'returned') AND o.created_at >= ?
                    ) + (
                       SELECT COALESCE(SUM(psi.quantity), 0)
                       FROM pos_sale_items psi JOIN pos_sales ps ON ps.id = psi.sale_id

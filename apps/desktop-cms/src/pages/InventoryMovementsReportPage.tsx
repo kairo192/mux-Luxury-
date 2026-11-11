@@ -2,30 +2,11 @@ import React, { useEffect, useState, useCallback } from "react";
 import { Boxes, Download, RefreshCw, AlertTriangle, ArrowUp, ArrowDown, CalendarRange } from "lucide-react";
 import { DesktopCmsApi, getAccessToken } from "../api/adminClient";
 import { useT } from "../i18n";
+import { movementReasonLabel } from "../utils/movementReasons";
 
 function todayIso(): string { return new Date().toISOString().slice(0, 10); }
 function monthStartIso(): string { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-01`; }
 
-const REASON_LABEL: Record<string, string> = {
-  order_reserved: "Commande en ligne",
-  order_confirmed: "Commande confirmée",
-  order_cancelled: "Commande annulée",
-  order_returned: "Commande retournée",
-  pos_sale: "Vente magasin",
-  pos_sale_offline: "Vente hors-ligne synchronisée",
-  pos_refund: "Remboursement magasin",
-  manual_in: "Ajustement manuel (+)",
-  manual_out: "Ajustement manuel (−)",
-  manual_adjustment: "Ajustement manuel",
-  purchase_received: "Réception fournisseur",
-  physical_count_reconcile: "Réconciliation inventaire",
-  cms_bulk_update: "Mise à jour en masse",
-  writeoff_damaged: "Démarque — endommagé",
-  writeoff_lost: "Démarque — perte/vol",
-  writeoff_return_to_supplier: "Retour fournisseur",
-  writeoff_promotional_giveaway: "Cadeau/promo",
-  writeoff_stocktake_correction: "Correction d'inventaire",
-};
 
 export const InventoryMovementsReportPage: React.FC = () => {
   const t = useT();
@@ -76,7 +57,7 @@ export const InventoryMovementsReportPage: React.FC = () => {
     setFrom(f); setTo(today); load(f, today);
   };
 
-  const label = (reason: string) => REASON_LABEL[reason] || reason;
+  const label = movementReasonLabel;
 
   return (
     <div className="space-y-4 text-sm">

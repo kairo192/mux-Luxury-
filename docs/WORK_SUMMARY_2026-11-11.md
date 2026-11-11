@@ -287,13 +287,36 @@ customers already used, is kept. Tested on PostgreSQL 16 with a copy of an old d
 migration → start → 2 banners removed, 2 codes off, 1 audit entry; restart → nothing more).
 Server admin check: `docker compose exec api python -m app.cleanup_demo --dry-run`.
 
+## 16. CMS checked as in production (PostgreSQL, first installation, real activity)
+
+Method: empty PostgreSQL database, API in **production** mode, CMS in a real browser. First-time
+owner setup, then every one of the 26 screens opened, empty and again after realistic activity (catalogue,
+3 online orders — delivered / cancelled / new — an in-store sale, an expense, a supplier purchase
+received, a promo code, a banner). Every screen recorded for crashes, failed server calls and errors:
+**none**. Then the figures were compared screen to screen.
+
+| Problem found | Fix |
+|---|---|
+| **Comptabilité ignored in-store sales** (revenue and cost) and counted **returned** orders as revenue; it disagreed with Analytique (26 700 vs 36 400 DA) | Both channels; cancelled and returned orders excluded; cost per variant. Comptabilité and Analytique now give the same revenue, margin and result |
+| Per-product profitability counted **cancelled** orders and ignored in-store sales | Same rules as above (refunds subtracted) |
+| Returned (never paid) orders counted as sales in the business dashboard, sales report, customer totals and reorder speed | Excluded everywhere ("sale = not cancelled, not returned") |
+| Stock value included archived products | Only products still in the catalogue |
+| Column "Marge nette" was the unit margin; gross-margin card labelled "Marge nette"; subtitle mentioned VAT that is not computed | Correct labels; subtitle says "since opening, online + in-store" |
+| Stock history showed internal codes (`pos_sale`, `order_reserved`…) and "Stock compté" for before → after | Readable reasons, "Avant → après" |
+| After first setup the CMS showed an **"emergency code"** that nothing in the system accepts (left from the removed WhatsApp recovery), and copied it into the notification history | Removed; the message explains how a forgotten password is really reset |
+| **No way to recover a forgotten owner password**: the login screen said "reset on the server" but no tool existed | `python -m app.admin_cli reset-password` on the VPS (hidden input, 10+ characters, re-activates, signs out everywhere, audited) — guide §7b |
+
+New tests: `tests/test_accounting.py` (both channels, cancelled/returned excluded, reconciled with the
+business dashboard). All 269 tests pass on SQLite and on PostgreSQL 16 (except the 4 needing
+`@babel/core`, which pass with a substitute compiler).
+
 ---
 
 ## Verification
 
 | Check | Result |
 |---|---|
-| Backend tests | 267 run on SQLite and on PostgreSQL 16 (8 new in round 14, 3 in round 15, 7 for backups/categories). Only 4 failures, all caused by `@babel/core` missing in the cloud container; those 4 pass with a substitute TypeScript compiler and pass in CI. |
+| Backend tests | 269 run on SQLite and on PostgreSQL 16 (8 new in round 14, 3 in round 15, 7 for backups/categories). Only 4 failures, all caused by `@babel/core` missing in the cloud container; those 4 pass with a substitute TypeScript compiler and pass in CI. |
 | CMS TypeScript + build | OK |
 | Rust (`cargo check`) | OK |
 | Browser tests (Playwright) | Notifications, message box queue, bell, update dialog, new-order alert, Arabic layout, category delete + reload, archived tab, database panel, backup, reset: all OK |

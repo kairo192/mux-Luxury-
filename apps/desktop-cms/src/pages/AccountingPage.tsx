@@ -137,6 +137,7 @@ export const AccountingPage: React.FC = () => {
   const netMarginPct = pnl?.net_margin_percent ?? (pnl as any)?.net_results?.net_margin_pct_all ?? 0;
   const ordCount = pnl?.orders_count ?? (pnl as any)?.revenue?.orders_count ?? 0;
   const unitsSold = pnl?.units_sold ?? 0;
+  const storeCount = (pnl as any)?.in_store_sales_count ?? 0;
 
   const ledgerEntries: LedgerEntry[] = ledger?.entries || (ledger as any)?.items || [];
   const totDebits = ledger?.total_debits_dzd ?? (ledger as any)?.total_debit_dzd ?? 0;
@@ -244,10 +245,12 @@ export const AccountingPage: React.FC = () => {
                 </span>
               </div>
               <div className="text-2xl font-bold font-mono text-gray-900 mt-2">
-                {grossRev.toLocaleString()} <span className="text-xs font-sans text-[#D4AF62]">DZD</span>
+                {totalRev.toLocaleString()} <span className="text-xs font-sans text-[#D4AF62]">DZD</span>
               </div>
               <div className="text-[11px] text-gray-400 mt-1">
-                {ordCount} commandes • {unitsSold} pièces
+                Articles {grossRev.toLocaleString()} + livraison {deliveryRev.toLocaleString()} DZD
+                <br />
+                {ordCount} commande(s) en ligne • {storeCount} vente(s) magasin • {unitsSold} pièce(s)
               </div>
             </div>
 
@@ -263,7 +266,7 @@ export const AccountingPage: React.FC = () => {
                 {grossProfit.toLocaleString()} <span className="text-xs font-sans text-emerald-600">DZD</span>
               </div>
               <div className="text-[11px] text-emerald-600 font-semibold mt-1">
-                {t("accounting.net_margin")}
+                Chiffre d'affaires − coût d'achat
               </div>
             </div>
 

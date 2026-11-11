@@ -267,6 +267,24 @@ server nor on a PC.
 
 ---
 
+## 7b. Mot de passe oublié (forgotten password)
+
+There is deliberately **no** "forgot password" link that sends a code by SMS/WhatsApp/e-mail: those
+can be intercepted. Recovery happens on the server, so only someone with access to the VPS can do it.
+
+1. Another owner/administrator can reset it in **CMS → Utilisateurs & rôles** (if one exists).
+2. Otherwise, the person who manages the VPS runs, in the release folder:
+   ```
+   docker compose exec api python -m app.admin_cli list
+   docker compose exec api python -m app.admin_cli reset-password --email <your e-mail>
+   ```
+   They type the new password twice (hidden, at least 10 characters). The account is re-activated,
+   signed out of every PC, and the action is written to **Journal d'audit**
+   (`reset_admin_password_server`).
+3. Log in with the new password and change it if someone else typed it.
+
+Keep the owner password in a password manager.
+
 ## 8. Keys and passwords — status
 
 ### 8.1 Generated automatically (nothing to do)
