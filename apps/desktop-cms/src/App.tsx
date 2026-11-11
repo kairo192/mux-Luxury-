@@ -1,4 +1,5 @@
 import { readDraft, writeDraft, clearDraft } from "./utils/draftStorage";
+import { serverDate, formatServerDateTime } from "./utils/serverDate";
 import { useT, LanguageToggle } from "./i18n";
 import { CmsSidebar } from "./components/CmsSidebar";
 import {
@@ -2534,7 +2535,7 @@ export default function App() {
                       </div>
                       {o.created_at && (
                         <div className="text-[11px] text-gray-500">
-                          Reçue le {new Date(String(o.created_at).replace(" ", "T") + (String(o.created_at).includes("Z") || String(o.created_at).includes("+") ? "" : "Z")).toLocaleString("fr-FR")}
+                          Reçue le {serverDate(o.created_at).toLocaleString("fr-FR")}
                           {o.customer_notes ? <> • Note du client : <em>{o.customer_notes}</em></> : null}
                         </div>
                       )}
@@ -2970,7 +2971,7 @@ export default function App() {
                       <span className="font-bold text-[#202923] mr-2">{al.entity_type} #{al.entity_id}</span>
                       <span className="text-gray-500">par {al.admin_email || `Admin #${al.admin_user_id || 1}`}</span>
                     </div>
-                    <span className="font-mono text-[11px] text-gray-500">{al.created_at}</span>
+                    <span className="font-mono text-[11px] text-gray-500">{formatServerDateTime(al.created_at)}</span>
                   </div>
                 ))}
               </div>

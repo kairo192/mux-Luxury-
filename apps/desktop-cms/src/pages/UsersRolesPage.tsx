@@ -14,6 +14,7 @@ import {
 } from "lucide-react";
 import { DesktopCmsApi } from "../api/adminClient";
 import { useT } from "../i18n";
+import { serverDate } from "../utils/serverDate";
 
 interface Role {
   id: number;
@@ -214,7 +215,7 @@ export const UsersRolesPage: React.FC = () => {
                       </span>
                     </td>
                     <td className="px-4 py-3 hidden md:table-cell text-gray-500 text-[11px]">
-                      {u.last_login_at ? new Date(u.last_login_at).toLocaleString("fr-DZ") : "—"}
+                      {u.last_login_at ? serverDate(u.last_login_at).toLocaleString("fr-FR") : "—"}
                     </td>
                     <td className="px-4 py-3">
                       <div className="flex items-center justify-end gap-1.5">

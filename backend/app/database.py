@@ -267,7 +267,9 @@ class PostgresConnectionPool:
 
     def _create_new_raw(self, pg_url: str):
         import psycopg
-        return psycopg.connect(pg_url, row_factory=sqlite_shaped_dict_row)
+        # Times are stored as UTC without a zone (like SQLite's CURRENT_TIMESTAMP);
+        # pin the session zone so a server set to another TZ cannot shift them.
+        return psycopg.connect(pg_url, row_factory=sqlite_shaped_dict_row, options="-c timezone=UTC")
 
     def _create_new(self, pg_url: str):
         with self._lock:

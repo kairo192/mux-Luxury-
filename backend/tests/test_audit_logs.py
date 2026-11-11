@@ -80,6 +80,28 @@ class TestAuditLogs(unittest.TestCase):
         entities = {e["code"] for e in r.json()["entity_types"]}
         self.assertIn("category", entities)
 
+    def test_06b_french_labels_and_french_search(self):
+        r = self.client.get("/api/v1/admin/audit-logs/facets", headers=self.headers)
+        labels = {a["code"]: a["label"] for a in r.json()["actions"]}
+        self.assertEqual(labels["admin_login"], "Connexion au CMS")
+        items = self.client.get("/api/v1/admin/audit-logs", headers=self.headers, params={"q": "connexion", "limit": 50}).json()["items"]
+        self.assertTrue(items)
+        self.assertTrue(all(i["action"] == "admin_login" or "connexion" in str(i).lower() for i in items))
+        self.assertEqual(items[0]["action_label"], "Connexion au CMS")
+        # search by the person's email
+        by_mail = self.client.get("/api/v1/admin/audit-logs", headers=self.headers, params={"q": "admin@mus-luxury", "limit": 5}).json()["items"]
+        self.assertTrue(by_mail)
+
+    def test_06c_every_audited_action_has_a_french_label(self):
+        import re
+        from pathlib import Path
+        from app.main import _AUDIT_ACTION_FR, _AUDIT_ENTITY_FR
+        src = "\n".join(p.read_text(encoding="utf-8") for p in (Path(__file__).resolve().parents[1] / "app").glob("*.py"))
+        calls = re.findall(r'log_audit\([^,]+,[^,]+,\s*"([a-z_]+)",\s*"([a-z_]+)"', src)
+        self.assertGreater(len(calls), 40)
+        missing = sorted({a for a, _ in calls if a not in _AUDIT_ACTION_FR} | {e for _, e in calls if e not in _AUDIT_ENTITY_FR})
+        self.assertEqual(missing, [], "add these codes to _AUDIT_ACTION_FR / _AUDIT_ENTITY_FR")
+
     def test_07_permissions(self):
         # product_manager lacks settings:write
         self.assertEqual(self.client.get("/api/v1/admin/audit-logs", headers=self.editor_headers).status_code, 403)

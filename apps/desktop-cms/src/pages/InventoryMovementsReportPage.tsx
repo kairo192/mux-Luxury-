@@ -3,6 +3,7 @@ import { Boxes, Download, RefreshCw, AlertTriangle, ArrowUp, ArrowDown, Calendar
 import { DesktopCmsApi, getAccessToken } from "../api/adminClient";
 import { useT } from "../i18n";
 import { movementReasonLabel } from "../utils/movementReasons";
+import { serverDate } from "../utils/serverDate";
 
 function todayIso(): string { return new Date().toISOString().slice(0, 10); }
 function monthStartIso(): string { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-01`; }
@@ -146,7 +147,7 @@ export const InventoryMovementsReportPage: React.FC = () => {
                     {data.items.length === 0 && <tr><td colSpan={5} className="px-3 py-6 text-center text-gray-400">{t("inventory_report.no_items")}</td></tr>}
                     {data.items.map((it: any) => (
                       <tr key={it.id} className="border-t border-gray-100">
-                        <td className="px-3 py-2 font-mono text-[10px] whitespace-nowrap">{new Date(it.created_at).toLocaleString("fr-DZ")}</td>
+                        <td className="px-3 py-2 font-mono text-[10px] whitespace-nowrap">{serverDate(it.created_at).toLocaleString("fr-FR")}</td>
                         <td className="px-3 py-2">
                           <div className="truncate font-bold">{it.product_name}</div>
                           <div className="text-gray-400 font-mono text-[10px]">{it.sku}</div>

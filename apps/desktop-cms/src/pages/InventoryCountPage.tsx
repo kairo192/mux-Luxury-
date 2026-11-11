@@ -15,6 +15,7 @@ import {
 import { DesktopCmsApi } from "../api/adminClient";
 import { confirmClientAction } from "../utils/clientNotifier";
 import { useT } from "../i18n";
+import { serverDate } from "../utils/serverDate";
 
 interface Count {
   id: number;
@@ -106,7 +107,7 @@ export const InventoryCountPage: React.FC<{ onInventoryUpdated?: () => void }> =
   const openNew = async () => {
     setBusy(true);
     try {
-      const c = await DesktopCmsApi.openInventoryCount({ name: `Inventaire ${new Date().toLocaleDateString("fr-DZ")}` });
+      const c = await DesktopCmsApi.openInventoryCount({ name: `Inventaire ${new Date().toLocaleDateString("fr-FR")}` });
       setActive(c);
       flash(`Inventaire ${c.reference} ouvert`);
       load();
@@ -267,7 +268,7 @@ export const InventoryCountPage: React.FC<{ onInventoryUpdated?: () => void }> =
                 {active.reference}
                 <span className={`px-2 py-0.5 rounded-lg text-xs font-bold ${BADGE[active.status]}`}>{statusLabels[active.status]}</span>
               </div>
-              <div className="text-gray-500 text-[11px]">{active.name} · {new Date(active.opened_at).toLocaleString("fr-DZ")}{active.opened_by_name ? ` · ${active.opened_by_name}` : ""}</div>
+              <div className="text-gray-500 text-[11px]">{active.name} · {serverDate(active.opened_at).toLocaleString("fr-FR")}{active.opened_by_name ? ` · ${active.opened_by_name}` : ""}</div>
             </div>
             <div className="flex gap-4 text-sm">
               <Stat label={t("inventory_count.stat_lines")} value={String(active.total_lines)} />
@@ -387,7 +388,7 @@ export const InventoryCountPage: React.FC<{ onInventoryUpdated?: () => void }> =
                     <span className={`px-2 py-0.5 rounded-lg text-xs font-bold ${BADGE[c.status]}`}>{statusLabels[c.status]}</span>
                   </div>
                   <div className="text-gray-500 text-[11px] mt-1">{c.name} · {c.total_lines} · écart {c.total_variance_abs}</div>
-                  <div className="text-gray-400 text-[11px]">{new Date(c.opened_at).toLocaleString("fr-DZ")}</div>
+                  <div className="text-gray-400 text-[11px]">{serverDate(c.opened_at).toLocaleString("fr-FR")}</div>
                 </button>
               ))}
             </div>

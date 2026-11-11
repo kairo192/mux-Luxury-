@@ -17,6 +17,7 @@ import {
 import { DesktopCmsApi } from "../api/adminClient";
 import { confirmClientAction } from "../utils/clientNotifier";
 import { useT } from "../i18n";
+import { serverDate } from "../utils/serverDate";
 
 const fmt = (dzd: number) => `${Number(dzd || 0).toLocaleString("fr-DZ")} DA`;
 
@@ -273,7 +274,7 @@ export const SuppliersPage: React.FC = () => {
                         <div className="flex items-center gap-2">
                           <span className="font-mono font-bold">{po.reference}</span>
                           <span className="text-[10px] font-bold text-gray-500 bg-gray-100 px-1.5 py-0.5 rounded">{po.status}</span>
-                          <span className="text-[11px] text-gray-400">{new Date(po.created_at).toLocaleDateString("fr-DZ")}</span>
+                          <span className="text-[11px] text-gray-400">{serverDate(po.created_at).toLocaleDateString("fr-FR")}</span>
                         </div>
                         <div className="text-end">
                           <div className="font-mono font-bold">{fmt(po.total_cost_dzd)}</div>

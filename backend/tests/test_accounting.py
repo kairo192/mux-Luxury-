@@ -251,6 +251,19 @@ class TestAccounting(unittest.TestCase):
         bad = self.client.post("/api/v1/admin/treasury/movements", headers=self.h, json={"category": "nimporte", "amount_dzd": 10})
         self.assertEqual(bad.status_code, 422)
 
+    def test_receipt_prefix_setting_is_used(self):
+        _, vid = self._product()
+        r = self.client.put("/api/v1/admin/fiscal/settings", headers=self.h, json={"settings": {"receipt_prefix_pos": "mus"}})
+        self.assertEqual(r.status_code, 200, r.text)
+        try:
+            self.client.post("/api/v1/admin/pos/register/open", headers=self.h, json={"register_name": "Compta", "opening_float_dzd": 0})
+            sale = self.client.post("/api/v1/admin/pos/sales", headers={**self.h, "Idempotency-Key": uuid.uuid4().hex}, json={
+                "items": [{"variant_id": vid, "quantity": 1}], "payments": [{"method": "cash", "amount_dzd": PRICE}]})
+            self.assertEqual(sale.status_code, 201, sale.text)
+            self.assertTrue(sale.json()["sale_reference"].startswith("MUS-"), sale.json()["sale_reference"])
+        finally:
+            self.client.put("/api/v1/admin/fiscal/settings", headers=self.h, json={"settings": {"receipt_prefix_pos": "POS"}})
+
 
 if __name__ == "__main__":
     unittest.main()

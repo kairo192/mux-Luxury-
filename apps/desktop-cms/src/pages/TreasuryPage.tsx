@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from "react";
+import { formatServerDateTime } from "../utils/serverDate";
 import {
   Building2,
   Zap,
@@ -313,7 +314,7 @@ export const TreasuryPage: React.FC = () => {
                     <tr key={m.id} className="hover:bg-gray-50/80 transition-colors">
                       <td className="py-3 px-4 font-mono text-gray-400">#{m.id}</td>
                       <td className="py-3 px-4 font-mono text-gray-600 whitespace-nowrap">
-                        {m.created_at ? m.created_at.replace("T", " ").slice(0, 19) : "—"}
+                        {formatServerDateTime(m.created_at)}
                       </td>
                       <td className="py-3 px-4">
                         <span

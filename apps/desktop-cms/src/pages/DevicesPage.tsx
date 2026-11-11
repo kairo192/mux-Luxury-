@@ -20,6 +20,8 @@ import {
 import { DesktopCmsApi } from "../api/adminClient";
 import { confirmClientAction } from "../utils/clientNotifier";
 import { useT } from "../i18n";
+import { isTauriRuntime, testPrint, testPrintLabel } from "../utils/posHardware";
+import { serverDate } from "../utils/serverDate";
 
 type DeviceType = "receipt_printer" | "label_printer" | "barcode_scanner" | "cash_drawer" | "customer_display" | "other";
 type ConnectionType = "usb" | "network" | "windows" | "serial" | "hid_keyboard" | "browser";
@@ -168,13 +170,33 @@ export const DevicesPage: React.FC = () => {
     }
   };
 
+  // Printers are plugged into the shop PC: the test runs HERE (desktop app)
+  // and the result is reported to the server. The cloud server cannot reach a
+  // printer on the shop's local network, so it is never asked to.
   const runTest = async (dev: Device) => {
     setBusy(true);
     try {
-      const res = await DesktopCmsApi.testDevice(dev.id);
-      if (res.status === "ok") flash(`${dev.name} : OK`);
-      else if (res.status === "error") setError(`${dev.name} : ${res.last_error}`);
-      else flash(res.last_error || "Test OK");
+      const isPrinter = dev.device_type === "receipt_printer" || dev.device_type === "label_printer";
+      if (isPrinter && isTauriRuntime()) {
+        const cfg = dev.config || {};
+        const target = {
+          printer_name: cfg.windows_printer_name || null,
+          device_path: cfg.device_path || (cfg.host ? `${cfg.host}:${cfg.port || 9100}` : null),
+          line_width: Number(cfg.paper_width_mm) === 58 ? 32 : 42,
+        };
+        const res = dev.device_type === "label_printer"
+          ? await testPrintLabel(target as any)
+          : await testPrint(target);
+        await DesktopCmsApi.testDevice(dev.id, { success: res.ok, error: res.ok ? undefined : res.error });
+        if (res.ok) flash(`${dev.name} : test imprimé avec succès.`);
+        else setError(`${dev.name} : ${res.error || "échec du test d'impression"}`);
+      } else if (isPrinter) {
+        setError("Le test d'une imprimante se fait depuis l'application de bureau installée sur le poste de la boutique.");
+      } else {
+        const res = await DesktopCmsApi.testDevice(dev.id);
+        if (res.status === "ok") flash(`${dev.name} : OK`);
+        else setError(`${dev.name} : ${res.last_error || "état inconnu"}`);
+      }
       load();
     } catch (e: any) {
       setError(e?.userMessage || t("status.error"));
@@ -193,18 +215,29 @@ export const DevicesPage: React.FC = () => {
       <div style="font-weight:700">Mus Luxury</div>
       <div>— TEST D'IMPRESSION —</div>
       <div>${dev.name}</div>
-      <div>${new Date().toLocaleString("fr-DZ")}</div>
+      <div>${new Date().toLocaleString("fr-FR")}</div>
       <div>................................</div>
       <div>Imprimante fonctionnelle ✓</div>
       <script>window.onload=function(){window.print();setTimeout(function(){window.close();},300);};<\/script>
       </body></html>`);
     w.document.close();
+    // Only the person in front of the printer knows if the ticket came out:
+    // ask, then record that answer (never assume success).
+    const printed = await confirmClientAction({
+      title: "Test d'impression",
+      message: `Le ticket de test est-il bien sorti de « ${dev.name} » ?`,
+      confirmLabel: "Oui, imprimé",
+      cancelLabel: "Non",
+    });
     try {
-      await DesktopCmsApi.testDevice(dev.id, { success: true });
-      flash(`${dev.name} : OK`);
+      await DesktopCmsApi.testDevice(dev.id, printed
+        ? { success: true }
+        : { success: false, error: "Le ticket de test n'est pas sorti (signalé au poste)." });
+      if (printed) flash(`${dev.name} : OK`);
+      else setError(`${dev.name} : le ticket de test n'est pas sorti. Vérifiez le câble, le papier et le pilote Windows.`);
       load();
-    } catch {
-      /* ignore */
+    } catch (e: any) {
+      setError(e?.userMessage || t("status.error"));
     }
   };
 
@@ -339,7 +372,7 @@ export const DevicesPage: React.FC = () => {
                       <div className="mt-2 text-[11px] text-red-600 break-words">{dev.last_error}</div>
                     )}
                     {dev.last_test_at && (
-                      <div className="mt-1 text-[11px] text-gray-400">{t("devices.last_test", { date: new Date(dev.last_test_at).toLocaleString("fr-DZ") })}</div>
+                      <div className="mt-1 text-[11px] text-gray-400">{t("devices.last_test", { date: serverDate(dev.last_test_at).toLocaleString("fr-FR") })}</div>
                     )}
 
                     <div className="flex flex-wrap gap-1.5 mt-3">

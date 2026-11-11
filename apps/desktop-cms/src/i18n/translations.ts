@@ -1139,7 +1139,7 @@ const fr: Dict = {
   "audit.lbl_entity_type": "Type d'entité",
   "audit.opt_all_entities": "— Tous —",
   "audit.lbl_search": "Recherche",
-  "audit.search_placeholder": "ID, texte des détails…",
+  "audit.search_placeholder": "Action, personne, n° ou détail (ex. connexion, caisse)…",
   "audit.btn_filter": "Filtrer",
   "audit.btn_clear": "Effacer",
   "audit.th_when": "Quand",
@@ -1151,7 +1151,7 @@ const fr: Dict = {
 
   // ----- devices (extended)
   "devices.btn_add": "Ajouter",
-  "devices.notice": "Les appareils réseau sont testés par une vraie sonde TCP depuis le serveur. Les imprimantes Windows se testent via une impression réelle depuis ce poste. Le contrôle direct USB/ESC-POS nécessite le pont matériel local (à installer sur le poste caisse) ; tant qu'il n'a pas répondu, le statut reste « Non testé ».",
+  "devices.notice": "« Tester » sur le poste de la boutique (application de bureau) imprime un vrai ticket ou une vraie étiquette sur l'imprimante, puis enregistre le résultat. « Impr. test » passe par l'impression Windows et vous demande si le ticket est bien sorti. Le serveur en ligne ne voit pas le réseau local de la boutique : un appareil jamais testé depuis le poste reste « Non testé ».",
   "devices.empty": "Aucun appareil enregistré. Cliquez sur « Ajouter » pour commencer.",
   "devices.badge_default": "défaut",
   "devices.btn_test_print": "Impr. test",
@@ -2354,7 +2354,7 @@ const en: Dict = {
   "audit.lbl_entity_type": "Entity type",
   "audit.opt_all_entities": "— All —",
   "audit.lbl_search": "Search",
-  "audit.search_placeholder": "ID, detail text…",
+  "audit.search_placeholder": "Action, person, number or detail…",
   "audit.btn_filter": "Filter",
   "audit.btn_clear": "Clear",
   "audit.th_when": "When",
@@ -2366,7 +2366,7 @@ const en: Dict = {
 
   // ----- devices (extended)
   "devices.btn_add": "Add",
-  "devices.notice": "Network devices are tested by real TCP probes from the server. Windows printers are tested via a real print from this machine. Direct USB/ESC-POS control requires the local hardware bridge (to be installed on the POS register); until it responds, the status remains 'Not tested'.",
+  "devices.notice": "\"Test\" on the shop PC (desktop app) prints a real ticket or label on the printer, then records the result. \"Print test\" goes through Windows printing and asks you whether the ticket came out. The online server cannot see the shop's local network: a device never tested from the shop PC stays 'Not tested'.",
   "devices.empty": "No devices registered. Click 'Add' to begin.",
   "devices.badge_default": "default",
   "devices.btn_test_print": "Test Print",
@@ -3569,7 +3569,7 @@ const ar: Dict = {
   "audit.lbl_entity_type": "نوع الكيان",
   "audit.opt_all_entities": "— الكل —",
   "audit.lbl_search": "البحث",
-  "audit.search_placeholder": "المعرف، نص التفاصيل…",
+  "audit.search_placeholder": "الإجراء، الشخص، الرقم أو التفاصيل…",
   "audit.btn_filter": "تصفية",
   "audit.btn_clear": "مسح",
   "audit.th_when": "الوقت",
@@ -3581,7 +3581,7 @@ const ar: Dict = {
 
   // ----- devices (extended)
   "devices.btn_add": "إضافة",
-  "devices.notice": "يتم اختبار الأجهزة الشبكية عبر فحص TCP حقيقي من الخادم. يتم اختبار طابعات Windows عبر طباعة تجريبية فعلية من هذا الجهاز. يتطلب التحكم المباشر عبر USB/ESC-POS جسر الأجهزة المحلي؛ وطالما لم يستجب، تظل الحالة 'غير مختبر'.",
+  "devices.notice": "زر « اختبار » على جهاز المتجر (تطبيق سطح المكتب) يطبع تذكرة أو ملصقًا حقيقيًا ثم يسجّل النتيجة. « طباعة تجريبية » تمر عبر طباعة Windows وتسألك إن خرجت التذكرة فعلًا. الخادم على الإنترنت لا يرى الشبكة المحلية للمتجر: الجهاز الذي لم يُختبر من جهاز المتجر يبقى « غير مختبر ».",
   "devices.empty": "لا توجد أجهزة مسجلة. انقر على 'إضافة' للبدء.",
   "devices.badge_default": "افتراضي",
   "devices.btn_test_print": "طباعة تجريبية",

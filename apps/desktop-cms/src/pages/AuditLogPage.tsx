@@ -2,12 +2,15 @@ import React, { useEffect, useState, useCallback } from "react";
 import { ClipboardCheck, RefreshCw, AlertTriangle, Search, Filter, X } from "lucide-react";
 import { DesktopCmsApi } from "../api/adminClient";
 import { useT } from "../i18n";
+import { serverDate } from "../utils/serverDate";
 
 interface AuditLog {
   id: number;
   action: string;
   entity_type: string;
   entity_id: string;
+  action_label?: string;
+  entity_label?: string;
   details: Record<string, any>;
   admin_user_id: number | null;
   admin_email?: string | null;
@@ -18,8 +21,8 @@ interface AuditLog {
 export const AuditLogPage: React.FC = () => {
   const t = useT();
   const [items, setItems] = useState<AuditLog[]>([]);
-  const [actions, setActions] = useState<Array<{ code: string; count: number }>>([]);
-  const [entities, setEntities] = useState<Array<{ code: string; count: number }>>([]);
+  const [actions, setActions] = useState<Array<{ code: string; label?: string; count: number }>>([]);
+  const [entities, setEntities] = useState<Array<{ code: string; label?: string; count: number }>>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [action, setAction] = useState("");
@@ -90,19 +93,19 @@ export const AuditLogPage: React.FC = () => {
       <div className="bg-white p-4 rounded-3xl border border-gray-200 flex flex-wrap items-end gap-3">
         <label className="block flex-1 min-w-[180px]">
           <span className="block text-[11px] font-bold uppercase tracking-wide text-gray-500 mb-1">{t("audit.lbl_action")}</span>
-          <select value={action} onChange={(e) => setAction(e.target.value)} className="w-full h-12 px-3 rounded-2xl border-2 border-gray-200 bg-white">
+          <select value={action} onChange={(e) => { setAction(e.target.value); load({ action: e.target.value, entityType, q }); }} className="w-full h-12 px-3 rounded-2xl border-2 border-gray-200 bg-white">
             <option value="">{t("audit.opt_all_actions")}</option>
             {actions.map((a) => (
-              <option key={a.code} value={a.code}>{a.code} ({a.count})</option>
+              <option key={a.code} value={a.code}>{a.label || a.code} ({a.count})</option>
             ))}
           </select>
         </label>
         <label className="block flex-1 min-w-[180px]">
           <span className="block text-[11px] font-bold uppercase tracking-wide text-gray-500 mb-1">{t("audit.lbl_entity_type")}</span>
-          <select value={entityType} onChange={(e) => setEntityType(e.target.value)} className="w-full h-12 px-3 rounded-2xl border-2 border-gray-200 bg-white">
+          <select value={entityType} onChange={(e) => { setEntityType(e.target.value); load({ action, entityType: e.target.value, q }); }} className="w-full h-12 px-3 rounded-2xl border-2 border-gray-200 bg-white">
             <option value="">{t("audit.opt_all_entities")}</option>
             {entities.map((e) => (
-              <option key={e.code} value={e.code}>{e.code} ({e.count})</option>
+              <option key={e.code} value={e.code}>{e.label || e.code} ({e.count})</option>
             ))}
           </select>
         </label>
@@ -150,14 +153,14 @@ export const AuditLogPage: React.FC = () => {
               )}
               {items.map((l) => (
                 <tr key={l.id} className="border-t border-gray-100 hover:bg-[#FCFBF8] cursor-pointer" onClick={() => setOpen(l)}>
-                  <td className="px-4 py-3 text-[11px] text-gray-500 font-mono whitespace-nowrap">{new Date(l.created_at).toLocaleString("fr-DZ")}</td>
+                  <td className="px-4 py-3 text-[11px] text-gray-500 font-mono whitespace-nowrap">{serverDate(l.created_at).toLocaleString("fr-FR")}</td>
                   <td className="px-4 py-3">
                     {l.admin_name ? <span className="font-bold text-[#063D2E]">{l.admin_name}</span> : <span className="text-gray-400">{t("audit.system_author")}</span>}
                     {l.admin_email && <div className="text-[11px] text-gray-400 font-mono">{l.admin_email}</div>}
                   </td>
-                  <td className="px-4 py-3 font-mono text-[11px]">{l.action}</td>
-                  <td className="px-4 py-3 font-mono text-[11px]">
-                    {l.entity_type}
+                  <td className="px-4 py-3 text-[12px] font-bold text-[#063D2E]">{l.action_label || l.action}</td>
+                  <td className="px-4 py-3 text-[12px]">
+                    {l.entity_label || l.entity_type}
                     <span className="text-gray-400"> #{l.entity_id}</span>
                   </td>
                   <td className="px-4 py-3 text-[11px] text-gray-500 max-w-md truncate hidden md:table-cell">
@@ -176,16 +179,16 @@ export const AuditLogPage: React.FC = () => {
         <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4" onClick={() => setOpen(null)}>
           <div className="bg-white rounded-3xl w-full max-w-lg max-h-[92vh] overflow-auto" onClick={(e) => e.stopPropagation()}>
             <div className="flex items-center justify-between px-5 py-4 border-b">
-              <h3 className="font-serif font-bold text-[#063D2E] text-lg">{t("audit.modal_detail", { action: open.action })}</h3>
+              <h3 className="font-serif font-bold text-[#063D2E] text-lg">{t("audit.modal_detail", { action: open.action_label || open.action })}</h3>
               <button aria-label="Fermer" type="button" onClick={() => setOpen(null)} className="w-11 h-11 rounded-xl flex items-center justify-center text-gray-400 hover:bg-gray-100 active:scale-95">
                 <X className="w-6 h-6" />
               </button>
             </div>
             <div className="p-5 space-y-2">
-              <Row k={t("audit.row_date")} v={new Date(open.created_at).toLocaleString("fr-DZ")} />
+              <Row k={t("audit.row_date")} v={serverDate(open.created_at).toLocaleString("fr-FR")} />
               <Row k={t("audit.row_author")} v={open.admin_name ? `${open.admin_name} (${open.admin_email || "—"})` : t("audit.system_author")} />
-              <Row k={t("audit.th_action")} v={open.action} mono />
-              <Row k={t("audit.th_entity")} v={`${open.entity_type} #${open.entity_id}`} mono />
+              <Row k={t("audit.th_action")} v={open.action_label ? `${open.action_label} (${open.action})` : open.action} />
+              <Row k={t("audit.th_entity")} v={`${open.entity_label || open.entity_type} #${open.entity_id}`} />
               <div>
                 <div className="text-[11px] font-bold uppercase tracking-wide text-gray-500 mb-1">{t("audit.th_details")}</div>
                 <pre className="p-3 rounded-2xl bg-[#F5F3EE] text-[11px] font-mono overflow-auto whitespace-pre-wrap break-all">

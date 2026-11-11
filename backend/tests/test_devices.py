@@ -109,6 +109,21 @@ class TestDevices(unittest.TestCase):
         self.assertEqual(res2.json()["status"], "ok")
         self.assertIn("hid", res2.json()["capabilities"])
 
+    def test_05b_lan_printer_not_reported_broken_by_cloud_server(self):
+        # 192.0.2.x would be "public"; 10.255.255.1 is private and unroutable here.
+        dev = self._create(name="Net LAN", connection_type="network", config={"host": "10.255.255.1", "port": 9100})
+        res = self.client.post(f"/api/v1/admin/devices/{dev['id']}/test", headers=self.headers, json={})
+        self.assertEqual(res.status_code, 200, res.text)
+        self.assertEqual(res.json()["status"], "unknown")
+        self.assertIn("application de bureau", res.json()["last_error"])
+        # The shop PC printed the test ticket → reported result wins.
+        ok = self.client.post(f"/api/v1/admin/devices/{dev['id']}/test", headers=self.headers, json={"success": True})
+        self.assertEqual(ok.json()["status"], "ok")
+        self.assertEqual(ok.json()["test_method"], "client_reported")
+        ko = self.client.post(f"/api/v1/admin/devices/{dev['id']}/test", headers=self.headers, json={"success": False, "error": "Papier absent"})
+        self.assertEqual(ko.json()["status"], "error")
+        self.assertEqual(ko.json()["last_error"], "Papier absent")
+
     def test_06_update_and_delete(self):
         dev = self._create()
         up = self.client.put(f"/api/v1/admin/devices/{dev['id']}", headers=self.headers, json={"location": "Caisse 2", "config": {"windows_printer_name": "POS-58", "paper_width_mm": 58}})

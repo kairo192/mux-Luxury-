@@ -4,6 +4,7 @@ import { DesktopCmsApi } from "../api/adminClient";
 import { useT } from "../i18n";
 import { useEscapeToClose } from "../utils/useEscapeToClose";
 import { orderStatusLabel } from "../utils/orderStatus";
+import { serverDate } from "../utils/serverDate";
 
 const fmt = (dzd: number) => `${Number(dzd || 0).toLocaleString("fr-DZ")} DA`;
 
@@ -55,7 +56,7 @@ export const DeliveryNoteModal: React.FC<{ orderId: number; onClose: () => void 
               <div className="text-right">
                 <div className="font-serif font-bold text-xl text-[#063D2E]">{t("delivery_modal.doc_heading")}</div>
                 <div className="font-mono text-[11px] mt-1">{data.order_reference}</div>
-                <div className="text-gray-500 text-[11px]">{new Date(data.created_at).toLocaleString("fr-DZ")}</div>
+                <div className="text-gray-500 text-[11px]">{serverDate(data.created_at).toLocaleString("fr-FR")}</div>
               </div>
             </div>
 

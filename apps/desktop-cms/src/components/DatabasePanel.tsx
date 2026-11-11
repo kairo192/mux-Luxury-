@@ -29,6 +29,7 @@ import {
 import { useT } from "../i18n";
 import { DesktopCmsApi } from "../api/adminClient";
 import { notifyClientError, notifyClientSuccess } from "../utils/clientNotifier";
+import { serverDate } from "../utils/serverDate";
 
 interface BackupMeta {
   name: string;
@@ -64,7 +65,7 @@ function formatBytes(n: number): string {
 
 function formatDate(iso: string): string {
   try {
-    return new Date(iso).toLocaleString([], { dateStyle: "medium", timeStyle: "short" });
+    return serverDate(iso).toLocaleString([], { dateStyle: "medium", timeStyle: "short" });
   } catch {
     return iso;
   }

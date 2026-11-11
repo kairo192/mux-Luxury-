@@ -420,7 +420,7 @@ export const PrinterSettingsModal: React.FC<Props> = ({ open, onClose, onFlash }
 
               <div className="text-xs text-gray-500 font-mono break-all">
                 {mirror?.last_synced_at
-                  ? t("printer_settings.last_sync", { date: new Date(mirror.last_synced_at).toLocaleString("fr-DZ") })
+                  ? t("printer_settings.last_sync", { date: new Date(mirror.last_synced_at).toLocaleString("fr-FR") })
                   : t("printer_settings.never_synced")}
               </div>
 

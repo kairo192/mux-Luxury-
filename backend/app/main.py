@@ -4379,6 +4379,105 @@ def api_readiness_check():
         raise HTTPException(status_code=503, detail="Service not ready")
 
 
+# French names for the audit log (CMS → Journal d'audit). Codes stay in the
+# database; the screen and its search use these names.
+_AUDIT_ACTION_FR: Dict[str, str] = {
+    "add_category_attribute": "Ajout d'une caractéristique de catégorie",
+    "add_product_image": "Ajout d'une photo produit",
+    "adjust_variant_stock": "Correction de stock",
+    "admin_login": "Connexion au CMS",
+    "apply_inventory_count": "Inventaire validé",
+    "archive_category": "Catégorie archivée",
+    "archive_product": "Produit archivé",
+    "assign_barcode": "Code-barres attribué",
+    "bulk_product_status": "Statut de plusieurs produits modifié",
+    "bulk_update_delivery_zones": "Tarifs de livraison modifiés (lot)",
+    "bulk_update_variants": "Déclinaisons modifiées (lot)",
+    "cancel_inventory_count": "Inventaire annulé",
+    "clear_barcode": "Code-barres retiré",
+    "close_register": "Clôture de caisse",
+    "create_admin_user": "Utilisateur créé",
+    "create_attribute_option": "Valeur de caractéristique ajoutée",
+    "create_banner": "Bannière créée",
+    "create_brand": "Marque créée",
+    "create_category": "Catégorie créée",
+    "create_coupon": "Code promo créé",
+    "create_customer": "Client créé",
+    "create_device": "Appareil ajouté",
+    "create_expense": "Dépense enregistrée",
+    "create_product": "Produit créé",
+    "create_purchase_order": "Bon de commande fournisseur créé",
+    "create_supplier": "Fournisseur créé",
+    "create_variant": "Déclinaison créée",
+    "database_backup": "Sauvegarde de la base",
+    "deactivate_coupon": "Code promo désactivé",
+    "deactivate_variant": "Déclinaison désactivée",
+    "delete_attribute_option": "Valeur de caractéristique supprimée",
+    "delete_banner": "Bannière supprimée",
+    "delete_category_attribute": "Caractéristique de catégorie supprimée",
+    "delete_category_permanent": "Catégorie supprimée définitivement",
+    "delete_device": "Appareil supprimé",
+    "delete_expense": "Dépense supprimée",
+    "delete_product": "Produit supprimé",
+    "delete_product_image": "Photo produit supprimée",
+    "delete_variant": "Déclinaison supprimée",
+    "first_time_owner_initialized": "Compte propriétaire créé (1re configuration)",
+    "generate_variants": "Déclinaisons générées",
+    "open_inventory_count": "Inventaire ouvert",
+    "open_register": "Ouverture de caisse",
+    "pay_expense": "Dépense payée",
+    "pos_refund": "Remboursement magasin",
+    "pos_sale": "Vente magasin",
+    "pos_sale_offline_sync": "Vente hors ligne synchronisée",
+    "receive_purchase_order": "Réception fournisseur",
+    "remove_cod_blacklist": "Numéro retiré de la liste noire",
+    "remove_legacy_demo_content": "Suppression des exemples (ancienne version)",
+    "reorder_categories": "Ordre des catégories modifié",
+    "reorder_product_images": "Ordre des photos modifié",
+    "reset_admin_password": "Mot de passe réinitialisé",
+    "reset_admin_password_server": "Mot de passe réinitialisé (commande serveur)",
+    "restore_category": "Catégorie restaurée",
+    "set_default_device": "Appareil par défaut choisi",
+    "stock_write_off": "Mise au rebut (stock)",
+    "test_device": "Test d'appareil",
+    "treasury_backfill": "Trésorerie reconstituée depuis les ventes",
+    "treasury_manual_entry": "Mouvement de trésorerie manuel",
+    "update_admin_user": "Utilisateur modifié",
+    "update_attribute_option": "Valeur de caractéristique modifiée",
+    "update_banner": "Bannière modifiée",
+    "update_category": "Catégorie modifiée",
+    "update_category_attribute": "Caractéristique de catégorie modifiée",
+    "update_customer": "Client modifié",
+    "update_delivery_zone": "Tarif de livraison modifié",
+    "update_device": "Appareil modifié",
+    "update_fiscal_settings": "Paramètres fiscaux modifiés",
+    "update_homepage_section": "Section de la page d'accueil modifiée",
+    "update_order_status": "Statut de commande modifié",
+    "update_product_synced": "Produit modifié",
+    "update_store_settings": "Paramètres de la boutique modifiés",
+    "update_variant": "Déclinaison modifiée",
+    "notify_customer_whatsapp": "Message WhatsApp préparé pour le client",
+    "whatsapp_webhook_status": "Statut d'un message WhatsApp reçu",
+    "upsert_cod_blacklist": "Numéro ajouté à la liste noire",
+    "upsert_static_page": "Page d'information modifiée",
+}
+_AUDIT_ENTITY_FR: Dict[str, str] = {
+    "admin_user": "Utilisateur", "banner": "Bannière", "brand": "Marque", "cash_movement": "Trésorerie",
+    "cash_register_session": "Session de caisse", "category": "Catégorie", "category_attribute": "Caractéristique",
+    "category_attribute_option": "Valeur de caractéristique", "coupon": "Code promo", "customer": "Client",
+    "customer_phone_blacklist": "Liste noire", "database": "Base de données", "delivery_zone": "Livraison",
+    "device": "Appareil", "expense": "Dépense", "homepage_section": "Page d'accueil", "inventory_count": "Inventaire",
+    "order": "Commande", "pos_sale": "Vente magasin", "product": "Produit", "product_image": "Photo produit",
+    "product_variant": "Déclinaison", "purchase_order": "Achat fournisseur", "static_page": "Page d'information",
+    "store_settings": "Paramètres", "supplier": "Fournisseur", "system": "Système", "whatsapp_message": "Message WhatsApp", "treasury": "Trésorerie",
+}
+
+
+def _audit_label(table: Dict[str, str], code: Optional[str]) -> str:
+    c = str(code or "")
+    return table.get(c) or c.replace("_", " ")
+
+
 @app.get("/api/v1/admin/audit-logs")
 def admin_list_audit_logs(
     limit: int = Query(50, ge=1, le=500),
@@ -4397,9 +4496,21 @@ def admin_list_audit_logs(
     if admin_user_id is not None:
         where.append("al.admin_user_id = ?"); params.append(admin_user_id)
     if q:
-        like = f"%{q.strip()}%"
-        where.append("(al.action LIKE ? OR al.entity_id LIKE ? OR al.details_json LIKE ?)")
-        params.extend([like, like, like])
+        needle = q.strip()
+        like = f"%{needle}%"
+        clauses = ["al.action LIKE ?", "al.entity_id LIKE ?", "al.details_json LIKE ?", "au.email LIKE ?", "au.full_name LIKE ?"]
+        params.extend([like] * len(clauses))
+        # Searching in French ("connexion", "caisse"…) finds the matching codes.
+        folded = needle.lower()
+        codes = [c for c, lbl in _AUDIT_ACTION_FR.items() if folded in lbl.lower()]
+        if codes:
+            clauses.append("al.action IN (" + ",".join("?" for _ in codes) + ")")
+            params.extend(codes)
+        ents = [c for c, lbl in _AUDIT_ENTITY_FR.items() if folded in lbl.lower()]
+        if ents:
+            clauses.append("al.entity_type IN (" + ",".join("?" for _ in ents) + ")")
+            params.extend(ents)
+        where.append("(" + " OR ".join(clauses) + ")")
     where_sql = (" WHERE " + " AND ".join(where)) if where else ""
     sql = (
         "SELECT al.*, au.email AS admin_email, au.full_name AS admin_name "
@@ -4417,6 +4528,8 @@ def admin_list_audit_logs(
                 d["details"] = json.loads(d.pop("details_json") or "{}")
             except Exception:
                 d["details"] = {}
+            d["action_label"] = _audit_label(_AUDIT_ACTION_FR, d.get("action"))
+            d["entity_label"] = _audit_label(_AUDIT_ENTITY_FR, d.get("entity_type"))
             items.append(d)
         return {"items": items, "count": len(items)}
 
@@ -4438,8 +4551,10 @@ def admin_audit_log_facets(admin: dict = Depends(require_permission("settings:wr
             actions_set[r["action"]] = actions_set.get(r["action"], 0) + int(r["c"])
             entities_set[r["entity_type"]] = entities_set.get(r["entity_type"], 0) + int(r["c"])
         return {
-            "actions": [{"code": k, "count": v} for k, v in sorted(actions_set.items())],
-            "entity_types": [{"code": k, "count": v} for k, v in sorted(entities_set.items())],
+            "actions": sorted(({"code": k, "label": _audit_label(_AUDIT_ACTION_FR, k), "count": v}
+                               for k, v in actions_set.items()), key=lambda a: a["label"].lower()),
+            "entity_types": sorted(({"code": k, "label": _audit_label(_AUDIT_ENTITY_FR, k), "count": v}
+                                    for k, v in entities_set.items()), key=lambda a: a["label"].lower()),
         }
 # ============================================================================
 # ERP MODULES: PURCHASING, SUPPLIERS, EXPENSES, TREASURY & ACCOUNTING LEDGER
@@ -6028,7 +6143,7 @@ def pos_create_sale(
         sale_ref = ""
         sale_id = None
         for _attempt in range(3):
-            sale_ref = f"POS-{int(time.time()) % 100000:05d}-{secrets.token_hex(3).upper()}"
+            sale_ref = f"{_doc_prefix(cur, 'receipt_prefix_pos', 'POS')}-{int(time.time()) % 100000:05d}-{secrets.token_hex(3).upper()}"
             try:
                 cur.execute(
                     """INSERT INTO pos_sales
@@ -6132,6 +6247,16 @@ def pos_get_sale_invoice(sale_id: int, admin: dict = Depends(require_permission(
         sale["document_title"] = "Facture" if sale["sale_type"] == "sale" else "Avoir (remboursement)"
         return sale
 
+
+
+def _doc_prefix(cur, key: str, default: str) -> str:
+    """Receipt / document prefix chosen in CMS → Paramètres fiscaux
+    (letters and digits only, so references stay safe in URLs and files)."""
+    cur.execute("SELECT setting_value FROM store_settings WHERE setting_key = ?", (key,))
+    row = cur.fetchone()
+    raw = str((row["setting_value"] if row else "") or "").strip().strip('"').upper()
+    clean = re.sub(r"[^A-Z0-9]", "", raw)[:10]
+    return clean or default
 
 
 def _record_cash_movement(cur, *, account: str, movement: str, amount: int, source_type: str,
@@ -6253,7 +6378,7 @@ def pos_refund_sale(
         ref = ""
         refund_id = None
         for _attempt in range(3):
-            ref = f"RMA-{int(time.time()) % 100000:05d}-{secrets.token_hex(3).upper()}"
+            ref = f"{_doc_prefix(cur, 'receipt_prefix_refund', 'RMA')}-{int(time.time()) % 100000:05d}-{secrets.token_hex(3).upper()}"
             try:
                 cur.execute(
                     """INSERT INTO pos_sales
@@ -6594,6 +6719,21 @@ def _tcp_probe(host: str, port: int, timeout: float = 2.0) -> tuple:
         return False, f"{type(exc).__name__}: {exc}"
 
 
+def _is_lan_address(host: str) -> bool:
+    """True for addresses of a shop's local network (private / link-local IPs,
+    .local names). Loopback is NOT included: it is the server's own machine,
+    so a failed probe there is a real failure."""
+    import ipaddress
+    h = (host or "").strip().lower()
+    if h.endswith(".local"):
+        return True
+    try:
+        ip = ipaddress.ip_address(h)
+    except ValueError:
+        return False
+    return (ip.is_private or ip.is_link_local) and not ip.is_loopback
+
+
 def _device_payload(row) -> dict:
     d = dict(row)
     try:
@@ -6718,21 +6858,31 @@ def admin_test_device(device_id: int, payload: DeviceTestInput, admin: dict = De
         error = None
         method = None
 
-        if dev["connection_type"] == "network":
+        if payload.success is not None:
+            # Honest result reported by the shop PC (the desktop app printed a
+            # test ticket / label on the real printer).
+            method = "client_reported"
+            status_val = "ok" if payload.success else "error"
+            error = None if payload.success else (payload.error or "Échec rapporté par le poste local")
+        elif dev["connection_type"] == "network":
             method = "tcp_probe"
             host = str(config.get("host") or "").strip()
             port = config.get("port")
             if not host or port is None:
-                status_val, error = "error", "Configuration réseau incomplète (host/port)"
+                status_val, error = "error", "Configuration réseau incomplète (adresse IP / port)"
             else:
                 ok, probe_err = _tcp_probe(host, int(port))
-                status_val = "ok" if ok else "error"
-                error = None if ok else f"Connexion impossible à {host}:{port} — {probe_err}"
-        elif payload.success is not None:
-            # Honest client/bridge-reported result (e.g. Windows print path succeeded).
-            method = "client_reported"
-            status_val = "ok" if payload.success else "error"
-            error = None if payload.success else (payload.error or "Échec rapporté par le poste local")
+                if ok:
+                    status_val, error = "ok", None
+                elif _is_lan_address(host):
+                    # A server in the cloud cannot see the shop's local network:
+                    # a failed probe says nothing about the printer itself.
+                    status_val = "unknown"
+                    error = (f"Le serveur ne peut pas joindre {host} : c'est une adresse du réseau local de la boutique. "
+                             "Lancez le test depuis l'application de bureau installée sur le poste de la boutique.")
+                else:
+                    status_val = "error"
+                    error = f"Connexion impossible à {host}:{port} — {probe_err}"
         else:
             # No real signal available: do not fabricate a status.
             method = "unavailable"
@@ -6857,7 +7007,7 @@ def _process_offline_sale(conn, op: PosSyncOperation, cashier_id: int) -> dict:
     sale_ref = ""
     sale_id = None
     for _attempt in range(3):
-        sale_ref = f"POS-{int(time.time()) % 100000:05d}-{secrets.token_hex(3).upper()}"
+        sale_ref = f"{_doc_prefix(cur, 'receipt_prefix_pos', 'POS')}-{int(time.time()) % 100000:05d}-{secrets.token_hex(3).upper()}"
         try:
             if created_at_valid:
                 cur.execute(
@@ -7552,7 +7702,7 @@ def admin_open_count(payload: CountOpenInput, admin: dict = Depends(require_perm
         ref = ""
         count_id = None
         for _attempt in range(3):
-            ref = f"INV-{int(time.time()) % 100000:05d}-{secrets.token_hex(2).upper()}"
+            ref = f"{_doc_prefix(cur, 'receipt_prefix_inventory', 'INV')}-{int(time.time()) % 100000:05d}-{secrets.token_hex(2).upper()}"
             try:
                 cur.execute(
                     """INSERT INTO inventory_counts (reference, name, opened_by_admin_id, notes)

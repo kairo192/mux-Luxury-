@@ -15,6 +15,7 @@ import {
 } from "lucide-react";
 import { DesktopCmsApi } from "../api/adminClient";
 import { useT } from "../i18n";
+import { serverDate } from "../utils/serverDate";
 
 const fmt = (dzd: number) => `${Number(dzd || 0).toLocaleString("fr-DZ")} DA`;
 
@@ -225,7 +226,7 @@ export const CustomersPage: React.FC = () => {
                       <div className="flex items-center gap-2">
                         {h.channel === "online" ? <Globe className="w-4 h-4 text-sky-600" /> : <Store className="w-4 h-4 text-[#7a5c16]" />}
                         <span className="font-mono font-bold">{h.reference}</span>
-                        <span className="text-[11px] text-gray-400">{new Date(h.created_at).toLocaleDateString("fr-DZ")}</span>
+                        <span className="text-[11px] text-gray-400">{serverDate(h.created_at).toLocaleDateString("fr-FR")}</span>
                         {h.sale_type === "refund" && <span className="text-[10px] text-red-600 font-bold">REMB.</span>}
                       </div>
                       <span className="font-mono font-bold">{fmt(h.total_dzd)}</span>

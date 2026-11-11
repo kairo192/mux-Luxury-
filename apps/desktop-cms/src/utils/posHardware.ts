@@ -1,4 +1,5 @@
 // ============================================================================
+import { serverDate } from "./serverDate";
 // POS hardware bridge — thin typed wrapper around the Tauri 2 invoke commands
 // defined in `apps/desktop-cms/src-tauri/src/pos_hardware/`.
 //
@@ -210,7 +211,7 @@ export function buildReceiptLines(sale: PosSalePayload, width = 32): ReceiptLine
   out.push({ rule: true });
 
   const ref = sale.sale_reference || "—";
-  const date = sale.created_at ? new Date(sale.created_at).toLocaleString("fr-FR") : "—";
+  const date = sale.created_at ? serverDate(sale.created_at).toLocaleString("fr-FR") : "—";
   out.push({ left: "Ticket", right: ref, bold: true });
   out.push({ left: "Date",   right: date });
   if (sale.customer?.full_name) out.push({ left: "Client", right: sale.customer.full_name });

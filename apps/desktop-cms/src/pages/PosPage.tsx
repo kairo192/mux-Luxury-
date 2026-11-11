@@ -48,6 +48,7 @@ import { resolveLookup } from "../utils/posLookupResolver";
 import { syncCatalog, ensureMirrorReady } from "../utils/posMirrorSync";
 import { mirrorStatus, type MirrorStatus as MirrorStatusType } from "../utils/posMirror";
 import { useEscapeToClose } from "../utils/useEscapeToClose";
+import { serverDate } from "../utils/serverDate";
 
 // ---------------------------------------------------------------------------
 // POS — Touch-first cashier workspace.
@@ -677,7 +678,7 @@ export const PosPage: React.FC<{ onInventoryUpdated?: () => void }> = ({ onInven
     }
     blocks.push({ rule: true });
     blocks.push({ left: "Ticket", right: receipt.sale_reference || "—", bold: true });
-    blocks.push({ left: "Date", right: receipt.created_at ? new Date(receipt.created_at).toLocaleString("fr-DZ") : "—" });
+    blocks.push({ left: "Date", right: receipt.created_at ? serverDate(receipt.created_at).toLocaleString("fr-FR") : "—" });
     if (receipt.customer?.full_name) blocks.push({ left: "Client", right: receipt.customer.full_name });
     if (receipt.offline) blocks.push({ text: "** HORS LIGNE — à synchroniser **", align: "center", bold: true });
     if (receipt.sale_type === "refund") blocks.push({ text: "** REMBOURSEMENT **", align: "center", bold: true });
@@ -898,7 +899,7 @@ export const PosPage: React.FC<{ onInventoryUpdated?: () => void }> = ({ onInven
                   onClick={() => refreshMirror(false)}
                   disabled={mirrorSyncing}
                   className="h-12 px-3 rounded-2xl bg-white/10 hover:bg-white/20 text-[#E8D4A5] font-bold flex items-center gap-2 active:scale-95 disabled:opacity-60"
-                  title={`Catalogue local — ${mirrorStat.variant_count} variantes${mirrorStat.last_synced_at ? ` · dernière sync ${new Date(mirrorStat.last_synced_at).toLocaleTimeString("fr-DZ")}` : ""}`}
+                  title={`Catalogue local — ${mirrorStat.variant_count} variantes${mirrorStat.last_synced_at ? ` · dernière sync ${new Date(mirrorStat.last_synced_at).toLocaleTimeString("fr-FR")}` : ""}`}
                 >
                   <RefreshCw className={`w-4 h-4 ${mirrorSyncing ? "animate-spin" : ""}`} />
                   <span className="font-mono text-xs">
@@ -1380,7 +1381,7 @@ export const PosPage: React.FC<{ onInventoryUpdated?: () => void }> = ({ onInven
                 <div key={i.client_txn_id} className="p-3 rounded-2xl border-2 border-red-100 bg-red-50/40">
                   <div className="flex items-center justify-between">
                     <span className="font-mono font-bold text-[#063D2E]">{fmt(i.total_dzd)}</span>
-                    <span className="text-xs text-gray-400">{new Date(i.created_at).toLocaleString("fr-DZ")}</span>
+                    <span className="text-xs text-gray-400">{serverDate(i.created_at).toLocaleString("fr-FR")}</span>
                   </div>
                   <div className="text-red-600 text-[13px] mt-1">{i.error}</div>
                   <div className="text-gray-500 text-[11px] mt-1">
@@ -1469,7 +1470,7 @@ const ReceiptModal: React.FC<{ sale: any; onClose: () => void; onPrint: () => vo
           </div>
           <div className="border-t border-dashed my-2" />
           <div>Reçu: {sale.sale_reference}</div>
-          <div>{new Date(sale.created_at).toLocaleString("fr-DZ")}</div>
+          <div>{serverDate(sale.created_at).toLocaleString("fr-FR")}</div>
           {sale.cashier_name && <div>Caissier: {sale.cashier_name}</div>}
           {sale.customer && <div>Client: {sale.customer.full_name}</div>}
           {sale.offline && <div className="font-bold text-amber-700">** HORS LIGNE — à synchroniser **</div>}

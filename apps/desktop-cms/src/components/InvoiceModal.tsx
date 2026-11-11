@@ -3,6 +3,7 @@ import { X, Printer, RefreshCw, AlertTriangle } from "lucide-react";
 import { DesktopCmsApi } from "../api/adminClient";
 import { useT } from "../i18n";
 import { useEscapeToClose } from "../utils/useEscapeToClose";
+import { serverDate } from "../utils/serverDate";
 
 const fmt = (dzd: number) => `${Number(dzd || 0).toLocaleString("fr-DZ")} DA`;
 
@@ -60,7 +61,7 @@ export const InvoiceModal: React.FC<{ saleId: number; onClose: () => void }> = (
               <div className="text-right">
                 <div className="font-serif font-bold text-xl text-[#063D2E]">{data.document_title}</div>
                 <div className="font-mono text-[11px] mt-1">N° {data.sale_reference}</div>
-                <div className="text-gray-500 text-[11px]">{new Date(data.created_at).toLocaleString("fr-DZ")}</div>
+                <div className="text-gray-500 text-[11px]">{serverDate(data.created_at).toLocaleString("fr-FR")}</div>
               </div>
             </div>
 

@@ -3,6 +3,7 @@ import { Landmark, Download, RefreshCw, AlertTriangle, ArrowUp, ArrowDown, Walle
 import { DesktopCmsApi, getAccessToken } from "../api/adminClient";
 import { useT } from "../i18n";
 import { codeLabel } from "../utils/codeLabels";
+import { serverDate } from "../utils/serverDate";
 
 const fmt = (dzd: number) => `${Number(dzd || 0).toLocaleString("fr-DZ")} DA`;
 
@@ -177,7 +178,7 @@ export const TreasuryReportPage: React.FC = () => {
                       const outgoing = it.movement_type === "outflow" || it.movement_type === "withdrawal";
                       return (
                         <tr key={it.id} className="border-t border-gray-100">
-                          <td className="px-3 py-2 font-mono text-[10px] whitespace-nowrap">{new Date(it.created_at).toLocaleString("fr-DZ")}</td>
+                          <td className="px-3 py-2 font-mono text-[10px] whitespace-nowrap">{serverDate(it.created_at).toLocaleString("fr-FR")}</td>
                           <td className="px-3 py-2">
                             <div className="truncate">{it.description}</div>
                             <div className="text-gray-400 text-[10px]">{accountLabel(it.account_type)} · {sourceLabel(it.source_type)}</div>
