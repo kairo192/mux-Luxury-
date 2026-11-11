@@ -590,7 +590,7 @@ export function ProductEditor({ open, product, categories, brands, onClose, onSa
             >
               <span>{showLivePreview ? t("product_editor.btn_preview_active") : t("product_editor.btn_preview_show")}</span>
             </button>
-            <button
+            <button aria-label="Fermer"
               type="button"
               onClick={requestClose}
               className="p-2 rounded-xl bg-white/10 hover:bg-white/20 transition"

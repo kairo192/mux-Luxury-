@@ -2171,7 +2171,9 @@ console.log("CLIENT_NOTIFIER_ALL_TESTS_PASSED");
             )
             self.assertEqual(r_notif.status_code, 200, r_notif.text)
             notif_data = r_notif.json()
-            self.assertTrue(notif_data["delivered"])
+            # Prepared for the staff to send from WhatsApp; never claimed as delivered.
+            self.assertFalse(notif_data["delivered"])
+            self.assertEqual(notif_data["status"], "prepared")
             self.assertEqual(notif_data["recipient_e164"], "+213554123456")
             self.assertIn("https://wa.me/213554123456?text=", notif_data["wa_me_customer_url"])
 

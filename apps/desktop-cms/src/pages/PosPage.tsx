@@ -47,6 +47,7 @@ import { openSystemPrint, renderReceiptHtml, type ReceiptBlock } from "../utils/
 import { resolveLookup } from "../utils/posLookupResolver";
 import { syncCatalog, ensureMirrorReady } from "../utils/posMirrorSync";
 import { mirrorStatus, type MirrorStatus as MirrorStatusType } from "../utils/posMirror";
+import { useEscapeToClose } from "../utils/useEscapeToClose";
 
 // ---------------------------------------------------------------------------
 // POS — Touch-first cashier workspace.
@@ -1416,7 +1417,9 @@ const Stat: React.FC<{ label: string; value: string; gold?: boolean }> = ({ labe
 );
 
 // Bottom sheet — large, touch-dismissable (modality.md: one task, obvious way out)
-const Sheet: React.FC<{ title: string; onClose: () => void; children: React.ReactNode }> = ({ title, onClose, children }) => (
+const Sheet: React.FC<{ title: string; onClose: () => void; children: React.ReactNode }> = ({ title, onClose, children }) => {
+  useEscapeToClose(onClose);
+  return (
   <div className="fixed inset-0 bg-black/40 flex items-end sm:items-center justify-center z-50 p-0 sm:p-4" onClick={onClose}>
     <div
       className="bg-white rounded-t-3xl sm:rounded-3xl p-5 w-full sm:max-w-md max-h-[92vh] overflow-auto"
@@ -1424,7 +1427,7 @@ const Sheet: React.FC<{ title: string; onClose: () => void; children: React.Reac
     >
       <div className="flex items-center justify-between mb-4">
         <h3 className="font-serif font-bold text-[#063D2E] text-lg">{title}</h3>
-        <button type="button" onClick={onClose} className="w-11 h-11 rounded-xl flex items-center justify-center text-gray-400 hover:text-gray-700 hover:bg-gray-100 active:scale-95">
+        <button aria-label="Fermer" type="button" onClick={onClose} className="w-11 h-11 rounded-xl flex items-center justify-center text-gray-400 hover:text-gray-700 hover:bg-gray-100 active:scale-95">
           <X className="w-6 h-6" />
         </button>
       </div>
@@ -1432,8 +1435,10 @@ const Sheet: React.FC<{ title: string; onClose: () => void; children: React.Reac
     </div>
   </div>
 );
+};
 
 const ReceiptModal: React.FC<{ sale: any; onClose: () => void; onPrint: () => void; onSystemPrint?: () => void }> = ({ sale, onClose, onPrint, onSystemPrint }) => {
+  useEscapeToClose(onClose);
   const b = sale.boutique_info || {};
   return (
     <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4" onClick={onClose}>

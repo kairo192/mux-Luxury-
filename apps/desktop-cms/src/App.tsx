@@ -11,6 +11,7 @@ import {
   subscribeClientNotifications,
   subscribeClientConfirm,
   clearPendingClientConfirms,
+  confirmClientAction,
 } from "./utils/clientNotifier";
 import { focusMainWindow } from "./utils/notificationCenter";
 import {
@@ -83,6 +84,9 @@ import {
 } from "lucide-react";
 import { HomepageContentPanel } from "./components/HomepageContentPanel";
 import { movementReasonLabel } from "./utils/movementReasons";
+import { allowedOrderStatuses, orderStatusLabel, ORDER_STATUSES } from "./utils/orderStatus";
+import { openExternalUrl } from "./utils/openExternal";
+import { useEscapeToClose } from "./utils/useEscapeToClose";
 import { RevenueTrendChart, OrderStatusDistributionChart, InventoryHealthWidget } from "./components/CmsCharts";
 import { DesktopCmsApi, restoreSessionFromOsKeychain, getApiBaseUrl, configureApiBaseUrl, mediaUrl } from "./api/adminClient";
 import { CategoryBuilderPage } from "./pages/CategoryBuilderPage";
@@ -290,6 +294,8 @@ export default function App() {
   const [healthStatus, setHealthStatus] = useState<any | null>(null);
   // restoreReport state removed with the admin-facing backup page.
   const [selectedInvoice, setSelectedInvoice] = useState<any | null>(null);
+  const closeInvoice = React.useCallback(() => setSelectedInvoice(null), []);
+  useEscapeToClose(closeInvoice, Boolean(selectedInvoice));
   const [loadingWorkspace, setLoadingWorkspace] = useState(false);
   const [selectedProductIds, setSelectedProductIds] = useState<number[]>([]);
   const [newBrandName, setNewBrandName] = useState("");
@@ -702,9 +708,20 @@ export default function App() {
 
   async function handleOrderStatusChange(orderId: number, nextStatus: string) {
     setError("");
+    const ord = orders.find((o) => o.id === orderId);
+    const ref = ord?.order_reference || `#${orderId}`;
+    if (nextStatus === "cancelled" || nextStatus === "returned") {
+      const ok = await confirmClientAction({
+        title: nextStatus === "cancelled" ? "Annuler la commande" : "Commande retournée",
+        message: `${ref} : les articles reviennent en stock et la commande ne compte plus dans le chiffre d'affaires. Ce statut est définitif.`,
+        confirmLabel: nextStatus === "cancelled" ? "Annuler la commande" : "Confirmer le retour",
+        danger: true,
+      });
+      if (!ok) return;
+    }
     try {
       await DesktopCmsApi.updateOrderStatus(orderId, nextStatus);
-      const okMsg = `Statut de la commande #${orderId} mis à jour vers "${nextStatus}".`;
+      const okMsg = `Commande ${ref} : ${orderStatusLabel(nextStatus)}.`;
       setSuccessMsg(okMsg);
       notifyClientSuccess("Statut de commande mis à jour", okMsg);
       await loadAllWorkspaceData();
@@ -789,9 +806,10 @@ export default function App() {
     setError("");
     try {
       const receipt = await DesktopCmsApi.notifyOrderCustomerWhatsapp(orderId, templateType);
-      const okMsg = `Notification WhatsApp (${templateType}) transmise à ${receipt.recipient_local} : "${receipt.message_text.slice(0, 90)}..."`;
+      await openExternalUrl(receipt.wa_me_customer_url);
+      const okMsg = `WhatsApp est ouvert sur la conversation avec ${receipt.recipient_local}, message déjà écrit : vérifiez-le puis appuyez sur Envoyer.`;
       setSuccessMsg(okMsg);
-      notifyClientSuccess("Notification WhatsApp Client Envoyée", okMsg);
+      notifyClientSuccess("Message WhatsApp prêt", okMsg);
       await loadAllWorkspaceData();
     } catch (err: any) {
       const tr = notifyClientError(err, "Envoi de la notification WhatsApp impossible");
@@ -1237,7 +1255,7 @@ export default function App() {
                     Stock: <strong>{productToDelete.total_stock ?? 0} unités</strong>
                   </span>
                   <span>
-                    Statut: <strong>{productToDelete.status === "archived" ? "Archivé (hors vitrine)" : productToDelete.status}</strong>
+                    Statut: <strong>{({ archived: "Archivé (hors vitrine)", published: "Publié (en vente)", draft: "Brouillon" } as Record<string, string>)[productToDelete.status] || productToDelete.status}</strong>
                   </span>
                 </div>
               </div>
@@ -1816,7 +1834,7 @@ export default function App() {
                         <div className="flex items-center gap-3">
                           <span className="font-mono font-bold text-[#063D2E]">{ro.total_dzd?.toLocaleString()} DA</span>
                           <span className="px-2 py-0.5 rounded-full text-[10px] font-bold uppercase bg-emerald-100 text-emerald-800">
-                            {ro.status}
+                            {orderStatusLabel(ro.status)}
                           </span>
                         </div>
                       </div>
@@ -2424,8 +2442,8 @@ export default function App() {
                   className="px-3 py-1.5 border rounded-xl bg-[#F8F6F0] font-semibold"
                 >
                   <option value="">{t("common.all")}</option>
-                  {["new", "pending_confirmation", "confirmed", "preparing", "ready_for_shipment", "shipped", "delivered", "cancelled", "returned"].map((st) => (
-                    <option key={st} value={st}>{st}</option>
+                  {ORDER_STATUSES.map((st) => (
+                    <option key={st} value={st}>{orderStatusLabel(st)}</option>
                   ))}
                 </select>
                 <button
@@ -2447,7 +2465,7 @@ export default function App() {
                     ? "bg-amber-100 text-amber-900 border-amber-300"
                     : "bg-emerald-50 text-emerald-900 border-emerald-200";
                 return (
-                  <div key={o.id} className="p-4 rounded-xl border border-gray-200 flex flex-wrap items-center justify-between gap-4">
+                  <div key={o.id} data-order-ref={o.order_reference} className="p-4 rounded-xl border border-gray-200 flex flex-wrap items-center justify-between gap-4">
                     <div className="space-y-1">
                       <div className="flex flex-wrap items-center gap-2">
                         <span className="font-mono font-extrabold text-[#063D2E]">#{o.order_reference} • {o.customer_name} ({o.customer_phone})</span>
@@ -2458,20 +2476,44 @@ export default function App() {
                         )}
                       </div>
                       <div className="text-gray-600">
-                        Destination: <strong>{o.wilaya_code} - {o.wilaya_name}</strong> ({o.commune}) • Mode: <strong>{o.delivery_method}</strong>
+                        Livraison : <strong>{o.wilaya_code} - {o.wilaya_name}</strong> ({o.commune}) •{" "}
+                        <strong>{o.delivery_method === "stop_desk" ? "Point relais (stop desk)" : "À domicile"}</strong>
+                        {o.delivery_address ? <> • {o.delivery_address}</> : null}
                       </div>
+                      {Array.isArray(o.items) && o.items.length > 0 && (
+                        <ul className="text-gray-800">
+                          {o.items.map((it: any) => (
+                            <li key={it.id}>
+                              {it.quantity} × <strong>{it.product_name}</strong>
+                              {it.variant_title ? ` (${it.variant_title})` : ""} <span className="text-gray-500 font-mono">{it.sku}</span>
+                              {" — "}{Number(it.line_total_dzd || 0).toLocaleString("fr-FR")} DA
+                            </li>
+                          ))}
+                        </ul>
+                      )}
                       <div className="font-bold text-[#063D2E]">
-                        Sous-total: {o.subtotal_dzd} DA + Livraison: {o.delivery_fee_dzd} DA = Total COD: {o.total_dzd} DA
+                        Articles : {Number(o.subtotal_dzd).toLocaleString("fr-FR")} DA
+                        {Number(o.subtotal_dzd) + Number(o.delivery_fee_dzd) !== Number(o.total_dzd) ? ` − remise ${(Number(o.subtotal_dzd) + Number(o.delivery_fee_dzd) - Number(o.total_dzd)).toLocaleString("fr-FR")} DA` : ""}
+                        {" "}+ livraison : {Number(o.delivery_fee_dzd) === 0 ? "offerte" : `${Number(o.delivery_fee_dzd).toLocaleString("fr-FR")} DA`}
+                        {" "}= à encaisser : {Number(o.total_dzd).toLocaleString("fr-FR")} DA
                       </div>
+                      {o.created_at && (
+                        <div className="text-[11px] text-gray-500">
+                          Reçue le {new Date(String(o.created_at).replace(" ", "T") + (String(o.created_at).includes("Z") || String(o.created_at).includes("+") ? "" : "Z")).toLocaleString("fr-FR")}
+                          {o.customer_notes ? <> • Note du client : <em>{o.customer_notes}</em></> : null}
+                        </div>
+                      )}
                     </div>
                     <div className="flex flex-wrap items-center gap-2">
                       <select
                         value={o.status}
+                        aria-label={`Statut de la commande ${o.order_reference}`}
+                        disabled={o.status === "cancelled" || o.status === "returned"}
                         onChange={(e) => handleOrderStatusChange(o.id, e.target.value)}
-                        className="px-3 py-1.5 rounded-lg border font-bold bg-[#F8F6F0]"
+                        className="px-3 py-1.5 rounded-lg border font-bold bg-[#F8F6F0] disabled:opacity-60"
                       >
-                        {["new", "pending_confirmation", "confirmed", "preparing", "ready_for_shipment", "shipped", "delivered", "cancelled", "returned"].map((st) => (
-                          <option key={st} value={st}>{st}</option>
+                        {allowedOrderStatuses(o.status).map((st) => (
+                          <option key={st} value={st}>{orderStatusLabel(st)}</option>
                         ))}
                       </select>
                       <button
@@ -2604,7 +2646,7 @@ export default function App() {
               <div className="bg-white p-5 rounded-2xl border border-[#D4AF62]/40 shadow-xs space-y-2 text-xs">
                 <h4 className="font-serif font-bold text-[#063D2E] text-sm flex items-center gap-2">
                   <Radio className="w-4 h-4 text-[#D4AF62]" />
-                  <span>Journal des Communications WhatsApp Client ({waOutbox.length} dernier(s) message(s))</span>
+                  <span>Messages WhatsApp préparés ({waOutbox.length})</span>
                 </h4>
                 <div className="space-y-1.5 max-h-40 overflow-y-auto">
                   {waOutbox.slice(0, 6).map((m: any, idx: number) => (
@@ -2617,14 +2659,13 @@ export default function App() {
                         <span className="text-gray-700">{m.message_text ? m.message_text.slice(0, 95) + "..." : `Message ID: ${m.message_id}`}</span>
                       </div>
                       {m.wa_me_customer_url && (
-                        <a
-                          href={m.wa_me_customer_url}
-                          target="_blank"
-                          rel="noopener noreferrer"
+                        <button
+                          type="button"
+                          onClick={() => openExternalUrl(m.wa_me_customer_url).catch((err) => notifyClientError(err, "Ouverture de WhatsApp impossible"))}
                           className="px-2.5 py-1 rounded-lg bg-emerald-700 text-white font-bold text-[10px]"
                         >
-                          Ouvrir WhatsApp Web ↗
-                        </a>
+                          Rouvrir dans WhatsApp ↗
+                        </button>
                       )}
                     </div>
                   ))}

@@ -4166,15 +4166,22 @@ def admin_list_communications_outbox(
     limit: int = Query(30, ge=1, le=100),
     admin: dict = Depends(require_permission("orders:write")),
 ):
-    cfg = get_whatsapp_config()
     items = list_recent_whatsapp_outbox(limit=limit)
+    # The shop's own number comes from CMS → Contenu → Coordonnées.
+    with db_session() as conn:
+        cur = conn.cursor()
+        cur.execute("SELECT setting_value FROM store_settings WHERE setting_key = ?", ("whatsapp_contact_number",))
+        row = cur.fetchone()
+    digits = re.sub(r"\D", "", str((row["setting_value"] if row else "") or "").strip('"'))
+    if digits.startswith("0"):
+        digits = "213" + digits[1:]
+    local = ("0" + digits[3:]) if digits.startswith("213") else digits
     return {
         "items": items,
         "count": len(items),
-        "whatsapp_configured": cfg["is_configured"],
-        "sandbox_mode": cfg["sandbox_mode"],
-        "boutique_whatsapp_e164": "+213655534154",
-        "boutique_whatsapp_local": "0655534154",
+        "mode": "manual_link",
+        "boutique_whatsapp_e164": ("+" + digits) if digits else "",
+        "boutique_whatsapp_local": local,
     }
 
 

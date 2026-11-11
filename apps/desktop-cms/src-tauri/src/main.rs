@@ -81,6 +81,37 @@ fn keychain_status() -> serde_json::Value {
     })
 }
 
+/// Opens an https:// link with the computer's default handler (browser, or
+/// WhatsApp Desktop for wa.me links). Only https:// is accepted, and the URL
+/// is passed as a single argument — never through a shell — so a crafted
+/// link cannot run a command.
+#[tauri::command]
+fn open_external_url(url: String) -> Result<(), String> {
+    let u = url.trim();
+    if !u.starts_with("https://") || u.len() > 4000 || u.chars().any(|c| c.is_whitespace() || c == '"' || c.is_control()) {
+        return Err("Lien refusé : seules les adresses https:// valides peuvent être ouvertes.".into());
+    }
+    #[cfg(target_os = "windows")]
+    let mut cmd = {
+        let mut c = std::process::Command::new("rundll32.exe");
+        c.arg("url.dll,FileProtocolHandler").arg(u);
+        c
+    };
+    #[cfg(target_os = "macos")]
+    let mut cmd = {
+        let mut c = std::process::Command::new("open");
+        c.arg(u);
+        c
+    };
+    #[cfg(all(unix, not(target_os = "macos")))]
+    let mut cmd = {
+        let mut c = std::process::Command::new("xdg-open");
+        c.arg(u);
+        c
+    };
+    cmd.spawn().map(|_| ()).map_err(|e| format!("Ouverture du lien impossible : {e}"))
+}
+
 fn main() {
     std::panic::set_hook(Box::new(|info| {
         let msg = format!("PANIC: {:?}\nBacktrace: {:?}", info, std::backtrace::Backtrace::capture());
@@ -131,6 +162,7 @@ fn main() {
             keychain_get_secret,
             keychain_delete_secret,
             keychain_status,
+            open_external_url,
             pos_hardware::pos_list_printers,
             pos_hardware::pos_print_receipt,
             pos_hardware::pos_open_cash_drawer,

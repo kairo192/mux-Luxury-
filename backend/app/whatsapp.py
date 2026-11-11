@@ -220,8 +220,11 @@ def dispatch_customer_whatsapp_order_update(
     both the API receipt and the 1-click wa.me deep link.
     """
     msg_info = build_customer_order_whatsapp_message(order_dict, template_type, custom_message)
-    cfg = get_whatsapp_config()
-    msg_id = f"wamid.ORDER_{template_type.upper()}_{int(time.time())}_{hashlib.sha256(msg_info['recipient_e164'].encode()).hexdigest()[:8]}"
+    # Nothing is sent from the server: no WhatsApp Business API call exists in
+    # this system. The back office opens WhatsApp on the PC with the message
+    # already written (wa.me link) and the staff member presses "Send". The
+    # result therefore says "prepared", never "delivered".
+    log_id = f"wa_{template_type}_{int(time.time())}_{hashlib.sha256(msg_info['recipient_e164'].encode()).hexdigest()[:8]}"
 
     outbox_dir = _resolve_outbox_dir()
     outbox_file = os.path.join(outbox_dir, "whatsapp_outbox.jsonl")
@@ -229,7 +232,8 @@ def dispatch_customer_whatsapp_order_update(
     log_entry = {
         "timestamp": int(time.time()),
         "channel": "whatsapp_order_notification",
-        "mode": "sandbox" if (cfg["sandbox_mode"] or not cfg["is_configured"]) else "live",
+        "mode": "manual_link",
+        "status": "prepared",
         "order_id": order_dict.get("id"),
         "order_reference": order_dict.get("order_reference"),
         "template_type": template_type,
@@ -237,16 +241,16 @@ def dispatch_customer_whatsapp_order_update(
         "recipient_local": msg_info["recipient_local"],
         "message_text": msg_info["message_text"],
         "wa_me_customer_url": msg_info["wa_me_customer_url"],
-        "message_id": msg_id,
+        "message_id": log_id,
     }
     with open(outbox_file, "a", encoding="utf-8") as f:
         f.write(json.dumps(log_entry, ensure_ascii=False) + "\n")
 
     return {
-        "delivered": True,
-        "mode": log_entry["mode"],
-        "provider": "meta_whatsapp_cloud_api",
-        "message_id": msg_id,
+        "delivered": False,
+        "status": "prepared",
+        "mode": "manual_link",
+        "message_id": log_id,
         **msg_info,
     }
 

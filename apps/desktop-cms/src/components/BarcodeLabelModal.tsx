@@ -11,6 +11,7 @@ import {
 } from "../utils/posHardware";
 import { openSystemPrint, renderLabelsHtml } from "../utils/systemPrint";
 import { useT } from "../i18n";
+import { useEscapeToClose } from "../utils/useEscapeToClose";
 
 interface LabelData {
   store_name: string;
@@ -30,6 +31,7 @@ export const BarcodeLabelModal: React.FC<{
   onClose: () => void;
   onChanged?: () => void;
 }> = ({ variantId, onClose, onChanged }) => {
+  useEscapeToClose(onClose);
   const t = useT();
   const [label, setLabel] = useState<LabelData | null>(null);
   const [loading, setLoading] = useState(true);
@@ -186,7 +188,7 @@ export const BarcodeLabelModal: React.FC<{
       <div className="bg-white rounded-3xl w-full max-w-md max-h-[92vh] overflow-auto" onClick={(e) => e.stopPropagation()}>
         <div className="flex items-center justify-between px-5 py-4 border-b">
           <h3 className="font-serif font-bold text-[#063D2E] text-lg">{t("barcode_modal.title")}</h3>
-          <button type="button" onClick={onClose} className="w-11 h-11 rounded-xl flex items-center justify-center text-gray-400 hover:text-gray-700 hover:bg-gray-100 active:scale-95">
+          <button aria-label="Fermer" type="button" onClick={onClose} className="w-11 h-11 rounded-xl flex items-center justify-center text-gray-400 hover:text-gray-700 hover:bg-gray-100 active:scale-95">
             <X className="w-6 h-6" />
           </button>
         </div>
