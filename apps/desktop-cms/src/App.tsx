@@ -1663,7 +1663,7 @@ export default function App() {
               <div className="flex flex-wrap items-center gap-2">
                 <button
                   type="button"
-                  onClick={() => setActiveTab("products")}
+                  onClick={() => { setActiveTab("products"); if (categories.length > 0) openProductEditor(null); }}
                   className="px-3.5 py-2 rounded-xl bg-[#063D2E] text-[#D4AF62] hover:bg-[#0A5C45] transition-all font-bold text-xs flex items-center gap-1.5 shadow-sm"
                 >
                   <Plus className="w-3.5 h-3.5" />
@@ -1842,7 +1842,7 @@ export default function App() {
                     onClick={() => setActiveTab("orders")}
                     className="text-[11px] font-bold text-[#063D2E] hover:text-[#0A5C45] flex items-center gap-1 transition"
                   >
-                    <span>{t("dashboard_tab.view_all_orders", { count: dashboard.total_orders })}</span>
+                    <span>{t("dashboard_tab.view_all_orders", { count: dashboard.all_orders_count ?? dashboard.total_orders })}</span>
                     <ArrowUpRight className="w-3.5 h-3.5" />
                   </button>
                 </div>
@@ -1890,10 +1890,13 @@ export default function App() {
                 <div>
                   <div className="flex items-center gap-2">
                     <span className="font-bold text-sm text-[#E8D4A5]">{t("dashboard_tab.security_title")}</span>
-                    <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
+                    <span className={`w-2 h-2 rounded-full ${Number(dashboard.failed_backups_count || 0) > 0 ? "bg-red-400" : "bg-emerald-400"}`} />
                   </div>
                   <p className="text-[11px] text-gray-300 mt-0.5">
-                    {t("dashboard_tab.security_desc")}
+                    {dashboard.database_engine === "postgres" ? t("dashboard_tab.security_desc_pg") : t("dashboard_tab.security_desc_sqlite")}
+                    {Number(dashboard.failed_backups_count || 0) > 0 && (
+                      <span className="text-red-300 font-bold"> • {t("dashboard_tab.failed_backups", { count: dashboard.failed_backups_count })}</span>
+                    )}
                   </p>
                 </div>
               </div>

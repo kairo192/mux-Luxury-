@@ -236,6 +236,31 @@ class TestAccounting(unittest.TestCase):
         cash3, _ = self._treasury()
         self.assertEqual(cash3, cash1, "deleting a paid expense puts the money back")
 
+    def test_unpaid_expense_is_a_charge_in_accounting(self):
+        before = self._pnl()
+        r = self.client.post("/api/v1/admin/expenses", headers=self.h, json={
+            "description": "Facture électricité à régler", "category": "electricite_eau", "amount_dzd": 4100,
+            "expense_date": __import__("app.main", fromlist=["_shop_today"])._shop_today(),
+            "payment_method": "cash", "payment_status": "pending"})
+        self.assertEqual(r.status_code, 201, r.text)
+        after = self._pnl()
+        self.assertEqual(after["operating_expenses_dzd"] - before["operating_expenses_dzd"], 4100)
+        self.assertEqual(after["operating_expenses_unpaid_dzd"] - before.get("operating_expenses_unpaid_dzd", 0), 4100)
+        self.assertEqual(before["net_operating_profit_dzd"] - after["net_operating_profit_dzd"], 4100)
+        self.client.delete(f"/api/v1/admin/expenses/{r.json()['id']}", headers=self.h)
+
+    def test_accounting_csv_exports_each_tab(self):
+        for part, first_col, fname in (("pnl", "Poste", "compte_de_resultat_"),
+                                       ("products", "Produit", "rentabilite_produits_"),
+                                       ("ledger", "Date", "journal_achats_depenses_")):
+            r = self.client.get("/api/v1/admin/accounting/export.csv", headers=self.h, params={"part": part})
+            self.assertEqual(r.status_code, 200, r.text)
+            self.assertIn(fname, r.headers.get("content-disposition", ""))
+            self.assertTrue(r.text.lstrip("\ufeff").startswith(first_col + ";"), r.text[:80])
+        pnl = self.client.get("/api/v1/admin/accounting/export.csv", headers=self.h, params={"part": "pnl"}).text
+        self.assertIn(f"Chiffre d'affaires;{self._pnl()['total_revenue_dzd']}", pnl)
+        self.assertEqual(self.client.get("/api/v1/admin/accounting/export.csv", headers=self.h, params={"part": "x"}).status_code, 422)
+
     def test_manual_treasury_entries_and_transfers(self):
         cash0, bank0 = self._treasury()
         r = self.client.post("/api/v1/admin/treasury/movements", headers=self.h, json={

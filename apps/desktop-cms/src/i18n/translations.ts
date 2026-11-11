@@ -938,7 +938,7 @@ const fr: Dict = {
   "catalog.delete_modal_cancel": "Annuler",
 
   // ----- dashboard_tab
-  "dashboard_tab.revenue_title": "Chiffre d'Affaires",
+  "dashboard_tab.revenue_title": "Chiffre d'affaires en ligne",
   "dashboard_tab.orders_title": "Commandes",
   "dashboard_tab.orders_delivered": "{{count}} livrée(s) COD",
   "dashboard_tab.active_products": "Articles Actifs",
@@ -951,13 +951,15 @@ const fr: Dict = {
   "dashboard_tab.out_of_stock_desc": "0 pièce disponible",
   "dashboard_tab.recent_orders_title": "Commandes Clients Récentes",
   "dashboard_tab.recent_orders_desc": "Flux d'expéditions et réceptions en direct",
-  "dashboard_tab.view_all_orders": "Toutes ({{count}})",
+  "dashboard_tab.view_all_orders": "Toutes les commandes ({{count}})",
   "dashboard_tab.empty_orders": "Aucune commande enregistrée pour le moment.",
   "dashboard_tab.empty_orders_desc": "Les commandes passées sur la boutique apparaîtront ici automatiquement.",
-  "dashboard_tab.security_title": "Sécurité & Infrastructure Haute Disponibilité",
-  "dashboard_tab.security_desc": "SQLite WAL haute performance • Isolation OS Keychain Windows • Anti-Replay HMAC-SHA256 actif",
+  "dashboard_tab.security_title": "Base de données & sauvegardes",
+  "dashboard_tab.security_desc_pg": "Base PostgreSQL sur le serveur • Sauvegarde automatique chaque nuit • Journal d'audit actif",
+  "dashboard_tab.security_desc_sqlite": "Base locale (fichier SQLite sur ce poste) • Journal d'audit actif",
+  "dashboard_tab.failed_backups": "{{count}} sauvegarde(s) en échec",
   "dashboard_tab.last_backup": "Dernier backup : {{filename}}",
-  "dashboard_tab.backups_ready": "Backups automatisés prêts",
+  "dashboard_tab.backups_ready": "Aucune sauvegarde enregistrée dans cette base",
   "dashboard_tab.btn_manage": "Gérer",
 
   // ----- customers
@@ -1228,7 +1230,7 @@ const fr: Dict = {
   // ----- accounting (extended)
   "accounting.tab_pnl": "Compte de résultat",
   "accounting.tab_products": "Rentabilité par produit",
-  "accounting.tab_ledger": "Grand livre comptable",
+  "accounting.tab_ledger": "Journal achats & dépenses",
   "accounting.stat_revenue": "Chiffre d'Affaires Brut",
   "accounting.stat_net_profit": "Bénéfice Net d'Exploitation",
   "accounting.stat_gross_margin": "Marge Brute",
@@ -2153,7 +2155,7 @@ const en: Dict = {
   "catalog.delete_modal_cancel": "Cancel",
 
   // ----- dashboard_tab
-  "dashboard_tab.revenue_title": "Total Revenue",
+  "dashboard_tab.revenue_title": "Online revenue",
   "dashboard_tab.orders_title": "Orders",
   "dashboard_tab.orders_delivered": "{{count}} delivered COD",
   "dashboard_tab.active_products": "Active Products",
@@ -2166,13 +2168,15 @@ const en: Dict = {
   "dashboard_tab.out_of_stock_desc": "0 units available",
   "dashboard_tab.recent_orders_title": "Recent Customer Orders",
   "dashboard_tab.recent_orders_desc": "Live shipments and receipts stream",
-  "dashboard_tab.view_all_orders": "All ({{count}})",
+  "dashboard_tab.view_all_orders": "All orders ({{count}})",
   "dashboard_tab.empty_orders": "No orders recorded yet.",
   "dashboard_tab.empty_orders_desc": "Orders placed on the store will appear here automatically.",
-  "dashboard_tab.security_title": "Security & High Availability Infrastructure",
-  "dashboard_tab.security_desc": "High performance SQLite WAL • Windows OS Keychain Isolation • Active Anti-Replay HMAC-SHA256",
+  "dashboard_tab.security_title": "Database & backups",
+  "dashboard_tab.security_desc_pg": "PostgreSQL database on the server • Automatic nightly backup • Audit log active",
+  "dashboard_tab.security_desc_sqlite": "Local database (SQLite file on this PC) • Audit log active",
+  "dashboard_tab.failed_backups": "{{count}} failed backup(s)",
   "dashboard_tab.last_backup": "Last backup: {{filename}}",
-  "dashboard_tab.backups_ready": "Automated backups ready",
+  "dashboard_tab.backups_ready": "No backup recorded in this database",
   "dashboard_tab.btn_manage": "Manage",
 
   // ----- customers
@@ -2443,7 +2447,7 @@ const en: Dict = {
   // ----- accounting (extended)
   "accounting.tab_pnl": "Income Statement (P&L)",
   "accounting.tab_products": "Product Profitability",
-  "accounting.tab_ledger": "General Ledger",
+  "accounting.tab_ledger": "Purchases & expenses journal",
   "accounting.stat_revenue": "Gross Revenue",
   "accounting.stat_net_profit": "Net Operating Profit",
   "accounting.stat_gross_margin": "Gross Margin",
@@ -3368,7 +3372,7 @@ const ar: Dict = {
   "catalog.delete_modal_cancel": "إلغاء",
 
   // ----- dashboard_tab
-  "dashboard_tab.revenue_title": "إجمالي الإيرادات",
+  "dashboard_tab.revenue_title": "رقم الأعمال عبر الإنترنت",
   "dashboard_tab.orders_title": "الطلبات",
   "dashboard_tab.orders_delivered": "{{count}} مستلمة دفع عند الاستلام",
   "dashboard_tab.active_products": "منتجات نشطة",
@@ -3381,13 +3385,15 @@ const ar: Dict = {
   "dashboard_tab.out_of_stock_desc": "0 قطعة متوفرة",
   "dashboard_tab.recent_orders_title": "أحدث طلبات العملاء",
   "dashboard_tab.recent_orders_desc": "تدفق مباشر للشحنات والاستلام",
-  "dashboard_tab.view_all_orders": "الكل ({{count}})",
+  "dashboard_tab.view_all_orders": "كل الطلبات ({{count}})",
   "dashboard_tab.empty_orders": "لا توجد طلبات مسجلة حاليًا.",
   "dashboard_tab.empty_orders_desc": "ستظهر الطلبات الجديدة تلقائيًا هنا.",
-  "dashboard_tab.security_title": "الأمان والبنية التحتية عالية التوفر",
-  "dashboard_tab.security_desc": "أداء عالي بتقنية SQLite WAL • عزل مفاتيح Windows OS • حماية نشطة HMAC-SHA256",
+  "dashboard_tab.security_title": "قاعدة البيانات والنسخ الاحتياطي",
+  "dashboard_tab.security_desc_pg": "قاعدة PostgreSQL على الخادم • نسخ احتياطي تلقائي كل ليلة • سجل التدقيق مفعّل",
+  "dashboard_tab.security_desc_sqlite": "قاعدة محلية (ملف SQLite على هذا الجهاز) • سجل التدقيق مفعّل",
+  "dashboard_tab.failed_backups": "{{count}} نسخة احتياطية فاشلة",
   "dashboard_tab.last_backup": "آخر نسخة احتياطية: {{filename}}",
-  "dashboard_tab.backups_ready": "النسخ الاحتياطي التلقائي جاهز",
+  "dashboard_tab.backups_ready": "لا توجد نسخة احتياطية مسجلة في هذه القاعدة",
   "dashboard_tab.btn_manage": "إدارة",
 
   // ----- customers
@@ -3658,7 +3664,7 @@ const ar: Dict = {
   // ----- accounting (extended)
   "accounting.tab_pnl": "حساب الأرباح والخسائر",
   "accounting.tab_products": "الربحية حسب المنتج",
-  "accounting.tab_ledger": "دفتر الأستاذ العام",
+  "accounting.tab_ledger": "دفتر المشتريات والمصاريف",
   "accounting.stat_revenue": "إجمالي الإيرادات",
   "accounting.stat_net_profit": "صافي ربح التشغيل",
   "accounting.stat_gross_margin": "هامش الربح الإجمالي",

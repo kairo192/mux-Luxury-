@@ -1473,6 +1473,8 @@ def admin_dashboard(admin: dict = Depends(require_permission("dashboard:read")))
             },
             "last_backup": dict(last_bkp_row) if last_bkp_row else None,
             "failed_backups_count": failed_bkp_cnt,
+            "all_orders_count": sum(int(v or 0) for v in orders_by_status.values()),
+            "database_engine": "postgres" if os.getenv("LUXE_DB_ENGINE", "").strip().lower() == "postgres" else "sqlite",
         }
 
 # --- DYNAMIC CATEGORY & ATTRIBUTE BUILDER ---
@@ -5432,8 +5434,12 @@ def admin_get_pnl_statement(admin: dict = Depends(require_permission("finance:re
         units_store = _scalar(cur, """SELECT COALESCE(SUM(CASE WHEN ps.sale_type = 'sale' THEN psi.quantity ELSE -psi.quantity END), 0) AS v
             FROM pos_sale_items psi JOIN pos_sales ps ON ps.id = psi.sale_id""")
 
-        total_expenses = _scalar(cur, "SELECT COALESCE(SUM(amount_dzd), 0) AS v FROM expenses WHERE payment_status = 'paid'")
-        cur.execute("SELECT category, COALESCE(SUM(amount_dzd), 0) AS total_dzd, COUNT(*) AS count FROM expenses WHERE payment_status = 'paid' GROUP BY category")
+        # Charges are counted when incurred, paid or still "à régler" — the same
+        # rule as revenue (orders count before the COD cash arrives) and as the
+        # Analytique screen and the expense report. The unpaid part is shown apart.
+        total_expenses = _scalar(cur, "SELECT COALESCE(SUM(amount_dzd), 0) AS v FROM expenses")
+        unpaid_expenses = _scalar(cur, "SELECT COALESCE(SUM(amount_dzd), 0) AS v FROM expenses WHERE payment_status = 'pending'")
+        cur.execute("SELECT category, COALESCE(SUM(amount_dzd), 0) AS total_dzd, COUNT(*) AS count FROM expenses GROUP BY category")
         expenses_by_cat = [dict(r) for r in cur.fetchall()]
 
         inv_val = _scalar(cur, f"""SELECT COALESCE(SUM(pv.stock_qty * {_UNIT_COST_SQL}), 0) AS v
@@ -5462,6 +5468,7 @@ def admin_get_pnl_statement(admin: dict = Depends(require_permission("finance:re
             "gross_profit_dzd": gross_profit,
             "gross_margin_percent": gross_pct,
             "operating_expenses_dzd": total_expenses,
+            "operating_expenses_unpaid_dzd": unpaid_expenses,
             "net_operating_profit_dzd": net_profit,
             "net_margin_percent": net_pct,
             "orders_count": int(online["count"]),
@@ -5581,6 +5588,53 @@ def admin_list_accounting_ledger(
             "is_balanced": int(sums["deb"]) == int(sums["cred"]),
             "entries_count": len(rows),
         }
+
+@app.get("/api/v1/admin/accounting/export.csv")
+def admin_export_accounting_csv(
+    part: str = Query("pnl", regex=r"^(pnl|products|ledger)$"),
+    admin: dict = Depends(require_permission("finance:read")),
+):
+    """Excel-ready CSV of the Comptabilité tab being viewed."""
+    stamp = _shop_today()
+    if part == "pnl":
+        d = admin_get_pnl_statement(admin)
+        rows = [
+            ["Ventes en ligne (articles)", d["revenue"]["online_merchandise_dzd"]],
+            ["Ventes magasin (net des remboursements)", d["revenue"]["in_store_net_dzd"]],
+            ["Frais de livraison facturés", d["delivery_revenue_dzd"]],
+            ["Chiffre d'affaires", d["total_revenue_dzd"]],
+            ["Coût d'achat des articles vendus", -int(d["cogs_dzd"])],
+            ["Marge brute", d["gross_profit_dzd"]],
+            ["Marge brute (%)", d["gross_margin_percent"]],
+            ["Charges d'exploitation", -int(d["operating_expenses_dzd"])],
+            ["  dont charges encore à régler", -int(d.get("operating_expenses_unpaid_dzd") or 0)],
+            ["Bénéfice net d'exploitation", d["net_operating_profit_dzd"]],
+            ["Bénéfice net (%)", d["net_margin_percent"]],
+            ["Commandes en ligne comptées", d["orders_count"]],
+            ["Ventes magasin comptées", d["in_store_sales_count"]],
+            ["Valeur du stock au coût d'achat", d["inventory_valuation_dzd"]],
+        ]
+        return _excel_csv_response(f"compte_de_resultat_{stamp}.csv", ["Poste", "Montant (DA)"], rows)
+    if part == "products":
+        items = admin_get_products_profitability(True, admin)["items"]
+        rows = [[it["name_fr"], it["sku"], it["purchase_cost_dzd"], it["selling_price_dzd"], it["unit_profit_dzd"],
+                 it["gross_margin_pct"], it["units_sold"], it["total_revenue_dzd"], it["total_cost_sold_dzd"],
+                 it["total_profit_dzd"]] for it in items]
+        return _excel_csv_response(
+            f"rentabilite_produits_{stamp}.csv",
+            ["Produit", "Réf. (SKU)", "Coût d'achat (DA)", "Prix de vente (DA)", "Marge unitaire (DA)", "Marge (%)",
+             "Unités vendues", "Chiffre d'affaires (DA)", "Coût des ventes (DA)", "Bénéfice (DA)"], rows)
+    with db_session() as conn:
+        cur = conn.cursor()
+        cur.execute("SELECT * FROM accounting_ledger ORDER BY entry_date, id")
+        rows = [[str(r["entry_date"])[:10], r["entry_number"], r["journal_code"], r["account_code"], r["account_name"],
+                 r["label"], int(r["debit_dzd"] or 0), int(r["credit_dzd"] or 0), r["source_document"] or ""]
+                for r in cur.fetchall()]
+    return _excel_csv_response(
+        f"journal_achats_depenses_{stamp}.csv",
+        ["Date", "N° écriture", "Journal", "Compte", "Intitulé du compte", "Libellé", "Débit (DA)", "Crédit (DA)", "Pièce"],
+        rows)
+
 
 # ============================================================================
 # POINT OF SALE (POS) — In-store sales, cash register sessions & refunds

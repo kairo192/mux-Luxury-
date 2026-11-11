@@ -460,6 +460,8 @@ export const DesktopCmsApi = {
   updateCustomer: (customerId: number, payload: unknown) =>
     adminFetch(`/admin/customers/${customerId}`, { method: "PUT", body: JSON.stringify(payload) }),
   getReports: () => adminFetch("/admin/reports"),
+  accountingCsvUrl: (part: "pnl" | "products" | "ledger") =>
+    `${getApiBaseUrl()}/admin/accounting/export.csv?part=${part}`,
   getSalesReport: (from: string, to: string) =>
     adminFetch(`/admin/reports/sales?from=${encodeURIComponent(from)}&to=${encodeURIComponent(to)}`),
   salesReportCsvUrl: (from: string, to: string) =>
