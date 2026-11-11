@@ -93,19 +93,22 @@ install -d -o "$DEPLOY_USER" -g "$DEPLOY_USER" "$INSTALL_ROOT/shared/nginx-ssl"
 install -d -o "$DEPLOY_USER" -g "$DEPLOY_USER" "$INSTALL_ROOT/logs"
 
 # /var/lib/luxe holds the actual data that must survive a reinstall
-install -d -m 0750 /var/lib/luxe
-install -d -m 0750 /var/lib/luxe/uploads
-install -d -m 0750 /var/lib/luxe/backups
+install -d -m 0750 -o "$DEPLOY_USER" -g "$DEPLOY_USER" /var/lib/luxe
+install -d -m 0750 -o "$DEPLOY_USER" -g "$DEPLOY_USER" /var/lib/luxe/uploads
+# The nightly cron runs as $DEPLOY_USER: it must be able to write here.
+install -d -m 0700 -o "$DEPLOY_USER" -g "$DEPLOY_USER" /var/lib/luxe/backups
 # docker volumes bind-mount to these via docker-compose override
 
 # -------------------------------------------------- 6. Backup cron
+# Same line as infrastructure/backups/install_backup_cron.sh: loads the
+# production .env (encryption key, off-site target), dumps PostgreSQL THROUGH
+# DOCKER, copies off-site, verifies, and logs everything.
 log "Installing nightly encrypted backup cron (03:30)"
 cat > /etc/cron.d/luxe-backup <<CRON
 SHELL=/bin/bash
 PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
 MAILTO=""
-30 3 * * * $DEPLOY_USER cd $INSTALL_ROOT/current && /usr/bin/env BACKUP_DIR=/var/lib/luxe/backups UPLOAD_DIR=/var/lib/luxe/uploads \\
-    bash infrastructure/backups/backup_postgres_and_media.sh >> $INSTALL_ROOT/logs/backup.log 2>&1
+30 3 * * * $DEPLOY_USER { set -a; [ -f $INSTALL_ROOT/shared/.env ] && . $INSTALL_ROOT/shared/.env; set +a; cd $INSTALL_ROOT/current && BACKUP_DIR=/var/lib/luxe/backups bash infrastructure/backups/backup_postgres_and_media.sh && bash infrastructure/backups/upload_to_offsite.sh && bash infrastructure/backups/verify_backup.sh; } >> $INSTALL_ROOT/logs/backup.log 2>&1
 CRON
 chmod 0644 /etc/cron.d/luxe-backup
 

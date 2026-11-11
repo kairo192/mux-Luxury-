@@ -17,12 +17,35 @@ import {
   mirrorUpsertProducts,
   mirrorUpsertVariants,
   mirrorMarkSynced,
+  mirrorClear,
   type MirrorProduct,
   type MirrorVariant,
   type MirrorStatus,
 } from "./posMirror";
 
 const BATCH = 500;
+
+// The server changes its "catalog epoch" when the database is reset or
+// restored. Deltas cannot describe rows that were physically deleted, so a new
+// epoch means: wipe this PC's offline catalog and download it again.
+const EPOCH_KEY = "luxe_pos_catalog_epoch";
+
+function readEpoch(): string | null {
+  try {
+    return localStorage.getItem(EPOCH_KEY);
+  } catch {
+    return null;
+  }
+}
+
+function writeEpoch(epoch: unknown): void {
+  if (typeof epoch !== "string" || !epoch) return;
+  try {
+    localStorage.setItem(EPOCH_KEY, epoch);
+  } catch {
+    /* ignore */
+  }
+}
 
 export interface SyncReport {
   ok: boolean;
@@ -63,11 +86,25 @@ export async function syncCatalog(force = false): Promise<SyncReport> {
 
   try {
     let payload: any;
+    let mode: "snapshot" | "delta" = useDelta ? "delta" : "snapshot";
     if (useDelta && status?.last_cursor) {
       payload = await DesktopCmsApi.catalogDeltas(status.last_cursor);
+      const known = readEpoch();
+      if (typeof payload?.catalog_epoch === "string" && known && payload.catalog_epoch !== known) {
+        // Database was reset / restored on the server: start over.
+        await mirrorClear();
+        await mirrorInit();
+        payload = await DesktopCmsApi.catalogSnapshot();
+        mode = "snapshot";
+      }
     } else {
+      if (force) {
+        await mirrorClear();
+        await mirrorInit();
+      }
       payload = await DesktopCmsApi.catalogSnapshot();
     }
+    writeEpoch(payload?.catalog_epoch);
 
     const products: MirrorProduct[] = Array.isArray(payload?.products) ? payload.products : [];
     const variants: MirrorVariant[] = Array.isArray(payload?.variants) ? payload.variants : [];
@@ -78,7 +115,7 @@ export async function syncCatalog(force = false): Promise<SyncReport> {
 
     return report({
       ok: true,
-      mode: useDelta ? "delta" : "snapshot",
+      mode,
       products_upserted: pCount,
       variants_upserted: vCount,
       cursor,

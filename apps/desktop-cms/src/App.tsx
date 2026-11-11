@@ -24,6 +24,7 @@ import {
 import { ToastStack } from "./components/ToastStack";
 import { NotificationBell } from "./components/NotificationBell";
 import { UpdateDialog } from "./components/UpdateDialog";
+import { DatabasePanel } from "./components/DatabasePanel";
 import {
   NetworkTelemetryState,
   getNetworkTelemetry,
@@ -382,7 +383,7 @@ export default function App() {
         DesktopCmsApi.getDashboard(),
         DesktopCmsApi.getReports().catch(() => null),
         DesktopCmsApi.listBrands().catch(() => ({ items: [] })),
-        DesktopCmsApi.listCategories(),
+        DesktopCmsApi.listCategories().catch(() => ({ items: [] })),
         DesktopCmsApi.listAdminProducts({ include_archived: true }),
         DesktopCmsApi.listOrders(orderStatusFilter || undefined),
         DesktopCmsApi.listCustomers().catch(() => ({ items: [] })),
@@ -2846,6 +2847,7 @@ export default function App() {
         {/* TAB 8: BACKUPS, WHATSAPP RECOVERY STATUS & ISOLATED RESTORE VERIFICATION (KEEP-ALIVE) */}
         <div className={activeTab === "backups" ? "block" : "hidden"}>
           <div className="space-y-6 text-xs">
+            <DatabasePanel active={activeTab === "backups"} isOwner={user?.role === "super_admin"} />
             <div className="bg-white p-6 rounded-2xl border border-[#D4AF62]/40 flex flex-wrap items-center justify-between gap-4">
               <div>
                 <h3 className="text-base font-serif font-bold text-[#063D2E]">Protection &amp; Chiffrement Matériel des Sessions</h3>

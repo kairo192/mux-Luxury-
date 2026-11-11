@@ -62,18 +62,18 @@ if [ ! -d "$BACKUP_DIR" ]; then
   exit 1
 fi
 
-# Pick the newest trio (db, media, manifest) by timestamp — the tar+dump
-# script always writes all three in the same second so we can group by
-# timestamp token (YYYYMMDD_HHMMSS).
-latest_ts=$(ls -1 "$BACKUP_DIR" 2>/dev/null \
-  | grep -oE '[0-9]{8}_[0-9]{6}' \
-  | sort -u \
-  | tail -n 1 || true)
-
-if [ -z "$latest_ts" ]; then
-  log "no backup archives with a parseable timestamp found in $BACKUP_DIR"
+# Upload exactly the set written by the last backup run: the newest
+# luxe_backup_<ts>.sha256 manifest and every file it lists (database dump,
+# photos, CMS snapshot). Picking by "newest timestamp in any file name" could
+# upload a partial set when two files were written in different seconds.
+manifest=$(ls -1t "$BACKUP_DIR"/luxe_backup_*.sha256 2>/dev/null | head -n 1 || true)
+if [ -z "$manifest" ]; then
+  log "no luxe_backup_*.sha256 manifest found in $BACKUP_DIR"
   exit 1
 fi
+latest_ts=$(basename "$manifest" | grep -oE '[0-9]{8}_[0-9]{6}' | head -n 1)
+mapfile -t set_files < <(awk '{print $2}' "$manifest" | sed 's/^\*//')
+set_files+=("$(basename "$manifest")")
 
 log "uploading archive set for timestamp $latest_ts"
 
@@ -84,8 +84,9 @@ s3_path="s3://${S3_BUCKET_NAME}/${prefix}/${host}/${date_folder}"
 
 uploaded=0
 failed=0
-for f in "$BACKUP_DIR"/*"$latest_ts"*; do
-  [ -f "$f" ] || continue
+for name in "${set_files[@]}"; do
+  f="$BACKUP_DIR/$name"
+  [ -f "$f" ] || { log "  missing $name"; failed=$((failed + 1)); continue; }
   log "  → $(basename "$f")"
   if AWS_ACCESS_KEY_ID="$S3_ACCESS_KEY_ID" \
      AWS_SECRET_ACCESS_KEY="$S3_SECRET_ACCESS_KEY" \

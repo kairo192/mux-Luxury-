@@ -771,7 +771,8 @@ def list_public_categories(response: Response, request: Request):
         payload = {"items": cats}
         etag = f'"{hashlib.md5(json.dumps(payload, sort_keys=True).encode()).hexdigest()}"'
         response.headers["ETag"] = etag
-        response.headers["Cache-Control"] = "public, max-age=300, stale-while-revalidate=600"
+        # Short cache: a category deleted in the CMS disappears from the shop within ~30 s.
+        response.headers["Cache-Control"] = "public, max-age=30, stale-while-revalidate=60"
         if request.headers.get("if-none-match") == etag:
             return Response(status_code=304, headers={"ETag": etag, "Cache-Control": response.headers["Cache-Control"]})
         return payload
@@ -3532,6 +3533,21 @@ def admin_update_category(
         cur.execute("SELECT * FROM categories WHERE id = ?", (category_id,))
         return serialize_category(conn, dict(cur.fetchone()))
 
+@app.post("/api/v1/admin/categories/{category_id}/restore")
+def admin_restore_category(category_id: int, admin: dict = Depends(require_permission("categories:write"))):
+    """Brings an archived category back (visible again in the CMS and, if
+    active, on the storefront)."""
+    with db_session(commit=True) as conn:
+        cur = conn.cursor()
+        cur.execute("SELECT slug FROM categories WHERE id = ?", (category_id,))
+        cat = cur.fetchone()
+        if not cat:
+            raise HTTPException(status_code=404, detail="Category not found")
+        cur.execute("UPDATE categories SET is_active = 1, deleted_at = NULL WHERE id = ?", (category_id,))
+        log_audit(conn, int(admin["sub"]), "restore_category", "category", str(category_id), {"slug": cat["slug"]})
+        return {"restored": True, "category_id": category_id}
+
+
 @app.delete("/api/v1/admin/categories/{category_id}")
 def admin_archive_category(
     category_id: int,
@@ -5388,6 +5404,16 @@ def _pos_catalog_variants_rows(conn, since_iso: Optional[str] = None):
     return rows
 
 
+def _catalog_epoch(conn) -> str:
+    """Changes when the database is reset or restored: POS PCs that see a new
+    epoch drop their offline catalog and download it again (deltas cannot
+    describe rows that were physically removed)."""
+    cur = conn.cursor()
+    cur.execute("SELECT setting_value FROM store_settings WHERE setting_key = ?", ("catalog_epoch",))
+    row = cur.fetchone()
+    return str(row["setting_value"]) if row else "initial"
+
+
 @app.get("/api/v1/admin/pos/catalog/snapshot")
 def pos_catalog_snapshot(admin: dict = Depends(require_permission("pos:read"))):
     """Full catalog dump — call this once, then prefer `/catalog/deltas`.
@@ -5399,10 +5425,12 @@ def pos_catalog_snapshot(admin: dict = Depends(require_permission("pos:read"))):
     with db_session() as conn:
         products = _pos_catalog_products_rows(conn, since_iso=None)
         variants = _pos_catalog_variants_rows(conn, since_iso=None)
+        epoch = _catalog_epoch(conn)
     cursor = (datetime.utcnow() + timedelta(seconds=1)).strftime("%Y-%m-%dT%H:%M:%SZ")
     return {
         "generated_at": datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%SZ"),
         "cursor": cursor,
+        "catalog_epoch": epoch,
         "products": products,
         "variants": variants,
         "stats": {
@@ -5428,10 +5456,12 @@ def pos_catalog_deltas(
     with db_session() as conn:
         products = _pos_catalog_products_rows(conn, since_iso=since_s)
         variants = _pos_catalog_variants_rows(conn, since_iso=since_s)
+        epoch = _catalog_epoch(conn)
     cursor = (datetime.utcnow() + timedelta(seconds=1)).strftime("%Y-%m-%dT%H:%M:%SZ")
     return {
         "generated_at": datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%SZ"),
         "cursor": cursor,
+        "catalog_epoch": epoch,
         "since": since_s,
         "products": products,
         "variants": variants,
@@ -7996,3 +8026,78 @@ def admin_cancel_count(count_id: int, admin: dict = Depends(require_permission("
         log_audit(conn, int(admin["sub"]), "cancel_inventory_count", "inventory_count", str(count_id), {"reference": c["reference"]})
         return _count_payload(conn, count_id)
 
+
+# ============================================================================
+# DATABASE ADMINISTRATION (owner only) — status, backup now, restore,
+# "nouvelle base de données". Backup files never leave the server over HTTP.
+# Engine: app/backup_engine.py (same code as the nightly job).
+# ============================================================================
+from . import backup_engine as _bk
+
+
+class OwnerConfirmPayload(BaseModel):
+    password: str = Field(..., min_length=1, max_length=256)
+    confirm: str = Field(..., min_length=1, max_length=40)
+
+
+class DatabaseResetPayload(OwnerConfirmPayload):
+    keep_settings: bool = True
+
+
+class BackupCreatePayload(BaseModel):
+    include_media: bool = False
+
+
+def _require_owner(admin: dict) -> int:
+    if admin.get("role") != "super_admin":
+        raise HTTPException(status_code=403, detail="Réservé au propriétaire (super administrateur).")
+    return int(admin["sub"])
+
+
+def _check_owner_password(user_id: int, password: str) -> None:
+    with db_session() as conn:
+        cur = conn.cursor()
+        cur.execute("SELECT password_hash FROM admin_users WHERE id = ? AND is_active = 1", (user_id,))
+        row = cur.fetchone()
+    if not row or not verify_password(password, row["password_hash"]):
+        raise HTTPException(status_code=403, detail="Mot de passe incorrect : opération annulée.")
+
+
+def _bk_call(fn, *args, **kwargs):
+    try:
+        return fn(*args, **kwargs)
+    except _bk.BackupError as exc:
+        raise HTTPException(status_code=409, detail=str(exc))
+
+
+@app.get("/api/v1/admin/system/database")
+def admin_database_status(admin: dict = Depends(require_permission("backups:write"))):
+    _require_owner(admin)
+    return _bk_call(_bk.database_info)
+
+
+@app.post("/api/v1/admin/system/backups", status_code=201)
+def admin_create_backup(payload: BackupCreatePayload, admin: dict = Depends(require_permission("backups:write"))):
+    uid = _require_owner(admin)
+    meta = _bk_call(_bk.create_backup, "manual", uid, payload.include_media)
+    with db_session(commit=True) as conn:
+        log_audit(conn, uid, "database_backup", "database", "store", {"backup": meta["name"], "media": bool(meta.get("media"))})
+    return meta
+
+
+@app.post("/api/v1/admin/system/backups/{name}/restore")
+def admin_restore_backup(name: str, payload: OwnerConfirmPayload, admin: dict = Depends(require_permission("backups:write"))):
+    uid = _require_owner(admin)
+    if payload.confirm.strip().upper() != "RESTAURER":
+        raise HTTPException(status_code=400, detail="Tapez RESTAURER pour confirmer.")
+    _check_owner_password(uid, payload.password)
+    return _bk_call(_bk.restore_backup, name, uid)
+
+
+@app.post("/api/v1/admin/system/reset")
+def admin_reset_database(payload: DatabaseResetPayload, admin: dict = Depends(require_permission("backups:write"))):
+    uid = _require_owner(admin)
+    if payload.confirm.strip().upper() != "EFFACER":
+        raise HTTPException(status_code=400, detail="Tapez EFFACER pour confirmer.")
+    _check_owner_password(uid, payload.password)
+    return _bk_call(_bk.reset_database, uid, payload.keep_settings)

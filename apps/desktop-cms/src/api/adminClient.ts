@@ -117,6 +117,10 @@ async function adminFetch(path: string, options: RequestInit = {}, timeoutMs = d
 
     try {
       const res = await fetch(`${apiBaseUrl}${path}`, {
+        // The CMS must always see live data: never answer from the WebView's
+        // HTTP cache (public endpoints are cacheable for the storefront, which
+        // made deleted categories "come back" after a reload).
+        cache: "no-store",
         ...options,
         headers,
         signal: options.signal || controller.signal,
@@ -238,13 +242,32 @@ export const DesktopCmsApi = {
     adminFetch(`/admin/sync/delta?since_order_id=${sinceOrderId}&since_movement_id=${sinceMovementId}`),
 
   // Dynamic Categories & 14-Type Attribute Builder
-  listCategories: () => adminFetch("/categories"),
+  // Admin list (never the cached public one). includeArchived=true also
+  // returns archived categories (deleted_at set) for the Categories page.
+  listCategories: (includeArchived = false) =>
+    adminFetch(`/admin/categories?include_archived=${includeArchived}`),
+  // Database administration (owner only) — see backend/app/backup_engine.py
+  getDatabaseStatus: () => adminFetch("/admin/system/database", {}, 30000),
+  createDatabaseBackup: (includeMedia = false) =>
+    adminFetch("/admin/system/backups", { method: "POST", body: JSON.stringify({ include_media: includeMedia }) }, 180000),
+  restoreDatabaseBackup: (name: string, password: string, confirm: string) =>
+    adminFetch(`/admin/system/backups/${encodeURIComponent(name)}/restore`, {
+      method: "POST",
+      body: JSON.stringify({ password, confirm }),
+    }, 300000),
+  resetDatabase: (password: string, confirm: string, keepSettings: boolean) =>
+    adminFetch("/admin/system/reset", {
+      method: "POST",
+      body: JSON.stringify({ password, confirm, keep_settings: keepSettings }),
+    }, 300000),
   listAdminCategories: (includeArchived = true) =>
     adminFetch(`/admin/categories?include_archived=${includeArchived}`),
   createCategory: (payload: unknown) =>
     adminFetch("/admin/categories", { method: "POST", body: JSON.stringify(payload) }),
   updateCategory: (categoryId: number, payload: unknown) =>
     adminFetch(`/admin/categories/${categoryId}`, { method: "PUT", body: JSON.stringify(payload) }),
+  restoreCategory: (categoryId: number) =>
+    adminFetch(`/admin/categories/${categoryId}/restore`, { method: "POST" }),
   archiveCategory: (categoryId: number) =>
     adminFetch(`/admin/categories/${categoryId}`, { method: "DELETE" }),
   deleteCategory: (categoryId: number, hard = false) =>

@@ -82,7 +82,9 @@ fi
 method="$VERIFY_METHOD"
 if [ "$method" = "auto" ]; then
   if head -c 4096 "$work_sql" | grep -q 'PostgreSQL database dump'; then
-    if command -v psql >/dev/null 2>&1; then method=postgres; else method=none; fi
+    if command -v docker >/dev/null 2>&1 && [ "$(docker inspect -f '{{.State.Running}}' "${PG_CONTAINER:-luxe_postgres}" 2>/dev/null || true)" = "true" ]; then
+      method=docker-postgres
+    elif command -v psql >/dev/null 2>&1; then method=postgres; else method=none; fi
   else
     method=sqlite
   fi
@@ -119,6 +121,21 @@ case "$method" in
     log "  restored: delivery_zones=$wilayas"
     [ "$wilayas" -ge 1 ] \
       || fail "restored DB missing delivery_zones rows"
+    ;;
+  docker-postgres)
+    # VPS: restore into a throw-away database INSIDE the postgres container,
+    # count rows, drop it. The live database is never touched.
+    pgc="${PG_CONTAINER:-luxe_postgres}"
+    tmp_db="luxe_verify_$$"
+    log "  restoring into isolated temp database $tmp_db (container $pgc)"
+    docker exec "$pgc" sh -c "createdb -U \"\$POSTGRES_USER\" $tmp_db" || fail "createdb failed"
+    trap 'docker exec "'"$pgc"'" sh -c "dropdb -U \"\$POSTGRES_USER\" '"$tmp_db"'" >/dev/null 2>&1 || true; rm -rf "$work_dir"' EXIT
+    docker exec -i "$pgc" sh -c "psql -q -v ON_ERROR_STOP=1 -U \"\$POSTGRES_USER\" -d $tmp_db" < "$work_sql" \
+      || fail "psql restore into temp database failed"
+    wilayas=$(docker exec "$pgc" sh -c "psql -tA -U \"\$POSTGRES_USER\" -d $tmp_db -c 'SELECT COUNT(*) FROM delivery_zones'" || echo 0)
+    products=$(docker exec "$pgc" sh -c "psql -tA -U \"\$POSTGRES_USER\" -d $tmp_db -c 'SELECT COUNT(*) FROM products'" || echo 0)
+    log "  restored: products=$products, delivery_zones=$wilayas"
+    [ "${wilayas:-0}" -ge 1 ] || fail "restored DB missing delivery_zones rows"
     ;;
   none)
     fail "no DB client available; install sqlite3 or psql"

@@ -59,7 +59,7 @@ cat > "$CRON_FILE" <<CRON
 SHELL=/bin/bash
 PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
 MAILTO=""
-$schedule $DEPLOY_USER set -a; . $ENV_FILE; set +a; cd $INSTALL_ROOT/current && bash infrastructure/backups/backup_postgres_and_media.sh && bash infrastructure/backups/upload_to_offsite.sh && bash infrastructure/backups/verify_backup.sh >> $LOG_DIR/backup.log 2>&1
+$schedule $DEPLOY_USER { set -a; . $ENV_FILE; set +a; cd $INSTALL_ROOT/current && bash infrastructure/backups/backup_postgres_and_media.sh && bash infrastructure/backups/upload_to_offsite.sh && bash infrastructure/backups/verify_backup.sh; } >> $LOG_DIR/backup.log 2>&1
 CRON
 chmod 0644 "$CRON_FILE"
 chown root:root "$CRON_FILE"

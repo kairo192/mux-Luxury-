@@ -601,7 +601,7 @@ export function CategoryBuilderPage({ onCategoryChanged }: { onCategoryChanged?:
   const [error, setError] = useState("");
   const [statusMsg, setStatusMsg] = useState("");
   const [searchQuery, setSearchQuery] = useState("");
-  const [activeFilter, setActiveFilter] = useState<"all" | "active" | "homepage" | "with_attrs">("all");
+  const [activeFilter, setActiveFilter] = useState<"all" | "active" | "homepage" | "with_attrs" | "archived">("all");
   const [showCreateForm, setShowCreateForm] = useState(false);
   const [activePresetId, setActivePresetId] = useState<string | null>(null);
 
@@ -796,7 +796,8 @@ export function CategoryBuilderPage({ onCategoryChanged }: { onCategoryChanged?:
     setLoading(true);
     setError("");
     try {
-      const res = await DesktopCmsApi.listCategories();
+      // Admin list incl. archived ones (shown only in the "Archivées" tab).
+      const res = await DesktopCmsApi.listCategories(true);
       setCategories(res.items || []);
     } catch (err: any) {
       const tr = notifyClientError(err, "Chargement des catégories impossible", false);
@@ -1095,6 +1096,22 @@ export function CategoryBuilderPage({ onCategoryChanged }: { onCategoryChanged?:
     }
   }
 
+  // Restore an archived category
+  async function handleRestoreCategory(catId: number, catName: string) {
+    setError("");
+    try {
+      await DesktopCmsApi.restoreCategory(catId);
+      const msg = `Catégorie "${catName}" restaurée.`;
+      setStatusMsg(msg);
+      notifyClientSuccess("Catégorie restaurée", msg);
+      await loadCategories();
+      if (onCategoryChanged) onCategoryChanged();
+    } catch (err: any) {
+      const tr = notifyClientError(err, "Restauration de la catégorie impossible");
+      setError(tr.message);
+    }
+  }
+
   // Archive (Soft Delete) Category
   async function handleArchiveCategory(catId: number, catName: string) {
     setError("");
@@ -1234,6 +1251,9 @@ export function CategoryBuilderPage({ onCategoryChanged }: { onCategoryChanged?:
 
     if (!matchSearch) return false;
 
+    const archived = Boolean(c.deleted_at);
+    if (activeFilter === "archived") return archived;
+    if (archived) return false;
     if (activeFilter === "active") return c.is_active;
     if (activeFilter === "homepage") return c.show_on_homepage;
     if (activeFilter === "with_attrs") return (c.attributes || []).length > 0;
@@ -1244,7 +1264,9 @@ export function CategoryBuilderPage({ onCategoryChanged }: { onCategoryChanged?:
     (acc, cat) => acc + (cat.attributes ? cat.attributes.length : 0),
     0
   );
-  const homepageCount = categories.filter((c) => c.show_on_homepage).length;
+  const liveCategories = categories.filter((c) => !c.deleted_at);
+  const archivedCount = categories.length - liveCategories.length;
+  const homepageCount = liveCategories.filter((c) => c.show_on_homepage).length;
 
   return (
     <div className="space-y-6">
@@ -1290,7 +1312,7 @@ export function CategoryBuilderPage({ onCategoryChanged }: { onCategoryChanged?:
         <div className="p-4 bg-white rounded-xl border border-[#D4AF62]/30 shadow-sm flex items-center justify-between">
           <div>
             <span className="text-[11px] text-gray-500 font-bold uppercase">{t("cat_builder.kpi_total")}</span>
-            <p className="text-2xl font-bold font-mono text-[#063D2E] mt-0.5">{categories.length}</p>
+            <p className="text-2xl font-bold font-mono text-[#063D2E] mt-0.5">{liveCategories.length}</p>
           </div>
           <div className="p-3 rounded-xl bg-[#F8F6F0] text-[#063D2E]">
             <Layers className="w-5 h-5" />
@@ -2027,9 +2049,10 @@ export function CategoryBuilderPage({ onCategoryChanged }: { onCategoryChanged?:
 
         <div className="flex flex-wrap items-center gap-2 w-full md:w-auto">
           {[
-            { id: "all", label: t("cat_builder.tab_all", { count: categories.length }) },
+            { id: "all", label: t("cat_builder.tab_all", { count: liveCategories.length }) },
             { id: "homepage", label: t("cat_builder.tab_homepage", { count: homepageCount }) },
             { id: "with_attrs", label: t("cat_builder.tab_with_attrs") },
+            ...(archivedCount > 0 ? [{ id: "archived", label: t("cat_builder.tab_archived", { count: archivedCount }) }] : []),
           ].map((tab) => (
             <button
               key={tab.id}
@@ -2053,7 +2076,7 @@ export function CategoryBuilderPage({ onCategoryChanged }: { onCategoryChanged?:
           {t("cat_builder.loading")}
         </div>
       ) : filteredCategories.length === 0 ? (
-        categories.length === 0 ? (
+        liveCategories.length === 0 && activeFilter !== "archived" ? (
           <div className="p-12 text-center bg-[#F8F6F0]/60 rounded-2xl border-2 border-dashed border-[#D4AF62]/50 space-y-4">
             <div className="w-16 h-16 rounded-2xl bg-gradient-to-br from-[#063D2E] to-[#0A5C45] flex items-center justify-center mx-auto text-[#D4AF62] shadow-md">
               <Sparkles className="w-8 h-8 text-[#D4AF62]" />
@@ -2206,6 +2229,28 @@ export function CategoryBuilderPage({ onCategoryChanged }: { onCategoryChanged?:
                 </div>
 
                 {/* Card Action Buttons Toolbar */}
+                {c.deleted_at ? (
+                <div className="p-3 bg-amber-50/70 border-t border-amber-100 flex items-center justify-between gap-1 text-xs font-bold">
+                  <span className="text-amber-800 text-[11px]">{t("cat_builder.archived_badge")}</span>
+                  <div className="flex items-center gap-1.5">
+                    <button
+                      type="button"
+                      onClick={() => handleRestoreCategory(c.id, c.name_fr)}
+                      className="flex items-center gap-1 px-3 py-1.5 rounded-lg bg-white border border-[#D4AF62] text-[#063D2E] hover:bg-[#D4AF62]/20 transition shadow-sm"
+                    >
+                      <span>{t("cat_builder.btn_restore")}</span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setDeletingCategory(c)}
+                      className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg bg-red-50 border border-red-200 text-red-700 hover:bg-red-100 transition"
+                    >
+                      <Trash2 className="w-3.5 h-3.5 text-red-600" />
+                      <span>{t("cat_builder.btn_delete_forever")}</span>
+                    </button>
+                  </div>
+                </div>
+                ) : (
                 <div className="p-3 bg-[#F8F6F0]/80 border-t border-gray-100 flex items-center justify-between gap-1 text-xs font-bold">
                   <button
                     type="button"
@@ -2241,6 +2286,7 @@ export function CategoryBuilderPage({ onCategoryChanged }: { onCategoryChanged?:
                     </button>
                   </div>
                 </div>
+                )}
               </div>
             );
           })}

@@ -354,9 +354,16 @@ def seed_initial_data() -> None:
         # starts from a blank catalog — roles, permissions, admin user,
         # store settings, wilayas and the static legal pages are still
         # seeded because they're infrastructure.
-        # Opt in with LUXE_SEED_DEMO_PRODUCTS=1.
+        # Opt in with LUXE_SEED_DEMO_PRODUCTS=1 (automatic in APP_ENV=test).
         # ------------------------------------------------------------------
-        seed_demo_catalog = (not is_production()) or os.getenv("LUXE_SEED_DEMO_PRODUCTS") == "1"
+        # Demo catalog only for the automated test suite or on explicit
+        # request. A PC in development mode starts EMPTY like production, so a
+        # shop that was emptied never gets the 9 demo categories back when its
+        # database file is recreated.
+        seed_demo_catalog = (
+            os.getenv("APP_ENV", "").strip().lower() in {"test", "testing"}
+            or os.getenv("LUXE_SEED_DEMO_PRODUCTS") == "1"
+        )
 
         if seed_demo_catalog:
             # 4. Seed Promotional Coupons (Section 4.9)

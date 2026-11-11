@@ -105,9 +105,11 @@ set -a
 # shellcheck disable=SC1091
 source "$SHARED_DIR/.env"
 set +a
-# Run backup against the CURRENTLY RUNNING release (not the new one yet)
+# Back up the data of the CURRENTLY RUNNING shop (it lives in the Docker
+# containers, not in the release folder). The backup SCRIPT is taken from the
+# NEW release so backup fixes apply from this deploy on.
 if [ -L "$CURRENT_LINK" ] && [ -d "$CURRENT_LINK" ]; then
-  (cd "$CURRENT_LINK" && BACKUP_DIR=/var/lib/luxe/backups UPLOAD_DIR=/var/lib/luxe/uploads \
+  (cd "$NEW_RELEASE" && BACKUP_DIR=/var/lib/luxe/backups UPLOAD_DIR=/var/lib/luxe/uploads \
       bash infrastructure/backups/backup_postgres_and_media.sh) \
       || fail "pre-migration backup failed — aborting deploy"
 else

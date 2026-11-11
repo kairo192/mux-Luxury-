@@ -7,6 +7,43 @@
 
 ---
 
+## 0. NEWEST ROUND (2026-11-11, later): database admin, backups fixed, demo data gone
+
+**Read `docs/OPERATIONS_GUIDE.md` (owner-facing) first.** Summary for you:
+
+- **"Deleted categories come back after reload"**: the CMS read `/categories` (the public, cacheable
+  endpoint, max-age 300). Now `adminFetch` uses `cache: "no-store"` for every call;
+  `listCategories(includeArchived)` hits `/admin/categories`; public cache is 30 s. Archived
+  categories have an **Archivées** tab + `POST /admin/categories/{id}/restore`.
+- **Demo data**: `seed.py` seeds the demo catalog only when `APP_ENV=test` or
+  `LUXE_SEED_DEMO_PRODUCTS=1` (development PCs start empty now). **`backend/scripts/restore_demo_products.py`
+  was deleted.** On an empty shop it wiped `admin_users`/roles and re-seeded the demo. Please don't
+  re-create it. `reset_fresh_store.py` is now a wrapper around the engine below.
+- **New `backend/app/backup_engine.py` + `backup_cli.py`**: portable encrypted snapshots
+  (AES-256-GCM, key from `BACKUP_ENCRYPTION_KEY`), restore and reset in ONE transaction, safety
+  backup first, SQLite + PostgreSQL (tested on real PG 16, plus PC→VPS cross-restore). Owner-only
+  endpoints: `GET /admin/system/database`, `POST /admin/system/backups`,
+  `POST /admin/system/backups/{name}/restore` (`confirm: "RESTAURER"` + password),
+  `POST /admin/system/reset` (`confirm: "EFFACER"` + password). There is deliberately NO download
+  endpoint. UI: `components/DatabasePanel.tsx` at the top of the `backups` tab.
+- **POS offline mirror**: snapshot/deltas now return `catalog_epoch`; reset/restore changes it, and
+  `posMirrorSync.ts` clears + re-snapshots the mirror when it changes (deltas can't express
+  hard deletes). `syncCatalog(true)` also clears first.
+- **VPS backup chain was broken** (it would have written EMPTY backups: host cron had no pg_dump,
+  fell back to SQLite). Now `backup_postgres_and_media.sh` uses `docker exec luxe_postgres pg_dump
+  --clean --if-exists`, archives photos from `luxe_api`, adds a CMS snapshot, refuses an empty dump,
+  and writes `last_backup_status.json`. `restore_backup.sh`, `verify_backup.sh` (temp DB inside the
+  container) and `upload_to_offsite.sh` (uploads exactly the manifest's set) are Docker-aware too.
+  Backup dir owned by the deploy user; cron logs the whole chain; `release-deploy.sh` runs the
+  NEW release's backup script. `vps_nightly_backup.sh` just delegates.
+- `infrastructure/scripts/setup-github-secrets.ps1`: generates the Tauri signing key + deploy SSH key
+  on the owner's PC and sets the GitHub secrets/variables via `gh`. (Not executed in the cloud: no
+  PowerShell there. If you can, dry-run it on Windows.)
+- Tests: new `backend/tests/test_backup_engine.py` (7 tests). Suite: 249 run, only the 4
+  `@babel/core` container failures (they pass with a TS compiler).
+
+---
+
 ## 0. LATEST ROUND (2026-11-11): notifications, Windows alerts, auto-update
 
 Pushed on `feat/pos-core-cash-register-18lsk6`. Pull it before touching any of these files:
