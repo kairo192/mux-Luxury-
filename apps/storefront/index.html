@@ -1790,6 +1790,12 @@
       return Number.isFinite(n) && n > 0 ? n : 0;
     }
 
+    function methodAvailable(wObj, method) {
+      if (!wObj) return false;
+      const ok = method === "stop_desk" ? wObj.desk_ok : wObj.home_ok;
+      return ok !== false; // undefined until the server's list has loaded
+    }
+
     function deliveryFeeFor(wObj, method, subtotal) {
       if (!wObj) return 0;
       const base = method === "stop_desk" ? wObj.desk_fee : wObj.home_fee;
@@ -3416,7 +3422,7 @@
                     <div class="font-bold text-[11px]">À Domicile</div>
                     <div class="text-[10px] ${state.activePdpDeliveryMethod === "home" ? "text-gold-light/85" : "text-gray-500"}">Livraison chez vous</div>
                   </div>
-                  <span class="font-extrabold text-xs ${state.activePdpDeliveryMethod === "home" ? "text-gold-reflective" : "text-emerald-deep"}">${formatDZD(selWilaya.home_fee)}</span>
+                  <span class="font-extrabold text-xs ${state.activePdpDeliveryMethod === "home" ? "text-gold-reflective" : "text-emerald-deep"}">${methodAvailable(selWilaya, "home") ? formatDZD(selWilaya.home_fee) : "Indisponible"}</span>
                 </button>
                 <button
                   type="button"
@@ -3431,7 +3437,7 @@
                     <div class="font-bold text-[11px]">Stop-Desk</div>
                     <div class="text-[10px] ${state.activePdpDeliveryMethod === "stop_desk" ? "text-gold-light/85" : "text-gray-500"}">Bureau relais</div>
                   </div>
-                  <span class="font-extrabold text-xs ${state.activePdpDeliveryMethod === "stop_desk" ? "text-gold-reflective" : "text-emerald-deep"}">${formatDZD(selWilaya.desk_fee)}</span>
+                  <span class="font-extrabold text-xs ${state.activePdpDeliveryMethod === "stop_desk" ? "text-gold-reflective" : "text-emerald-deep"}">${methodAvailable(selWilaya, "stop_desk") ? formatDZD(selWilaya.desk_fee) : "Indisponible"}</span>
                 </button>
               </div>
               <div class="flex items-center justify-between pt-1.5 border-t border-emerald-deep/15 text-[11px]">
@@ -3616,6 +3622,8 @@
     }
 
     function selectCheckoutDeliveryMethod(method) {
+      const wObj = WILAYAS.find((w) => w.code === state.checkoutWilaya);
+      if (wObj && !methodAvailable(wObj, method)) return;
       state.checkoutMethod = method === "stop_desk" ? "stop_desk" : "home";
       const methodInput = document.getElementById("chk-method");
       if (methodInput) methodInput.value = state.checkoutMethod;
@@ -3645,8 +3653,18 @@
       const homeCardBtn = document.getElementById("chk-card-home-btn");
       const deskCardBtn = document.getElementById("chk-card-desk-btn");
 
-      if (homeFeeBadge) homeFeeBadge.textContent = `+ ${formatDZD(wObj.home_fee)}`;
-      if (deskFeeBadge) deskFeeBadge.textContent = `+ ${formatDZD(wObj.desk_fee)}`;
+      // Switch to the method this wilaya offers when the chosen one is off.
+      if (!methodAvailable(wObj, state.checkoutMethod)) {
+        const other = state.checkoutMethod === "home" ? "stop_desk" : "home";
+        if (methodAvailable(wObj, other)) {
+          state.checkoutMethod = other;
+          methodInput.value = other;
+        }
+      }
+      const homeOk = methodAvailable(wObj, "home");
+      const deskOk = methodAvailable(wObj, "stop_desk");
+      if (homeFeeBadge) homeFeeBadge.textContent = homeOk ? `+ ${formatDZD(wObj.home_fee)}` : "Indisponible";
+      if (deskFeeBadge) deskFeeBadge.textContent = deskOk ? `+ ${formatDZD(wObj.desk_fee)}` : "Indisponible";
       if (homeWilayaSub) homeWilayaSub.textContent = `À votre adresse (${wObj.code} - ${wObj.name_fr})`;
       if (deskWilayaSub) deskWilayaSub.textContent = `Bureau relais (${wObj.code} - ${wObj.name_fr})`;
 
@@ -3666,6 +3684,10 @@
           if (deskWilayaSub) deskWilayaSub.className = "text-[10px] text-gold-light/85 truncate";
           if (homeWilayaSub) homeWilayaSub.className = "text-[10px] text-gray-500 truncate";
         }
+        homeCardBtn.disabled = !homeOk;
+        deskCardBtn.disabled = !deskOk;
+        homeCardBtn.classList.toggle("opacity-40", !homeOk);
+        deskCardBtn.classList.toggle("opacity-40", !deskOk);
       }
 
       const subtotal = computeCartSubtotal();
@@ -4049,6 +4071,8 @@
           </button>
         </div>
       `;
+      // Apply live prices and the wilaya's available methods straight away.
+      if (document.getElementById("chk-wilaya")) updateCheckoutCalculation();
     }
 
     // ========================================================================
@@ -4410,8 +4434,12 @@
               name_fr: w.wilaya_name_fr,
               name_ar: w.wilaya_name_ar || "",
               communes: w.communes && w.communes.length ? w.communes : [w.wilaya_name_fr],
-              home_fee: w.rates?.home?.fee_dzd ?? 600,
-              desk_fee: w.rates?.stop_desk?.fee_dzd ?? 400,
+              // A method the shop switched off (CMS → Livraison & Wilayas) or
+              // without a price is unavailable — never an invented price.
+              home_ok: Boolean(w.rates?.home) && Number(w.rates.home.is_supported ?? 1) !== 0,
+              desk_ok: Boolean(w.rates?.stop_desk) && Number(w.rates.stop_desk.is_supported ?? 1) !== 0,
+              home_fee: Number(w.rates?.home?.fee_dzd ?? 0),
+              desk_fee: Number(w.rates?.stop_desk?.fee_dzd ?? 0),
             }))
           );
         }

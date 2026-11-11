@@ -214,6 +214,8 @@ export function DeliveryWilayasPage() {
                   <div className="flex items-center gap-2">
                     <input
                       type="checkbox"
+                      aria-label={`Livraison à domicile disponible — ${z.wilaya_name_fr}`}
+                      title="Livraison à domicile proposée"
                       checked={Boolean(z.rates?.home?.is_supported ?? true)}
                       onChange={(e) => updateLocalRate(z.wilaya_code, "home", "is_supported", e.target.checked ? 1 : 0)}
                     />
@@ -232,6 +234,8 @@ export function DeliveryWilayasPage() {
                   <div className="flex items-center gap-2">
                     <input
                       type="checkbox"
+                      aria-label={`Point relais (stop-desk) disponible — ${z.wilaya_name_fr}`}
+                      title="Point relais (stop-desk) proposé"
                       checked={Boolean(z.rates?.stop_desk?.is_supported ?? true)}
                       onChange={(e) => updateLocalRate(z.wilaya_code, "stop_desk", "is_supported", e.target.checked ? 1 : 0)}
                     />

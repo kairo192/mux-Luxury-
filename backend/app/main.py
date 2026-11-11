@@ -1118,7 +1118,7 @@ def create_guest_order(
         )
         rate = cur.fetchone()
         if not rate or not rate["is_supported"]:
-            raise HTTPException(status_code=400, detail=f"Delivery method '{payload.delivery_method}' is not available for {zone['wilaya_name_fr']}")
+            raise HTTPException(status_code=400, detail=("La livraison à domicile" if payload.delivery_method == "home" else "La livraison en point relais (stop-desk)") + f" n'est pas disponible pour la wilaya {zone['wilaya_name_fr']}. Choisissez l'autre mode de livraison.")
         delivery_fee_dzd = int(rate["fee_dzd"])
 
         # 2. Consolidate duplicate variant_ids, Verify Variants & Stock, and Calculate True Server-Side Subtotal
