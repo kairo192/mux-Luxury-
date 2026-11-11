@@ -112,7 +112,7 @@ seed_initial_data()
 
 def get_current_admin(authorization: Optional[str] = Header(None)) -> dict:
     if not authorization or not authorization.startswith("Bearer "):
-        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Missing or invalid Bearer token")
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Connexion requise.")
     token = authorization.split(" ", 1)[1].strip()
     payload = decode_access_token(token)
     uid = int(payload.get("sub") or 0)
@@ -121,7 +121,7 @@ def get_current_admin(authorization: Optional[str] = Header(None)) -> dict:
         cur.execute("SELECT setting_value FROM store_settings WHERE setting_key = ?", (f"session_revoked_ns:{uid}",))
         rev_row = cur.fetchone()
         if rev_row and int(payload.get("iat_ns") or 0) < int(rev_row["setting_value"] or 0):
-            raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid or expired authentication token")
+            raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Session expirée. Reconnectez-vous.")
         # Permissions are read from the database on every request, not trusted
         # from the token: a role change, a deactivation or a permission added
         # by an update applies at once, without logging out.
@@ -132,7 +132,7 @@ def get_current_admin(authorization: Optional[str] = Header(None)) -> dict:
         )
         user_row = cur.fetchone()
         if not user_row or not int(user_row["is_active"] or 0):
-            raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid or expired authentication token")
+            raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Session expirée. Reconnectez-vous.")
         cur.execute(
             """SELECT p.code FROM permissions p
                JOIN role_permissions rp ON rp.permission_id = p.id
@@ -150,7 +150,7 @@ def require_permission(perm: str):
         if perm not in admin.get("perms", []):
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
-                detail=f"Insufficient permissions: '{perm}' required"
+                detail="Votre rôle ne permet pas cette action."
             )
         return admin
     return dep
@@ -161,7 +161,7 @@ def require_any_permission(perms: List[str]):
         if not any(p in granted for p in perms):
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
-                detail=f"Insufficient permissions: one of {perms} required"
+                detail="Votre rôle ne permet pas cette action."
             )
         return admin
     return dep
@@ -612,24 +612,24 @@ def validate_variant_attributes(
         if key not in cat_attrs:
             raise HTTPException(
                 status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-                detail=f"Unknown attribute '{key}' for this category",
+                detail=f"Caractéristique '{key}' inconnue pour cette catégorie",
             )
         if key not in axes:
             raise HTTPException(
                 status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-                detail=f"Attribute '{key}' is not configured as a variant axis for this category",
+                detail=f"'{key}' ne sert pas à créer des déclinaisons dans cette catégorie",
             )
         val = str(raw_val).strip()
         if not val:
             raise HTTPException(
                 status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-                detail=f"Empty value for variant attribute '{key}'",
+                detail=f"Valeur vide pour '{key}'",
             )
         allowed = cat_attrs[key].get("option_values") or set()
         if allowed and val not in allowed and not allow_custom_values:
             raise HTTPException(
                 status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-                detail=f"Invalid value '{val}' for attribute '{key}'. Allowed values: {', '.join(sorted(allowed))}",
+                detail=f"Valeur '{val}' non valable pour '{key}'. Valeurs possibles : {', '.join(sorted(allowed))}",
             )
         cleaned[key] = val
     if not cleaned and axes and not allow_empty:
@@ -668,7 +668,7 @@ def ensure_variant_attribute_options(conn, cat_attrs: Dict[str, dict], attribute
 
 def assert_variant_sku_available(conn, sku: str, exclude_variant_id: Optional[int] = None) -> None:
     if not sku:
-        raise HTTPException(status_code=422, detail="Variant SKU cannot be empty")
+        raise HTTPException(status_code=422, detail="La référence (SKU) de la déclinaison est obligatoire")
     cur = conn.cursor()
     if exclude_variant_id is None:
         cur.execute("SELECT id FROM product_variants WHERE sku = ?", (sku,))
@@ -677,7 +677,7 @@ def assert_variant_sku_available(conn, sku: str, exclude_variant_id: Optional[in
     if cur.fetchone():
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
-            detail=f"Variant SKU '{sku}' already exists",
+            detail=f"La référence (SKU) '{sku}' existe déjà",
         )
 
 def assert_variant_signature_available(
@@ -735,7 +735,7 @@ def serialize_variant_row(conn, variant_id: int) -> dict:
     )
     row = cur.fetchone()
     if not row:
-        raise HTTPException(status_code=404, detail="Variant not found")
+        raise HTTPException(status_code=404, detail="Déclinaison introuvable")
     out = dict(row)
     cur.execute(
         """SELECT ca.attr_key, vav.option_value
@@ -826,7 +826,7 @@ def get_public_category(slug: str):
         cur.execute("SELECT * FROM categories WHERE slug = ? AND is_active = 1 AND deleted_at IS NULL", (slug,))
         row = cur.fetchone()
         if not row:
-            raise HTTPException(status_code=404, detail="Category not found")
+            raise HTTPException(status_code=404, detail="Catégorie introuvable")
         return serialize_category(conn, dict(row))
 
 @app.get("/api/v1/brands")
@@ -978,7 +978,7 @@ def get_public_product(slug: str):
         )
         row = cur.fetchone()
         if not row:
-            raise HTTPException(status_code=404, detail="Product not found")
+            raise HTTPException(status_code=404, detail="Produit introuvable")
         return serialize_product(conn, dict(row), include_private=False)
 
 def compute_customer_cod_risk(conn, raw_phone: str) -> dict:
@@ -1073,7 +1073,7 @@ def create_guest_order(
             )
 
     if not payload.items:
-        raise HTTPException(status_code=400, detail="Order must contain at least one item")
+        raise HTTPException(status_code=400, detail="La commande doit contenir au moins un article")
 
     # Compute idempotency signature from explicit Idempotency-Key header or deterministic order payload (M-10)
     has_explicit_idem_key = bool(idempotency_key and idempotency_key.strip())
@@ -1103,14 +1103,14 @@ def create_guest_order(
         if dup:
             raise HTTPException(
                 status_code=status.HTTP_409_CONFLICT,
-                detail=f"Duplicate order detected (existing reference: {dup['order_reference']})"
+                detail=f"Commande déjà enregistrée (référence {dup['order_reference']})"
             )
 
         # 1. Verify Wilaya & Delivery Method Rate on the server
         cur.execute("SELECT * FROM delivery_zones WHERE wilaya_code = ? AND is_active = 1", (payload.wilaya_code,))
         zone = cur.fetchone()
         if not zone:
-            raise HTTPException(status_code=400, detail=f"Unsupported or inactive Wilaya code: {payload.wilaya_code}")
+            raise HTTPException(status_code=400, detail=f"Wilaya {payload.wilaya_code} non desservie")
 
         cur.execute(
             "SELECT fee_dzd, is_supported FROM delivery_rates WHERE zone_id = ? AND delivery_method = ?",
@@ -1128,7 +1128,7 @@ def create_guest_order(
             merged_qty_by_vid[raw_item.variant_id] = merged_qty_by_vid.get(raw_item.variant_id, 0) + int(raw_item.quantity)
         for vid, total_q in merged_qty_by_vid.items():
             if total_q > 50:
-                raise HTTPException(status_code=422, detail=f"Maximum quantity per variant is 50 (requested {total_q})")
+                raise HTTPException(status_code=422, detail=f"50 pièces maximum par article (demandé : {total_q})")
             consolidated_items.append(OrderItemInput(variant_id=vid, quantity=total_q))
 
         subtotal_dzd = 0
@@ -1143,11 +1143,11 @@ def create_guest_order(
             )
             v = cur.fetchone()
             if not v or v["product_status"] != "published":
-                raise HTTPException(status_code=404, detail=f"Product variant {item.variant_id} is unavailable")
+                raise HTTPException(status_code=404, detail=f"Un article n'est plus disponible")
             if v["stock_qty"] < item.quantity:
                 raise HTTPException(
                     status_code=status.HTTP_409_CONFLICT,
-                    detail=f"Insufficient stock for '{v['product_name']} ({v['title']})': requested {item.quantity}, available {v['stock_qty']}"
+                    detail=f"Stock insuffisant pour '{v['product_name']} ({v['title']})' : demandé {item.quantity}, disponible {v['stock_qty']}"
                 )
             unit_price = int(v["price_override_dzd"]) if v["price_override_dzd"] is not None else int(v["selling_price_dzd"])
             line_total = unit_price * item.quantity
@@ -1164,11 +1164,11 @@ def create_guest_order(
             if not cpn:
                 raise HTTPException(status_code=400, detail="Invalid or inactive coupon code")
             if dict(cpn).get("usage_limit") is not None and int(cpn["usage_count"]) >= int(dict(cpn)["usage_limit"]):
-                raise HTTPException(status_code=400, detail=f"Coupon '{cpn['code']}' has reached its maximum usage limit")
+                raise HTTPException(status_code=400, detail=f"Le code promo '{cpn['code']}' n'est plus utilisable (limite atteinte)")
             if subtotal_dzd < int(cpn["min_order_dzd"]):
                 raise HTTPException(
                     status_code=400,
-                    detail=f"Coupon '{cpn['code']}' requires a minimum order of {cpn['min_order_dzd']} DA"
+                    detail=f"Le code promo '{cpn['code']}' demande un minimum de {cpn['min_order_dzd']} DA d'achat"
                 )
             if cpn["discount_type"] == "percentage":
                 discount_dzd = (subtotal_dzd * int(cpn["discount_value"])) // 100
@@ -1182,7 +1182,7 @@ def create_guest_order(
                 (cpn["id"],),
             )
             if cur.rowcount == 0:
-                raise HTTPException(status_code=400, detail=f"Coupon '{cpn['code']}' has reached its maximum usage limit")
+                raise HTTPException(status_code=400, detail=f"Le code promo '{cpn['code']}' n'est plus utilisable (limite atteinte)")
 
         # Free delivery promised by the shop (CMS threshold) is applied HERE, so
         # the stored order (what the courier collects) matches what the
@@ -1255,7 +1255,7 @@ def create_guest_order(
             if cur.rowcount == 0:
                 raise HTTPException(
                     status_code=status.HTTP_409_CONFLICT,
-                    detail=f"Insufficient stock for '{v['product_name']} ({v['title']})'"
+                    detail=f"Stock insuffisant pour '{v['product_name']} ({v['title']})'"
                 )
             cur.execute("SELECT stock_qty FROM product_variants WHERE id = ?", (v["id"],))
             new_qty = int(cur.fetchone()["stock_qty"])
@@ -1488,7 +1488,7 @@ def create_custom_category(
         cur = conn.cursor()
         cur.execute("SELECT id FROM categories WHERE slug = ?", (payload.slug,))
         if cur.fetchone():
-            raise HTTPException(status_code=409, detail=f"Category slug '{payload.slug}' already exists")
+            raise HTTPException(status_code=409, detail=f"L'adresse de catégorie '{payload.slug}' existe déjà")
 
         cur.execute(
             """INSERT INTO categories
@@ -1542,19 +1542,19 @@ def add_category_attribute(
     admin: dict = Depends(require_permission("categories:write"))
 ):
     if not payload.category_id:
-        raise HTTPException(status_code=400, detail="category_id is required")
+        raise HTTPException(status_code=400, detail="Choisissez une catégorie")
     with db_session(commit=True) as conn:
         cur = conn.cursor()
         cur.execute("SELECT id FROM categories WHERE id = ?", (payload.category_id,))
         if not cur.fetchone():
-            raise HTTPException(status_code=404, detail="Target category not found")
+            raise HTTPException(status_code=404, detail="Catégorie de destination introuvable")
 
         cur.execute(
             "SELECT id FROM category_attributes WHERE category_id = ? AND attr_key = ?",
             (payload.category_id, payload.attr_key)
         )
         if cur.fetchone():
-            raise HTTPException(status_code=409, detail=f"Attribute '{payload.attr_key}' already exists on this category")
+            raise HTTPException(status_code=409, detail=f"La caractéristique '{payload.attr_key}' existe déjà dans cette catégorie")
 
         cur.execute(
             """INSERT INTO category_attributes
@@ -1594,7 +1594,7 @@ def delete_category_attribute(
         cur.execute("SELECT * FROM category_attributes WHERE id = ?", (attr_id,))
         attr = cur.fetchone()
         if not attr:
-            raise HTTPException(status_code=404, detail="Attribute not found")
+            raise HTTPException(status_code=404, detail="Caractéristique introuvable")
 
         cur.execute("SELECT COUNT(*) AS cnt FROM product_attribute_values WHERE attribute_id = ?", (attr_id,))
         prod_usage = cur.fetchone()["cnt"]
@@ -1649,7 +1649,7 @@ def create_dynamic_product(
         cur.execute("SELECT * FROM categories WHERE id = ?", (payload.category_id,))
         cat = cur.fetchone()
         if not cat:
-            raise HTTPException(status_code=404, detail="Category not found")
+            raise HTTPException(status_code=404, detail="Catégorie introuvable")
 
         cur.execute("SELECT * FROM category_attributes WHERE category_id = ?", (payload.category_id,))
         cat_attrs = {r["attr_key"]: dict(r) for r in cur.fetchall()}
@@ -1665,7 +1665,7 @@ def create_dynamic_product(
             if missing:
                 raise HTTPException(
                     status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-                    detail=f"Missing required category attributes for '{cat['name_fr']}': {', '.join(missing)}"
+                    detail=f"Caractéristiques obligatoires manquantes pour '{cat['name_fr']}' : {', '.join(missing)}"
                 )
 
         cur.execute("SELECT id, slug, sku FROM products WHERE slug = ? OR sku = ?", (payload.slug, payload.sku))
@@ -1673,7 +1673,7 @@ def create_dynamic_product(
         if existing_prod:
             raise HTTPException(
                 status_code=status.HTTP_409_CONFLICT,
-                detail=f"Product with slug '{payload.slug}' or SKU '{payload.sku}' already exists"
+                detail=f"Un produit avec l'adresse '{payload.slug}' ou la référence '{payload.sku}' existe déjà"
             )
 
         # Validate every variant (axis membership + option values) and catch duplicates
@@ -1685,9 +1685,9 @@ def create_dynamic_product(
         for v in payload.variants:
             v_sku = normalize_variant_sku(v.sku)
             if not v_sku:
-                raise HTTPException(status_code=422, detail="Variant SKU cannot be empty")
+                raise HTTPException(status_code=422, detail="La référence (SKU) de la déclinaison est obligatoire")
             if v_sku in seen_skus:
-                raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=f"Duplicate variant SKU '{v_sku}' in payload")
+                raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=f"La référence '{v_sku}' apparaît deux fois")
             seen_skus.add(v_sku)
             v_attrs = validate_variant_attributes(cat_attrs_full, v.attributes, allow_custom_values=True)
             ensure_variant_attribute_options(conn, cat_attrs_full, v_attrs)
@@ -1756,7 +1756,7 @@ def generate_product_variants_matrix(
         cur.execute("SELECT * FROM products WHERE id = ?", (product_id,))
         prod = cur.fetchone()
         if not prod:
-            raise HTTPException(status_code=404, detail="Product not found")
+            raise HTTPException(status_code=404, detail="Produit introuvable")
 
         cur.execute("SELECT * FROM category_attributes WHERE category_id = ?", (prod["category_id"],))
         cat_attrs = {r["attr_key"]: dict(r) for r in cur.fetchall()}
@@ -1766,9 +1766,9 @@ def generate_product_variants_matrix(
             raise HTTPException(status_code=400, detail="At least one variant axis is required")
         for k in axis_keys:
             if k not in cat_attrs or not cat_attrs[k]["is_variant_axis"]:
-                raise HTTPException(status_code=400, detail=f"Attribute '{k}' is not configured as a variant axis for this category")
+                raise HTTPException(status_code=400, detail=f"'{k}' ne sert pas à créer des déclinaisons dans cette catégorie")
             if not payload.axes[k]:
-                raise HTTPException(status_code=400, detail=f"Axis '{k}' has no values")
+                raise HTTPException(status_code=400, detail=f"Aucune valeur choisie pour '{k}'")
 
         # Reject axis values that are not part of the category's configured options.
         cat_attrs_full = load_category_attributes_with_options(conn, prod["category_id"])
@@ -1852,7 +1852,7 @@ def admin_create_variant(
         cur.execute("SELECT * FROM products WHERE id = ?", (product_id,))
         prod = cur.fetchone()
         if not prod:
-            raise HTTPException(status_code=404, detail="Product not found")
+            raise HTTPException(status_code=404, detail="Produit introuvable")
 
         cat_attrs = load_category_attributes_with_options(conn, prod["category_id"])
         attrs = validate_variant_attributes(cat_attrs, payload.attributes, allow_custom_values=True)
@@ -1909,7 +1909,7 @@ def admin_update_variant(
         )
         variant = cur.fetchone()
         if not variant:
-            raise HTTPException(status_code=404, detail="Variant not found")
+            raise HTTPException(status_code=404, detail="Déclinaison introuvable")
 
         fields: Dict[str, Any] = {}
         if payload.sku is not None:
@@ -1921,7 +1921,7 @@ def admin_update_variant(
         if payload.title is not None:
             title = payload.title.strip()
             if not title:
-                raise HTTPException(status_code=422, detail="Variant title cannot be empty")
+                raise HTTPException(status_code=422, detail="Le nom de la déclinaison est obligatoire")
             fields["title"] = title
         if payload.clear_price_override:
             fields["price_override_dzd"] = None
@@ -1994,7 +1994,7 @@ def admin_delete_variant(
         cur.execute("SELECT * FROM product_variants WHERE id = ?", (variant_id,))
         variant = cur.fetchone()
         if not variant:
-            raise HTTPException(status_code=404, detail="Variant not found")
+            raise HTTPException(status_code=404, detail="Déclinaison introuvable")
 
         cur.execute("SELECT COUNT(*) AS cnt FROM order_items WHERE variant_id = ?", (variant_id,))
         used_in_orders = int(cur.fetchone()["cnt"] or 0)
@@ -2046,7 +2046,7 @@ def admin_bulk_update_variants(
             if new_stock < 0:
                 raise HTTPException(
                     status_code=400,
-                    detail=f"Stock for variant '{variant['sku']}' cannot become negative (requested {new_stock})",
+                    detail=f"Le stock de '{variant['sku']}' ne peut pas devenir négatif ({new_stock})",
                 )
             if new_stock != previous_stock:
                 fields["stock_qty"] = new_stock
@@ -2132,7 +2132,7 @@ def admin_update_category_attribute(
         cur.execute("SELECT * FROM category_attributes WHERE id = ?", (attr_id,))
         attr = cur.fetchone()
         if not attr:
-            raise HTTPException(status_code=404, detail="Attribute not found")
+            raise HTTPException(status_code=404, detail="Caractéristique introuvable")
 
         provided = payload.dict(exclude_unset=True)
         fields: Dict[str, Any] = {}
@@ -2170,14 +2170,14 @@ def admin_create_attribute_option(
         cur = conn.cursor()
         cur.execute("SELECT * FROM category_attributes WHERE id = ?", (attr_id,))
         if not cur.fetchone():
-            raise HTTPException(status_code=404, detail="Attribute not found")
+            raise HTTPException(status_code=404, detail="Caractéristique introuvable")
         value = payload.value.strip()
         cur.execute(
             "SELECT id FROM category_attribute_options WHERE attribute_id = ? AND value = ?",
             (attr_id, value),
         )
         if cur.fetchone():
-            raise HTTPException(status_code=409, detail=f"Option '{value}' already exists on this attribute")
+            raise HTTPException(status_code=409, detail=f"La valeur '{value}' existe déjà")
         cur.execute(
             """INSERT INTO category_attribute_options
                (attribute_id, value, label_fr, label_ar, label_en, color_hex, display_order)
@@ -2211,7 +2211,7 @@ def admin_update_attribute_option(
         cur.execute("SELECT * FROM category_attribute_options WHERE id = ?", (option_id,))
         option = cur.fetchone()
         if not option:
-            raise HTTPException(status_code=404, detail="Option not found")
+            raise HTTPException(status_code=404, detail="Valeur introuvable")
         new_value = payload.value.strip()
         if new_value != option["value"]:
             cur.execute(
@@ -2219,7 +2219,7 @@ def admin_update_attribute_option(
                 (option["attribute_id"], new_value, option_id),
             )
             if cur.fetchone():
-                raise HTTPException(status_code=409, detail=f"Option '{new_value}' already exists on this attribute")
+                raise HTTPException(status_code=409, detail=f"La valeur '{new_value}' existe déjà")
             # Keep existing variants consistent: rename the stored option value and
             # recompute each affected variant's combination signature.
             cur.execute(
@@ -2262,7 +2262,7 @@ def admin_delete_attribute_option(
         cur.execute("SELECT * FROM category_attribute_options WHERE id = ?", (option_id,))
         option = cur.fetchone()
         if not option:
-            raise HTTPException(status_code=404, detail="Option not found")
+            raise HTTPException(status_code=404, detail="Valeur introuvable")
         cur.execute(
             """SELECT COUNT(*) AS cnt FROM variant_attribute_values
                WHERE attribute_id = ? AND option_value = ?""",
@@ -2272,7 +2272,7 @@ def admin_delete_attribute_option(
         if in_use > 0:
             raise HTTPException(
                 status_code=status.HTTP_409_CONFLICT,
-                detail=f"Option '{option['value']}' is used by {in_use} variant(s). Rename or remove those variants first.",
+                detail=f"La valeur '{option['value']}' est utilisée par {in_use} déclinaison(s). Renommez ou supprimez-les d'abord.",
             )
         cur.execute("DELETE FROM category_attribute_options WHERE id = ?", (option_id,))
         log_audit(conn, int(admin["sub"]), "delete_attribute_option", "category_attribute_option", str(option_id), {
@@ -2332,7 +2332,7 @@ def update_order_status(
         cur.execute("SELECT * FROM orders WHERE id = ?", (order_id,))
         ord_row = cur.fetchone()
         if not ord_row:
-            raise HTTPException(status_code=404, detail="Order not found")
+            raise HTTPException(status_code=404, detail="Commande introuvable")
 
         prev_status = ord_row["status"]
         stock_deducted = int(ord_row["stock_deducted"])
@@ -2344,7 +2344,7 @@ def update_order_status(
             if not (prev_status == "delivered" and payload.status == "returned"):
                 raise HTTPException(
                     status_code=status.HTTP_400_BAD_REQUEST,
-                    detail=f"Invalid order status transition from terminal status '{prev_status}' to '{payload.status}'"
+                    detail=f"Une commande {_fr(prev_status).lower()} ne peut plus changer de statut"
                 )
 
         # If order is cancelled or returned and stock was deducted, restore stock atomically (H-2 & M-14)
@@ -2427,7 +2427,7 @@ async def upload_product_image(
 ):
     data = await file.read(MAX_UPLOAD_IMAGE_BYTES + 1)
     if len(data) > MAX_UPLOAD_IMAGE_BYTES:
-        raise HTTPException(status_code=413, detail="Image exceeds maximum allowed size of 5 MB")
+        raise HTTPException(status_code=413, detail="Image trop lourde (5 Mo maximum)")
     validate_uploaded_image(file.filename or "upload.jpg", file.content_type or "", data)
     digest = hashlib.sha256(data).hexdigest()[:16]
     ext = {"image/jpeg": ".jpg", "image/png": ".png", "image/webp": ".webp"}[file.content_type]
@@ -2443,7 +2443,7 @@ def serve_uploaded_image(filename: str):
         raise HTTPException(status_code=400, detail="Invalid media filename")
     fpath = os.path.join(UPLOAD_STORAGE_DIR, filename)
     if not os.path.isfile(fpath):
-        raise HTTPException(status_code=404, detail="Uploaded media file not found")
+        raise HTTPException(status_code=404, detail="Fichier introuvable")
     ext = os.path.splitext(filename)[1].lower()
     mime = {".jpg": "image/jpeg", ".png": "image/png", ".webp": "image/webp"}.get(ext, "application/octet-stream")
     with open(fpath, "rb") as f:
@@ -2586,7 +2586,7 @@ def admin_update_banner(
         cur = conn.cursor()
         cur.execute("SELECT id FROM banners WHERE id = ?", (banner_id,))
         if not cur.fetchone():
-            raise HTTPException(status_code=404, detail="Banner not found")
+            raise HTTPException(status_code=404, detail="Bannière introuvable")
         cur.execute(
             """UPDATE banners SET position = ?, title_fr = ?, title_ar = ?, title_en = ?,
                    subtitle_fr = ?, subtitle_ar = ?, subtitle_en = ?, cta_text_fr = ?, cta_link = ?,
@@ -2614,7 +2614,7 @@ def admin_delete_banner(
         cur.execute("SELECT * FROM banners WHERE id = ?", (banner_id,))
         b = cur.fetchone()
         if not b:
-            raise HTTPException(status_code=404, detail="Banner not found")
+            raise HTTPException(status_code=404, detail="Bannière introuvable")
         cur.execute("DELETE FROM banners WHERE id = ?", (banner_id,))
         log_audit(conn, int(admin["sub"]), "delete_banner", "banner", str(banner_id), {"title_fr": b["title_fr"]})
         return {"deleted": True, "banner_id": banner_id}
@@ -2669,7 +2669,7 @@ def admin_update_homepage_section(
             cur.execute("SELECT * FROM homepage_sections WHERE section_key = ?", (section_key,))
             sec = cur.fetchone()
         if not sec:
-            raise HTTPException(status_code=404, detail="Homepage section not found")
+            raise HTTPException(status_code=404, detail="Section de la page d'accueil introuvable")
         cur.execute(
             """UPDATE homepage_sections
                SET title_fr = COALESCE(?, title_fr),
@@ -2700,7 +2700,7 @@ def admin_update_store_settings(
         if _is_protected_setting_key(k):
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
-                detail=f"Protected system setting '{k}' cannot be modified via store settings API"
+                detail=f"Le réglage système '{k}' ne peut pas être modifié ici"
             )
         _ensure_safe_url_or_text(json.dumps(v, ensure_ascii=False) if isinstance(v, (dict, list)) else str(v), k)
     with db_session(commit=True) as conn:
@@ -2868,7 +2868,7 @@ def track_guest_order(request: Request, reference: str = Query(...), phone: str 
         )
         ord_row = cur.fetchone()
         if not ord_row:
-            raise HTTPException(status_code=404, detail="No order found matching this reference and phone number")
+            raise HTTPException(status_code=404, detail="Aucune commande ne correspond à cette référence et à ce numéro")
         od = dict(ord_row)
         od.pop("internal_notes", None)
         od.pop("idempotency_hash", None)
@@ -2891,26 +2891,26 @@ def update_product_with_conflict_detection(
         cur.execute("SELECT * FROM products WHERE id = ?", (product_id,))
         prod = cur.fetchone()
         if not prod:
-            raise HTTPException(status_code=404, detail="Product not found")
+            raise HTTPException(status_code=404, detail="Produit introuvable")
         current_version = int(prod["version"])
         if payload.expected_version != current_version:
             raise HTTPException(
                 status_code=status.HTTP_409_CONFLICT,
-                detail=f"Synchronization conflict detected: server version is {current_version}, but client sent version {payload.expected_version}. Reload latest server data before saving."
+                detail=f"Ce produit a été modifié entre-temps (version {current_version}). Rechargez la fiche avant d'enregistrer."
             )
         if payload.sku and payload.sku != prod["sku"]:
             cur.execute("SELECT id FROM products WHERE sku = ? AND id != ?", (payload.sku, product_id))
             if cur.fetchone():
                 raise HTTPException(
                     status_code=status.HTTP_409_CONFLICT,
-                    detail=f"Product SKU '{payload.sku}' is already used by another product"
+                    detail=f"La référence '{payload.sku}' est déjà utilisée par un autre produit"
                 )
         if payload.slug and payload.slug != prod["slug"]:
             cur.execute("SELECT id FROM products WHERE slug = ? AND id != ?", (payload.slug, product_id))
             if cur.fetchone():
                 raise HTTPException(
                     status_code=status.HTTP_409_CONFLICT,
-                    detail=f"Product slug '{payload.slug}' is already used by another product"
+                    detail=f"L'adresse '{payload.slug}' est déjà utilisée par un autre produit"
                 )
         new_version = current_version + 1
         cur.execute(
@@ -2998,7 +2998,7 @@ def create_coupon(
         code_upper = payload.code.strip().upper()
         cur.execute("SELECT id FROM coupons WHERE UPPER(code) = ?", (code_upper,))
         if cur.fetchone():
-            raise HTTPException(status_code=409, detail=f"Coupon code '{code_upper}' already exists")
+            raise HTTPException(status_code=409, detail=f"Le code promo '{code_upper}' existe déjà")
         cur.execute(
             """INSERT INTO coupons (code, discount_type, discount_value, min_order_dzd, max_discount_dzd, usage_limit, is_active)
                VALUES (?, ?, ?, ?, ?, ?, 1)""",
@@ -3142,7 +3142,7 @@ def initialize_primary_owner(payload: OwnerInitializeInput, request: Request):
         if is_init:
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
-                detail="Security Lockout: Mus Luxury platform has already been initialized with a primary owner account. First-time setup is disabled."
+                detail="Le compte propriétaire existe déjà : la première configuration n'est plus possible."
             )
 
         cur.execute("SELECT id FROM roles WHERE name = 'super_admin'")
@@ -3344,7 +3344,7 @@ def admin_adjust_variant_stock(
         cur.execute("SELECT * FROM product_variants WHERE id = ?", (variant_id,))
         v = cur.fetchone()
         if not v:
-            raise HTTPException(status_code=404, detail="Variant not found")
+            raise HTTPException(status_code=404, detail="Déclinaison introuvable")
         cur.execute(
             "UPDATE product_variants SET stock_qty = stock_qty + ? WHERE id = ? AND (stock_qty + ?) >= 0",
             (payload.change_qty, variant_id, payload.change_qty)
@@ -3597,7 +3597,7 @@ def admin_safe_delete_or_archive_product(
         cur.execute("SELECT * FROM products WHERE id = ?", (product_id,))
         prod = cur.fetchone()
         if not prod:
-            raise HTTPException(status_code=404, detail="Product not found")
+            raise HTTPException(status_code=404, detail="Produit introuvable")
 
         variant_ids_sql = "SELECT id FROM product_variants WHERE product_id = ?"
         history = {}
@@ -3679,7 +3679,7 @@ def admin_bulk_update_product_status(
     admin: dict = Depends(require_permission("products:write"))
 ):
     if not payload.product_ids:
-        raise HTTPException(status_code=400, detail="product_ids cannot be empty")
+        raise HTTPException(status_code=400, detail="Choisissez au moins un produit")
     with db_session(commit=True) as conn:
         cur = conn.cursor()
         updated = 0
@@ -3717,7 +3717,7 @@ def admin_create_brand(
         cur = conn.cursor()
         cur.execute("SELECT id FROM brands WHERE slug = ?", (payload.slug,))
         if cur.fetchone():
-            raise HTTPException(status_code=409, detail=f"Brand slug '{payload.slug}' already exists")
+            raise HTTPException(status_code=409, detail=f"La marque '{payload.slug}' existe déjà")
         cur.execute(
             "INSERT INTO brands (name, slug, logo_url, is_active) VALUES (?, ?, ?, 1)",
             (payload.name, payload.slug, payload.logo_url)
@@ -3738,7 +3738,7 @@ def admin_update_category(
         cur.execute("SELECT * FROM categories WHERE id = ?", (category_id,))
         cat = cur.fetchone()
         if not cat:
-            raise HTTPException(status_code=404, detail="Category not found")
+            raise HTTPException(status_code=404, detail="Catégorie introuvable")
         cur.execute(
             """UPDATE categories
                SET name_fr = COALESCE(?, name_fr),
@@ -3777,7 +3777,7 @@ def admin_restore_category(category_id: int, admin: dict = Depends(require_permi
         cur.execute("SELECT slug FROM categories WHERE id = ?", (category_id,))
         cat = cur.fetchone()
         if not cat:
-            raise HTTPException(status_code=404, detail="Category not found")
+            raise HTTPException(status_code=404, detail="Catégorie introuvable")
         cur.execute("UPDATE categories SET is_active = 1, deleted_at = NULL WHERE id = ?", (category_id,))
         log_audit(conn, int(admin["sub"]), "restore_category", "category", str(category_id), {"slug": cat["slug"]})
         return {"restored": True, "category_id": category_id}
@@ -3794,7 +3794,7 @@ def admin_archive_category(
         cur.execute("SELECT * FROM categories WHERE id = ?", (category_id,))
         cat = cur.fetchone()
         if not cat:
-            raise HTTPException(status_code=404, detail="Category not found")
+            raise HTTPException(status_code=404, detail="Catégorie introuvable")
 
         cur.execute("SELECT COUNT(*) AS cnt FROM products WHERE category_id = ? AND deleted_at IS NULL", (category_id,))
         prods_count = cur.fetchone()["cnt"]
@@ -3881,7 +3881,7 @@ _FR_CODES = {
     "deposit": "Dépôt", "withdrawal": "Retrait",
     "pos_sale": "Vente magasin", "pos_refund": "Remboursement magasin", "cod_collection": "Commande livrée (COD)",
     "cod_refund": "Retour après livraison", "expense_payment": "Paiement dépense",
-    "purchase_payment": "Paiement fournisseur", "manual_adjustment": "Mouvement manuel",
+    "purchase_payment": "Paiement fournisseur", "manual_adjustment": "Mouvement manuel", "register_variance": "Écart de caisse",
     "expense_cancelled": "Annulation dépense",
     # stock movements
     "order_reserved": "Commande en ligne", "order_cancelled": "Commande annulée", "order_returned": "Commande retournée",
@@ -3968,7 +3968,7 @@ def admin_get_order_delivery_note(
         cur.execute("SELECT * FROM orders WHERE id = ?", (order_id,))
         o = cur.fetchone()
         if not o:
-            raise HTTPException(status_code=404, detail="Order not found")
+            raise HTTPException(status_code=404, detail="Commande introuvable")
         od = dict(o)
         cur.execute(
             """SELECT oi.product_name, oi.variant_title, oi.sku, oi.quantity
@@ -3993,7 +3993,7 @@ def admin_get_order_invoice(
         cur.execute("SELECT * FROM orders WHERE id = ?", (order_id,))
         o = cur.fetchone()
         if not o:
-            raise HTTPException(status_code=404, detail="Order not found")
+            raise HTTPException(status_code=404, detail="Commande introuvable")
         od = dict(o)
         cur.execute("SELECT * FROM order_items WHERE order_id = ?", (order_id,))
         items = [dict(r) for r in cur.fetchall()]
@@ -4114,7 +4114,7 @@ def admin_add_product_image(
         cur = conn.cursor()
         cur.execute("SELECT * FROM products WHERE id = ?", (product_id,))
         if not cur.fetchone():
-            raise HTTPException(status_code=404, detail="Product not found")
+            raise HTTPException(status_code=404, detail="Produit introuvable")
         cur.execute(
             """INSERT INTO product_images (product_id, variant_id, image_url, alt_text, display_order)
                VALUES (?, ?, ?, ?, ?)""",
@@ -4140,7 +4140,7 @@ def admin_reorder_product_images(
         cur = conn.cursor()
         cur.execute("SELECT * FROM products WHERE id = ?", (product_id,))
         if not cur.fetchone():
-            raise HTTPException(status_code=404, detail="Product not found")
+            raise HTTPException(status_code=404, detail="Produit introuvable")
         for item in payload.orders:
             cur.execute(
                 "UPDATE product_images SET display_order = ? WHERE id = ? AND product_id = ?",
@@ -4165,7 +4165,7 @@ def admin_delete_product_image(
         cur.execute("SELECT * FROM product_images WHERE id = ?", (image_id,))
         img = cur.fetchone()
         if not img:
-            raise HTTPException(status_code=404, detail="Product image not found")
+            raise HTTPException(status_code=404, detail="Photo introuvable")
         cur.execute("DELETE FROM product_images WHERE id = ?", (image_id,))
         log_audit(conn, int(admin["sub"]), "delete_product_image", "product_image", str(image_id), {"product_id": img["product_id"]})
         return {"deleted": True, "image_id": image_id}
@@ -4184,7 +4184,7 @@ def get_public_static_page(slug: str):
         cur.execute("SELECT * FROM static_pages WHERE slug = ? AND is_published = 1", (slug,))
         row = cur.fetchone()
         if not row:
-            raise HTTPException(status_code=404, detail="Page not found")
+            raise HTTPException(status_code=404, detail="Page introuvable")
         return dict(row)
 
 @app.put("/api/v1/admin/pages/{slug}")
@@ -4313,7 +4313,7 @@ def admin_notify_order_customer_whatsapp(
         cur.execute("SELECT * FROM orders WHERE id = ?", (order_id,))
         ord_row = cur.fetchone()
         if not ord_row:
-            raise HTTPException(status_code=404, detail="Order not found")
+            raise HTTPException(status_code=404, detail="Commande introuvable")
         od = dict(ord_row)
         receipt = dispatch_customer_whatsapp_order_update(
             od,
@@ -5043,6 +5043,21 @@ def admin_receive_purchase_order(
         items = [dict(it) for it in cur.fetchall()]
 
         today_str = _shop_today()
+        # Landed cost: shipping and tax of the order are spread over the lines
+        # in proportion to their value, so the product cost (and the margins)
+        # include them — the same total that is booked to stock in the journal.
+        extra_cost = int(po["shipping_dzd"] or 0) + int(po["tax_dzd"] or 0)
+        goods_value = sum(int(it["quantity_ordered"]) * int(it["unit_cost_dzd"]) for it in items)
+        total_units = sum(int(it["quantity_ordered"]) for it in items) or 1
+
+        def landed_unit_cost(it) -> int:
+            unit = int(it["unit_cost_dzd"])
+            if extra_cost <= 0:
+                return unit
+            if goods_value > 0:
+                return int(round(unit + extra_cost * unit / goods_value))
+            return int(round(unit + extra_cost / total_units))
+
         for it in items:
             v_id = it["variant_id"]
             if not v_id:
@@ -5069,11 +5084,15 @@ def admin_receive_purchase_order(
             curr_cost = int(p_cost_row["purchase_cost_dzd"]) if p_cost_row and p_cost_row["purchase_cost_dzd"] else it["unit_cost_dzd"]
             cur.execute("SELECT COALESCE(SUM(stock_qty), 0) AS total_stk FROM product_variants WHERE product_id = ?", (it["product_id"],))
             total_stk = int(cur.fetchone()["total_stk"])
-            # Weighted average formula
-            if total_stk > 0:
-                weighted_unit_cost = int(((total_stk - it["quantity_ordered"]) * curr_cost + it["quantity_ordered"] * it["unit_cost_dzd"]) / total_stk)
+            # Weighted average cost (PMP) with the landed unit cost. Units already
+            # in stock keep their cost; an oversold (negative) stock counts as 0.
+            new_unit = landed_unit_cost(it)
+            qty_in = int(it["quantity_ordered"])
+            before_qty = max(total_stk - qty_in, 0)
+            if before_qty + qty_in > 0:
+                weighted_unit_cost = int(round((before_qty * curr_cost + qty_in * new_unit) / (before_qty + qty_in)))
             else:
-                weighted_unit_cost = it["unit_cost_dzd"]
+                weighted_unit_cost = new_unit
             cur.execute("UPDATE products SET purchase_cost_dzd = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?", (weighted_unit_cost, it["product_id"]))
             cur.execute("UPDATE purchase_order_items SET quantity_received = quantity_ordered WHERE id = ?", (it["id"],))
 
@@ -5745,7 +5764,7 @@ def _pos_sale_payload(conn, sale_id: int) -> dict:
     cur.execute("SELECT * FROM pos_sales WHERE id = ?", (sale_id,))
     s = cur.fetchone()
     if not s:
-        raise HTTPException(status_code=404, detail="Sale not found")
+        raise HTTPException(status_code=404, detail="Vente introuvable")
     sale = dict(s)
     cur.execute("SELECT * FROM pos_sale_items WHERE sale_id = ? ORDER BY id", (sale_id,))
     sale["items"] = [dict(r) for r in cur.fetchall()]
@@ -5800,7 +5819,7 @@ def pos_open_register(payload: RegisterOpenInput, admin: dict = Depends(require_
         if existing:
             raise HTTPException(
                 status_code=status.HTTP_409_CONFLICT,
-                detail=f"A cash register session (#{existing['id']}) is already open. Close it before opening a new one.",
+                detail=f"Une caisse (n° {existing['id']}) est déjà ouverte. Clôturez-la avant d'en ouvrir une autre.",
             )
         cur.execute(
             """INSERT INTO cash_register_sessions
@@ -5842,7 +5861,7 @@ def pos_close_register(payload: RegisterCloseInput, admin: dict = Depends(requir
         cur = conn.cursor()
         session = _get_open_register(conn)
         if not session:
-            raise HTTPException(status_code=404, detail="No open cash register session to close")
+            raise HTTPException(status_code=404, detail="Aucune caisse ouverte à clôturer.")
         session_id = int(session["id"])
         totals = _register_runtime_totals(conn, session_id)
         expected_cash = int(session["opening_float_dzd"]) + totals["net_cash_dzd"]
@@ -5859,7 +5878,16 @@ def pos_close_register(payload: RegisterCloseInput, admin: dict = Depends(requir
              payload.notes, session_id),
         )
         if cur.rowcount == 0:
-            raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Register session already closed")
+            raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Cette caisse est déjà clôturée.")
+        # The counted drawer is the truth: a shortage leaves the cash box, a
+        # surplus enters it, so the treasury matches the money really there.
+        if variance != 0:
+            _record_cash_movement(
+                cur, account="cash_box", movement="inflow" if variance > 0 else "outflow", amount=abs(variance),
+                source_type="register_variance", reference=f"CAISSE-{session_id}",
+                description=f"Écart de caisse à la clôture ({'excédent' if variance > 0 else 'manque'} de {abs(variance)} DA)",
+                user_id=int(admin["sub"]),
+            )
         log_audit(conn, int(admin["sub"]), "close_register", "cash_register_session", str(session_id), {
             "expected_cash_dzd": expected_cash, "counted_cash_dzd": payload.counted_cash_dzd, "variance_dzd": variance,
         })
@@ -6144,14 +6172,14 @@ def pos_create_sale(
         if not session:
             raise HTTPException(
                 status_code=status.HTTP_409_CONFLICT,
-                detail="No open cash register session. Open the register before selling.",
+                detail="Aucune caisse ouverte. Ouvrez la caisse avant de vendre.",
             )
 
         # Validate optional customer
         if payload.customer_id is not None:
             cur.execute("SELECT id FROM customers WHERE id = ?", (payload.customer_id,))
             if not cur.fetchone():
-                raise HTTPException(status_code=404, detail=f"Customer {payload.customer_id} not found")
+                raise HTTPException(status_code=404, detail=f"Client introuvable")
 
         # Consolidate duplicate variant lines (sum quantities, sum line discounts)
         merged: Dict[int, Dict[str, int]] = {}
@@ -6172,12 +6200,12 @@ def pos_create_sale(
             )
             v = cur.fetchone()
             if not v or v["product_status"] == "archived":
-                raise HTTPException(status_code=404, detail=f"Product variant {vid} is unavailable")
+                raise HTTPException(status_code=404, detail=f"Un article n'est plus disponible")
             qty = m["quantity"]
             if v["stock_qty"] < qty:
                 raise HTTPException(
                     status_code=status.HTTP_409_CONFLICT,
-                    detail=f"Insufficient stock for '{v['product_name']} ({v['title']})': requested {qty}, available {v['stock_qty']}",
+                    detail=f"Stock insuffisant pour '{v['product_name']} ({v['title']})' : demandé {qty}, disponible {v['stock_qty']}",
                 )
             unit_price = int(v["price_override_dzd"]) if v["price_override_dzd"] is not None else int(v["selling_price_dzd"])
             line_gross = unit_price * qty
@@ -6199,7 +6227,7 @@ def pos_create_sale(
         if paid != total_dzd:
             raise HTTPException(
                 status_code=422,
-                detail=f"Payments ({paid} DA) must equal sale total ({total_dzd} DA)",
+                detail=f"Le paiement ({paid} DA) doit être égal au total de la vente ({total_dzd} DA)",
             )
 
         sale_ref = ""
@@ -6236,7 +6264,7 @@ def pos_create_sale(
             )
             if cur.rowcount == 0:
                 raise HTTPException(status_code=status.HTTP_409_CONFLICT,
-                                    detail=f"Insufficient stock for '{v['product_name']} ({v['title']})'")
+                                    detail=f"Stock insuffisant pour '{v['product_name']} ({v['title']})'")
             cur.execute("SELECT stock_qty FROM product_variants WHERE id = ?", (v["id"],))
             new_qty = int(cur.fetchone()["stock_qty"])
             prev_qty = new_qty + qty
@@ -6353,17 +6381,17 @@ def pos_refund_sale(
         cur.execute("SELECT * FROM pos_sales WHERE id = ?", (sale_id,))
         orig = cur.fetchone()
         if not orig:
-            raise HTTPException(status_code=404, detail="Sale not found")
+            raise HTTPException(status_code=404, detail="Vente introuvable")
         if orig["sale_type"] != "sale":
-            raise HTTPException(status_code=400, detail="Only sales can be refunded")
+            raise HTTPException(status_code=400, detail="Seule une vente peut être remboursée")
         if orig["status"] in ("refunded", "voided"):
-            raise HTTPException(status_code=409, detail=f"Sale already {orig['status']}")
+            raise HTTPException(status_code=409, detail=f"Vente déjà {_fr(orig['status']).lower()}")
 
         session = _get_open_register(conn)
         if not session:
             raise HTTPException(
                 status_code=status.HTTP_409_CONFLICT,
-                detail="No open cash register session. Open the register before refunding.",
+                detail="Aucune caisse ouverte. Ouvrez la caisse avant de rembourser.",
             )
 
         # Sold quantities per variant on the original sale
@@ -6393,7 +6421,7 @@ def pos_refund_sale(
             requested = {vid: q for vid, q in requested.items() if q > 0}
 
         if not requested:
-            raise HTTPException(status_code=400, detail="Nothing left to refund on this sale")
+            raise HTTPException(status_code=400, detail="Tout a déjà été remboursé sur cette vente")
 
         # A refund gives back what the customer actually PAID: each unit at its
         # share of the ticket total (line discounts, ticket discount and tax
@@ -6412,12 +6440,12 @@ def pos_refund_sale(
         refund_total = 0         # money given back
         for vid, qty in requested.items():
             if vid not in sold:
-                raise HTTPException(status_code=400, detail=f"Variant {vid} was not part of sale #{sale_id}")
+                raise HTTPException(status_code=400, detail=f"Cet article ne fait pas partie de la vente n° {sale_id}")
             remaining = sold[vid]["quantity"] - refunded_qty.get(vid, 0)
             if qty > remaining:
                 raise HTTPException(
                     status_code=400,
-                    detail=f"Cannot refund {qty} of variant {vid}: only {remaining} remain refundable",
+                    detail=f"Impossible de rembourser {qty} pièce(s) : il en reste {remaining} remboursable(s)",
                 )
             unit_price = int(sold[vid]["unit_price_dzd"])
             sold_line_total = int(sold[vid]["line_total_dzd"] or 0)

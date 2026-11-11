@@ -188,7 +188,7 @@ class TestPointOfSale(unittest.TestCase):
             "payments": [{"method": "cash", "amount_dzd": 3000}],
         })
         self.assertEqual(resp.status_code, 409, resp.text)
-        self.assertIn("register", resp.json()["detail"].lower())
+        self.assertIn("caisse", resp.json()["detail"].lower())
 
     def test_04_cash_sale_deducts_stock_and_change(self):
         self._open_register()

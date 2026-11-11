@@ -179,7 +179,7 @@ class TestStorefrontContent(unittest.TestCase):
     def test_dashboard_chart_uses_real_daily_revenue(self):
         before = self.client.get("/api/v1/admin/dashboard", headers=self.headers).json()
         self.assertEqual(len(before["revenue_by_day"]), 30)
-        today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+        today = __import__("app.main", fromlist=["_shop_today"])._shop_today()  # shop day (Algeria)
         self.assertEqual(before["revenue_by_day"][-1]["date"], today)
 
         self._set_threshold("0")

@@ -478,7 +478,7 @@ class TestLuxeEcommercePlatform(unittest.TestCase):
         }
         r_locked = self.client.post("/api/v1/admin/auth/initialize-owner", json=payload)
         self.assertEqual(r_locked.status_code, 403)
-        self.assertIn("already been initialized", r_locked.json()["detail"])
+        self.assertIn("compte propriétaire existe déjà", r_locked.json()["detail"])
 
     # 16. Cryptographic Request Signing & Replay Attack Prevention
     def test_16_cryptographic_signing_and_replay_attack_prevention(self):

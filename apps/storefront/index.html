@@ -1651,7 +1651,7 @@
         if (raw && raw.toLowerCase().indexOf("stock") !== -1) {
           return "La quantité demandée dépasse le stock actuellement disponible pour cet article.";
         }
-        const ref = (raw.match(/existing reference:\s*([A-Za-z0-9-]+)/) || [])[1];
+        const ref = (raw.match(/(?:existing reference:|référence)\s*([A-Za-z0-9-]+)/) || [])[1];
         if (ref) return `Cette commande est déjà enregistrée (référence ${ref}).`;
         return "Cette commande vient déjà d'être enregistrée. Vérifiez son statut dans le suivi de commande.";
       }
