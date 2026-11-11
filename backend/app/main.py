@@ -199,8 +199,10 @@ class CategoryCreate(BaseModel):
     description_fr: Optional[str] = ""
     description_ar: Optional[str] = ""
     description_en: Optional[str] = ""
-    image_url: Optional[str] = "/assets/cat_sacs.jpg"
-    banner_url: Optional[str] = "/assets/hero_bag_clean.jpg"
+    # No invented photo: empty until the owner uploads one (the shop then
+    # shows a neutral placeholder).
+    image_url: Optional[str] = ""
+    banner_url: Optional[str] = ""
     parent_id: Optional[int] = None
     display_order: int = 10
     is_active: bool = True
@@ -231,7 +233,8 @@ class ProductCreate(BaseModel):
     description_fr: Optional[str] = ""
     description_ar: Optional[str] = ""
     description_en: Optional[str] = ""
-    main_image_url: Optional[str] = "/assets/prod_sac_chanel_hd.jpg"
+    # No invented photo: empty until the owner uploads one.
+    main_image_url: Optional[str] = ""
     purchase_cost_dzd: int = Field(0, ge=0)
     selling_price_dzd: int = Field(..., ge=0)
     previous_price_dzd: Optional[int] = Field(None, ge=0)
@@ -1567,10 +1570,23 @@ def delete_category_attribute(
         var_usage = cur.fetchone()["cnt"]
         total_usage = prod_usage + var_usage
 
+        if var_usage > 0 and int(attr["is_variant_axis"] or 0):
+            # Variants are told apart by this attribute (e.g. Noir / Rouge):
+            # removing it would leave identical, indistinguishable variants.
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail=(
+                    f"« {attr['label_fr']} » sert à distinguer {var_usage} variante(s) de produits (ex. couleurs, tailles). "
+                    "Supprimez ou archivez d'abord ces variantes / produits, puis retirez l'attribut."
+                ),
+            )
         if total_usage > 0 and not force_migrate:
             raise HTTPException(
                 status_code=status.HTTP_409_CONFLICT,
-                detail=f"Attribute '{attr['label_fr']}' is actively used by {total_usage} product/variant record(s). Pass force_migrate=true to confirm archival and removal."
+                detail=(
+                    f"« {attr['label_fr']} » est renseigné sur {total_usage} fiche(s) produit. "
+                    "Si vous confirmez, ces valeurs seront effacées des produits."
+                ),
             )
 
         if force_migrate and total_usage > 0:
@@ -3744,6 +3760,24 @@ def admin_archive_category(
                     status_code=400,
                     detail=f"Impossible de supprimer définitivement : {prods_count} produit(s) sont encore rattachés à cette catégorie. Veuillez d'abord réassigner ou archiver ces produits."
                 )
+            cur.execute("SELECT COUNT(*) AS cnt FROM products WHERE category_id = ?", (category_id,))
+            archived_count = int(cur.fetchone()["cnt"])
+            if archived_count > 0:
+                # Archived products still belong to it (their sales history
+                # depends on them): hide the category instead of deleting it.
+                cur.execute(
+                    "UPDATE categories SET is_active = 0, deleted_at = COALESCE(deleted_at, CURRENT_TIMESTAMP) WHERE id = ?",
+                    (category_id,),
+                )
+                log_audit(conn, int(admin["sub"]), "archive_category", "category", str(category_id),
+                          {"slug": cat["slug"], "reason": "delete requested; archived products remain"})
+                return {
+                    "archived": True, "deleted": False, "category_id": category_id,
+                    "message": (
+                        f"La catégorie « {cat['name_fr']} » contient encore {archived_count} produit(s) archivé(s) "
+                        "dont l'historique est conservé : elle a été archivée (masquée) au lieu d'être supprimée."
+                    ),
+                }
             cur.execute("DELETE FROM category_attribute_options WHERE attribute_id IN (SELECT id FROM category_attributes WHERE category_id = ?)", (category_id,))
             cur.execute("DELETE FROM category_attributes WHERE category_id = ?", (category_id,))
             cur.execute("DELETE FROM categories WHERE id = ?", (category_id,))

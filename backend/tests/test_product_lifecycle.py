@@ -101,6 +101,40 @@ class TestProductLifecycle(unittest.TestCase):
         prods = self.client.get("/api/v1/admin/products?include_archived=true", headers=self.h).json()["items"]
         self.assertFalse(any(p["id"] == pid for p in prods))
 
+    # ------------------------------------------------------------ categories --
+    def _cat_with_axis(self):
+        pid, slug, vid = self._product()
+        prods = self.client.get("/api/v1/admin/products?include_archived=true", headers=self.h).json()["items"]
+        cat_id = next(p["category_id"] for p in prods if p["id"] == pid)
+        cats = self.client.get("/api/v1/admin/categories", headers=self.h).json()["items"]
+        cat = next(c for c in cats if c["id"] == cat_id)
+        return pid, cat
+
+    def test_variant_axis_attribute_in_use_cannot_be_deleted_even_forced(self):
+        _, cat = self._cat_with_axis()
+        attr = cat["attributes"][0]
+        for force in ("false", "true"):
+            r = self.client.delete(f"/api/v1/admin/category-attributes/{attr['id']}?force_migrate={force}", headers=self.h)
+            self.assertEqual(r.status_code, 409, r.text)
+            self.assertIn("variante", r.json()["detail"])
+
+    def test_category_with_only_archived_products_is_archived_not_deleted(self):
+        pid, cat = self._cat_with_axis()
+        self.client.delete(f"/api/v1/admin/products/{pid}", headers=self.h)  # archive the product
+        r = self.client.delete(f"/api/v1/admin/categories/{cat['id']}?hard_delete=true", headers=self.h)
+        self.assertEqual(r.status_code, 200, r.text)
+        self.assertTrue(r.json().get("archived"))
+        self.assertFalse(r.json().get("deleted"))
+
+    def test_new_category_and_product_get_no_invented_photo(self):
+        sfx = uuid.uuid4().hex[:6]
+        c = self.client.post("/api/v1/admin/categories", headers=self.h, json={
+            "slug": f"nophoto-{sfx}", "name_fr": "Sans photo", "name_ar": "x", "name_en": "x",
+            "display_order": 1, "is_active": True, "show_on_homepage": False})
+        self.assertEqual(c.status_code, 201, c.text)
+        self.assertEqual(c.json().get("image_url") or "", "")
+        self.assertEqual(c.json().get("banner_url") or "", "")
+
 
 if __name__ == "__main__":
     unittest.main()

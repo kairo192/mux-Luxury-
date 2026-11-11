@@ -208,6 +208,23 @@ export function sanitizeAndTranslateError(
     };
   }
 
+  // 4b. The server already explained the problem in French, for people
+  // (e.g. "« Couleur » sert à distinguer 2 variante(s)…"): show it as is.
+  // English or technical messages keep going through the safe wording below.
+  const humanFrench =
+    status >= 400 && status < 500 &&
+    rawText.length > 0 && rawText.length <= 400 &&
+    /[éèàùçêâîôû«»]/i.test(rawText) &&
+    !/(traceback|psycopg|sqlite|exception|select |insert into|delete from|update \w+ set|[{}<>]|file ")/i.test(rawText);
+  if (humanFrench) {
+    const titles: Record<number, string> = {
+      400: "Opération impossible",
+      404: "Élément introuvable",
+      409: "Action bloquée pour protéger vos données",
+    };
+    return { title: titles[status] || fallbackTitle, message: rawText, code: `HTTP_${status}`, status };
+  }
+
   // 5. Not Found (404)
   if (status === 404 || lower.includes("not found") || lower.includes("introuvable")) {
     return {

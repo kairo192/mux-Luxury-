@@ -2,7 +2,8 @@ import { readDraft, writeDraft, clearDraft } from "../utils/draftStorage";
 import React, { useEffect, useState } from "react";
 import { useT } from "../i18n";
 import { DesktopCmsApi, mediaUrl, PLACEHOLDER_IMG } from "../api/adminClient";
-import { notifyClientError, notifyClientSuccess, notifyClientWarning } from "../utils/clientNotifier";
+import { confirmClientAction, notifyClientError, notifyClientSuccess, notifyClientWarning } from "../utils/clientNotifier";
+import { ImageUploadField } from "../components/ImageUploadField";
 import {
   Tags,
   Plus,
@@ -52,6 +53,15 @@ const ATTRIBUTE_TYPES = [
   "brand",
   "barcode_sku",
 ];
+
+// Names staff read for the technical attribute types.
+const ATTRIBUTE_TYPE_LABEL: Record<string, string> = {
+  short_text: "Texte court", long_text: "Texte long", number: "Nombre", price: "Prix",
+  boolean: "Oui / Non", single_select: "Choix unique", multi_select: "Choix multiple",
+  color: "Couleur", size: "Taille", image: "Image", date: "Date", measurement: "Mesure",
+  brand: "Marque", barcode_sku: "Code-barres / SKU",
+};
+const typeLabel = (t: string) => ATTRIBUTE_TYPE_LABEL[t] || t;
 
 const LUXURY_ICONS = [
   { key: "bag", label: "Sacs & Maroquinerie", icon: ShoppingBag },
@@ -138,8 +148,8 @@ export const CATEGORY_PRESETS: CategoryPreset[] = [
     slug: "t-shirts",
     iconName: "shirt",
     description_fr: "T-shirts d'exception, polos raffinés et créations prêt-à-porter confectionnés dans les cotons et lins les plus nobles.",
-    image_url: "/assets/cat_vetements.jpg",
-    banner_url: "/assets/hero_bag_clean.jpg",
+    image_url: "",
+    banner_url: "",
     attributes: [
       {
         attr_key: "brand",
@@ -221,8 +231,8 @@ export const CATEGORY_PRESETS: CategoryPreset[] = [
     slug: "chaussures",
     iconName: "shoes",
     description_fr: "Escarpins, sneakers d'exception et souliers de créateurs mariant confort absolu et élégance intemporelle.",
-    image_url: "/assets/cat_chaussures.jpg",
-    banner_url: "/assets/hero_bag_clean.jpg",
+    image_url: "",
+    banner_url: "",
     attributes: [
       {
         attr_key: "color",
@@ -290,8 +300,8 @@ export const CATEGORY_PRESETS: CategoryPreset[] = [
     slug: "sacs-maroquinerie",
     iconName: "bag",
     description_fr: "Sacs emblématiques, pochettes de soirée et maroquinerie d'exception confectionnés dans les cuirs les plus nobles.",
-    image_url: "/assets/cat_sacs.jpg",
-    banner_url: "/assets/hero_bag_clean.jpg",
+    image_url: "",
+    banner_url: "",
     attributes: [
       {
         attr_key: "bag_type",
@@ -360,8 +370,8 @@ export const CATEGORY_PRESETS: CategoryPreset[] = [
     slug: "montres",
     iconName: "watch",
     description_fr: "Garde-temps d'exception, calibres suisses et chronographes alliant haute précision et finitions luxueuses.",
-    image_url: "/assets/cat_montres.jpg",
-    banner_url: "/assets/hero_bag_clean.jpg",
+    image_url: "",
+    banner_url: "",
     attributes: [
       {
         attr_key: "dial_color",
@@ -430,8 +440,8 @@ export const CATEGORY_PRESETS: CategoryPreset[] = [
     slug: "beaute",
     iconName: "gem",
     description_fr: "Senteurs rares d'Orient, élixirs, soins d'exception et maquillage haute définition pour sublimer votre beauté.",
-    image_url: "/assets/cat_maquillage.jpg",
-    banner_url: "/assets/hero_bag_clean.jpg",
+    image_url: "",
+    banner_url: "",
     attributes: [
       {
         attr_key: "shade",
@@ -486,8 +496,8 @@ export const CATEGORY_PRESETS: CategoryPreset[] = [
     slug: "lunettes",
     iconName: "glasses",
     description_fr: "Montures solaires iconiques, acétates d'exception et verres haute protection anti-reflets.",
-    image_url: "/assets/cat_lunettes.jpg",
-    banner_url: "/assets/hero_bag_clean.jpg",
+    image_url: "",
+    banner_url: "",
     attributes: [
       {
         attr_key: "frame_color",
@@ -542,8 +552,8 @@ export const CATEGORY_PRESETS: CategoryPreset[] = [
     slug: "chales",
     iconName: "sparkles",
     description_fr: "Carrés de pure soie naturelle, châles en cachemire précieux et étoles tissées à la main.",
-    image_url: "/assets/cat_chales.jpg",
-    banner_url: "/assets/hero_bag_clean.jpg",
+    image_url: "",
+    banner_url: "",
     attributes: [
       {
         attr_key: "color",
@@ -705,6 +715,8 @@ export function CategoryBuilderPage({ onCategoryChanged }: { onCategoryChanged?:
   const [editNameEn, setEditNameEn] = useState("");
   const [editSlug, setEditSlug] = useState("");
   const [editDescFr, setEditDescFr] = useState("");
+  const [editImageUrl, setEditImageUrl] = useState("");
+  const [editBannerUrl, setEditBannerUrl] = useState("");
   const [editOrder, setEditOrder] = useState(1);
   const [editShowHomepage, setEditShowHomepage] = useState(true);
   const [editIsActive, setEditIsActive] = useState(true);
@@ -1032,6 +1044,8 @@ export function CategoryBuilderPage({ onCategoryChanged }: { onCategoryChanged?:
     setEditNameEn(cat.name_en || "");
     setEditSlug(cat.slug || "");
     setEditDescFr(cat.description_fr || "");
+    setEditImageUrl(cat.image_url || "");
+    setEditBannerUrl(cat.banner_url || "");
     setEditOrder(cat.display_order ?? 1);
     setEditShowHomepage(Boolean(cat.show_on_homepage));
     setEditIsActive(cat.is_active !== undefined ? Boolean(cat.is_active) : true);
@@ -1051,6 +1065,8 @@ export function CategoryBuilderPage({ onCategoryChanged }: { onCategoryChanged?:
         name_ar: (editNameAr || editNameFr).trim(),
         name_en: (editNameEn || editNameFr).trim(),
         description_fr: editDescFr.trim(),
+        image_url: editImageUrl,
+        banner_url: editBannerUrl,
         display_order: Number(editOrder) || 1,
         is_active: editIsActive,
         show_on_homepage: editShowHomepage,
@@ -1162,17 +1178,28 @@ export function CategoryBuilderPage({ onCategoryChanged }: { onCategoryChanged?:
       if (onCategoryChanged) onCategoryChanged();
     } catch (err: any) {
       if (err?.status === 409) {
+        // The server explains why (used by N products / defines variants).
+        const reason = String(err?.userMessage || err?.message || "");
+        if (/variante/i.test(reason)) {
+          notifyClientWarning("Attribut utilisé par des variantes", reason);
+          setError(reason);
+          return;
+        }
+        const ok = await confirmClientAction({
+          title: "Supprimer l'attribut",
+          message: reason || "Cet attribut est renseigné sur des produits : leurs valeurs seront effacées.",
+          confirmLabel: "Supprimer et effacer les valeurs",
+          danger: true,
+        });
+        if (!ok) return;
         try {
           await DesktopCmsApi.deleteCategoryAttribute(attrId, true);
-          notifyClientSuccess(
-            "Attribut migré et supprimé",
-            "Cet attribut était utilisé par des produits existants : les valeurs liées ont été archivées et l'attribut a été retiré."
-          );
+          notifyClientSuccess("Attribut supprimé", "L'attribut a été retiré et ses valeurs effacées des produits.");
           await loadCategories();
           if (onCategoryChanged) onCategoryChanged();
           return;
         } catch (innerErr: any) {
-          const trInner = notifyClientError(innerErr, "Migration et suppression de l'attribut refusées");
+          const trInner = notifyClientError(innerErr, "Suppression de l'attribut refusée");
           setError(trInner.message);
           return;
         }
@@ -1267,6 +1294,8 @@ export function CategoryBuilderPage({ onCategoryChanged }: { onCategoryChanged?:
   const liveCategories = categories.filter((c) => !c.deleted_at);
   const archivedCount = categories.length - liveCategories.length;
   const homepageCount = liveCategories.filter((c) => c.show_on_homepage).length;
+  // Real figure instead of a fixed "OK" badge: categories customers cannot see.
+  const hiddenCount = liveCategories.filter((c) => !c.is_active).length;
 
   return (
     <div className="space-y-6">
@@ -1341,11 +1370,8 @@ export function CategoryBuilderPage({ onCategoryChanged }: { onCategoryChanged?:
 
         <div className="p-4 bg-white rounded-xl border border-[#D4AF62]/30 shadow-sm flex items-center justify-between">
           <div>
-            <span className="text-[11px] text-gray-500 font-bold uppercase">{t("cat_builder.kpi_sync")}</span>
-            <p className="text-sm font-bold text-emerald-800 mt-1 flex items-center gap-1.5">
-              <Check className="w-4 h-4 text-emerald-600" />
-              <span>{t("cat_builder.kpi_sync_ok")}</span>
-            </p>
+            <span className="text-[11px] text-gray-500 font-bold uppercase">{t("cat_builder.kpi_hidden")}</span>
+            <p className={`text-2xl font-bold font-mono mt-0.5 ${hiddenCount ? "text-amber-700" : "text-emerald-700"}`}>{hiddenCount}</p>
           </div>
           <div className="p-3 rounded-xl bg-emerald-50 text-emerald-800">
             <Sparkles className="w-5 h-5 text-[#D4AF62]" />
@@ -1516,64 +1542,20 @@ export function CategoryBuilderPage({ onCategoryChanged }: { onCategoryChanged?:
             </div>
 
             {/* Visual Media Selectors */}
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-3 text-xs pt-1">
-              <div>
-                <label className="block font-bold text-[#063D2E] mb-1">Photo Vignette Catégorie</label>
-                <input
-                  value={imageUrl}
-                  onChange={(e) => setImageUrl(e.target.value)}
-                  className="w-full px-3 py-2 border rounded-xl font-mono text-gray-600"
-                  placeholder="/assets/cat_vetements.jpg"
-                />
-                <div className="flex flex-wrap items-center gap-1.5 mt-1.5">
-                  {[
-                    { label: "Vêtements", url: "/assets/cat_vetements.jpg" },
-                    { label: "Chaussures", url: "/assets/cat_chaussures.jpg" },
-                    { label: "Sacs", url: "/assets/cat_sacs.jpg" },
-                    { label: "Montres", url: "/assets/cat_montres.jpg" },
-                    { label: "Beauté", url: "/assets/cat_maquillage.jpg" },
-                    { label: "Lunettes", url: "/assets/cat_lunettes.jpg" },
-                    { label: "Châles", url: "/assets/cat_chales.jpg" },
-                  ].map((img) => (
-                    <button
-                      key={img.url}
-                      type="button"
-                      onClick={() => setImageUrl(img.url)}
-                      className={`px-2 py-0.5 rounded text-[10px] font-semibold transition border ${
-                        imageUrl === img.url ? "bg-[#063D2E] text-[#D4AF62] border-[#063D2E]" : "bg-white text-gray-700 border-gray-200 hover:border-gray-400"
-                      }`}
-                    >
-                      {img.label}
-                    </button>
-                  ))}
-                </div>
-              </div>
-              <div>
-                <label className="block font-bold text-[#063D2E] mb-1">Bannière En-tête</label>
-                <input
-                  value={bannerUrl}
-                  onChange={(e) => setBannerUrl(e.target.value)}
-                  className="w-full px-3 py-2 border rounded-xl font-mono text-gray-600"
-                  placeholder="/assets/hero_bag_clean.jpg"
-                />
-                <div className="flex flex-wrap items-center gap-1.5 mt-1.5">
-                  {[
-                    { label: "Hero Sac Couture", url: "/assets/hero_bag_clean.jpg" },
-                    { label: "Enseigne Mus", url: "/assets/mus_luxury_sign.jpg" },
-                  ].map((img) => (
-                    <button
-                      key={img.url}
-                      type="button"
-                      onClick={() => setBannerUrl(img.url)}
-                      className={`px-2 py-0.5 rounded text-[10px] font-semibold transition border ${
-                        bannerUrl === img.url ? "bg-[#063D2E] text-[#D4AF62] border-[#063D2E]" : "bg-white text-gray-700 border-gray-200 hover:border-gray-400"
-                      }`}
-                    >
-                      {img.label}
-                    </button>
-                  ))}
-                </div>
-              </div>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-xs pt-1">
+              <ImageUploadField
+                label="Photo de la catégorie"
+                value={imageUrl}
+                onChange={setImageUrl}
+                hint="Affichée dans « Nos catégories » sur la boutique. Sans photo, une vignette neutre est affichée."
+              />
+              <ImageUploadField
+                label="Bannière (haut de la page catégorie)"
+                value={bannerUrl}
+                onChange={setBannerUrl}
+                wide
+                hint="Optionnelle."
+              />
             </div>
           </div>
 
@@ -1605,7 +1587,7 @@ export function CategoryBuilderPage({ onCategoryChanged }: { onCategoryChanged?:
                         </span>
                         <span className="font-bold text-gray-900 text-xs">{attr.label_fr}</span>
                         <span className="px-2 py-0.5 rounded bg-gray-200/80 text-[10px] font-mono text-gray-700">
-                          {attr.input_type}
+                          {typeLabel(attr.input_type)}
                         </span>
                         {attr.is_variant_axis && (
                           <span className="px-2 py-0.5 rounded bg-emerald-100 text-emerald-900 text-[10px] font-bold border border-emerald-300">
@@ -2211,8 +2193,8 @@ export function CategoryBuilderPage({ onCategoryChanged }: { onCategoryChanged?:
                           >
                             <strong>{a.label_fr}</strong>
                             <span className="text-[10px] text-gray-400 font-mono">
-                              ({a.input_type}
-                              {a.is_variant_axis ? " • Var." : ""})
+                              ({typeLabel(a.input_type)}
+                              {a.is_variant_axis ? " • crée les variantes" : ""})
                             </span>
                             <button
                               type="button"
@@ -2379,6 +2361,11 @@ export function CategoryBuilderPage({ onCategoryChanged }: { onCategoryChanged?:
                   className="w-full px-3 py-2 border rounded-xl"
                   placeholder="Description affichée sur la boutique..."
                 />
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <ImageUploadField label="Photo de la catégorie" value={editImageUrl} onChange={setEditImageUrl} />
+                <ImageUploadField label="Bannière" value={editBannerUrl} onChange={setEditBannerUrl} wide />
               </div>
 
               {/* Icon Choice */}
