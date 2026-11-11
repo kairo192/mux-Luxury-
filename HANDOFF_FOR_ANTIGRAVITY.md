@@ -7,6 +7,16 @@
 
 ---
 
+## 0a. STOREFRONT STEP 1 (2026-11-11, latest)
+`apps/storefront/index.html` (the live shop; `src/App.tsx` is NOT loaded):
+- Server data is escaped ONCE on arrival (`escapeDeep` in `syncStorefrontWithBackend`). Templates may
+  interpolate catalog fields directly; use `decodeHtml()` before `textContent`/`value`, `jsArg(v)` for
+  values inside inline handlers, `safeHex()` for colours. Wilayas are NOT pre-escaped: escape at render.
+- `fetchAllProducts()` pages through `/products` (50/page). Polling: 60 s (`syncIfStale`), not 4 s.
+- Product route `#/produit/<slug>` (`openProductBySlug`, `pdpReturnHash`, `pdpPushed`); Back closes the modal.
+- No fake ratings/swatches; `PLACEHOLDER_IMG` = `/assets/placeholder_product.svg`.
+- Tests: suite unchanged except test_57 still looks for the literal `escapeHtml(msg)` in `showToast` (kept).
+
 ## 0. NEWEST ROUND (2026-11-11, later): database admin, backups fixed, demo data gone
 
 **Read `docs/OPERATIONS_GUIDE.md` (owner-facing) first.** Summary for you:

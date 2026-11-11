@@ -152,6 +152,28 @@ The nightly backup now also includes a snapshot that can be restored in one clic
 - `docs/DESKTOP_CMS_RELEASE_GUIDE.md`: release and update process (updated).
 - `HANDOFF_FOR_ANTIGRAVITY.md`: technical notes for the other AI working on the PC branch (updated).
 
+## 11. Online shop — Step 1 fixes (after the storefront review)
+
+| Problem found | Fix |
+|---|---|
+| Every product showed ★★★★★ "(12)" reviews that did not exist | Fake rating removed everywhere |
+| Every product showed the same 3 colour dots (green, black, gold) | Dots now show the product's real colours, or nothing |
+| A product without a photo showed a Chanel-style bag photo | Neutral "ML — Photo à venir" image |
+| Only the first 50 products were ever shown | The shop reads every page of the catalog (up to 2 000 products) |
+| Each visitor asked the server for data every 4 s (≈1 request/second) | Every 60 s while the page is visible, and when the customer returns after 30 s |
+| 17 of 23 places inserted server text without cleaning it (code injection risk) | Every text from the server is cleaned on arrival; colour codes validated |
+| A colour like "Bleu d'azur" broke the product page | Option names are encoded safely |
+| Products had no link of their own; Back did not close the product | Each product has a link `#/produit/<slug>` (shareable on WhatsApp/Instagram); Back closes it and keeps the scroll position; a shared link opens the product directly |
+| Phone: menu button cut off, top bar truncated, WhatsApp button covering content | Header fits on phones (favourites in the bottom bar), top bar shows tariffs + language, WhatsApp is a small round icon |
+
+The "order on WhatsApp" message now includes the product link, so the shop sees exactly which item it is.
+Checked in a browser with 64 products, a product named like an attack (shown as plain text, not run),
+an apostrophe colour, shared links, Back button, iPhone size in French and Arabic.
+
+Still to do (Step 2): every page readable by Google (real page addresses instead of `#/`), search
+descriptions and sharing previews, sitemap, Arabic translation of a few labels ("Tarifs 69 Wilayas",
+banner caption), and removing the unused React copy of the shop in `apps/storefront/src`.
+
 ---
 
 ## Verification

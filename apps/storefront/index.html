@@ -109,9 +109,9 @@
   <!-- 1. TOP LUXURY ANNOUNCEMENT & UTILITY BAR                              -->
   <!-- ===================================================================== -->
   <div class="bg-emerald-forest text-gold-light/90 border-b border-gold-reflective/20 text-[11px] sm:text-xs">
-    <div class="max-w-7xl mx-auto px-4 sm:px-6 h-9 flex items-center justify-between gap-3">
-      <!-- Left: Delivery & COD Promise -->
-      <div class="flex items-center gap-2 truncate">
+    <div class="max-w-7xl mx-auto px-4 sm:px-6 h-9 flex items-center justify-center sm:justify-between gap-3">
+      <!-- Left: Delivery & COD Promise (phones: shown in the hero instead) -->
+      <div class="hidden sm:flex items-center gap-2 truncate">
         <svg class="w-3.5 h-3.5 text-gold-reflective flex-shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
           <rect x="1" y="3" width="15" height="13" rx="1"></rect>
           <polygon points="16 8 20 8 23 11 23 16 16 16 16 8"></polygon>
@@ -127,15 +127,15 @@
           <svg class="w-3.5 h-3.5 text-gold-reflective" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"></path><circle cx="12" cy="10" r="3"></circle></svg>
           <span>Boutique Ouled Yaïch</span>
         </button>
-        <a href="https://www.instagram.com/musluxury09?rpxt=emk3bjBhdjV5d2Ux" target="_blank" rel="noopener noreferrer" class="inline-flex items-center gap-1 text-gold-light hover:text-gold-reflective transition" title="Instagram @musluxury09" aria-label="Instagram @musluxury09">
+        <a href="https://www.instagram.com/musluxury09?rpxt=emk3bjBhdjV5d2Ux" target="_blank" rel="noopener noreferrer" class="hidden sm:inline-flex items-center gap-1 text-gold-light hover:text-gold-reflective transition" title="Instagram @musluxury09" aria-label="Instagram @musluxury09">
           <svg class="w-3.5 h-3.5 text-gold-reflective" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="2" width="20" height="20" rx="5" ry="5"></rect><path d="M16 11.37A4 4 0 1 1 12.63 8 4 4 0 0 1 16 11.37z"></path><line x1="17.5" y1="6.5" x2="17.51" y2="6.5"></line></svg>
           <span class="hidden lg:inline text-[11px]">@musluxury09</span>
         </a>
-        <a href="https://www.tiktok.com/@musluxury.092?_r=1&amp;_t=ZS-9B2mO0gpA7V" target="_blank" rel="noopener noreferrer" class="inline-flex items-center gap-1 text-gold-light hover:text-gold-reflective transition" title="TikTok @musluxury.092" aria-label="TikTok @musluxury.092">
+        <a href="https://www.tiktok.com/@musluxury.092?_r=1&amp;_t=ZS-9B2mO0gpA7V" target="_blank" rel="noopener noreferrer" class="hidden sm:inline-flex items-center gap-1 text-gold-light hover:text-gold-reflective transition" title="TikTok @musluxury.092" aria-label="TikTok @musluxury.092">
           <svg class="w-3.5 h-3.5 text-gold-reflective" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M9 12a4 4 0 1 0 4 4V4a5 5 0 0 0 5 5"></path></svg>
           <span class="hidden lg:inline text-[11px]">@musluxury.092</span>
         </a>
-        <a href="https://wa.me/213655534154" target="_blank" rel="noopener noreferrer" class="inline-flex items-center gap-1 text-gold-reflective hover:text-white transition font-mono font-semibold" title="WhatsApp 0655 53 41 54">
+        <a href="https://wa.me/213655534154" target="_blank" rel="noopener noreferrer" class="hidden sm:inline-flex items-center gap-1 text-gold-reflective hover:text-white transition font-mono font-semibold" title="WhatsApp 0655 53 41 54">
           <svg class="w-3.5 h-3.5 text-emerald-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5z"></path></svg>
           <span class="hidden md:inline">0655 53 41 54</span>
         </a>
@@ -175,11 +175,11 @@
   <!-- 2. MAIN BOUTIQUE HEADER (LOGO, NAVIGATION, SEARCH, ACTIONS)           -->
   <!-- ===================================================================== -->
   <header class="bg-emerald-deep text-white sticky top-0 z-40 shadow-luxury border-b border-gold-reflective/25">
-    <div class="max-w-7xl mx-auto px-4 sm:px-6 py-2.5 sm:py-3 flex items-center justify-between gap-3 sm:gap-6">
+    <div class="max-w-7xl mx-auto px-3 sm:px-6 py-2.5 sm:py-3 flex items-center justify-between gap-2 sm:gap-6">
 
       <!-- Brand Logo -->
       <button type="button" onclick="navigateTo('#/home')" class="flex items-center gap-3 text-left group focus:outline-none flex-shrink-0" aria-label="Accueil Mus Luxury">
-        <img src="/assets/mus_luxury_logo.png" alt="Mus Luxury" class="h-9 sm:h-11 w-auto rounded-lg border border-gold-reflective/35 shadow-sm group-hover:border-gold-reflective transition" />
+        <img src="/assets/mus_luxury_logo.png" alt="Mus Luxury" class="h-8 sm:h-11 w-auto max-w-[118px] sm:max-w-none object-contain rounded-lg border border-gold-reflective/35 shadow-sm group-hover:border-gold-reflective transition" />
       </button>
 
       <!-- Desktop Primary Links (Single Clean Unified Row) -->
@@ -238,7 +238,7 @@
       </div>
 
       <!-- Right Action Icons (Search Mobile, Wishlist, Cart, Mobile Drawer) -->
-      <div class="flex items-center gap-2 sm:gap-2.5 flex-shrink-0">
+      <div class="flex items-center gap-1.5 sm:gap-2.5 flex-shrink-0">
         <!-- Mobile Search Toggle -->
         <button type="button" onclick="toggleMobileSearch()" class="md:hidden w-9 h-9 rounded-full bg-emerald-forest/80 border border-gold-reflective/30 flex items-center justify-center text-gold-light hover:text-gold-reflective transition" aria-label="Recherche">
           <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round">
@@ -248,7 +248,7 @@
         </button>
 
         <!-- Favorites Button -->
-        <button type="button" onclick="navigateTo('#/favoris')" id="btn-header-fav" class="relative h-9 px-3 rounded-full bg-emerald-forest/80 hover:bg-emerald-forest border border-gold-reflective/30 text-gold-light flex items-center gap-1.5 text-xs font-semibold transition" aria-label="Favoris">
+        <button type="button" onclick="navigateTo('#/favoris')" id="btn-header-fav" class="relative hidden sm:flex h-9 px-3 rounded-full bg-emerald-forest/80 hover:bg-emerald-forest border border-gold-reflective/30 text-gold-light flex items-center gap-1.5 text-xs font-semibold transition" aria-label="Favoris">
           <svg class="w-4 h-4 text-gold-reflective" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round">
             <path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"></path>
           </svg>
@@ -1279,14 +1279,14 @@
     target="_blank"
     rel="noopener noreferrer"
     aria-label="Contacter Mus Luxury sur WhatsApp au 0655 53 41 54"
-    class="fixed bottom-20 md:bottom-6 left-4 z-40 inline-flex items-center gap-2.5 px-3.5 py-2.5 rounded-full bg-emerald-deep hover:bg-emerald-forest text-white border-2 border-gold-reflective shadow-2xl transition group"
+    class="fixed bottom-24 md:bottom-6 left-3 sm:left-4 z-40 inline-flex items-center gap-2.5 p-1.5 sm:px-3.5 sm:py-2.5 rounded-full bg-emerald-deep hover:bg-emerald-forest text-white border-2 border-gold-reflective shadow-2xl transition group"
   >
     <span class="w-7 h-7 rounded-full bg-emerald-500 text-white flex items-center justify-center shadow-sm group-hover:scale-105 transition">
       <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
         <path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5z"></path>
       </svg>
     </span>
-    <span class="text-left leading-tight pr-1">
+    <span class="hidden sm:block text-left leading-tight pr-1">
       <span class="block text-[10px] uppercase tracking-wider text-gold-reflective font-bold">WhatsApp Boutique</span>
       <span class="block text-xs font-mono font-extrabold text-white">0655 53 41 54</span>
     </span>
@@ -2084,6 +2084,54 @@
         .replace(/'/g, "&#39;");
     }
 
+    // SECURITY: every string that comes from the server (catalog, settings)
+    // is HTML-escaped ONCE, when it arrives (syncStorefrontWithBackend). All
+    // templates can then interpolate catalog data safely, including future
+    // ones. Use decodeHtml() before textContent / input.value.
+    function escapeDeep(val) {
+      if (typeof val === "string") return escapeHtml(val);
+      if (Array.isArray(val)) return val.map(escapeDeep);
+      if (val && typeof val === "object") {
+        const out = {};
+        for (const k of Object.keys(val)) out[k] = escapeDeep(val[k]);
+        return out;
+      }
+      return val;
+    }
+
+    function decodeHtml(val) {
+      const t = document.createElement("textarea");
+      t.innerHTML = String(val ?? "");
+      return t.value;
+    }
+
+    // A value placed inside an inline handler: onclick="fn(${jsArg(v)})".
+    // JSON-quoted then HTML-escaped, so quotes/apostrophes can never break out.
+    function jsArg(val) {
+      return escapeHtml(JSON.stringify(String(val ?? "")));
+    }
+
+    function safeHex(val) {
+      const s = String(val || "").trim();
+      return /^#[0-9a-fA-F]{3,8}$/.test(s) ? s : null;
+    }
+
+    // Shown when a product or category has no photo yet (never a photo of
+    // another product).
+    const PLACEHOLDER_IMG = "/assets/placeholder_product.svg";
+
+    // Real colour dots for a product card: the colours its variants exist in.
+    function productSwatches(p) {
+      const seen = [];
+      (p.variants || []).forEach((v) => {
+        Object.values(v.attrs || {}).forEach((val) => {
+          const hex = safeHex(COLOR_SWATCH_HEX[val]);
+          if (hex && !seen.includes(hex)) seen.push(hex);
+        });
+      });
+      return seen.slice(0, 6);
+    }
+
     function openStoreMessageBox(title, message, type = "info") {
       const modal = document.getElementById("store-message-box-modal");
       const header = document.getElementById("store-msgbox-header");
@@ -2131,10 +2179,12 @@
         `Wilaya : ${wObj.code} - ${wObj.name_fr} (${state.checkoutMethod === "stop_desk" ? "Stop-Desk" : "Livraison à Domicile"})`,
         `Total avec livraison : ${formatDZD(total)} (Paiement à la livraison)`,
       ].join("\n");
-      window.open(`https://wa.me/213655534154?text=${encodeURIComponent(text)}`, "_blank", "noopener,noreferrer");
+      window.open(`https://wa.me/213655534154?text=${encodeURIComponent(decodeHtml(text))}`, "_blank", "noopener,noreferrer");
     }
 
     function showToast(msg, type = "success", showModalOnErr = false) {
+      // Catalog names arrive pre-escaped: decode once, escape once below.
+      msg = decodeHtml(msg);
       const container = document.getElementById("toast-container");
       const el = document.createElement("div");
       const bg = type === "error" ? "bg-red-800 border-red-400" : "bg-emerald-deep border-gold-reflective";
@@ -2260,6 +2310,20 @@
 
     function handleRoute() {
       const hash = window.location.hash || "#/home";
+
+      if (hash.startsWith("#/produit/")) {
+        openProductBySlug(decodeURIComponent(hash.slice("#/produit/".length)).trim());
+        return;
+      }
+      if (isProductModalOpen()) {
+        hideProductModal();
+        state.pdpPushed = false;
+        if (state.pdpReturnHash && hash === state.pdpReturnHash) {
+          // Back button from a product: stay exactly where the customer was.
+          state.pdpReturnHash = null;
+          return;
+        }
+      }
       const homeSec = document.getElementById("store-home-sections");
       const maisonSec = document.getElementById("store-maison-section");
       const catalogSec = document.getElementById("catalog-section");
@@ -2424,7 +2488,7 @@
         dropdownEl.innerHTML = state.categories.map((c) => `
           <button type="button" onclick="navigateTo('#/category/${c.slug}')" class="w-full text-left px-3 py-2 rounded-xl hover:bg-emerald-forest transition flex items-center justify-between group">
             <div class="flex items-center gap-2.5">
-              <img src="${c.image}" alt="${catName(c)}" class="w-7 h-7 rounded-lg object-cover border border-gold-reflective/30" onerror="this.src='${ASSET_MAP.cat_sacs}'" />
+              <img src="${c.image}" alt="${catName(c)}" class="w-7 h-7 rounded-lg object-cover border border-gold-reflective/30" onerror="this.onerror=null;this.src='${PLACEHOLDER_IMG}'" />
               <span class="text-xs text-white group-hover:text-gold-reflective font-medium transition">${catName(c)}</span>
             </div>
             <svg class="w-3.5 h-3.5 text-gold-reflective/60 group-hover:text-gold-reflective group-hover:translate-x-1 transition" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="9 18 15 12 9 6"></polyline></svg>
@@ -2462,7 +2526,7 @@
       if (drawerCatsEl) {
         drawerCatsEl.innerHTML = state.categories.map((c) => `
           <button type="button" onclick="closeMobileMenu(); navigateTo('#/category/${c.slug}');" class="p-2 rounded-xl bg-emerald-forest/80 hover:bg-emerald-forest border border-gold-reflective/25 text-left transition flex items-center gap-2 group">
-            <img src="${c.image}" alt="${catName(c)}" class="w-6 h-6 rounded-md object-cover border border-gold-reflective/30" onerror="this.src='${ASSET_MAP.cat_sacs}'" />
+            <img src="${c.image}" alt="${catName(c)}" class="w-6 h-6 rounded-md object-cover border border-gold-reflective/30" onerror="this.onerror=null;this.src='${PLACEHOLDER_IMG}'" />
             <span class="text-[11px] text-white group-hover:text-gold-reflective font-medium truncate">${catName(c)}</span>
           </button>
         `).join("");
@@ -2488,7 +2552,8 @@
     function handleStoreSearch(val) {
       clearTimeout(searchDebounceTimer);
       searchDebounceTimer = setTimeout(() => {
-        state.searchQuery = val.trim().toLowerCase();
+        // Compared with pre-escaped catalog names, so escape the query too.
+        state.searchQuery = escapeHtml(val.trim()).toLowerCase();
         renderCatalogProducts();
       }, 200);
     }
@@ -2614,7 +2679,7 @@
             return `
               <button type="button" onclick="filterByCategory('${c.slug}')" class="h-full group cat-card-bg rounded-xl sm:rounded-2xl overflow-hidden border border-gold-reflective/35 shadow-luxury hover:shadow-luxury-hover hover:border-gold-reflective transition text-center flex flex-col justify-between">
                 <div class="aspect-[4/3] w-full overflow-hidden bg-emerald-forest relative">
-                  <img src="${c.image}" alt="${catName(c)}" loading="lazy" decoding="async" onerror="this.src='${ASSET_MAP.cat_sacs}'" class="w-full h-full object-cover group-hover:scale-105 transition duration-500" />
+                  <img src="${c.image}" alt="${catName(c)}" loading="lazy" decoding="async" onerror="this.onerror=null;this.src='${PLACEHOLDER_IMG}'" class="w-full h-full object-cover group-hover:scale-105 transition duration-500" />
                   <div class="absolute inset-0 bg-gradient-to-t from-emerald-forest/75 via-transparent to-transparent"></div>
                 </div>
                 <div class="w-full px-1.5 sm:px-2 py-2 sm:py-2.5 flex items-center justify-center gap-1.5 bg-emerald-forest/95 border-t border-gold-reflective/20">
@@ -2670,7 +2735,7 @@
                   .map((opt) => {
                     const isSel = selectedVal === opt;
                     const hex = COLOR_SWATCH_HEX[opt];
-                    return `<button type="button" onclick="toggleDynamicAttrFilter('${attr.key}', '${opt.replace(/'/g, "\\'")}')" class="px-2.5 py-1 rounded-full text-xs font-semibold border flex items-center gap-1.5 transition ${
+                    return `<button type="button" onclick="toggleDynamicAttrFilter('${attr.key}', ${jsArg(opt)})" class="px-2.5 py-1 rounded-full text-xs font-semibold border flex items-center gap-1.5 transition ${
                       isSel
                         ? "bg-gold-reflective text-emerald-forest border-gold-dark font-bold"
                         : "bg-white text-charcoal border-gray-200 hover:border-gold-reflective"
@@ -2693,8 +2758,8 @@
       const t = I18N[state.lang];
       const activeCat = state.categories.find((c) => c.slug === state.activeCategorySlug);
 
-      document.getElementById("catalog-breadcrumb").textContent = activeCat ? catName(activeCat) : t.allCollections;
-      document.getElementById("catalog-heading").textContent = activeCat ? catName(activeCat) : "Produits en vedette";
+      document.getElementById("catalog-breadcrumb").textContent = activeCat ? decodeHtml(catName(activeCat)) : t.allCollections;
+      document.getElementById("catalog-heading").textContent = activeCat ? decodeHtml(catName(activeCat)) : "Produits en vedette";
       document.getElementById("catalog-description").textContent = activeCat
         ? activeCat.description_fr
         : "Sélection certifiée Mus Luxury • Livraison 69 Wilayas avec paiement à la livraison.";
@@ -2772,7 +2837,7 @@
           const totalStock = p.variants.reduce((s, v) => s + v.stock, 0);
           const firstAvailableVar = p.variants.find((v) => v.stock > 0) || p.variants[0];
           const isFav = state.favorites.has(p.id);
-          const swatches = p.swatches || ["#063D2E", "#181818"];
+          const swatches = productSwatches(p);
 
           return `
             <article class="product-card bg-white rounded-xl sm:rounded-2xl overflow-hidden border border-gold-reflective/25 shadow-luxury hover:shadow-luxury-hover transition duration-300">
@@ -2816,20 +2881,8 @@
                     }
                   </div>
 
-                  <!-- Star Rating Row -->
-                  <div class="flex items-center gap-1 mt-1.5 text-xs text-gold-reflective">
-                    <div class="flex items-center">
-                      <svg class="w-3.5 h-3.5 fill-current" viewBox="0 0 20 20"><path d="M9.049 2.927c.3-.921 1.603-.921 1.902 0l1.07 3.292a1 1 0 00.95.69h3.462c.969 0 1.371 1.24.588 1.81l-2.8 2.034a1 1 0 00-.364 1.118l1.07 3.292c.3.921-.755 1.688-1.54 1.118l-2.8-2.034a1 1 0 00-1.175 0l-2.8 2.034c-.784.57-1.838-.197-1.539-1.118l1.07-3.292a1 1 0 00-.364-1.118L2.98 8.72c-.783-.57-.38-1.81.588-1.81h3.461a1 1 0 00.951-.69l1.07-3.292z"/></svg>
-                      <svg class="w-3.5 h-3.5 fill-current" viewBox="0 0 20 20"><path d="M9.049 2.927c.3-.921 1.603-.921 1.902 0l1.07 3.292a1 1 0 00.95.69h3.462c.969 0 1.371 1.24.588 1.81l-2.8 2.034a1 1 0 00-.364 1.118l1.07 3.292c.3.921-.755 1.688-1.54 1.118l-2.8-2.034a1 1 0 00-1.175 0l-2.8 2.034c-.784.57-1.838-.197-1.539-1.118l1.07-3.292a1 1 0 00-.364-1.118L2.98 8.72c-.783-.57-.38-1.81.588-1.81h3.461a1 1 0 00.951-.69l1.07-3.292z"/></svg>
-                      <svg class="w-3.5 h-3.5 fill-current" viewBox="0 0 20 20"><path d="M9.049 2.927c.3-.921 1.603-.921 1.902 0l1.07 3.292a1 1 0 00.95.69h3.462c.969 0 1.371 1.24.588 1.81l-2.8 2.034a1 1 0 00-.364 1.118l1.07 3.292c.3.921-.755 1.688-1.54 1.118l-2.8-2.034a1 1 0 00-1.175 0l-2.8 2.034c-.784.57-1.838-.197-1.539-1.118l1.07-3.292a1 1 0 00-.364-1.118L2.98 8.72c-.783-.57-.38-1.81.588-1.81h3.461a1 1 0 00.951-.69l1.07-3.292z"/></svg>
-                      <svg class="w-3.5 h-3.5 fill-current" viewBox="0 0 20 20"><path d="M9.049 2.927c.3-.921 1.603-.921 1.902 0l1.07 3.292a1 1 0 00.95.69h3.462c.969 0 1.371 1.24.588 1.81l-2.8 2.034a1 1 0 00-.364 1.118l1.07 3.292c.3.921-.755 1.688-1.54 1.118l-2.8-2.034a1 1 0 00-1.175 0l-2.8 2.034c-.784.57-1.838-.197-1.539-1.118l1.07-3.292a1 1 0 00-.364-1.118L2.98 8.72c-.783-.57-.38-1.81.588-1.81h3.461a1 1 0 00.951-.69l1.07-3.292z"/></svg>
-                      <svg class="w-3.5 h-3.5 fill-current" viewBox="0 0 20 20"><path d="M9.049 2.927c.3-.921 1.603-.921 1.902 0l1.07 3.292a1 1 0 00.95.69h3.462c.969 0 1.371 1.24.588 1.81l-2.8 2.034a1 1 0 00-.364 1.118l1.07 3.292c.3.921-.755 1.688-1.54 1.118l-2.8-2.034a1 1 0 00-1.175 0l-2.8 2.034c-.784.57-1.838-.197-1.539-1.118l1.07-3.292a1 1 0 00-.364-1.118L2.98 8.72c-.783-.57-.38-1.81.588-1.81h3.461a1 1 0 00.951-.69l1.07-3.292z"/></svg>
-                    </div>
-                    <span class="text-[11px] text-gray-500">(${p.reviews})</span>
-                  </div>
-
-                  <!-- Color Swatch Dots -->
-                  <div class="flex items-center gap-1.5 mt-2.5">
+                  <!-- Real colour dots (hidden when the product has no colour options) -->
+                  <div class="flex items-center gap-1.5 mt-2.5 ${swatches.length ? "" : "hidden"}">
                     ${swatches
                       .map(
                         (hex) =>
@@ -2875,9 +2928,46 @@
     state.checkoutWilaya = "16";
     state.checkoutMethod = "home";
 
-    function openProductDetailModal(prodId) {
+    function isProductModalOpen() {
+      const m = document.getElementById("product-detail-modal");
+      return Boolean(m && !m.classList.contains("hidden"));
+    }
+
+    function hideProductModal() {
+      document.getElementById("product-detail-modal").classList.add("hidden");
+    }
+
+    // #/produit/<slug> — a shared link, or the back/forward buttons.
+    function openProductBySlug(slug) {
+      if (!state.isCatalogLoaded) {
+        state.pendingProductSlug = slug;
+        return;
+      }
+      const prod = state.products.find((p) => p.slug === slug);
+      if (!prod) {
+        history.replaceState(null, "", "#/boutique");
+        handleRoute();
+        showToast("Cet article n'est plus disponible.", "error");
+        return;
+      }
+      openProductDetailModal(prod.id, { fromRoute: true });
+    }
+
+    function openProductDetailModal(prodId, opts = {}) {
       const prod = state.products.find((p) => p.id === prodId);
       if (!prod) return;
+      // Give the product its own address (shareable link) without leaving the
+      // current page; the browser/phone back button then closes the pop-up.
+      if (!opts.fromRoute) {
+        const target = "#/produit/" + encodeURIComponent(decodeHtml(prod.slug));
+        if (window.location.hash !== target) {
+          if (!window.location.hash.startsWith("#/produit/")) {
+            state.pdpReturnHash = window.location.hash || "#/home";
+          }
+          history.pushState({ pdp: prod.id }, "", target);
+          state.pdpPushed = true;
+        }
+      }
       state.activePdpProductId = prod.id;
       const firstAvail = prod.variants.find((v) => v.stock > 0) || prod.variants[0];
       state.activePdpVariantId = firstAvail ? firstAvail.id : null;
@@ -2888,13 +2978,25 @@
       state.activePdpTab = "desc";
 
       const cat = state.categories.find((c) => c.id === prod.category_id);
-      document.getElementById("pdp-breadcrumb").textContent = `Accueil  ›  ${cat ? catName(cat) : "Boutique"}  ›  ${prodName(prod)}`;
+      document.getElementById("pdp-breadcrumb").textContent = decodeHtml(`Accueil  ›  ${cat ? catName(cat) : "Boutique"}  ›  ${prodName(prod)}`);
       renderPdpModalContent();
       document.getElementById("product-detail-modal").classList.remove("hidden");
     }
 
     function closeProductDetailModal() {
-      document.getElementById("product-detail-modal").classList.add("hidden");
+      if (state.pdpPushed && window.location.hash.startsWith("#/produit/")) {
+        // Go back to where the customer was; handleRoute() hides the pop-up
+        // and keeps the scroll position.
+        state.pdpPushed = false;
+        history.back();
+        return;
+      }
+      hideProductModal();
+      if (window.location.hash.startsWith("#/produit/")) {
+        // Opened from a shared link: there is no previous page in the shop.
+        history.replaceState(null, "", "#/boutique");
+        handleRoute();
+      }
     }
 
     function selectPdpAxisValue(axisKey, optionVal) {
@@ -3064,11 +3166,11 @@
                 ${prodAxisValues
                   .map((val) => {
                     const isSel = currentSelectedVal === val;
-                    const hex = COLOR_SWATCH_HEX[val] || (axisAttr.rawOptions && axisAttr.rawOptions.find(o => o.value === val)?.color_hex) || "#063D2E";
+                    const hex = safeHex(COLOR_SWATCH_HEX[val] || (axisAttr.rawOptions && axisAttr.rawOptions.find(o => o.value === val)?.color_hex)) || "#063D2E";
                     return `
                       <button
                         type="button"
-                        onclick="selectPdpAxisValue('${axisAttr.key}', '${val.replace(/'/g, "\'")}')"
+                        onclick="selectPdpAxisValue('${axisAttr.key}', ${jsArg(val)})"
                         class="group flex items-center gap-2 px-3 py-1.5 rounded-full border text-xs font-semibold transition ${
                           isSel
                             ? "border-gold-reflective bg-emerald-deep text-gold-light shadow-gold-ring"
@@ -3102,7 +3204,7 @@
                     return `
                       <button
                         type="button"
-                        onclick="selectPdpAxisValue('${axisAttr.key}', '${val.replace(/'/g, "\'")}')"
+                        onclick="selectPdpAxisValue('${axisAttr.key}', ${jsArg(val)})"
                         class="min-w-[44px] px-3.5 py-2 rounded-xl text-xs font-bold border transition ${
                           isSel
                             ? "bg-emerald-deep text-gold-reflective border-gold-reflective shadow-sm"
@@ -3347,7 +3449,7 @@
                 </button>
               </div>
               <a
-                href="https://wa.me/213655534154?text=${encodeURIComponent(`Bonjour Mus Luxury, je souhaite commander : ${prodName(prod)} (${variant ? variant.title : ""}) - Qté: ${state.activePdpQty} - Prix: ${formatDZD(effectivePrice * state.activePdpQty)}`)}"
+                href="https://wa.me/213655534154?text=${encodeURIComponent(decodeHtml(`Bonjour Mus Luxury, je souhaite commander : ${prodName(prod)} (${variant ? variant.title : ""}) - Qté: ${state.activePdpQty} - Prix: ${formatDZD(effectivePrice * state.activePdpQty)}`) + "\n" + window.location.origin + "/#/produit/" + encodeURIComponent(decodeHtml(prod.slug)))}"
                 target="_blank"
                 rel="noopener noreferrer"
                 class="w-full py-2.5 px-4 rounded-xl bg-emerald-50 hover:bg-emerald-100 text-emerald-900 border border-emerald-300 font-bold text-xs flex items-center justify-center gap-2 transition"
@@ -3600,7 +3702,7 @@
       const wObj = WILAYAS.find((w) => w.code === state.checkoutWilaya) || WILAYAS[15] || WILAYAS[0];
       if (communeSel && communeSel.dataset.wilaya !== wObj.code) {
         communeSel.dataset.wilaya = wObj.code;
-        communeSel.innerHTML = wObj.communes.map((c) => `<option value="${c}">${c}</option>`).join("");
+        communeSel.innerHTML = wObj.communes.map((c) => `<option value="${escapeHtml(c)}">${escapeHtml(c)}</option>`).join("");
       }
 
       // Update live prices and Wilaya labels inside the Home vs Stop-Desk selector cards
@@ -4121,7 +4223,11 @@
         if (pgRes.ok) {
           const pgData = await pgRes.json();
           if (pgData.title_fr) document.getElementById("static-page-title").textContent = pgData.title_fr;
-          if (pgData.content_fr) document.getElementById("static-page-body").textContent = pgData.content_fr;
+          if (pgData.content_fr) {
+            const bodyEl = document.getElementById("static-page-body");
+            bodyEl.textContent = pgData.content_fr;
+            bodyEl.style.whiteSpace = "pre-line";
+          }
         }
       } catch (_e) {}
     }
@@ -4176,8 +4282,8 @@
         .map(
           (w) => `
           <tr class="hover:bg-cream/60 transition">
-            <td class="py-2 px-3 font-mono font-extrabold text-emerald-deep">${w.code}</td>
-            <td class="py-2 px-3 font-bold text-charcoal">${w.name_fr} <span class="text-gray-400 font-normal text-[11px] ml-1">${w.name_ar || ""}</span></td>
+            <td class="py-2 px-3 font-mono font-extrabold text-emerald-deep">${escapeHtml(w.code)}</td>
+            <td class="py-2 px-3 font-bold text-charcoal">${escapeHtml(w.name_fr)} <span class="text-gray-400 font-normal text-[11px] ml-1">${escapeHtml(w.name_ar || "")}</span></td>
             <td class="py-2 px-3">
               <span class="inline-flex items-center gap-1 bg-emerald-50 border border-emerald-200 rounded-lg px-2.5 py-1 font-extrabold text-emerald-900 text-xs">
                 ${formatDZD(w.home_fee)}
@@ -4210,6 +4316,20 @@
         .join("");
     }
 
+    // The API returns at most 50 products per page: read every page so the
+    // whole catalog is visible (cap: 2 000 products).
+    async function fetchAllProducts() {
+      const all = [];
+      for (let page = 1; page <= 40; page++) {
+        const res = await fetchPublicJson(`/api/v1/products?page_size=50&page=${page}`);
+        const items = res && Array.isArray(res.items) ? res.items : [];
+        all.push(...items);
+        const total = Number(res && res.total) || 0;
+        if (items.length < 50 || (total && all.length >= total)) break;
+      }
+      return { items: all };
+    }
+
     let isSyncingBackend = false;
     let lastCatJson = "";
     let lastProdJson = "";
@@ -4223,7 +4343,7 @@
           // fallback to null so one failing endpoint doesn't knock the
           // homepage down.
           fetchPublicJson("/api/v1/categories").catch(() => null),
-          fetchPublicJson("/api/v1/products?page_size=50").catch(() => null),
+          fetchAllProducts().catch(() => null),
           fetchPublicJson("/api/v1/delivery-zones").catch(() => null),
           fetchPublicJson("/api/v1/store/settings").catch(() => null),
         ]);
@@ -4234,18 +4354,18 @@
             lastCatJson = rawCat;
             dataChanged = true;
           }
-          state.categories = catRes.items.map((c) => ({
+          state.categories = escapeDeep(catRes.items).map((c) => ({
             id: c.id,
             slug: c.slug,
             name_fr: c.name_fr,
             name_ar: c.name_ar || c.name_fr,
             name_en: c.name_en || c.name_fr,
             description_fr: c.description_fr || "",
-            image: c.image_url || ASSET_MAP.cat_sacs,
+            image: c.image_url || PLACEHOLDER_IMG,
             attributes: (c.attributes || []).map((a) => {
               (a.options || []).forEach((opt) => {
-                if (opt.value && opt.color_hex) {
-                  COLOR_SWATCH_HEX[opt.value] = opt.color_hex;
+                if (opt.value && safeHex(opt.color_hex)) {
+                  COLOR_SWATCH_HEX[opt.value] = safeHex(opt.color_hex);
                 }
               });
               return {
@@ -4268,10 +4388,10 @@
             lastProdJson = rawProd;
             dataChanged = true;
           }
-          state.products = prodRes.items.map((p) => {
+          state.products = escapeDeep(prodRes.items).map((p) => {
             const catSlug = (p.category && p.category.slug) || p.category_slug || "";
             const brandName = (p.brand && p.brand.name) || p.brand_name || "MUS LUXURY";
-            const mainImg = p.main_image_url || ASSET_MAP.sac_chanel;
+            const mainImg = p.main_image_url || PLACEHOLDER_IMG;
             const gallery = (p.images && p.images.length)
               ? p.images.map((im) => (typeof im === "string" ? im : im.image_url || mainImg))
               : [mainImg];
@@ -4287,8 +4407,6 @@
               name_ar: p.name_ar || p.name_fr,
               name_en: p.name_en || p.name_fr,
               brand: brandName,
-              rating: "4.9",
-              reviews: p.sales_count || 12,
               description_fr: p.description_fr || "",
               image: mainImg,
               gallery: gallery,
@@ -4297,7 +4415,6 @@
               discount_percent: p.discount_percent || 0,
               sales_count: p.sales_count || 0,
               attributes: p.attributes || {},
-              swatches: ["#063D2E", "#181818", "#D4AF62"],
               variants: (p.variants || []).map((v) => ({
                 id: v.id,
                 sku: v.sku,
@@ -4330,7 +4447,7 @@
           );
         }
         if (setRes && typeof setRes === "object") {
-          state.storeSettings = setRes;
+          state.storeSettings = escapeDeep(setRes);
           if (setRes.store_phone) {
             const el = document.getElementById("maison-store-phone");
             if (el) el.textContent = setRes.store_phone;
@@ -4344,6 +4461,12 @@
           state.isCatalogLoaded = true;
           renderStorefront();
         }
+        // A shared product link opened before the catalog was loaded.
+        if (state.pendingProductSlug) {
+          const slug = state.pendingProductSlug;
+          state.pendingProductSlug = null;
+          openProductBySlug(slug);
+        }
       } catch (_e) {
         renderStorefront();
       } finally {
@@ -4356,22 +4479,19 @@
       handleRoute();
       syncStorefrontWithBackend();
 
-      // Realtime Background Sync: Re-sync every 4 seconds only if tab is actively visible
-      setInterval(() => {
-        if (document.visibilityState === "visible") {
-          syncStorefrontWithBackend();
-        }
-      }, 4000);
-
-      // Re-sync immediately when customer returns or focuses the window
-      document.addEventListener("visibilitychange", () => {
-        if (document.visibilityState === "visible") {
-          syncStorefrontWithBackend();
-        }
-      });
-
-      // Re-sync immediately whenever the customer focuses the browser window or returns from another tab
-      window.addEventListener("focus", syncStorefrontWithBackend);
+      // Background refresh: every 60 s while the page is visible, and when
+      // the customer comes back to the tab after 30 s away. (It used to be
+      // every 4 s — about one request per second per visitor on a 1-vCPU VPS.)
+      let lastSyncAt = Date.now();
+      const syncIfStale = (minAgeMs) => {
+        if (document.visibilityState !== "visible") return;
+        if (Date.now() - lastSyncAt < minAgeMs) return;
+        lastSyncAt = Date.now();
+        syncStorefrontWithBackend();
+      };
+      setInterval(() => syncIfStale(55000), 60000);
+      document.addEventListener("visibilitychange", () => syncIfStale(30000));
+      window.addEventListener("focus", () => syncIfStale(30000));
 
       // BroadcastChannel & Storage event for instant zero-lag inter-tab updates
       try {
