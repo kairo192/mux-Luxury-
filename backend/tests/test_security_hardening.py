@@ -119,10 +119,12 @@ class TestLuxeSecurityHardeningHandoff(unittest.TestCase):
 
     # H-1, H-2, H-3, H-4, H-6: Storefront useRef idempotency, webhook 503/413/status cap, requirements & .dockerignore
     def test_h1_h3_h4_h6_high_severity_controls(self):
-        # H-1: Storefront App.tsx uses idemKeyRef (useRef) and clears on success
-        sf_txt = (self.repo_root / "apps" / "storefront" / "src" / "App.tsx").read_text(encoding="utf-8")
-        self.assertIn("idemKeyRef = useRef<string | null>(null)", sf_txt)
-        self.assertIn("idemKeyRef.current = null", sf_txt)
+        # H-1: the live shop sends ONE Idempotency-Key per order (re-used on a
+        # double click / retry, cleared on success) — never a per-click key.
+        sf_txt = (self.repo_root / "apps" / "storefront" / "index.html").read_text(encoding="utf-8")
+        self.assertIn('"Idempotency-Key": state.checkoutIdemKey', sf_txt)
+        self.assertIn("state.checkoutIdemKey = null", sf_txt)
+        self.assertNotIn("storefront-${phone}-${Date.now()}", sf_txt)
 
         # H-3: requirements.txt and constraints.txt exist and remove unused deps
         req_txt = (self.repo_root / "backend" / "requirements.txt").read_text(encoding="utf-8")
@@ -290,6 +292,7 @@ function collectTsFiles(dir, out = []) {
   for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
     const full = path.join(dir, entry.name);
     if (entry.isDirectory()) collectTsFiles(full, out);
+    else if (entry.name.endsWith(".d.ts")) continue; // type declarations only: nothing to compile
     else if (entry.name.endsWith(".ts") || entry.name.endsWith(".tsx")) out.push(full);
   }
   return out;

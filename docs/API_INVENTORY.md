@@ -3,7 +3,7 @@
 **Base Path:** `/api/v1`  
 **Backend Entrypoint:** `backend/app/main.py`  
 **Desktop CMS Client:** `apps/desktop-cms/src/api/adminClient.ts`  
-**Public Storefront Client:** `apps/storefront/src/api/client.ts`
+**Public Storefront Client:** `apps/storefront/index.html` (inline script; `fetchPublicJson`). SEO pages: `backend/app/seo.py`
 
 ---
 

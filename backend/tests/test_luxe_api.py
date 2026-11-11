@@ -1303,9 +1303,6 @@ const files = [
   "apps/desktop-cms/src/pages/DeliveryWilayasPage.tsx",
   "apps/desktop-cms/src/App.tsx",
   "apps/desktop-cms/src/main.tsx",
-  "apps/storefront/src/api/client.ts",
-  "apps/storefront/src/App.tsx",
-  "apps/storefront/src/main.tsx",
 ];
 for (const f of files) {
   const full = path.resolve(process.cwd(), f);
@@ -1333,8 +1330,6 @@ console.log("ALL_TSX_COMPILED_OK");
         # 2. Enforce Strict Architecture Separation: Public Website must NEVER contain Web CMS or Admin Login
         for pub_file in [
             os.path.join(repo_root, "apps", "storefront", "index.html"),
-            os.path.join(repo_root, "apps", "storefront", "src", "App.tsx"),
-            os.path.join(repo_root, "apps", "storefront", "src", "api", "client.ts"),
         ]:
             with open(pub_file, "r", encoding="utf-8") as pf:
                 content = pf.read()
@@ -1690,15 +1685,13 @@ console.log("ALL_TSX_COMPILED_OK");
         self.assertIn("orders: []", shtml)
         self.assertIn("syncStorefrontWithBackend", shtml)
 
-        # 2. Verify 100% of exported functions in apps/storefront/src/api/client.ts are called in apps/storefront/src/App.tsx
-        with open(os.path.join(repo_root, "apps", "storefront", "src", "api", "client.ts"), "r", encoding="utf-8") as f:
-            sclient = f.read()
-        with open(os.path.join(repo_root, "apps", "storefront", "src", "App.tsx"), "r", encoding="utf-8") as f:
-            sapp = f.read()
-        exported_fns = _re.findall(r"export function (\w+)\s*\(", sclient)
-        self.assertGreaterEqual(len(exported_fns), 11)
-        for fn in exported_fns:
-            self.assertIn(f"{fn}(", sapp, f"Storefront client function {fn} is not wired in apps/storefront/src/App.tsx")
+        # 2. The live shop (index.html; the unused React copy was removed) calls
+        #    every public endpoint it depends on.
+        for endpoint in [
+            "/api/v1/categories", "/api/v1/products", "/api/v1/delivery-zones", "/api/v1/store/settings",
+            "/api/v1/coupons/validate", "/api/v1/orders", "/api/v1/orders/track", "/api/v1/pages/",
+        ]:
+            self.assertIn(endpoint, shtml, f"Storefront does not call {endpoint}")
 
 
 
@@ -2102,7 +2095,6 @@ console.log("CLIENT_NOTIFIER_ALL_TESTS_PASSED");
         repo_root = Path(__file__).resolve().parents[2]
 
         shtml = (repo_root / "apps" / "storefront" / "index.html").read_text(encoding="utf-8")
-        sapp = (repo_root / "apps" / "storefront" / "src" / "App.tsx").read_text(encoding="utf-8")
 
         # 1. Verify Storefront Customer Message Box Modal & DOM XSS Escaping in index.html
         self.assertIn("id=\"store-message-box-modal\"", shtml)
@@ -2113,14 +2105,10 @@ console.log("CLIENT_NOTIFIER_ALL_TESTS_PASSED");
         self.assertIn("escapeHtml(found.reference)", shtml)
         self.assertIn("escapeHtml(found.customer_name)", shtml)
 
-        # 2. Verify Free Shipping Progress Bar (25 000 DA) & 4-Step Order Tracking Timeline in both index.html and App.tsx
+        # 2. Verify Free Shipping Progress Bar (25 000 DA) & 4-Step Order Tracking Timeline in the live shop
         self.assertIn("Livraison Prioritaire Offerte débloquée", shtml)
-        self.assertIn("Livraison Prioritaire Offerte débloquée", sapp)
         self.assertIn("1. Reçue", shtml)
         self.assertIn("4. Livrée", shtml)
-        self.assertIn("1. Reçue", sapp)
-        self.assertIn("4. Livrée (COD)", sapp)
-        self.assertIn("customerNotice", sapp)
 
 
 
@@ -2666,13 +2654,13 @@ flushOfflineMutationQueue(async () => true).then((res) => {
         finally:
             mem_conn.close()
 
-        # Verify Storefront App.tsx includes cart quantity controls, commune selector, and dynamic 4-step order tracking
+        # Verify the live shop includes cart quantity controls (remove at 0), brand display and the commune selector
         repo_root = Path(__file__).resolve().parents[2]
-        sf_code = (repo_root / "apps" / "storefront" / "src" / "App.tsx").read_text(encoding="utf-8")
-        self.assertIn("function updateCartQuantity", sf_code)
-        self.assertIn("function removeFromCart", sf_code)
-        self.assertIn("p.brand?.name", sf_code)
-        self.assertIn("setCommune(e.target.value)", sf_code)
+        sf_code = (repo_root / "apps" / "storefront" / "index.html").read_text(encoding="utf-8")
+        self.assertIn("function updateCartItemQty", sf_code)
+        self.assertIn("state.cart.splice", sf_code)
+        self.assertIn("p.brand && p.brand.name", sf_code)
+        self.assertIn('id="chk-commune"', sf_code)
 
 
     # 73. Cross-Worker & CLI Persistent Database Session Revocation Verification

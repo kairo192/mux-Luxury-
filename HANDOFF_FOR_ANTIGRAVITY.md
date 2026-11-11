@@ -7,6 +7,17 @@
 
 ---
 
+## 0b. STOREFRONT STEP 2 (2026-11-11, latest)
+- Real paths `/produit/<slug>`, `/categorie/<slug>` (`currentRouteHash()` maps them to the old internal
+  routes; `navigateTo('#/category/x')` now pushes `/categorie/x`; `popstate`+`hashchange` → `onRouteEvent`, deduped).
+- nginx → `GET /api/v1/seo/render/{produit|categorie}/{slug}` and `/sitemap.xml` (`backend/app/seo.py`):
+  replaces `<!-- SEO:START -->…<!-- SEO:END -->` in the shop's index.html (fetched from
+  `STOREFRONT_INTERNAL_URL`, default `http://storefront`, cached 60 s). **Keep those markers in index.html.**
+  The API middleware does not add its CSP on `/api/v1/seo/*` (nginx sets the storefront CSP).
+- Dev: vite proxies those paths to :8000; start the API with `STOREFRONT_INTERNAL_URL=http://localhost:5173`.
+- Checkout: one `state.checkoutIdemKey` per order, `state.placingOrder` guard, never invents an order number.
+- `apps/storefront/src/` now only holds `index.css` + `vite-env.d.ts`; React deps removed. Tests retargeted to index.html.
+
 ## 0a. STOREFRONT STEP 1 (2026-11-11, latest)
 `apps/storefront/index.html` (the live shop; `src/App.tsx` is NOT loaded):
 - Server data is escaped ONCE on arrival (`escapeDeep` in `syncStorefrontWithBackend`). Templates may

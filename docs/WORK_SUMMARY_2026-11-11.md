@@ -170,9 +170,30 @@ The "order on WhatsApp" message now includes the product link, so the shop sees 
 Checked in a browser with 64 products, a product named like an attack (shown as plain text, not run),
 an apostrophe colour, shared links, Back button, iPhone size in French and Arabic.
 
-Still to do (Step 2): every page readable by Google (real page addresses instead of `#/`), search
-descriptions and sharing previews, sitemap, Arabic translation of a few labels ("Tarifs 69 Wilayas",
-banner caption), and removing the unused React copy of the shop in `apps/storefront/src`.
+## 12. Online shop — Step 2: Google, link previews, clean code
+
+| Before | Now |
+|---|---|
+| Products and categories had no real address (only `#/…`, which Google ignores) | `mus-luxury.com/produit/<name>` and `mus-luxury.com/categorie/<name>`; old `#/` links still work |
+| Sharing a product on WhatsApp/Facebook/Instagram showed only the generic shop preview | The server builds each product/category page with its own title, description, photo, price and availability, so link previews show the real product |
+| Google had no structured product data | Each product page carries schema.org data (name, photos, price in DZD, in stock / out of stock, brand, breadcrumbs). **No ratings are ever invented** |
+| `robots.txt` pointed to a sitemap that did not exist | `/sitemap.xml` lists the home page, every active category and every published product, updated automatically |
+| Tab title never changed | Title and description follow the product or category being viewed |
+| Arabic version still showed "Tarifs 69 Wilayas" and a French banner caption | Translated (FR / AR / EN) |
+| A double click or network retry on "Commander" could create **two orders** (new anti-duplicate key per click) | One key per order: the server refuses the second one, and the customer sees the order confirmed once |
+| If the server's answer had no order number, the shop **invented one** and showed it as confirmed | Never: the customer sees an error and can retry or use WhatsApp |
+| An unused React copy of the shop (3 files, 53 packages) | Removed; tests now check the live shop |
+
+How it works: nginx sends `/produit/…`, `/categorie/…` and `/sitemap.xml` to the API
+(`backend/app/seo.py`). The API takes the shop's own page, replaces the block between
+`<!-- SEO:START -->` and `<!-- SEO:END -->` with the page's tags, and the shop opens the product
+or category as usual. If the shop page cannot be read, people are redirected to the same product
+and previews still work.
+
+Checked: 5 new automated tests (`backend/tests/test_seo.py`, including a product name containing
+`</script>` that cannot break the page), a real nginx running the production config, and a browser run
+covering direct product links, Back/Forward with scroll kept, category addresses after reload, old links,
+Arabic labels, and a double click on "Commander" (exactly 1 order in the database).
 
 ---
 

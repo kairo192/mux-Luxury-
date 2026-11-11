@@ -65,6 +65,17 @@ Short caches keep the server fast:
 | Products / prices / stock | within 60 seconds |
 | Wilayas & delivery prices | within 1 hour (they almost never change) |
 
+### 3.2b The shop on Google and in shared links
+* Every product has its own address: `mus-luxury.com/produit/<name>`, and every
+  category too: `mus-luxury.com/categorie/<name>`. Copy it from the browser to
+  share it on WhatsApp, Instagram or Facebook: the preview shows the product's
+  photo, name and price.
+* Google finds every page through `mus-luxury.com/sitemap.xml`, which updates by
+  itself. **Once, after the launch:** add the site in Google Search Console
+  (search.google.com/search-console) and submit `https://mus-luxury.com/sitemap.xml`.
+* Better previews and search results come from good content in the CMS: a clear
+  product name, a 1–3 sentence description, and a real photo.
+
 ### 3.3 Server ↔ POS PCs
 * **Catalog:** each till downloads the full catalog the first time, then only
   the changes, every time the CMS starts and every time the internet comes back.
