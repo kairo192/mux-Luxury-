@@ -76,6 +76,17 @@ Short caches keep the server fast:
 * Better previews and search results come from good content in the CMS: a clear
   product name, a 1–3 sentence description, and a real photo.
 
+### 3.2c Creating a product (CMS → Produits → Nouveau produit)
+1. **Informations**: category, name (FR, and AR/EN if you can), description, prices. The SKU and the
+   web address fill themselves from the name; change them if you want.
+2. **Visuels**: the main photo, then more photos in the gallery.
+3. **Déclinaisons**: tick the colours/sizes, click **Ajouter … combinaison(s)**, set the stock. In the
+   **Photo** column, give each colour its own photo if you have one.
+4. Check the preview on the right: **Carte** = how it looks in the shop grid, **Page produit** = what
+   the customer reads; switch **FR / ع / EN** to check each language. Follow the
+   **"Prêt pour la boutique ?"** list.
+5. Set **Statut = Publié** and save. Use **Copier le lien boutique** to share it.
+
 ### 3.3 Server ↔ POS PCs
 * **Catalog:** each till downloads the full catalog the first time, then only
   the changes, every time the CMS starts and every time the internet comes back.

@@ -48,6 +48,53 @@ export function getApiBaseUrl(): string {
   return apiBaseUrl;
 }
 
+/**
+ * Address of the online shop that goes with the configured API:
+ *   https://api.mus-luxury.com/api/v1 → https://mus-luxury.com
+ *   http://localhost:8000/api/v1      → http://localhost:5173 (dev)
+ */
+export function storefrontBaseUrl(): string {
+  try {
+    const u = new URL(apiBaseUrl);
+    if (u.hostname === "localhost" || u.hostname === "127.0.0.1") return `${u.protocol}//localhost:5173`;
+    return `${u.protocol}//${u.hostname.replace(/^api\./, "")}`;
+  } catch {
+    return "https://mus-luxury.com";
+  }
+}
+
+/**
+ * Turns a stored image path into an address the CMS can display.
+ * Uploaded photos (/uploads/…) live on the API server; built-in images
+ * (/assets/…) live on the shop. Without this the CMS looked for them on
+ * itself and every uploaded photo appeared broken.
+ */
+export function mediaUrl(url?: string | null): string {
+  const raw = String(url || "").trim();
+  if (!raw) return "";
+  if (/^(https?:|data:|blob:)/i.test(raw)) return raw;
+  const path = raw.startsWith("/") ? raw : `/${raw}`;
+  if (path.startsWith("/uploads/")) {
+    try {
+      return new URL(apiBaseUrl).origin + path;
+    } catch {
+      return path;
+    }
+  }
+  return storefrontBaseUrl() + path;
+}
+
+/** Neutral image for products/categories without a photo (works offline). */
+export const PLACEHOLDER_IMG =
+  "data:image/svg+xml;charset=utf-8," +
+  encodeURIComponent(
+    '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 600 600"><rect width="600" height="600" fill="#063D2E"/>' +
+      '<rect x="24" y="24" width="552" height="552" rx="28" fill="none" stroke="#D4AF62" stroke-opacity=".35" stroke-width="2"/>' +
+      '<circle cx="300" cy="270" r="92" fill="none" stroke="#D4AF62" stroke-width="3"/>' +
+      '<text x="300" y="300" text-anchor="middle" font-family="Georgia,serif" font-size="84" font-weight="700" fill="#D4AF62">ML</text>' +
+      '<text x="300" y="430" text-anchor="middle" font-family="Georgia,serif" font-size="30" fill="#E8D4A5" letter-spacing="6">PHOTO À VENIR</text></svg>'
+  );
+
 export function setAccessToken(token: string | null) {
   accessToken = token;
   if (token) {

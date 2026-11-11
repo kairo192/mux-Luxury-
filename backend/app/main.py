@@ -1636,7 +1636,7 @@ def create_dynamic_product(
                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
                 (
                     prod_id, v_sku, v.barcode, v.title, v.price_override_dzd, v.stock_qty,
-                    v.image_url or payload.main_image_url, v.purchase_cost_dzd, v.weight_grams,
+                    (v.image_url or "").strip() or None, v.purchase_cost_dzd, v.weight_grams,
                     v.low_stock_threshold, 1, sig,
                 )
             )
@@ -1709,7 +1709,7 @@ def generate_product_variants_matrix(
                    VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
                 (
                     product_id, v_sku, v_title, payload.price_override_dzd, payload.default_stock,
-                    prod["main_image_url"], payload.low_stock_threshold, sig,
+                    None, payload.low_stock_threshold, sig,
                 )
             )
             vid = cur.lastrowid
@@ -1774,7 +1774,7 @@ def admin_create_variant(
                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
             (
                 product_id, sku, payload.barcode, title, payload.price_override_dzd, payload.stock_qty,
-                payload.image_url or prod["main_image_url"], payload.purchase_cost_dzd,
+                (payload.image_url or "").strip() or None, payload.purchase_cost_dzd,
                 payload.weight_grams, payload.low_stock_threshold, 1 if payload.is_active else 0, sig,
             )
         )

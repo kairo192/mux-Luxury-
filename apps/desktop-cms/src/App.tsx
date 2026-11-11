@@ -82,7 +82,7 @@ import {
   Users,
 } from "lucide-react";
 import { RevenueTrendChart, OrderStatusDistributionChart, InventoryHealthWidget } from "./components/CmsCharts";
-import { DesktopCmsApi, restoreSessionFromOsKeychain, getApiBaseUrl, configureApiBaseUrl } from "./api/adminClient";
+import { DesktopCmsApi, restoreSessionFromOsKeychain, getApiBaseUrl, configureApiBaseUrl, mediaUrl } from "./api/adminClient";
 import { CategoryBuilderPage } from "./pages/CategoryBuilderPage";
 import { DeliveryWilayasPage } from "./pages/DeliveryWilayasPage";
 import { DeliveryNoteModal } from "./components/DeliveryNoteModal";
@@ -1234,7 +1234,7 @@ export default function App() {
               <div className="w-16 h-16 rounded-xl bg-[#063D2E]/10 border border-[#D4AF62]/40 flex items-center justify-center overflow-hidden shrink-0">
                 {productToDelete.main_image_url || productToDelete.image_url ? (
                   <img
-                    src={productToDelete.main_image_url || productToDelete.image_url}
+                    src={mediaUrl(productToDelete.main_image_url || productToDelete.image_url)}
                     alt=""
                     className="w-full h-full object-cover"
                   />

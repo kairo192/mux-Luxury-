@@ -1,7 +1,7 @@
 import { readDraft, writeDraft, clearDraft } from "../utils/draftStorage";
 import React, { useEffect, useState } from "react";
 import { useT } from "../i18n";
-import { DesktopCmsApi } from "../api/adminClient";
+import { DesktopCmsApi, mediaUrl, PLACEHOLDER_IMG } from "../api/adminClient";
 import { notifyClientError, notifyClientSuccess, notifyClientWarning } from "../utils/clientNotifier";
 import {
   Tags,
@@ -613,8 +613,8 @@ export function CategoryBuilderPage({ onCategoryChanged }: { onCategoryChanged?:
   const [descriptionFr, setDescriptionFr] = useState(() => readDraft("luxe_cat_draft_desc", ""));
   const [displayOrder, setDisplayOrder] = useState(() => readDraft("luxe_cat_draft_order", 10));
   const [chosenIconKey, setChosenIconKey] = useState("bag");
-  const [imageUrl, setImageUrl] = useState(() => readDraft("luxe_cat_draft_img", "/assets/cat_vetements.jpg"));
-  const [bannerUrl, setBannerUrl] = useState(() => readDraft("luxe_cat_draft_banner", "/assets/hero_bag_clean.jpg"));
+  const [imageUrl, setImageUrl] = useState(() => readDraft("luxe_cat_draft_img", ""));
+  const [bannerUrl, setBannerUrl] = useState(() => readDraft("luxe_cat_draft_banner", ""));
 
   useEffect(() => {
     writeDraft("luxe_cat_draft_name_fr", nameFr);
@@ -1926,11 +1926,12 @@ export function CategoryBuilderPage({ onCategoryChanged }: { onCategoryChanged?:
                 {/* Image Banner */}
                 <div className="relative h-32 rounded-xl overflow-hidden bg-black/40 border border-white/10">
                   <img
-                    src={imageUrl || "/assets/cat_vetements.jpg"}
+                    src={imageUrl ? mediaUrl(imageUrl) : PLACEHOLDER_IMG}
                     alt={nameFr || "Catégorie"}
                     className="w-full h-full object-cover object-center"
                     onError={(e: any) => {
-                      e.target.src = "/assets/hero_bag_clean.jpg";
+                      e.target.onerror = null;
+                      e.target.src = PLACEHOLDER_IMG;
                     }}
                   />
                   <div className="absolute inset-0 bg-gradient-to-t from-[#063D2E] via-transparent to-black/20" />

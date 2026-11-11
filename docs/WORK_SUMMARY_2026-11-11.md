@@ -195,6 +195,29 @@ Checked: 5 new automated tests (`backend/tests/test_seo.py`, including a product
 covering direct product links, Back/Forward with scroll kept, category addresses after reload, old links,
 Arabic labels, and a double click on "Commander" (exactly 1 order in the database).
 
+## 13. CMS — product creation & live preview
+
+| Problem found | Fix |
+|---|---|
+| Uploaded photos showed as **broken images** inside the CMS (it looked for `/uploads/…` on itself instead of the server) | Every photo is loaded from the right server (`mediaUrl`) |
+| Preview showed a Chanel-style bag when there was no photo; colour dots were always the same green; it did not look like the shop (wrong button, stock badge, category label) | New preview that copies the real shop: **Card** view and **Product page** view, with the real colours, badge, prices, description, characteristics and colour/size buttons |
+| No way to check Arabic / English texts before publishing | Preview switches **FR / ع / EN** (Arabic right-to-left) and warns when a translation is missing |
+| No photo per variant (e.g. the red version) | **Photo column** in Déclinaisons: pick one of the product's photos for each variant; on the shop, choosing that colour shows its photo |
+| The server copied the main photo into every variant, so after changing the main photo the shop still showed the **old photo** when a colour was picked | Variants only keep a photo that was chosen for them; a migration cleaned existing copies |
+| SKU had to be typed by hand | Suggested automatically from category + name (e.g. `SAC-SEP-482`), editable |
+| Extra photos added before the first save lost their order | Kept in the order they were added |
+| "Produit créé… sont en ligne" even for a draft | Says "en ligne" only when published, otherwise "enregistré en brouillon" |
+| No guidance before publishing | **"Prêt pour la boutique ?" checklist**: name, photo, price, stock, description, translations, gallery, status |
+| No way to get the product's link | **Copier le lien boutique** for published products |
+| New categories defaulted to a clothing photo | No photo until one is chosen (neutral placeholder) |
+| Shop showed the French description to Arabic/English customers; product-page buttons were French only | Descriptions and buttons follow the customer's language |
+| The shop forgot the customer's language on every page load | Language remembered; switching it updates an open product |
+| SEO title/description typed in the CMS were not used | Used for Google and link previews |
+
+Tested end to end in a browser: created a dress with FR/AR/EN texts, 3 uploaded photos, 2 colours,
+the red photo on the red variant, published it, then opened it on the shop (red photo when "Rouge" is
+picked, Arabic description and buttons). New tests: `backend/tests/test_product_media.py`.
+
 ---
 
 ## Verification

@@ -7,6 +7,18 @@
 
 ---
 
+## 0c. CMS PRODUCT EDITOR (2026-11-11, latest)
+- `mediaUrl()` / `storefrontBaseUrl()` / `PLACEHOLDER_IMG` in `src/api/adminClient.ts`: ALWAYS wrap stored
+  image paths with `mediaUrl()` in the CMS (`/uploads` → API host, `/assets` → shop host).
+- `components/StorefrontPreview.tsx` replaces `LiveProductCardPreview` (deleted): card + product page,
+  FR/AR/EN, readiness checklist, copy-link. Keep it visually in sync with `apps/storefront/index.html`.
+- `VariantManager`: `image_url` per variant + photo picker (`availableImages` prop); saved via create
+  payload or `updateVariant` (`""` clears).
+- Backend: variants are no longer created with a copy of the main photo (NULL = follow product photo);
+  migration `004_variant_image_follows_product.sql`. `seo.py` uses `seo_title`/`seo_description`.
+- Storefront: `prodDesc()/catDesc()` per language, PDP buttons via `I18N`, language saved in
+  `localStorage.luxe_store_lang`.
+
 ## 0b. STOREFRONT STEP 2 (2026-11-11, latest)
 - Real paths `/produit/<slug>`, `/categorie/<slug>` (`currentRouteHash()` maps them to the old internal
   routes; `navigateTo('#/category/x')` now pushes `/categorie/x`; `popstate`+`hashchange` → `onRouteEvent`, deduped).

@@ -183,11 +183,13 @@ def product_page_tags(base: str, product: Dict[str, Any], category: Optional[Dic
     images = [u for i, u in enumerate(images) if u and u not in images[:i]]
 
     price_txt = f"{int(price):,}".replace(",", " ") + " DA" if price is not None else ""
+    # The SEO title / description typed in the CMS ("SEO & Livraison" tab) win.
     description = _clip(
-        product.get("description_fr")
+        product.get("seo_description")
+        or product.get("description_fr")
         or f"{name}{' — ' + price_txt if price_txt else ''}. Livraison 69 wilayas, paiement à la livraison."
     )
-    title = f"{name} — Mus Luxury"
+    title = (product.get("seo_title") or "").strip() or f"{name} — Mus Luxury"
 
     offer: Dict[str, Any] = {
         "@type": "Offer",
