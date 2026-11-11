@@ -298,6 +298,9 @@ export const UsersRolesPage: React.FC = () => {
                   <input type="password" value={form.password} onChange={(e) => setForm({ ...form, password: e.target.value })} className="w-full h-12 px-3 rounded-2xl border-2 border-gray-200" />
                 </Field>
               )}
+              {error && (
+                <div role="alert" className="p-3 rounded-xl bg-red-50 border border-red-200 text-red-800 text-sm font-bold">{error}</div>
+              )}
               <button type="button" disabled={busy} onClick={save} className="w-full h-14 rounded-2xl bg-[#063D2E] text-[#D4AF62] font-extrabold text-base disabled:opacity-50 active:scale-[0.99]">
                 {t("users_roles.btn_save")}
               </button>
@@ -319,6 +322,9 @@ export const UsersRolesPage: React.FC = () => {
             <div className="p-5 space-y-3">
               <p className="text-gray-500">{pwTarget.full_name} — <span className="font-mono">{pwTarget.email}</span></p>
               <input type="password" value={pwValue} onChange={(e) => setPwValue(e.target.value)} placeholder="Nouveau mot de passe (min. 10)" className="w-full h-12 px-3 rounded-2xl border-2 border-gray-200" />
+              {error && (
+                <div role="alert" className="p-3 rounded-xl bg-red-50 border border-red-200 text-red-800 text-sm font-bold">{error}</div>
+              )}
               <button type="button" disabled={busy} onClick={resetPw} className="w-full h-12 rounded-2xl bg-[#063D2E] text-[#D4AF62] font-bold disabled:opacity-50 active:scale-95">
                 {t("users_roles.modal_pw_title")}
               </button>

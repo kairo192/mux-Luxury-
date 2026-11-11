@@ -87,6 +87,7 @@ import { movementReasonLabel } from "./utils/movementReasons";
 import { allowedOrderStatuses, orderStatusLabel, ORDER_STATUSES } from "./utils/orderStatus";
 import { openExternalUrl } from "./utils/openExternal";
 import { useEscapeToClose } from "./utils/useEscapeToClose";
+import { canOpenTab } from "./utils/tabAccess";
 import { RevenueTrendChart, OrderStatusDistributionChart, InventoryHealthWidget } from "./components/CmsCharts";
 import { DesktopCmsApi, restoreSessionFromOsKeychain, getApiBaseUrl, configureApiBaseUrl, mediaUrl } from "./api/adminClient";
 import { CategoryBuilderPage } from "./pages/CategoryBuilderPage";
@@ -295,6 +296,17 @@ export default function App() {
   // restoreReport state removed with the admin-facing backup page.
   const [selectedInvoice, setSelectedInvoice] = useState<any | null>(null);
   const closeInvoice = React.useCallback(() => setSelectedInvoice(null), []);
+  // Screens follow the role: a cashier sees the till, not the accounts.
+  const userPermsRef = useRef<string[]>([]);
+  userPermsRef.current = (user as any)?.permissions || [];
+  const canOpen = React.useCallback((id: string) => canOpenTab(id, (user as any)?.permissions), [user]);
+  useEffect(() => {
+    if (!user) return;
+    if (!canOpenTab(activeTab, (user as any)?.permissions)) {
+      const first = ["dashboard", "pos", "orders", "products", "inventory"].find((tab) => canOpenTab(tab, (user as any)?.permissions));
+      if (first) setActiveTab(first as CmsTab);
+    }
+  }, [user, activeTab]);
   // Escape closes the top-most open window, on every screen: it presses that
   // window's "Fermer" button. Confirmation / message boxes handle Escape
   // themselves and are left alone.
@@ -417,10 +429,10 @@ export default function App() {
         DesktopCmsApi.getReports().catch(() => null),
         DesktopCmsApi.listBrands().catch(() => ({ items: [] })),
         DesktopCmsApi.listCategories().catch(() => ({ items: [] })),
-        DesktopCmsApi.listAdminProducts({ include_archived: true }),
-        DesktopCmsApi.listOrders(orderStatusFilter || undefined),
+        DesktopCmsApi.listAdminProducts({ include_archived: true }).catch(() => ({ items: [] })),
+        DesktopCmsApi.listOrders(orderStatusFilter || undefined).catch(() => ({ items: [] })),
         DesktopCmsApi.listCustomers().catch(() => ({ items: [] })),
-        DesktopCmsApi.listInventoryMovements(),
+        DesktopCmsApi.listInventoryMovements().catch(() => ({ items: [] })),
         DesktopCmsApi.getStoreLayout().catch(() => ({ homepage_sections: [] })),
         DesktopCmsApi.listStaticPages().catch(() => ({ items: [] })),
         // listBackups & getRecoveryStatus removed — endpoints gone.
@@ -497,7 +509,8 @@ export default function App() {
     function onKeyDown(e: KeyboardEvent) {
       if (e.altKey && e.key >= "1" && e.key <= "8") {
         e.preventDefault();
-        setActiveTab(tabOrder[Number(e.key) - 1]);
+        const next = tabOrder[Number(e.key) - 1];
+        if (canOpenTab(next, userPermsRef.current)) setActiveTab(next);
       }
     }
     window.addEventListener("keydown", onKeyDown);
@@ -1613,7 +1626,12 @@ export default function App() {
 
       {/* Sidebar + scrolling workspace */}
       <div className="flex flex-1 min-h-0">
-      <CmsSidebar activeTab={activeTab} onSelect={(id) => setActiveTab(id as CmsTab)} badges={navBadges} />
+      <CmsSidebar
+        activeTab={activeTab}
+        onSelect={(id) => canOpen(id) && setActiveTab(id as CmsTab)}
+        badges={navBadges}
+        canOpen={canOpen}
+      />
       <div className="flex-1 min-w-0 overflow-y-auto flex flex-col">
 
       {/* Global Status / Error Banner */}
@@ -1696,11 +1714,11 @@ export default function App() {
                   </div>
                 </div>
                 <p className="text-xl font-bold font-mono text-[#063D2E] mt-2 tracking-tight">
-                  {Number(dashboard.total_revenue_dzd || 0).toLocaleString()} <span className="text-xs font-sans text-[#D4AF62]">DA</span>
+                  {dashboard.finance_visible === false ? "—" : Number(dashboard.total_revenue_dzd || 0).toLocaleString()} <span className="text-xs font-sans text-[#D4AF62]">{dashboard.finance_visible === false ? "" : "DA"}</span>
                 </p>
                 <div className="text-[10px] text-gray-400 mt-1 flex items-center gap-1">
                   <TrendingUp className="w-3 h-3 text-emerald-600" />
-                  <span>Panier moy: {Math.round(Number(dashboard.total_revenue_dzd || 0) / Math.max(dashboard.total_orders, 1)).toLocaleString()} DA</span>
+                  <span>{dashboard.finance_visible === false ? "Réservé à la direction" : `Panier moy: ${Math.round(Number(dashboard.total_revenue_dzd || 0) / Math.max(dashboard.total_orders, 1)).toLocaleString()} DA`}</span>
                 </div>
               </div>
 
@@ -1782,7 +1800,13 @@ export default function App() {
             {/* Interactive Charts Row: Revenue Area Chart (8 cols) & Orders Donut (4 cols) */}
             <div className="grid grid-cols-1 lg:grid-cols-12 gap-5">
               <div className="lg:col-span-7">
-                <RevenueTrendChart byDay={dashboard.revenue_by_day || []} />
+                {dashboard.finance_visible === false ? (
+                  <div className="bg-white rounded-2xl border border-[#063D2E]/10 p-5 text-xs text-gray-500">
+                    Les chiffres d'affaires sont réservés à la direction.
+                  </div>
+                ) : (
+                  <RevenueTrendChart byDay={dashboard.revenue_by_day || []} />
+                )}
               </div>
               <div className="lg:col-span-5">
                 <OrderStatusDistributionChart ordersByStatus={dashboard.orders_by_status || {}} />

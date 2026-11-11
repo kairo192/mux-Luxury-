@@ -157,13 +157,14 @@ _OPERATIONAL_PERMISSIONS = [
     ("register:manage", "Open, close and reconcile cash register sessions"),
     ("devices:read", "View registered store devices and their status"),
     ("devices:write", "Register, configure, test and remove store devices"),
+    ("finance:read", "View money: accounting, treasury, margins, financial reports, expenses, suppliers & purchase costs"),
 ]
 _OPERATIONAL_ROLES = [
     ("cashier", "Cashier — Operate the POS, sell, and manage the cash register"),
 ]
 _OPERATIONAL_GRANTS = {
-    "super_admin": ["pos:sell", "pos:refund", "pos:read", "register:manage", "devices:read", "devices:write"],
-    "admin": ["pos:sell", "pos:refund", "pos:read", "register:manage", "devices:read", "devices:write"],
+    "super_admin": ["pos:sell", "pos:refund", "pos:read", "register:manage", "devices:read", "devices:write", "finance:read"],
+    "admin": ["pos:sell", "pos:refund", "pos:read", "register:manage", "devices:read", "devices:write", "finance:read"],
     "cashier": ["dashboard:read", "pos:sell", "pos:read", "register:manage", "devices:read"],
 }
 
@@ -385,6 +386,7 @@ def seed_initial_data() -> None:
             ("register:manage", "Open, close and reconcile cash register sessions"),
             ("devices:read", "View registered store devices and their status"),
             ("devices:write", "Register, configure, test and remove store devices"),
+            ("finance:read", "View money: accounting, treasury, margins, financial reports, expenses, suppliers & purchase costs"),
         ]
         perm_ids = {}
         for code, desc in perms:
@@ -393,7 +395,7 @@ def seed_initial_data() -> None:
 
         role_perm_map = {
             "super_admin": list(perm_ids.keys()),
-            "admin": ["dashboard:read", "products:write", "categories:write", "inventory:write", "orders:write", "content:write", "pos:sell", "pos:refund", "pos:read", "register:manage", "devices:read", "devices:write"],
+            "admin": ["dashboard:read", "finance:read", "products:write", "categories:write", "inventory:write", "orders:write", "content:write", "pos:sell", "pos:refund", "pos:read", "register:manage", "devices:read", "devices:write"],
             "product_manager": ["dashboard:read", "products:write"],
             "order_manager": ["dashboard:read", "orders:write"],
             "inventory_manager": ["dashboard:read", "inventory:write", "products:write"],

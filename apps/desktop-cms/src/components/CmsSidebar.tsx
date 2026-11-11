@@ -158,9 +158,11 @@ interface CmsSidebarProps {
   activeTab: string;
   onSelect: (id: string) => void;
   badges?: Partial<Record<string, number>>;
+  /** Screens this person's role may open (others are not shown). */
+  canOpen?: (id: string) => boolean;
 }
 
-export const CmsSidebar: React.FC<CmsSidebarProps> = ({ activeTab, onSelect, badges = {} }) => {
+export const CmsSidebar: React.FC<CmsSidebarProps> = ({ activeTab, onSelect, badges = {}, canOpen }) => {
   const t = useT();
   const [collapsed, setCollapsed] = useState<boolean>(() => readJson(COLLAPSED_KEY, false));
   const [folded, setFolded] = useState<string[]>(() => readJson(FOLDED_GROUPS_KEY, []));
@@ -192,13 +194,20 @@ export const CmsSidebar: React.FC<CmsSidebarProps> = ({ activeTab, onSelect, bad
   }, [activeTab, collapsed]);
 
   const q = normalize(query.trim());
+  const allowedGroups = useMemo(
+    () =>
+      CMS_NAV_GROUPS.map((g) => ({ ...g, items: g.items.filter((it) => !canOpen || canOpen(it.id)) })).filter(
+        (g) => g.items.length > 0
+      ),
+    [canOpen]
+  );
   const visibleGroups = useMemo(() => {
-    if (!q) return CMS_NAV_GROUPS;
-    return CMS_NAV_GROUPS.map((g) => ({
+    if (!q) return allowedGroups;
+    return allowedGroups.map((g) => ({
       ...g,
       items: g.items.filter((it) => normalize(t(it.labelKey)).includes(q) || normalize(t(g.labelKey)).includes(q)),
     })).filter((g) => g.items.length > 0);
-  }, [q, t]);
+  }, [q, t, allowedGroups]);
 
   const flatMatches = visibleGroups.flatMap((g) => g.items);
 

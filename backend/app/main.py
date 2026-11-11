@@ -122,6 +122,26 @@ def get_current_admin(authorization: Optional[str] = Header(None)) -> dict:
         rev_row = cur.fetchone()
         if rev_row and int(payload.get("iat_ns") or 0) < int(rev_row["setting_value"] or 0):
             raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid or expired authentication token")
+        # Permissions are read from the database on every request, not trusted
+        # from the token: a role change, a deactivation or a permission added
+        # by an update applies at once, without logging out.
+        cur.execute(
+            """SELECT u.is_active, r.name AS role_name
+               FROM admin_users u JOIN roles r ON r.id = u.role_id WHERE u.id = ?""",
+            (uid,),
+        )
+        user_row = cur.fetchone()
+        if not user_row or not int(user_row["is_active"] or 0):
+            raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid or expired authentication token")
+        cur.execute(
+            """SELECT p.code FROM permissions p
+               JOIN role_permissions rp ON rp.permission_id = p.id
+               JOIN admin_users u ON u.role_id = rp.role_id
+               WHERE u.id = ?""",
+            (uid,),
+        )
+        payload["perms"] = [r["code"] for r in cur.fetchall()]
+        payload["role"] = user_row["role_name"]
     payload["raw_token"] = token
     return payload
 
@@ -1421,10 +1441,14 @@ def admin_dashboard(admin: dict = Depends(require_permission("dashboard:read")))
             rev, cnt = by_day.get(day, (0, 0))
             revenue_by_day.append({"date": day, "revenue_dzd": rev, "orders": cnt})
 
+        # Money figures only for roles allowed to see finances (owner,
+        # administrator); a cashier or read-only account gets the operations.
+        can_see_money = "finance:read" in admin.get("perms", [])
         return {
-            "revenue_by_day": revenue_by_day,
+            "finance_visible": can_see_money,
+            "revenue_by_day": revenue_by_day if can_see_money else [],
             "total_orders": ord_row["cnt"],
-            "total_revenue_dzd": ord_row["rev"],
+            "total_revenue_dzd": ord_row["rev"] if can_see_money else None,
             "pending_orders": pending_cnt,
             "published_products": pub_cnt,
             "total_active_products": pub_cnt,
@@ -3167,6 +3191,7 @@ def initialize_primary_owner(payload: OwnerInitializeInput, request: Request):
                 "email": email_clean,
                 "full_name": payload.full_name.strip(),
                 "role": "super_admin",
+                "permissions": perms,
                 "whatsapp_phone": payload.whatsapp_phone,
                 "emergency_phone": payload.emergency_phone
             }
@@ -3364,7 +3389,7 @@ def admin_list_customers(admin: dict = Depends(require_permission("orders:write"
         return {"items": items}
 
 @app.get("/api/v1/admin/reports")
-def admin_analytics_reports(admin: dict = Depends(require_permission("dashboard:read"))):
+def admin_analytics_reports(admin: dict = Depends(require_permission("finance:read"))):
     with db_session() as conn:
         cur = conn.cursor()
         cur.execute("SELECT status, COUNT(*) AS count, COALESCE(SUM(total_dzd), 0) AS total_dzd FROM orders GROUP BY status")
@@ -4496,7 +4521,7 @@ _TREASURY_ENTRY_KINDS = {
 # --- SUPPLIER ENDPOINTS ---
 
 @app.get("/api/v1/admin/suppliers")
-def admin_list_suppliers(admin: dict = Depends(require_permission("dashboard:read"))):
+def admin_list_suppliers(admin: dict = Depends(require_permission("finance:read"))):
     with db_session() as conn:
         cur = conn.cursor()
         # Join per-supplier aggregate stats from purchase_orders so the UI can
@@ -4515,7 +4540,7 @@ def admin_list_suppliers(admin: dict = Depends(require_permission("dashboard:rea
 @app.get("/api/v1/admin/suppliers/{supplier_id}")
 def admin_get_supplier_detail(
     supplier_id: int,
-    admin: dict = Depends(require_permission("dashboard:read")),
+    admin: dict = Depends(require_permission("finance:read")),
 ):
     with db_session() as conn:
         cur = conn.cursor()
@@ -4639,7 +4664,7 @@ def admin_delete_supplier(
 @app.get("/api/v1/admin/purchases/{po_id}/document")
 def admin_get_purchase_order_document(
     po_id: int,
-    admin: dict = Depends(require_permission("dashboard:read")),
+    admin: dict = Depends(require_permission("finance:read")),
 ):
     """A4 purchase order document (bon de commande fournisseur): full supplier
     identity, boutique header, itemised table with quantities ordered vs
@@ -4681,7 +4706,7 @@ def admin_get_purchase_order_document(
 
 
 @app.get("/api/v1/admin/purchases")
-def admin_list_purchases(admin: dict = Depends(require_permission("dashboard:read"))):
+def admin_list_purchases(admin: dict = Depends(require_permission("finance:read"))):
     with db_session() as conn:
         cur = conn.cursor()
         cur.execute(
@@ -5006,7 +5031,7 @@ def admin_pay_purchase_order(
 @app.get("/api/v1/admin/expenses")
 def admin_list_expenses(
     category: Optional[str] = None,
-    admin: dict = Depends(require_permission("dashboard:read"))
+    admin: dict = Depends(require_permission("finance:read"))
 ):
     with db_session() as conn:
         cur = conn.cursor()
@@ -5125,7 +5150,7 @@ def admin_pay_expense(
 # --- CASH REGISTER & TREASURY (CAISSE & TRÉSORERIE) ---
 
 @app.get("/api/v1/admin/treasury/summary")
-def admin_get_treasury_summary(admin: dict = Depends(require_permission("dashboard:read"))):
+def admin_get_treasury_summary(admin: dict = Depends(require_permission("finance:read"))):
     with db_session() as conn:
         cur = conn.cursor()
         # Inflows & Outflows for Cash Box
@@ -5178,7 +5203,7 @@ def admin_get_treasury_summary(admin: dict = Depends(require_permission("dashboa
 @app.get("/api/v1/admin/treasury/movements")
 def admin_list_cash_movements(
     limit: int = Query(50, ge=1, le=200),
-    admin: dict = Depends(require_permission("dashboard:read"))
+    admin: dict = Depends(require_permission("finance:read"))
 ):
     with db_session() as conn:
         cur = conn.cursor()
@@ -5234,7 +5259,7 @@ def admin_record_cash_movement(
 # --- COMPTABILITÉ & CALCUL DES BÉNÉFICES (P&L, MARGINS & LEDGER) ---
 
 @app.get("/api/v1/admin/accounting/pnl")
-def admin_get_pnl_statement(admin: dict = Depends(require_permission("dashboard:read"))):
+def admin_get_pnl_statement(admin: dict = Depends(require_permission("finance:read"))):
     """
     Compte de résultat since the shop opened, BOTH channels:
       revenue  = online merchandise + delivery fees + in-store sales − in-store refunds
@@ -5357,7 +5382,7 @@ def admin_get_pnl_statement(admin: dict = Depends(require_permission("dashboard:
 @app.get("/api/v1/admin/accounting/products-profitability")
 def admin_get_products_profitability(
     include_archived: bool = Query(True),
-    admin: dict = Depends(require_permission("dashboard:read"))
+    admin: dict = Depends(require_permission("finance:read"))
 ):
     """
     Returns unit margins, markups, total sales and total profits generated by each product.
@@ -5415,7 +5440,7 @@ def admin_get_products_profitability(
 @app.get("/api/v1/admin/accounting/ledger")
 def admin_list_accounting_ledger(
     limit: int = Query(100, ge=1, le=500),
-    admin: dict = Depends(require_permission("dashboard:read"))
+    admin: dict = Depends(require_permission("finance:read"))
 ):
     with db_session() as conn:
         cur = conn.cursor()
@@ -6921,7 +6946,7 @@ def _scalar(cur, sql: str, params=(), key: str = "v") -> int:
 
 
 @app.get("/api/v1/admin/dashboard/business")
-def admin_business_dashboard(admin: dict = Depends(require_permission("dashboard:read"))):
+def admin_business_dashboard(admin: dict = Depends(require_permission("finance:read"))):
     now = datetime.now(timezone.utc)
     today_start = now.strftime("%Y-%m-%d 00:00:00")
     month_start = now.strftime("%Y-%m-01 00:00:00")
@@ -8111,7 +8136,7 @@ def _treasury_report_data(conn, date_from: str, date_to: str) -> dict:
 def admin_treasury_report(
     date_from: str = Query(..., alias="from"),
     date_to: str = Query(..., alias="to"),
-    admin: dict = Depends(require_permission("dashboard:read")),
+    admin: dict = Depends(require_permission("finance:read")),
 ):
     date_from = _parse_date_or_422(date_from, "from")
     date_to = _parse_date_or_422(date_to, "to")
@@ -8125,7 +8150,7 @@ def admin_treasury_report(
 def admin_treasury_report_csv(
     date_from: str = Query(..., alias="from"),
     date_to: str = Query(..., alias="to"),
-    admin: dict = Depends(require_permission("dashboard:read")),
+    admin: dict = Depends(require_permission("finance:read")),
 ):
     date_from = _parse_date_or_422(date_from, "from")
     date_to = _parse_date_or_422(date_to, "to")
@@ -8307,7 +8332,7 @@ def _expenses_report_data(conn, date_from: str, date_to: str) -> dict:
 def admin_expense_report(
     date_from: str = Query(..., alias="from"),
     date_to: str = Query(..., alias="to"),
-    admin: dict = Depends(require_permission("dashboard:read")),
+    admin: dict = Depends(require_permission("finance:read")),
 ):
     date_from = _parse_date_or_422(date_from, "from")
     date_to = _parse_date_or_422(date_to, "to")
@@ -8321,7 +8346,7 @@ def admin_expense_report(
 def admin_expense_report_csv(
     date_from: str = Query(..., alias="from"),
     date_to: str = Query(..., alias="to"),
-    admin: dict = Depends(require_permission("dashboard:read")),
+    admin: dict = Depends(require_permission("finance:read")),
 ):
     date_from = _parse_date_or_422(date_from, "from")
     date_to = _parse_date_or_422(date_to, "to")
@@ -8342,7 +8367,7 @@ def admin_expense_report_csv(
 def admin_sales_report(
     date_from: str = Query(..., alias="from"),
     date_to: str = Query(..., alias="to"),
-    admin: dict = Depends(require_permission("dashboard:read")),
+    admin: dict = Depends(require_permission("finance:read")),
 ):
     date_from = _parse_date_or_422(date_from, "from")
     date_to = _parse_date_or_422(date_to, "to")
@@ -8356,7 +8381,7 @@ def admin_sales_report(
 def admin_sales_report_csv(
     date_from: str = Query(..., alias="from"),
     date_to: str = Query(..., alias="to"),
-    admin: dict = Depends(require_permission("dashboard:read")),
+    admin: dict = Depends(require_permission("finance:read")),
 ):
     date_from = _parse_date_or_422(date_from, "from")
     date_to = _parse_date_or_422(date_to, "to")
