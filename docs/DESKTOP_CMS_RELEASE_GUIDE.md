@@ -16,52 +16,83 @@ All Windows desktop artifacts (`.msi` / `.exe` / NSIS installers) are compiled o
 
 ## 2. GitHub Actions Automated Release Pipeline
 
-### 2.1 Triggering a Desktop Release
-To build and release a new version of the Desktop POS:
-1. Bump the version number in `apps/desktop-cms/package.json` and `apps/desktop-cms/src-tauri/tauri.conf.json` (e.g. `1.0.1`).
-2. Tag the Git commit with a version tag:
+### 2.1 One-time setup (the updater stays OFF until this is done)
+1. Generate the signing key pair once, on a trusted machine:
    ```bash
-   git tag -a v1.0.1 -m "Release Mus Luxury Desktop POS v1.0.1"
-   git push origin v1.0.1
+   cd apps/desktop-cms
+   npx tauri signer generate -w ~/.tauri/mux_luxury.key
    ```
-3. GitHub Actions triggers `.github/workflows/build-desktop-cms.yml`:
-   - Checks out the repository.
-   - Installs Node.js 20 and Rust toolchain (`stable-x86_64-pc-windows-msvc`).
-   - Executes `npm run build` in `apps/desktop-cms` (TypeScript verification + Vite build).
-   - Executes `cargo tauri build` to compile the native Rust binary.
-   - Packages the NSIS passive installer (`Mus_Luxury_Setup_1.0.1_x64-setup.exe`).
-   - Signs the installer with Minisign (`minisign-verify`).
-   - Generates the update manifest (`latest.json`).
-   - Publishes all artifacts to GitHub Releases under tag `v1.0.1`.
+2. In GitHub → Settings → Secrets and variables → Actions:
+   - **Secret** `TAURI_SIGNING_PRIVATE_KEY` = content of `~/.tauri/mux_luxury.key`
+   - **Secret** `TAURI_SIGNING_PRIVATE_KEY_PASSWORD` = the password you chose
+   - **Variable** `TAURI_UPDATER_PUBKEY` = content of `~/.tauri/mux_luxury.key.pub`
+3. Keep the private key offline as well (password-protected USB + paper backup). Never commit it.
 
----
+The public key is **not** stored in `tauri.conf.json`. It is baked into the
+binary at compile time through the `LUXE_UPDATER_PUBKEY` environment variable
+(`src-tauri/src/app_services.rs`). A build without it — local dev builds, CI
+builds of `main`, a tag pushed before the secrets exist — runs normally with
+the updater switched off. It never crashes at startup. That startup crash is
+why the old updater was removed in `500116a`.
 
-## 3. Cryptographic Code Signing & Minisign
-
-Tauri 2 uses **Minisign** to cryptographically sign update bundles:
-
-### 3.1 Key Generation
-Generate a Minisign key pair once for the organization:
+### 2.2 Releasing a new version
+No file needs a version bump: the version comes from the tag.
 ```bash
-minisign -G -p tauri.pub -s tauri.key
+git tag -a v1.0.1 -m "Mus Luxury CMS v1.0.1"
+git push origin v1.0.1
 ```
+`.github/workflows/build-desktop-cms.yml` then:
+- builds the React bundle and the Rust binary on `windows-latest`,
+- runs `tauri build --config '{"version":"1.0.1","bundle":{"createUpdaterArtifacts":true}}'`
+  with the private key, which produces the NSIS installer and its `.sig` signature,
+- runs `scripts/make-latest-json.mjs`, which copies the installer to
+  `MusLuxuryCMS_1.0.1_x64-setup.exe` (no spaces, so the URL is stable) and
+  writes `latest.json`,
+- attaches the installer, `.sig`, MSI and `latest.json` to the GitHub release `v1.0.1`.
 
-### 3.2 Key Placement:
-- **Public Key:** Base64 string pasted into `apps/desktop-cms/src-tauri/tauri.conf.json` under `plugins.updater.pubkey`.
-- **Private Key:** Stored securely as a GitHub Repository Secret (`TAURI_SIGNING_PRIVATE_KEY`).
+Set the release body afterwards if you want: the manifest's `notes` field
+(shown in the update dialog under "Nouveautés") comes from the `RELEASE_NOTES`
+env var, which defaults to "Mus Luxury CMS v1.0.1".
 
 ---
 
-## 4. Automatic In-App Updates (`tauri-plugin-updater`)
+## 3. How installed CMS apps update
 
-The Desktop CMS checks for updates against GitHub Releases:
+1. 15 s after start, then every 4 h, the app asks
+   `https://github.com/kairo192/mux-Luxury-/releases/latest/download/latest.json`
+   whether there is a newer version.
+2. If there is one, the cashier gets:
+   - a gold **"Mise à jour vX disponible"** chip in the header,
+   - an in-app toast with an **Installer et redémarrer** button,
+   - a Windows notification if the CMS is in the background.
+3. Nothing installs on its own. The user clicks **Installer et redémarrer**, either in the toast or
+   in the dialog opened from the version chip. If offline POS sales are still
+   waiting to sync, the app warns first; they stay safe in the local queue and
+   sync after the restart.
+4. The download is verified against the baked-in public key. A file that is
+   not signed with your private key is refused. The NSIS installer runs in
+   passive mode and relaunches the CMS.
 
-1. On boot, `tauri-plugin-updater` queries `https://github.com/kairo192/mux-Luxury-/releases/latest/download/latest.json`.
-2. If `latest.json` indicates a newer version than currently installed:
-   - Downloads the new installer bundle in the background.
-   - Verifies the cryptographic Minisign signature against the embedded public key.
-   - Prompts the cashier: *"Une mise à jour importante de Mus Luxury est disponible. Redémarrer maintenant pour appliquer ?"*
-   - Replaces the executable cleanly and relaunches.
+The version chip also offers **Rechercher une mise à jour** at any time.
+
+---
+
+## 4. Notifications (in-app + Windows)
+
+- **Toasts** (bottom corner, bottom-left in Arabic) are for confirmations and non-blocking
+  info. The newest sits nearest the corner, at most four are visible, and identical
+  messages merge into "×N". Hovering a toast pauses its timer, and so does switching to another window.
+- **Message boxes** are for errors and validations that need attention. They
+  are queued, never overwritten. Several in a row show "1 sur 3" with
+  **Suivant** / **Tout fermer**. **Entrée** or **Échap** closes the current one.
+- **Bell** (header) keeps the session's history, with an unread badge and a
+  **Notifications Windows** on/off switch.
+- **Windows notifications** (`tauri-plugin-notification`, `os_notify` command)
+  fire only while the CMS is not the active window, for:
+  new online orders (polled every 45 s), a ready update, and background
+  offline-sale sync results. The taskbar button also flashes.
+  Windows only shows them for the installed app: the NSIS installer registers
+  the app identity. Under `tauri dev` they may appear as "PowerShell" or not at all.
 
 ---
 

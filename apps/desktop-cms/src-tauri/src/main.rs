@@ -11,6 +11,7 @@
 //    devices.
 // ============================================================================
 
+mod app_services;
 mod pos_hardware;
 mod pos_mirror;
 
@@ -91,10 +92,21 @@ fn main() {
         }
     }));
 
-    let result = tauri::Builder::default()
+    let mut builder = tauri::Builder::default()
         .manage(SecureMemoryVault(Mutex::new(HashMap::new())))
         .manage(pos_mirror::MirrorState::new())
+        .manage(app_services::PendingUpdate::default())
         .plugin(tauri_plugin_store::Builder::default().build())
+        .plugin(tauri_plugin_notification::init());
+
+    // The updater plugin is registered ONLY when this build carries a public
+    // key (LUXE_UPDATER_PUBKEY at compile time). Unconfigured builds never
+    // touch it, so a missing key can't stop the app from starting.
+    if let Some(pubkey) = app_services::updater_pubkey() {
+        builder = builder.plugin(tauri_plugin_updater::Builder::new().pubkey(pubkey).build());
+    }
+
+    let result = builder
         .on_window_event(|window, event| match event {
             tauri::WindowEvent::CloseRequested { .. } => {
                 let msg = format!("Window close requested on window '{}'\n", window.label());
@@ -137,6 +149,11 @@ fn main() {
             pos_mirror::pos_queue_upsert_batch,
             pos_mirror::pos_queue_remove,
             pos_mirror::pos_queue_clear_synced,
+            app_services::os_notify,
+            app_services::app_focus_main_window,
+            app_services::updater_status,
+            app_services::updater_check,
+            app_services::updater_install,
         ])
         .run(tauri::generate_context!());
 

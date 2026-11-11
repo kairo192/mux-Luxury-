@@ -18,7 +18,19 @@ export interface ClientNotificationItem {
   message: string;
   timestamp: string;
   showModalBox?: boolean;
+  /** epoch ms — used for ordering, dedupe and the notification history. */
+  createdAt?: number;
+  /** Groups entries in the notification history (order, update, sync, system). */
+  category?: ClientNotificationCategory;
+  /** Also raise a native OS (Windows) notification when the CMS is in the background. */
+  os?: boolean;
+  /** Optional call-to-action rendered on the toast (e.g. "Voir la commande"). */
+  action?: { label: string; onClick: () => void };
+  /** Override the auto-dismiss delay of the toast (ms). 0 = stays until closed. */
+  durationMs?: number;
 }
+
+export type ClientNotificationCategory = "order" | "update" | "sync" | "system";
 
 type NotificationListener = (item: ClientNotificationItem) => void;
 const listeners: Set<NotificationListener> = new Set();
@@ -331,6 +343,10 @@ export function notifyClient(opts: {
   title: string;
   message: string;
   showModalBox?: boolean;
+  category?: ClientNotificationCategory;
+  os?: boolean;
+  action?: { label: string; onClick: () => void };
+  durationMs?: number;
 }): ClientNotificationItem {
   const now = new Date();
   const hh = String(now.getHours()).padStart(2, "0");
@@ -343,6 +359,11 @@ export function notifyClient(opts: {
     message: opts.message,
     timestamp: `${hh}:${mm}:${ss}`,
     showModalBox: opts.showModalBox ?? (opts.type === "error" || opts.type === "warning"),
+    createdAt: now.getTime(),
+    category: opts.category ?? "system",
+    os: opts.os ?? false,
+    action: opts.action,
+    durationMs: opts.durationMs,
   };
   listeners.forEach((fn) => fn(item));
   return item;

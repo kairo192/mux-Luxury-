@@ -21,6 +21,7 @@ import {
   History,
 } from "lucide-react";
 import { DesktopCmsApi } from "../api/adminClient";
+import { notifyClient } from "../utils/clientNotifier";
 import { useT } from "../i18n";
 import {
   subscribePosQueue,
@@ -259,6 +260,31 @@ export const PosPage: React.FC<{ onInventoryUpdated?: () => void }> = ({ onInven
           if (summary.duplicate) parts.push(`${summary.duplicate} déjà connue(s)`);
           if (summary.conflict) parts.push(`${summary.conflict} conflit(s)`);
           flashSuccess(`Synchronisation : ${parts.join(", ") || "rien à faire"}`);
+        } else {
+          // Background sync (reconnect / app start): the cashier may be in
+          // another tab or app, so surface the result in the notification
+          // center and, when the CMS is in background, as a Windows alert.
+          if (summary.created) {
+            notifyClient({
+              type: "success",
+              category: "sync",
+              os: true,
+              showModalBox: false,
+              title: t("sync.bg_title"),
+              message: t("sync.bg_body", { n: summary.created }),
+            });
+          }
+          if (summary.conflict) {
+            notifyClient({
+              type: "warning",
+              category: "sync",
+              os: true,
+              showModalBox: false,
+              durationMs: 0,
+              title: t("sync.conflict_title"),
+              message: t("sync.conflict_body", { n: summary.conflict }),
+            });
+          }
         }
         loadRegister();
         loadRecentSales();
@@ -267,7 +293,7 @@ export const PosPage: React.FC<{ onInventoryUpdated?: () => void }> = ({ onInven
     } finally {
       setSyncing(false);
     }
-  }, [loadRegister, loadRecentSales, onInventoryUpdated]);
+  }, [loadRegister, loadRecentSales, onInventoryUpdated, t]);
 
   useEffect(() => {
     const unsub = subscribePosQueue(setQueue);

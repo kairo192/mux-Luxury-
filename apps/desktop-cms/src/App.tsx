@@ -7,10 +7,23 @@ import {
   notifyClientError,
   notifyClientSuccess,
   notifyClientWarning,
+  notifyClient,
   subscribeClientNotifications,
   subscribeClientConfirm,
   clearPendingClientConfirms,
 } from "./utils/clientNotifier";
+import { focusMainWindow } from "./utils/notificationCenter";
+import {
+  OPEN_UPDATE_DIALOG_EVENT,
+  loadUpdaterStatus,
+  openUpdateDialog,
+  startAutoUpdateChecks,
+  subscribeUpdateState,
+  type UpdateState,
+} from "./utils/appUpdater";
+import { ToastStack } from "./components/ToastStack";
+import { NotificationBell } from "./components/NotificationBell";
+import { UpdateDialog } from "./components/UpdateDialog";
 import {
   NetworkTelemetryState,
   getNetworkTelemetry,
@@ -129,10 +142,34 @@ export default function App() {
   const [user, setUser] = useState<any | null>(() => readDraft("luxe_cms_user", null));
   const [error, setError] = useState("");
   const [successMsg, setSuccessMsg] = useState("");
-  const [toastQueue, setToastQueue] = useState<ClientNotificationItem[]>([]);
-  const [activeMessageBox, setActiveMessageBox] = useState<ClientNotificationItem | null>(null);
+  // Blocking message boxes are queued (never overwritten): several errors in a
+  // row are read one after the other with a "1 sur 3" counter.
+  const [messageQueue, setMessageQueue] = useState<ClientNotificationItem[]>([]);
+  const activeMessageBox = messageQueue[0] ?? null;
   const [activeConfirm, setActiveConfirm] = useState<ClientConfirmRequest | null>(null);
   const confirmCancelButtonRef = useRef<HTMLButtonElement | null>(null);
+  const messageBoxOkButtonRef = useRef<HTMLButtonElement | null>(null);
+  const [updateDialogOpen, setUpdateDialogOpen] = useState(false);
+  const [updateState, setUpdateState] = useState<UpdateState | null>(null);
+  const tRef = useRef(t);
+  tRef.current = t;
+
+  const closeMessageBox = () => setMessageQueue((prev) => prev.slice(1));
+
+  // Message box keyboard: Enter / Esc close the current message. A confirm
+  // dialog on top of it keeps priority.
+  useEffect(() => {
+    if (!activeMessageBox || activeConfirm) return;
+    messageBoxOkButtonRef.current?.focus();
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape" || e.key === "Enter") {
+        e.preventDefault();
+        setMessageQueue((prev) => prev.slice(1));
+      }
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [activeMessageBox?.id, activeConfirm]);
 
   useEffect(() => {
     if (activeConfirm) {
@@ -149,15 +186,34 @@ export default function App() {
   }, [activeConfirm]);
 
   useEffect(() => {
+    // Toasts are rendered by <ToastStack/>; here we only queue message boxes.
     const unsubNotifs = subscribeClientNotifications((item) => {
-      setToastQueue((prev) => [item, ...prev.slice(0, 4)]);
-      if (item.showModalBox) {
-        setActiveMessageBox(item);
-      }
-      setTimeout(() => {
-        setToastQueue((prev) => prev.filter((t) => t.id !== item.id));
-      }, 5500);
+      if (!item.showModalBox) return;
+      setMessageQueue((prev) =>
+        prev.some((m) => m.type === item.type && m.title === item.title && m.message === item.message)
+          ? prev
+          : [...prev, item].slice(0, 10)
+      );
     });
+
+    // Auto-update: background checks (desktop app only). A new version raises
+    // a toast + a Windows notification once; installing waits for the user.
+    const unsubUpdateState = subscribeUpdateState(setUpdateState);
+    void loadUpdaterStatus();
+    const stopAutoUpdate = startAutoUpdateChecks((version) => {
+      notifyClient({
+        type: "info",
+        category: "update",
+        title: tRef.current("update.toast_title"),
+        message: tRef.current("update.toast_body", { v: version }),
+        showModalBox: false,
+        os: true,
+        durationMs: 0,
+        action: { label: tRef.current("update.install"), onClick: () => openUpdateDialog() },
+      });
+    });
+    const onOpenUpdateDialog = () => setUpdateDialogOpen(true);
+    window.addEventListener(OPEN_UPDATE_DIALOG_EVENT, onOpenUpdateDialog);
 
     const unsubConfirm = subscribeClientConfirm((req) => {
       setActiveConfirm(req);
@@ -185,6 +241,9 @@ export default function App() {
     return () => {
       unsubNotifs();
       unsubConfirm();
+      unsubUpdateState();
+      stopAutoUpdate();
+      window.removeEventListener(OPEN_UPDATE_DIALOG_EVENT, onOpenUpdateDialog);
       clearPendingClientConfirms();
     };
   }, []);
@@ -429,6 +488,83 @@ export default function App() {
         .catch(() => {});
     }
   }, [orderStatusFilter, keychainReady]);
+
+  // New online-order watcher: polls the "new" orders every 45 s. The first
+  // poll only memorises what already exists; later ones raise a toast with a
+  // "Voir" button plus a Windows notification when the CMS is in background.
+  const orderStatusFilterRef = useRef(orderStatusFilter);
+  orderStatusFilterRef.current = orderStatusFilter;
+  useEffect(() => {
+    if (!user || !keychainReady) return;
+    const seen = new Set<number>();
+    let seeded = false;
+    let stopped = false;
+
+    const openOrders = () => {
+      setActiveTab("orders");
+      void focusMainWindow();
+    };
+
+    const poll = async () => {
+      try {
+        const data = await DesktopCmsApi.listOrders("new");
+        if (stopped) return;
+        const items: any[] = data?.items || [];
+        const fresh = items.filter((o) => typeof o?.id === "number" && !seen.has(o.id));
+        items.forEach((o) => typeof o?.id === "number" && seen.add(o.id));
+        if (!seeded) {
+          seeded = true;
+          return;
+        }
+        if (fresh.length === 0) return;
+        const tr = tRef.current;
+        if (fresh.length === 1) {
+          const o = fresh[0];
+          notifyClient({
+            type: "info",
+            category: "order",
+            os: true,
+            showModalBox: false,
+            durationMs: 15000,
+            title: tr("order.new_title"),
+            message: tr("order.new_body", {
+              ref: o.order_reference || o.id,
+              name: o.customer_name || "—",
+              total: Number(o.total_dzd || 0).toLocaleString("fr-DZ"),
+            }),
+            action: { label: tr("notif.view"), onClick: openOrders },
+          });
+        } else {
+          notifyClient({
+            type: "info",
+            category: "order",
+            os: true,
+            showModalBox: false,
+            durationMs: 15000,
+            title: tr("order.new_many_title", { n: fresh.length }),
+            message: tr("order.new_many_body"),
+            action: { label: tr("notif.view"), onClick: openOrders },
+          });
+        }
+        // Keep the Orders list + sidebar badge current without a manual refresh.
+        const filter = orderStatusFilterRef.current;
+        if (!filter || filter === "new") {
+          DesktopCmsApi.listOrders(filter || undefined)
+            .then((ordData) => !stopped && setOrders(ordData.items || []))
+            .catch(() => {});
+        }
+      } catch {
+        // offline / session expired: try again on the next tick
+      }
+    };
+
+    void poll();
+    const timer = window.setInterval(poll, 45000);
+    return () => {
+      stopped = true;
+      window.clearInterval(timer);
+    };
+  }, [user, keychainReady]);
 
   async function handleFirstTimeSetup(e: React.FormEvent) {
     e.preventDefault();
@@ -901,105 +1037,93 @@ export default function App() {
   function renderClientNotificationCenter() {
     return (
       <>
-        {/* Floating Toast Notification Stack (Top-Right) */}
-        <div className="fixed top-4 right-4 z-50 flex flex-col gap-2.5 max-w-md w-full pointer-events-none">
-          {toastQueue.map((t) => {
-            const styleMap = {
-              success: "bg-[#02291F] text-white border-[#D4AF62]",
-              error: "bg-red-950 text-white border-red-400",
-              warning: "bg-amber-950 text-white border-amber-400",
-              info: "bg-[#063D2E] text-white border-[#D4AF62]",
-            };
-            const badgeMap = {
-              success: "CONFIRMATION",
-              error: "ALERTE SÉCURITÉ / ACTION",
-              warning: "VÉRIFICATION REQUISE",
-              info: "INFORMATION",
-            };
-            return (
-              <div
-                key={t.id}
-                role="status"
-                aria-live="polite"
-                className={`pointer-events-auto p-3.5 rounded-2xl border-2 shadow-2xl flex items-start justify-between gap-3 ${styleMap[t.type]}`}
-              >
-                <div className="space-y-1 text-xs">
-                  <div className="flex items-center gap-2">
-                    <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-white/15 text-[#D4AF62] font-extrabold text-[10px]">
-                      {t.type === "success" && <CheckCircle2 className="w-3 h-3 text-emerald-400" />}
-                      {t.type === "error" && <ShieldAlert className="w-3 h-3 text-rose-400" />}
-                      {t.type === "warning" && <AlertTriangle className="w-3 h-3 text-amber-400" />}
-                      {t.type === "info" && <Clock className="w-3 h-3 text-[#D4AF62]" />}
-                      <span>{badgeMap[t.type]}</span>
-                    </span>
-                    <span className="text-[10px] opacity-70 font-mono">{t.timestamp}</span>
-                  </div>
-                  <p className="font-bold text-sm text-[#E8D4A5]">{t.title}</p>
-                  <p className="text-xs leading-relaxed opacity-95">{t.message}</p>
-                </div>
-                <button
-                  type="button"
-                  onClick={() => setToastQueue((prev) => prev.filter((item) => item.id !== t.id))}
-                  className="text-xs font-bold p-1 rounded bg-white/10 hover:bg-white/20"
-                  aria-label="Fermer la notification"
-                >
-                  <X className="w-3.5 h-3.5" />
-                </button>
-              </div>
-            );
-          })}
-        </div>
+        {/* Non-blocking toasts: bottom corner, newest nearest the corner */}
+        <ToastStack />
 
-        {/* Modal Client Message Box Dialog (Boîte de Message Client) */}
+        {/* Modal Client Message Box (Boîte de Message Client) — queued */}
         {activeMessageBox && (
-          <div className="fixed inset-0 z-50 bg-black/75 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="animate-backdrop fixed inset-0 z-[75] bg-black/70 backdrop-blur-sm flex items-center justify-center p-4">
             <div
               role="dialog"
               aria-modal="true"
-              className="bg-white text-[#202923] rounded-2xl max-w-md w-full overflow-hidden shadow-2xl border-2 border-[#D4AF62]"
+              aria-labelledby="active-message-box-title"
+              aria-describedby="active-message-box-body"
+              className="animate-modal bg-white text-[#202923] rounded-2xl max-w-lg w-full overflow-hidden shadow-2xl border-2 border-[#D4AF62]"
             >
               <div
-                className={`px-5 py-3.5 flex items-center justify-between ${
+                className={`px-5 py-3.5 flex items-center justify-between gap-3 ${
                   activeMessageBox.type === "error"
-                    ? "bg-red-900 text-white"
+                    ? "bg-gradient-to-r from-red-950 to-red-800 text-white"
                     : activeMessageBox.type === "warning"
-                    ? "bg-amber-800 text-white"
-                    : "bg-[#063D2E] text-white"
+                    ? "bg-gradient-to-r from-amber-900 to-amber-700 text-white"
+                    : "bg-gradient-to-r from-[#02291F] to-[#063D2E] text-white"
                 }`}
               >
-                <div className="flex items-center gap-2">
-                  {activeMessageBox.type === "error" && <ShieldAlert className="w-4 h-4 text-rose-300" />}
-                  {activeMessageBox.type === "warning" && <AlertTriangle className="w-4 h-4 text-amber-300" />}
-                  {activeMessageBox.type === "info" && <CheckCircle2 className="w-4 h-4 text-[#D4AF62]" />}
-                  <span className="text-base font-extrabold text-[#D4AF62]">
+                <div className="flex items-center gap-2.5 min-w-0">
+                  <span className="w-8 h-8 rounded-full bg-white/15 flex items-center justify-center shrink-0">
+                    {activeMessageBox.type === "error" && <ShieldAlert className="w-4 h-4 text-rose-200" />}
+                    {activeMessageBox.type === "warning" && <AlertTriangle className="w-4 h-4 text-amber-200" />}
+                    {(activeMessageBox.type === "info" || activeMessageBox.type === "success") && (
+                      <CheckCircle2 className="w-4 h-4 text-[#D4AF62]" />
+                    )}
+                  </span>
+                  <span className="text-sm font-extrabold text-[#E8D4A5] truncate">
                     {activeMessageBox.type === "error"
-                      ? "Message Système — Action interrompue"
+                      ? t("msgbox.title.error")
                       : activeMessageBox.type === "warning"
-                      ? "Vérification des données"
-                      : "Confirmation Mus Luxury CMS"}
+                      ? t("msgbox.title.warning")
+                      : t("msgbox.title.info")}
                   </span>
                 </div>
-                <button
-                  type="button"
-                  onClick={() => setActiveMessageBox(null)}
-                  className="w-7 h-7 rounded-full bg-black/25 text-white font-bold text-xs flex items-center justify-center hover:bg-black/40 transition"
-                >
-                  <X className="w-4 h-4" />
-                </button>
-              </div>
-              <div className="p-6 space-y-4 text-xs">
-                <h4 className="text-base font-serif font-bold text-[#063D2E]">{activeMessageBox.title}</h4>
-                <p className="text-sm text-gray-700 leading-relaxed bg-[#F8F6F0] p-3.5 rounded-xl border border-[#D4AF62]/30">
-                  {activeMessageBox.message}
-                </p>
-                <div className="flex justify-end pt-1">
+                <div className="flex items-center gap-2 shrink-0">
+                  {messageQueue.length > 1 && (
+                    <span className="px-2 py-0.5 rounded-full bg-black/25 text-[10px] font-bold text-white/90">
+                      {t("msgbox.counter", { i: 1, n: messageQueue.length })}
+                    </span>
+                  )}
                   <button
                     type="button"
-                    onClick={() => setActiveMessageBox(null)}
-                    className="px-6 py-2.5 rounded-xl bg-[#063D2E] hover:bg-[#02291F] text-[#D4AF62] font-extrabold text-xs shadow"
+                    onClick={closeMessageBox}
+                    aria-label={t("common.close") || "Fermer"}
+                    className="w-7 h-7 rounded-full bg-black/25 text-white font-bold text-xs flex items-center justify-center hover:bg-black/40 transition"
                   >
-                    Compris (Fermer)
+                    <X className="w-4 h-4" />
                   </button>
+                </div>
+              </div>
+              <div className="p-6 space-y-4 text-xs">
+                <h4 id="active-message-box-title" className="text-base font-serif font-bold text-[#063D2E]">
+                  {activeMessageBox.title}
+                </h4>
+                <p
+                  id="active-message-box-body"
+                  className="text-sm text-gray-700 leading-relaxed whitespace-pre-line bg-[#F8F6F0] p-3.5 rounded-xl border border-[#D4AF62]/30"
+                >
+                  {activeMessageBox.message}
+                </p>
+                <div className="flex flex-wrap items-center gap-3 pt-1">
+                  <span className="text-[10px] text-gray-400 font-mono">
+                    {activeMessageBox.timestamp} • {t("msgbox.keyboard_hint")}
+                  </span>
+                  <div className="ms-auto flex gap-2 whitespace-nowrap">
+                    {messageQueue.length > 1 && (
+                      <button
+                        type="button"
+                        onClick={() => setMessageQueue([])}
+                        className="px-4 py-2.5 rounded-xl border border-gray-300 text-gray-600 font-bold hover:bg-gray-100 transition"
+                      >
+                        {t("msgbox.dismiss_all")}
+                      </button>
+                    )}
+                    <button
+                      ref={messageBoxOkButtonRef}
+                      type="button"
+                      onClick={closeMessageBox}
+                      className="px-6 py-2.5 rounded-xl bg-[#063D2E] hover:bg-[#02291F] text-[#D4AF62] font-extrabold text-xs shadow focus:outline-none focus:ring-2 focus:ring-[#D4AF62] focus:ring-offset-2"
+                    >
+                      {messageQueue.length > 1 ? t("msgbox.next") : t("msgbox.ok") || "Compris (Fermer)"}
+                    </button>
+                  </div>
                 </div>
               </div>
             </div>
@@ -1008,7 +1132,7 @@ export default function App() {
 
         {/* Modal Confirmation Dialog */}
         {activeConfirm && (
-          <div className="fixed inset-0 z-50 bg-black/75 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="animate-backdrop fixed inset-0 z-[80] bg-black/75 backdrop-blur-sm flex items-center justify-center p-4">
             <div
               role="dialog"
               aria-modal="true"
@@ -1389,9 +1513,10 @@ export default function App() {
   return (
     <div className="h-screen bg-[#F8F6F0] text-[#202923] flex flex-col overflow-hidden">
       {renderClientNotificationCenter()}
+      <UpdateDialog open={updateDialogOpen} onClose={() => setUpdateDialogOpen(false)} />
       {renderDeleteProductModal()}
       {/* Top Header */}
-      <header className="shrink-0 bg-gradient-to-r from-[#011C15] via-[#063D2E] to-[#02291F] text-[#D4AF62] px-6 py-3.5 flex flex-wrap justify-between items-center gap-4 border-b border-[#D4AF62]/30 shadow-md">
+      <header className="relative z-40 shrink-0 bg-gradient-to-r from-[#011C15] via-[#063D2E] to-[#02291F] text-[#D4AF62] px-6 py-3.5 flex flex-wrap justify-between items-center gap-4 border-b border-[#D4AF62]/30 shadow-md">
         <div className="flex items-center gap-3.5">
           <div className="w-10 h-10 rounded-2xl bg-gradient-to-br from-[#D4AF62] via-[#E8D4A5] to-[#C59E50] p-0.5 shadow-luxe-gold flex items-center justify-center shrink-0">
             <div className="w-full h-full rounded-[14px] bg-[#02291F] flex items-center justify-center">
@@ -1401,9 +1526,26 @@ export default function App() {
           <div>
             <div className="flex items-center gap-2">
               <span className="font-serif font-bold text-lg text-white tracking-wide">MAISON MUS LUXURY</span>
-              <span className="px-2.5 py-0.5 rounded-full bg-white/10 backdrop-blur-md border border-[#D4AF62]/40 text-[#E8D4A5] text-[10px] font-bold">
-                CMS v2.6 • Haute Couture
-              </span>
+              <button
+                type="button"
+                onClick={() => setUpdateDialogOpen(true)}
+                title={t("update.title")}
+                className={`inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full backdrop-blur-md border text-[10px] font-bold transition ${
+                  updateState?.phase === "available"
+                    ? "bg-[#D4AF62] border-[#D4AF62] text-[#02291F] hover:bg-[#E8D4A5]"
+                    : "bg-white/10 border-[#D4AF62]/40 text-[#E8D4A5] hover:bg-white/20"
+                }`}
+              >
+                {updateState?.phase === "available" && (
+                  <span className="relative flex h-1.5 w-1.5">
+                    <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-[#02291F] opacity-60"></span>
+                    <span className="relative inline-flex rounded-full h-1.5 w-1.5 bg-[#02291F]"></span>
+                  </span>
+                )}
+                {updateState?.phase === "available"
+                  ? `${t("update.chip")} v${updateState.availableVersion}`
+                  : `CMS${updateState?.currentVersion ? ` v${updateState.currentVersion}` : ""} • Haute Couture`}
+              </button>
             </div>
             <p className="text-[11px] text-[#E8D4A5]/80">
               {user?.full_name || "Direction Générale"} • {user?.role === "super_admin" ? "Direction Générale" : "Gérant Boutique"}
@@ -1427,6 +1569,8 @@ export default function App() {
             </span>
             <span>{netTelemetry.online ? t("status.online") : t("status.offline")}</span>
           </div>
+
+          <NotificationBell />
 
           <LanguageToggle />
 

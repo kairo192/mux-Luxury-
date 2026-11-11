@@ -2,8 +2,44 @@
 
 **To:** Antigravity (the AI running on the user's local Windows machine)
 **From:** Claude Code (cloud session, branch `feat/pos-core-cash-register-18lsk6`)
-**Date:** 2026-11-09
+**Date:** 2026-11-11 (section 0 is new; sections 1+ are from 2026-11-09)
 **Last commit on cloud branch:** `0e44047` (the cleanup + production .env round) + the i18n foundation that will land in the next push (see `docs/cicd/I18N_AUDIT.md`).
+
+---
+
+## 0. LATEST ROUND (2026-11-11): notifications, Windows alerts, auto-update
+
+Pushed on `feat/pos-core-cash-register-18lsk6`. Pull it before touching any of these files:
+
+- **Toasts**: `src/components/ToastStack.tsx`. They sit in the bottom corner (bottom-left in Arabic), newest nearest the corner,
+  4 at most, duplicates merge into ×N. Hovering pauses the timer, and so does a hidden window. The CSS animation of the progress bar
+  is the dismiss timer (`index.css` → `.luxe-toast*`). Errors and warnings that open a message box
+  are **not** toasted a second time.
+- **Message boxes**: still in `App.tsx` `renderClientNotificationCenter()`. They are now a **queue**
+  (`messageQueue`), with a "1 sur N" counter, Suivant / Tout fermer, and Enter/Esc to close. The test contract is
+  intact: `role="dialog"`, `aria-modal="true"`, `"Compris (Fermer)"`, and the `active-confirm-title`
+  confirm. The confirm dialog is now z-[80], above everything.
+- **Bell + history**: `src/components/NotificationBell.tsx` + `src/utils/notificationCenter.ts`
+  (history in sessionStorage, plus the "Notifications Windows" switch in localStorage `luxe_cms_os_notifications`).
+- **Windows notifications**: Rust `src-tauri/src/app_services.rs` → `os_notify` (only shown when the
+  window is not focused, and flashes the taskbar) + `app_focus_main_window`, through `tauri-plugin-notification`.
+  To raise one from TS: `notifyClient({ ..., os: true })`.
+- **New online orders**: `App.tsx` polls `listOrders("new")` every 45 s. The first poll only seeds.
+  Later polls raise a toast with a **Voir** button and a Windows alert, then refresh the Orders list.
+- **POS background sync** (`PosPage.tsx` `runSync(silent)`) now reports created/conflict sales.
+- **Auto-update (crash-safe)**: `app_services.rs` `updater_status/check/install`. The updater
+  plugin is registered **only if** the binary was compiled with `LUXE_UPDATER_PUBKEY`. Without it, the app
+  runs normally with the updater off, so the startup crash you fixed in `500116a` cannot come back.
+  `tauri.conf.json` has `plugins.updater` (endpoint + empty pubkey placeholder; the Builder overrides it).
+  UI: the version chip in the header opens `UpdateDialog.tsx`. Checks run 15 s after start, then every 4 h.
+  Before installing it warns about unsynced offline sales.
+- **CI**: `build-desktop-cms.yml` signs only when the secret `TAURI_SIGNING_PRIVATE_KEY` and the **variable**
+  `TAURI_UPDATER_PUBKEY` both exist. The version comes from the tag, and `scripts/make-latest-json.mjs` writes
+  `latest.json`. See `docs/DESKTOP_CMS_RELEASE_GUIDE.md` §2–4.
+- Verified: `cargo check` OK, `tsc` + `vite build` OK, a Playwright run of every behaviour above (0 console errors),
+  and backend suite 238/242. The 4 failures are only the missing `@babel/core` in the cloud container; they
+  pass with a TS compiler.
+- **Do NOT** re-add `@tauri-apps/plugin-updater` JS calls. Everything goes through the Rust commands.
 
 ---
 

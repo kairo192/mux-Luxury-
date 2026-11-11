@@ -61,7 +61,7 @@ export interface HardwareResult {
 
 // -------------------------------------------------- Tauri bridge --------
 
-function getTauriInvoke(): ((cmd: string, args?: Record<string, unknown>) => Promise<any>) | null {
+export function getTauriInvoke(): ((cmd: string, args?: Record<string, unknown>) => Promise<any>) | null {
   if (typeof window === "undefined") return null;
   const w = window as any;
   if (w.__TAURI_INTERNALS__ && typeof w.__TAURI_INTERNALS__.invoke === "function") {
