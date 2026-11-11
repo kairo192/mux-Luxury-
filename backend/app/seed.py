@@ -219,25 +219,73 @@ def _demo_mode() -> bool:
     )
 
 
-def remove_legacy_demo_content(cur) -> None:
-    """Runs at every start (PC and server). Removes the example banners and
-    switches off the example promo codes left by older versions, so the shop
-    shows only what the owner created. Never touches demo/test databases,
-    edited banners, or codes that customers have already used."""
-    if _demo_mode():
-        return
+# Stored (protected "system_" key, never sent to the shop) once the one-time
+# cleanup has run on a database, so it never runs twice.
+LEGACY_CLEANUP_MARKER = "system_legacy_demo_cleanup_v1"
+
+
+def find_legacy_demo_content(cur) -> dict:
+    """Example rows still present, matched on ALL their original values."""
+    banners = []
     for pos, title, link, img in _LEGACY_DEMO_BANNERS:
         cur.execute(
-            "DELETE FROM banners WHERE position = ? AND title_fr = ? AND cta_link = ? AND image_url = ?",
+            "SELECT id, title_fr FROM banners WHERE position = ? AND title_fr = ? AND cta_link = ? AND image_url = ?",
             (pos, title, link, img),
         )
+        banners += [{"id": r["id"], "title_fr": r["title_fr"]} for r in cur.fetchall()]
+    coupons = []
     for code, dtype, value, min_order in _LEGACY_DEMO_COUPONS:
         cur.execute(
-            """UPDATE coupons SET is_active = 0
+            """SELECT id, code FROM coupons
                WHERE code = ? AND discount_type = ? AND discount_value = ? AND min_order_dzd = ?
                  AND COALESCE(usage_count, 0) = 0 AND is_active = 1""",
             (code, dtype, value, min_order),
         )
+        coupons += [{"id": r["id"], "code": r["code"]} for r in cur.fetchall()]
+    return {"banners": banners, "coupons": coupons}
+
+
+def remove_legacy_demo_content(cur, *, force: bool = False) -> dict:
+    """One-time cleanup of the example content that older versions put in
+    every new database: 2 example banners are deleted and 2 example promo
+    codes (which were ACTIVE: real discounts) are switched off.
+
+    Production path: runs inside the API start that follows a deploy (the
+    deploy script takes a database backup first). Runs once per database
+    (marker in store_settings), never on test/demo databases, and writes what
+    it changed to the audit log (CMS → Journal d'audit). Banners the owner
+    edited and codes customers already used are never touched.
+    ``force=True`` is for the operator command ``python -m app.cleanup_demo``.
+    """
+    if not force:
+        if _demo_mode():
+            return {"banners": [], "coupons": []}
+        cur.execute("SELECT 1 AS done FROM store_settings WHERE setting_key = ?", (LEGACY_CLEANUP_MARKER,))
+        if cur.fetchone():
+            return {"banners": [], "coupons": []}
+
+    found = find_legacy_demo_content(cur)
+    for b in found["banners"]:
+        cur.execute("DELETE FROM banners WHERE id = ?", (b["id"],))
+    for c in found["coupons"]:
+        cur.execute("UPDATE coupons SET is_active = 0 WHERE id = ?", (c["id"],))
+    if found["banners"] or found["coupons"]:
+        cur.execute(
+            "INSERT INTO audit_logs (admin_user_id, action, entity_type, entity_id, details_json) VALUES (?, ?, ?, ?, ?)",
+            (None, "remove_legacy_demo_content", "store", "system", json.dumps({
+                "deleted_banners": [b["title_fr"] for b in found["banners"]],
+                "deactivated_promo_codes": [c["code"] for c in found["coupons"]],
+            }, ensure_ascii=False)),
+        )
+    cur.execute(
+        """INSERT INTO store_settings (setting_key, setting_value, updated_at)
+           VALUES (?, ?, CURRENT_TIMESTAMP)
+           ON CONFLICT(setting_key) DO NOTHING""",
+        (LEGACY_CLEANUP_MARKER, json.dumps({
+            "banners": len(found["banners"]), "coupons": len(found["coupons"]),
+        })),
+    )
+    return found
 
 
 def seed_initial_data() -> None:

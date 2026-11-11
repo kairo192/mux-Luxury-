@@ -48,17 +48,11 @@ cd src-tauri
 cargo build                      # downloads tauri-plugin-notification + tauri-plugin-updater
 cd ..\..\..
 ```
-- **Clean the PC's old database** (example banners "CHAUSSURES — Jusqu'à -20%" / "Votre style, notre
-  passion" and the ACTIVE example promo codes BIENVENUE10 / ALGERIE500). Use the same environment
-  variables the PC backend normally runs with (`LUXE_SQLITE_PATH`, or the PostgreSQL settings):
-```powershell
-cd backend
-python -m app.cleanup_demo --dry-run     # shows what will change, changes nothing
-python -m app.cleanup_demo               # does it (also runs by itself at every backend start)
-```
-  Banners the owner edited and codes customers already used are kept. Any "example products" it lists
-  must be deleted by the owner in the CMS (Produits → Supprimer), or, if the shop has no real data yet,
-  with CMS → Sauvegardes → **Nouvelle base de données**. Put the printed result in your report.
+- **Old example banners / promo codes:** nothing to run by hand. The owner's PC uses the CMS app
+  against the server; the server removes them once at its first start after the deploy (see
+  `docs/WORK_SUMMARY_2026-11-11.md` §15). If this PC also runs a LOCAL backend (SQLite, training mode),
+  just restart that backend once after pulling: the same one-time cleanup runs there. Check the result
+  in CMS → Journal d'audit (action `remove_legacy_demo_content`).
 - Push the merge: `git push origin feat/pos-core-cash-register`
 
 ## Part B. Verify on real Windows (things the cloud could not test)

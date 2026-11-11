@@ -6768,13 +6768,13 @@ def admin_business_dashboard(admin: dict = Depends(require_permission("dashboard
 
         # --- Best sellers across both channels ---
         cur.execute(
-            """SELECT variant_id, product_name, sku, SUM(q) AS qty FROM (
+            """SELECT variant_id, MAX(product_name) AS product_name, MAX(sku) AS sku, SUM(q) AS qty FROM (
                  SELECT variant_id, product_name, sku, quantity AS q
                  FROM order_items oi JOIN orders o ON o.id = oi.order_id WHERE o.status != 'cancelled'
                  UNION ALL
                  SELECT variant_id, product_name, sku, quantity AS q
                  FROM pos_sale_items psi JOIN pos_sales ps ON ps.id = psi.sale_id WHERE ps.sale_type = 'sale'
-               ) GROUP BY variant_id ORDER BY qty DESC LIMIT 8"""
+               ) AS sold GROUP BY variant_id ORDER BY qty DESC LIMIT 8"""
         )
         best_sellers = [{"variant_id": r["variant_id"], "product_name": r["product_name"], "sku": r["sku"], "qty_sold": int(r["qty"])} for r in cur.fetchall()]
 
@@ -7545,7 +7545,7 @@ def _sales_report_data(conn, date_from: str, date_to: str) -> dict:
 
     # Top products across both channels
     cur.execute(
-        """SELECT variant_id, product_name, sku, SUM(q) AS qty, SUM(r) AS rev FROM (
+        """SELECT variant_id, MAX(product_name) AS product_name, MAX(sku) AS sku, SUM(q) AS qty, SUM(r) AS rev FROM (
              SELECT oi.variant_id, oi.product_name, oi.sku, oi.quantity AS q, oi.line_total_dzd AS r
              FROM order_items oi JOIN orders o ON o.id = oi.order_id
              WHERE o.status != 'cancelled' AND o.created_at BETWEEN ? AND ?
@@ -7553,7 +7553,7 @@ def _sales_report_data(conn, date_from: str, date_to: str) -> dict:
              SELECT psi.variant_id, psi.product_name, psi.sku, psi.quantity AS q, psi.line_total_dzd AS r
              FROM pos_sale_items psi JOIN pos_sales ps ON ps.id = psi.sale_id
              WHERE ps.sale_type = 'sale' AND ps.created_at BETWEEN ? AND ?
-           ) GROUP BY variant_id ORDER BY qty DESC LIMIT 20""",
+           ) AS sold GROUP BY variant_id ORDER BY qty DESC LIMIT 20""",
         (start, end, start, end),
     )
     top_products = [{"variant_id": r["variant_id"], "product_name": r["product_name"], "sku": r["sku"],

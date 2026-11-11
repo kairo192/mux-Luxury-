@@ -207,7 +207,9 @@ def _fk_parents(conn, tables: List[str]) -> Dict[str, Set[str]]:
     if _is_pg(conn):
         _, rows = _query(
             conn,
-            """SELECT tc.table_name, ccu.table_name
+            # Distinct aliases: with dict rows two columns both named
+            # "table_name" would collapse into one and every FK would be lost.
+            """SELECT DISTINCT tc.table_name AS child_table, ccu.table_name AS parent_table
                  FROM information_schema.table_constraints tc
                  JOIN information_schema.constraint_column_usage ccu
                    ON tc.constraint_name = ccu.constraint_name AND tc.table_schema = ccu.table_schema

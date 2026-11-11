@@ -10,6 +10,7 @@ and the server — nothing fixed in the page:
   * the dashboard chart gets real per-day revenue, and stock figures count
     only products still in the catalogue.
 """
+import json
 import os
 import tempfile
 import unittest
@@ -210,36 +211,46 @@ class TestStorefrontContent(unittest.TestCase):
         self.assertLessEqual(after["low_stock_only_variants"], after["low_stock_variants"])
 
     # ------------------------------------------- old example content --
-    def test_legacy_demo_banners_and_codes_removed_but_owner_content_kept(self):
+    def test_legacy_demo_cleanup_runs_once_is_audited_and_keeps_owner_content(self):
         from unittest import mock
         from app.database import db_session
-        from app.seed import remove_legacy_demo_content
+        from app.seed import LEGACY_CLEANUP_MARKER, remove_legacy_demo_content
+
+        ins = ("INSERT INTO banners (position, title_fr, cta_link, image_url, is_active, display_order) "
+               "VALUES (?, ?, ?, ?, 1, 9)")
+        legacy = ("promo_grid", "CHAUSSURES — Jusqu'à -20%", "/categories/chaussures", "/assets/prod_baskets_elegantes.jpg")
+        prod_env = {"APP_ENV": "production", "LUXE_SEED_DEMO_PRODUCTS": "0"}
         with db_session(commit=True) as conn:
             cur = conn.cursor()
-            ins = ("INSERT INTO banners (position, title_fr, cta_link, image_url, is_active, display_order) "
-                   "VALUES (?, ?, ?, ?, 1, 9)")
-            cur.execute(ins, ("promo_grid", "CHAUSSURES — Jusqu'à -20%", "/categories/chaussures", "/assets/prod_baskets_elegantes.jpg"))
+            cur.execute("DELETE FROM store_settings WHERE setting_key = ?", (LEGACY_CLEANUP_MARKER,))
+            cur.execute(ins, legacy)
             demo_id = cur.lastrowid
             # Same title but the owner changed the photo: kept.
-            cur.execute(ins, ("promo_grid", "CHAUSSURES — Jusqu'à -20%", "/categories/chaussures", "/uploads/mine.jpg"))
+            cur.execute(ins, legacy[:3] + ("/uploads/mine.jpg",))
             owner_id = cur.lastrowid
             cur.execute("DELETE FROM coupons WHERE code IN ('BIENVENUE10', 'ALGERIE500')")
             cur.execute("INSERT INTO coupons (code, discount_type, discount_value, min_order_dzd, is_active, usage_count) "
                         "VALUES ('BIENVENUE10', 'percentage', 10, 4000, 1, 0)")
             cur.execute("INSERT INTO coupons (code, discount_type, discount_value, min_order_dzd, is_active, usage_count) "
                         "VALUES ('ALGERIE500', 'fixed_dzd', 500, 5000, 1, 3)")
+        ids = []
         try:
-            # Demo / test databases are never cleaned.
+            # 1. Test / demo databases are never cleaned and get no marker.
             with db_session(commit=True) as conn:
-                remove_legacy_demo_content(conn.cursor())
+                self.assertEqual(remove_legacy_demo_content(conn.cursor())["banners"], [])
             with db_session() as conn:
                 cur = conn.cursor()
                 cur.execute("SELECT COUNT(*) AS cnt FROM banners WHERE id = ?", (demo_id,))
                 self.assertEqual(cur.fetchone()["cnt"], 1)
 
-            with mock.patch.dict(os.environ, {"APP_ENV": "production", "LUXE_SEED_DEMO_PRODUCTS": "0"}):
+            # 2. Production: example rows go, owner rows stay, change is audited.
+            with mock.patch.dict(os.environ, prod_env):
                 with db_session(commit=True) as conn:
-                    remove_legacy_demo_content(conn.cursor())
+                    found = remove_legacy_demo_content(conn.cursor())
+            removed = [b["id"] for b in found["banners"]]
+            self.assertIn(demo_id, removed)
+            self.assertNotIn(owner_id, removed)
+            self.assertEqual([c["code"] for c in found["coupons"]], ["BIENVENUE10"])
             with db_session() as conn:
                 cur = conn.cursor()
                 cur.execute("SELECT id FROM banners WHERE id IN (?, ?)", (demo_id, owner_id))
@@ -248,10 +259,33 @@ class TestStorefrontContent(unittest.TestCase):
                 codes = {r["code"]: r["is_active"] for r in cur.fetchall()}
                 self.assertEqual(codes["BIENVENUE10"], 0, "unused example code must be switched off")
                 self.assertEqual(codes["ALGERIE500"], 1, "a code customers already used is kept")
+                cur.execute("SELECT details_json FROM audit_logs WHERE action = 'remove_legacy_demo_content' ORDER BY id DESC LIMIT 1")
+                details = json.loads(cur.fetchone()["details_json"])
+                self.assertEqual(details["deactivated_promo_codes"], ["BIENVENUE10"])
+                cur.execute("SELECT 1 AS x FROM store_settings WHERE setting_key = ?", (LEGACY_CLEANUP_MARKER,))
+                self.assertIsNotNone(cur.fetchone(), "marker must be stored")
+
+            # 3. Runs only once: an identical banner the owner adds later stays.
+            with db_session(commit=True) as conn:
+                cur = conn.cursor()
+                cur.execute(ins, legacy)
+                ids.append(cur.lastrowid)
+            with mock.patch.dict(os.environ, prod_env):
+                with db_session(commit=True) as conn:
+                    self.assertEqual(remove_legacy_demo_content(conn.cursor())["banners"], [])
+            with db_session() as conn:
+                cur = conn.cursor()
+                cur.execute("SELECT COUNT(*) AS cnt FROM banners WHERE id = ?", (ids[0],))
+                self.assertEqual(cur.fetchone()["cnt"], 1)
+
+            # 4. The marker is internal: never sent to the shop.
+            self.assertNotIn(LEGACY_CLEANUP_MARKER, self.client.get("/api/v1/store/layout").json()["settings"])
         finally:
             with db_session(commit=True) as conn:
-                conn.cursor().execute("DELETE FROM banners WHERE id IN (?, ?)", (demo_id, owner_id))
-
+                cur = conn.cursor()
+                for bid in [demo_id, owner_id] + ids:
+                    cur.execute("DELETE FROM banners WHERE id = ?", (bid,))
+                cur.execute("DELETE FROM store_settings WHERE setting_key = ?", (LEGACY_CLEANUP_MARKER,))
 
 if __name__ == "__main__":
     unittest.main()

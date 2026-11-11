@@ -22,9 +22,14 @@
   `pageDirtyRef` stop background refresh from wiping unsaved typing. `RevenueTrendChart` takes
   `byDay` only (no estimates); `OrderStatusDistributionChart` computes its own total;
   `InventoryHealthWidget` takes `totalVariants`.
-- `seed.remove_legacy_demo_content()` runs at every start (not in test/demo mode): deletes the 2 old
-  demo banners (exact match) and deactivates unused BIENVENUE10 / ALGERIE500. On demand:
-  `python -m app.cleanup_demo [--dry-run]` (also lists leftover example products). RUN IT ON THE PC.
+- `seed.remove_legacy_demo_content()`: ONE-TIME (marker `system_legacy_demo_cleanup_v1` in
+  store_settings), skipped in test/demo mode, audited (`remove_legacy_demo_content`). Operator check:
+  `docker compose exec api python -m app.cleanup_demo --dry-run`.
+- PostgreSQL parity (database.py): rows reshaped like SQLite (`sqlite_shaped_dict_row`: datetime →
+  text, Decimal → int/float); `_translate_sqlite_functions` (substr/datetime/scalar MAX);
+  `TABLES_WITHOUT_ID` (no RETURNING id). backup_engine `_fk_parents` aliases columns. ALWAYS run the
+  suite on PostgreSQL too (CI job "PostgreSQL 16"); write SQL valid on both (no bare GROUP BY with
+  non-aggregated columns). Tests: `tests/test_pg_compat.py`.
 - Tests: `backend/tests/test_storefront_content.py`.
 
 ## 0c. CMS PRODUCT EDITOR (2026-11-11)

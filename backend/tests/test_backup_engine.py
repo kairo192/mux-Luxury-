@@ -90,7 +90,8 @@ class TestBackupEngine(unittest.TestCase):
         r = self.client.get("/api/v1/admin/system/database", headers=self.headers)
         self.assertEqual(r.status_code, 200, r.text)
         body = r.json()
-        self.assertEqual(body["engine"], "SQLite")
+        expected_engine = "PostgreSQL" if os.environ.get("LUXE_DB_ENGINE") == "postgres" else "SQLite"
+        self.assertEqual(body["engine"], expected_engine)
         self.assertTrue(body["encryption"])
         self.assertTrue(any(c["table"] == "categories" for c in body["counts"]))
 
@@ -134,8 +135,10 @@ class TestBackupEngine(unittest.TestCase):
         self.assertEqual(r.status_code, 200, r.text)
         self.assertEqual(_count("categories"), cats)
         self.assertEqual(_count("products"), prods)
-        with db_session() as conn:
-            self.assertEqual(conn.execute("PRAGMA foreign_key_check").fetchall(), [])
+        if os.environ.get("LUXE_DB_ENGINE") != "postgres":
+            # PostgreSQL enforces foreign keys itself; SQLite needs the check.
+            with db_session() as conn:
+                self.assertEqual(conn.execute("PRAGMA foreign_key_check").fetchall(), [])
 
         kinds = {b["kind"] for b in bk.list_backups()}
         self.assertTrue({"manual", "pre-reset", "pre-restore"} <= kinds)

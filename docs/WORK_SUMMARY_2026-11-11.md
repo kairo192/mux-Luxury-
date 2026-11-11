@@ -251,12 +251,41 @@ Instagram link → all visible on the shop within a minute; the banner button op
 category; the dashboard chart shows the real 5 510 DA order of the test database.
 New tests: `backend/tests/test_storefront_content.py` (8).
 
-**Old example content is removed automatically.** Older versions put two example banners (including
-"CHAUSSURES — Jusqu'à -20%") and two example promo codes (**BIENVENUE10** −10 %, **ALGERIE500**
-−500 DA) in every new database, and the codes were **active**: any customer typing them got a
-discount. At every start (PC and server) the system now deletes those two banners and switches off
-those two codes. It only touches rows that still have all their original values: a banner you edited
-is kept, and a code that customers have already used stays on (you decide in the CMS).
+**Old example content is removed automatically** (details in §15).
+
+---
+
+## 15. Production hardening (server database = PostgreSQL)
+
+The shop server runs **PostgreSQL**; PCs and the automated tests ran on **SQLite**. Running the whole
+test suite against a real PostgreSQL 16 database (the same as the VPS) found that several parts that
+worked on the PC **would have failed on the production server**:
+
+| Problem on the production database | Effect | Fix |
+|---|---|---|
+| Dates came back as date objects instead of text | **Shop product list and category list crashed** (shop empty) | The database layer returns the same shapes as on the PC (text dates, whole numbers) |
+| The first update on an existing database crashed in the migration step | **The update would stop** ("new release not activated") | Inserts into tables without an `id` column (`schema_migrations`, …) are no longer given `RETURNING id` |
+| `substr(date)`, `datetime()`, `MAX(a, b)` (PC-only SQL) | **Sales report, treasury report, POS catalog sync and POS refunds crashed** | Translated automatically for PostgreSQL |
+| Best-sellers query grouped by variant only | **Business dashboard and sales report crashed** | Valid on both databases |
+| Foreign keys not detected (two columns with the same name) | **"Nouvelle base de données" and restore failed** | Fixed |
+
+Before: 35 test failures on PostgreSQL (31 real ones + 4 caused by the missing tool below), so the CI
+"PostgreSQL 16" job could not pass. After: all pass, except
+the 4 that need a tool missing from the cloud machine (`@babel/core`; they pass in CI and with a
+substitute compiler).
+
+**Example content cleanup, production style.** Older versions put two example banners
+("CHAUSSURES — Jusqu'à -20%", "Votre style, notre passion") and two **active** promo codes
+(BIENVENUE10 −10 %, ALGERIE500 −500 DA) in every database: any customer typing them got a discount.
+Nothing to do by hand:
+1. The deploy script backs up the database (as on every update).
+2. At the server's first start, the banners are deleted and the codes switched off — **once** (a
+   marker is stored, so a banner you later create with the same text is never touched).
+3. What was changed is written in **CMS → Journal d'audit**.
+Only rows that still have all their original values are touched: an edited banner, or a code
+customers already used, is kept. Tested on PostgreSQL 16 with a copy of an old database (backup →
+migration → start → 2 banners removed, 2 codes off, 1 audit entry; restart → nothing more).
+Server admin check: `docker compose exec api python -m app.cleanup_demo --dry-run`.
 
 ---
 
@@ -264,7 +293,7 @@ is kept, and a code that customers have already used stays on (you decide in the
 
 | Check | Result |
 |---|---|
-| Backend tests | 264 run (8 new in round 14, 7 for backups/categories). Only 4 failures, all caused by `@babel/core` missing in the cloud container; those 4 pass with a substitute TypeScript compiler and pass in CI. |
+| Backend tests | 267 run on SQLite and on PostgreSQL 16 (8 new in round 14, 3 in round 15, 7 for backups/categories). Only 4 failures, all caused by `@babel/core` missing in the cloud container; those 4 pass with a substitute TypeScript compiler and pass in CI. |
 | CMS TypeScript + build | OK |
 | Rust (`cargo check`) | OK |
 | Browser tests (Playwright) | Notifications, message box queue, bell, update dialog, new-order alert, Arabic layout, category delete + reload, archived tab, database panel, backup, reset: all OK |
