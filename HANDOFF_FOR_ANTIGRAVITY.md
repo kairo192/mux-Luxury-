@@ -23,7 +23,8 @@
   `byDay` only (no estimates); `OrderStatusDistributionChart` computes its own total;
   `InventoryHealthWidget` takes `totalVariants`.
 - `seed.remove_legacy_demo_content()` runs at every start (not in test/demo mode): deletes the 2 old
-  demo banners (exact match) and deactivates unused BIENVENUE10 / ALGERIE500.
+  demo banners (exact match) and deactivates unused BIENVENUE10 / ALGERIE500. On demand:
+  `python -m app.cleanup_demo [--dry-run]` (also lists leftover example products). RUN IT ON THE PC.
 - Tests: `backend/tests/test_storefront_content.py`.
 
 ## 0c. CMS PRODUCT EDITOR (2026-11-11)

@@ -35,7 +35,7 @@ git checkout feat/pos-core-cash-register
 git pull origin feat/pos-core-cash-register
 git merge origin/feat/pos-core-cash-register-18lsk6
 ```
-- The commits you must end up with include `e9bea80`, `c32dfd3`, `f7088b4` (check with
+- The commits you must end up with include `d789d5f`, `0db9dbc`, `e9bea80`, `c32dfd3`, `f7088b4` (check with
   `git log --oneline -8`).
 - If there are conflicts: keep **both** sides' intent. In `HANDOFF_FOR_ANTIGRAVITY.md`, keep all
   sections. In code, prefer the cloud version for the files listed in the summary (§5–§8) unless your
@@ -48,6 +48,17 @@ cd src-tauri
 cargo build                      # downloads tauri-plugin-notification + tauri-plugin-updater
 cd ..\..\..
 ```
+- **Clean the PC's old database** (example banners "CHAUSSURES — Jusqu'à -20%" / "Votre style, notre
+  passion" and the ACTIVE example promo codes BIENVENUE10 / ALGERIE500). Use the same environment
+  variables the PC backend normally runs with (`LUXE_SQLITE_PATH`, or the PostgreSQL settings):
+```powershell
+cd backend
+python -m app.cleanup_demo --dry-run     # shows what will change, changes nothing
+python -m app.cleanup_demo               # does it (also runs by itself at every backend start)
+```
+  Banners the owner edited and codes customers already used are kept. Any "example products" it lists
+  must be deleted by the owner in the CMS (Produits → Supprimer), or, if the shop has no real data yet,
+  with CMS → Sauvegardes → **Nouvelle base de données**. Put the printed result in your report.
 - Push the merge: `git push origin feat/pos-core-cash-register`
 
 ## Part B. Verify on real Windows (things the cloud could not test)

@@ -105,6 +105,12 @@ Everything the customer sees on the home page is set here; nothing is fixed in t
 
 Changes appear on the shop within about a minute (the shop checks every 60 seconds).
 
+**Old example content on a PC database.** Older versions put example banners and two *active*
+example promo codes (BIENVENUE10, ALGERIE500) in every new database. They are removed / switched off
+automatically when the backend starts. To check by hand on a PC: in the `backend` folder run
+`python -m app.cleanup_demo --dry-run` (shows what would change) then `python -m app.cleanup_demo`.
+Example products it lists are deleted in the CMS, or start clean with **Nouvelle base de données** (§6).
+
 ### 3.3 Server ↔ POS PCs
 * **Catalog:** each till downloads the full catalog the first time, then only
   the changes, every time the CMS starts and every time the internet comes back.
