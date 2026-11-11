@@ -135,6 +135,30 @@ class TestProductLifecycle(unittest.TestCase):
         self.assertEqual(c.json().get("image_url") or "", "")
         self.assertEqual(c.json().get("banner_url") or "", "")
 
+    def test_purchase_line_must_name_the_variant(self):
+        sfx = uuid.uuid4().hex[:6]
+        sup = self.client.post("/api/v1/admin/suppliers", headers=self.h, json={"name": f"Fourn {sfx}", "phone": "+213550000099"}).json()
+        cat = self.client.post("/api/v1/admin/categories", headers=self.h, json={
+            "slug": f"po-{sfx}", "name_fr": "PO", "name_ar": "x", "name_en": "x", "display_order": 1, "is_active": True, "show_on_homepage": False}).json()
+        self.client.post("/api/v1/admin/category-attributes", headers=self.h, json={
+            "category_id": cat["id"], "attr_key": "color", "label_fr": "Couleur", "input_type": "single_select", "is_variant_axis": True,
+            "options": [{"value": "Noir", "label_fr": "Noir"}, {"value": "Rouge", "label_fr": "Rouge"}]})
+        two = self.client.post("/api/v1/admin/products", headers=self.h, json={
+            "category_id": cat["id"], "slug": f"po2-{sfx}", "sku": f"PO2-{sfx.upper()}", "name_fr": f"Deux {sfx}",
+            "selling_price_dzd": 5000, "status": "published",
+            "variants": [{"sku": f"PO2-{sfx.upper()}-N", "title": "Noir", "stock_qty": 0, "attributes": {"color": "Noir"}},
+                         {"sku": f"PO2-{sfx.upper()}-R", "title": "Rouge", "stock_qty": 0, "attributes": {"color": "Rouge"}}]}).json()
+        r = self.client.post("/api/v1/admin/purchases", headers=self.h, json={
+            "supplier_id": sup["id"], "items": [{"product_id": two["id"], "quantity": 3, "unit_cost_dzd": 2000}]})
+        self.assertEqual(r.status_code, 400, r.text)
+        self.assertIn("variante", r.json()["detail"])
+        # A single-variant product: the variant is filled in.
+        pid, slug, vid = self._product()
+        r2 = self.client.post("/api/v1/admin/purchases", headers=self.h, json={
+            "supplier_id": sup["id"], "items": [{"product_id": pid, "quantity": 3, "unit_cost_dzd": 2000}]})
+        self.assertEqual(r2.status_code, 201, r2.text)
+        self.assertEqual(r2.json()["items"][0]["variant_id"], vid)
+
 
 if __name__ == "__main__":
     unittest.main()

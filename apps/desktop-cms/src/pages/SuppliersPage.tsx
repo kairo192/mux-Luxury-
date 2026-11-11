@@ -201,7 +201,7 @@ export const SuppliersPage: React.FC = () => {
                   <tr key={s.id} className={`border-t border-gray-100 hover:bg-[#FCFBF8] cursor-pointer ${!active ? "opacity-60" : ""}`} onClick={() => openDetail(s)}>
                     <td className="px-4 py-3 text-start">
                       <div className="font-bold text-[#063D2E] flex items-center gap-2">
-                        {s.name}
+                        {s.name}{(s.is_active === 0 || s.is_active === false) && <span className="ms-2 px-1.5 py-0.5 rounded bg-gray-200 text-gray-600 text-[10px] font-bold">Archivé</span>}
                         {!active && <span className="text-[10px] font-bold text-gray-500 bg-gray-200 px-1.5 py-0.5 rounded"><Archive className="w-3 h-3 inline mr-1 rtl:mr-0 rtl:ml-1" /> {t("suppliers.archived")}</span>}
                       </div>
                       {s.company_name && <div className="text-gray-500 text-[11px]">{s.company_name}</div>}

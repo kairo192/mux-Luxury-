@@ -611,6 +611,8 @@ export const DesktopCmsApi = {
     adminFetch(`/admin/expenses${category ? `?category=${category}` : ""}`),
   createExpense: (payload: unknown) =>
     adminFetch("/admin/expenses", { method: "POST", body: JSON.stringify(payload) }),
+  payExpense: (expenseId: number, method: string) =>
+    adminFetch(`/admin/expenses/${expenseId}/pay?payment_method=${encodeURIComponent(method)}`, { method: "POST" }),
   deleteExpense: (expenseId: number) =>
     adminFetch(`/admin/expenses/${expenseId}`, { method: "DELETE" }),
 

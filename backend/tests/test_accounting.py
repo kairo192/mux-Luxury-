@@ -211,6 +211,46 @@ class TestAccounting(unittest.TestCase):
             row = cur.fetchone()
         self.assertEqual((int(row["c"]), int(row["s"])), (1, PRICE), "added exactly once")
 
+    def test_expenses_move_the_treasury_correctly(self):
+        import datetime as _d
+        cash0, bank0 = self._treasury()
+        def exp(method, status, amount):
+            r = self.client.post("/api/v1/admin/expenses", headers=self.h, json={
+                "description": f"Test {method} {status}", "category": "loyer", "amount_dzd": amount,
+                "expense_date": _d.date.today().isoformat(), "payment_method": method, "payment_status": status})
+            self.assertEqual(r.status_code, 201, r.text)
+            return r.json()
+        exp("bank_transfer", "paid", 7000)
+        cash1, bank1 = self._treasury()
+        self.assertEqual((cash1 - cash0, bank1 - bank0), (0, -7000), "a bank transfer leaves the bank")
+        pending = exp("cash", "pending", 3000)
+        self.assertEqual(self._treasury(), (cash1, bank1), "unpaid: nothing moves yet")
+        r = self.client.post(f"/api/v1/admin/expenses/{pending['id']}/pay?payment_method=cash", headers=self.h)
+        self.assertEqual(r.status_code, 200, r.text)
+        self.assertEqual(r.json()["payment_status"], "paid")
+        cash2, _ = self._treasury()
+        self.assertEqual(cash2 - cash1, -3000)
+        self.assertEqual(self.client.post(f"/api/v1/admin/expenses/{pending['id']}/pay", headers=self.h).status_code, 400)
+        d = self.client.delete(f"/api/v1/admin/expenses/{pending['id']}", headers=self.h)
+        self.assertEqual(d.status_code, 200, d.text)
+        cash3, _ = self._treasury()
+        self.assertEqual(cash3, cash1, "deleting a paid expense puts the money back")
+
+    def test_manual_treasury_entries_and_transfers(self):
+        cash0, bank0 = self._treasury()
+        r = self.client.post("/api/v1/admin/treasury/movements", headers=self.h, json={
+            "movement_type": "outflow", "category": "bank_deposit", "amount_dzd": 5000, "notes": "Dépôt du soir"})
+        self.assertEqual(r.status_code, 201, r.text)
+        self.assertEqual(len(r.json()["movement_ids"]), 2, "a transfer is recorded on both accounts")
+        cash1, bank1 = self._treasury()
+        self.assertEqual((cash1 - cash0, bank1 - bank0), (-5000, 5000))
+        r = self.client.post("/api/v1/admin/treasury/movements", headers=self.h, json={
+            "movement_type": "inflow", "category": "capital_contribution", "account_type": "bank_account", "amount_dzd": 2000})
+        self.assertEqual(r.status_code, 201, r.text)
+        self.assertEqual(self._treasury(), (cash1, bank1 + 2000))
+        bad = self.client.post("/api/v1/admin/treasury/movements", headers=self.h, json={"category": "nimporte", "amount_dzd": 10})
+        self.assertEqual(bad.status_code, 422)
+
 
 if __name__ == "__main__":
     unittest.main()

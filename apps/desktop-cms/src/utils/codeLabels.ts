@@ -7,7 +7,7 @@ export const CODE_LABEL: Record<string, string> = {
   cash_box: "Caisse", bank_account: "Banque / CCP", inflow: "Entrée", outflow: "Sortie", deposit: "Dépôt", withdrawal: "Retrait",
   pos_sale: "Vente magasin", pos_refund: "Remboursement magasin", cod_collection: "Commande livrée (COD)",
   cod_refund: "Retour après livraison", expense_payment: "Paiement dépense", purchase_payment: "Paiement fournisseur",
-  manual_adjustment: "Mouvement manuel",
+  manual_adjustment: "Mouvement manuel", expense_cancelled: "Annulation dépense",
   loyer: "Loyer & local", rent: "Loyer & local", salaires: "Salaires", electricite_eau: "Électricité, gaz & eau",
   internet_tel: "Internet & télécoms", packaging: "Emballages", publicite_marketing: "Publicité",
   transport_logistique: "Transport & coursiers", maintenance: "Maintenance", abonnements_logiciels: "Logiciels",

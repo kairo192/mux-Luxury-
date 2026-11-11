@@ -69,8 +69,8 @@ export function PurchasesPage({ onInventoryUpdated }: { onInventoryUpdated?: () 
   // Line item selector state
   const [selectedProdId, setSelectedProdId] = useState<number | "">("");
   const [selectedVariantId, setSelectedVariantId] = useState<number | "">("");
-  const [lineQty, setLineQty] = useState(10);
-  const [lineCost, setLineCost] = useState(2500);
+  const [lineQty, setLineQty] = useState(1);
+  const [lineCost, setLineCost] = useState(0);
 
   async function loadData() {
     setLoading(true);
@@ -108,8 +108,9 @@ export function PurchasesPage({ onInventoryUpdated }: { onInventoryUpdated?: () 
     setSelectedProdId(prodId);
     const p = products.find((x) => x.id === prodId);
     if (p) {
-      setLineCost(p.purchase_cost_dzd || 2500);
-      if (p.variants && p.variants.length > 0) {
+      setLineCost(p.purchase_cost_dzd || 0);
+      // One variant: it is the one. Several: the user must choose.
+      if (p.variants && p.variants.length === 1) {
         setSelectedVariantId(p.variants[0].id);
       } else {
         setSelectedVariantId("");
@@ -125,6 +126,14 @@ export function PurchasesPage({ onInventoryUpdated }: { onInventoryUpdated?: () 
     const p = products.find((x) => x.id === Number(selectedProdId));
     if (!p) return;
     const v = (p.variants || []).find((x: any) => x.id === Number(selectedVariantId));
+    if (!v && (p.variants || []).length !== 1) {
+      notifyClientWarning("Variante requise", `Choisissez la couleur / taille de « ${p.name_fr} » à commander.`);
+      return;
+    }
+    if (!(Number(lineQty) > 0) || !(Number(lineCost) > 0)) {
+      notifyClientWarning("Quantité et coût requis", "Indiquez la quantité commandée et le coût d'achat unitaire en DA.");
+      return;
+    }
 
     setOrderItems((prev) => [
       ...prev,
@@ -132,7 +141,7 @@ export function PurchasesPage({ onInventoryUpdated }: { onInventoryUpdated?: () 
         product_id: p.id,
         variant_id: v ? v.id : undefined,
         product_name: p.name_fr,
-        variant_title: v ? v.title : "Standard",
+        variant_title: v ? v.title : (p.variants?.[0]?.title || ""),
         quantity: Number(lineQty),
         unit_cost_dzd: Number(lineCost),
       },
@@ -397,7 +406,7 @@ export function PurchasesPage({ onInventoryUpdated }: { onInventoryUpdated?: () 
                   className="w-full px-3 py-2 border rounded-xl bg-white font-semibold"
                 >
                   <option value="">{t("purchases.supplier_placeholder")}</option>
-                  {suppliers.map((s) => (
+                  {suppliers.filter((s) => s.is_active !== 0 && s.is_active !== false).map((s) => (
                     <option key={s.id} value={s.id}>
                       {s.name} {s.company_name ? `(${s.company_name})` : ""} - {t("purchases.debt", { amount: s.balance_dzd })}
                     </option>
@@ -438,12 +447,33 @@ export function PurchasesPage({ onInventoryUpdated }: { onInventoryUpdated?: () 
                     onChange={(e) => handleProductSelect(Number(e.target.value))}
                     className="w-full px-3 py-2 border rounded-xl bg-white font-semibold"
                   >
-                    {products.map((p) => (
+                    <option value="">— Choisir un produit —</option>
+                    {products.filter((p) => p.status !== "archived" && !p.deleted_at).map((p) => (
                       <option key={p.id} value={p.id}>
                         {p.name_fr} ({p.sku})
                       </option>
                     ))}
                   </select>
+                  {(() => {
+                    const sel = products.find((x) => x.id === Number(selectedProdId));
+                    const vs = sel?.variants || [];
+                    if (vs.length < 2) return null;
+                    return (
+                      <select
+                        aria-label="Variante"
+                        value={selectedVariantId}
+                        onChange={(e) => setSelectedVariantId(e.target.value ? Number(e.target.value) : "")}
+                        className="mt-2 w-full px-3 py-2 border-2 border-[#D4AF62] rounded-xl bg-white font-semibold"
+                      >
+                        <option value="">— Variante (couleur / taille) —</option>
+                        {vs.map((v: any) => (
+                          <option key={v.id} value={v.id}>
+                            {v.title} · {v.sku} · stock {v.stock_qty}
+                          </option>
+                        ))}
+                      </select>
+                    );
+                  })()}
                 </div>
 
                 <div>
@@ -597,7 +627,12 @@ export function PurchasesPage({ onInventoryUpdated }: { onInventoryUpdated?: () 
             {suppliers.map((s) => (
               <div key={s.id} className="p-3 rounded-xl border border-gray-200 space-y-1 hover:border-[#D4AF62]/50">
                 <div className="flex justify-between items-center">
-                  <span className="font-bold text-[#063D2E]">{s.name}</span>
+                  <span className="font-bold text-[#063D2E]">
+                    {s.name}
+                    {(s.is_active === 0 || s.is_active === false) && (
+                      <span className="ms-2 px-1.5 py-0.5 rounded bg-gray-200 text-gray-600 text-[10px] font-bold">Archivé</span>
+                    )}
+                  </span>
                   <span className={`px-2 py-0.5 rounded font-mono font-bold text-[10px] ${
                     s.balance_dzd > 0 ? "bg-amber-100 text-amber-900" : "bg-emerald-100 text-emerald-900"
                   }`}>

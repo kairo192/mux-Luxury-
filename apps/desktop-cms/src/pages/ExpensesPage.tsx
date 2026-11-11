@@ -2,6 +2,7 @@ import React, { useState, useEffect } from "react";
 import { DesktopCmsApi } from "../api/adminClient";
 import { useT } from "../i18n";
 import { codeLabel } from "../utils/codeLabels";
+import { confirmClientAction, notifyClientError, notifyClientSuccess } from "../utils/clientNotifier";
 import {
   RefreshCw,
   Plus,
@@ -65,6 +66,23 @@ export const ExpensesPage: React.FC = () => {
   const [formReceiptRef, setFormReceiptRef] = useState<string>("");
   const [formNotes, setFormNotes] = useState<string>("");
   const [formStatus, setFormStatus] = useState<string>("paid");
+
+  // An expense recorded "à régler" is paid now (cash box or bank).
+  const payPending = async (exp: ExpenseItem) => {
+    const cash = await confirmClientAction({
+      title: "Payer la dépense",
+      message: `${exp.description} — ${Number(exp.amount_dzd || 0).toLocaleString()} DA. Payée en espèces (caisse) ? Choisissez « Banque » pour un virement ou un chèque.`,
+      confirmLabel: "Espèces (caisse)",
+      cancelLabel: "Banque",
+    });
+    try {
+      await DesktopCmsApi.payExpense(exp.id, cash ? "cash" : "bank_transfer");
+      notifyClientSuccess("Dépense payée", `${exp.description} : ${Number(exp.amount_dzd || 0).toLocaleString()} DA (${cash ? "caisse" : "banque"}).`);
+      await loadExpenses();
+    } catch (err) {
+      notifyClientError(err, "Paiement de la dépense impossible");
+    }
+  };
 
   const loadExpenses = async () => {
     setLoading(true);
@@ -302,7 +320,7 @@ export const ExpensesPage: React.FC = () => {
               <tbody className="divide-y divide-gray-100">
                 {filteredExpenses.map((exp) => {
                   const catLabel =
-                    EXPENSE_CATEGORIES.find((c) => c.value === exp.category)?.label || exp.category;
+                    EXPENSE_CATEGORIES.find((c) => c.value === exp.category)?.label || codeLabel(exp.category);
                   return (
                     <tr key={exp.id} className="hover:bg-gray-50/80 transition-colors">
                       <td className="py-3 px-4 font-mono text-gray-600 whitespace-nowrap">
@@ -326,7 +344,7 @@ export const ExpensesPage: React.FC = () => {
                       <td className="py-3 px-4 text-gray-600 capitalize">
                         {exp.payment_method === "cash"
                           ? t("expenses.method_cash")
-                          : exp.payment_method === "bank"
+                          : exp.payment_method === "bank" || exp.payment_method === "bank_transfer"
                             ? t("expenses.method_bank")
                             : exp.payment_method === "check"
                               ? t("expenses.method_check")
@@ -344,6 +362,15 @@ export const ExpensesPage: React.FC = () => {
                         >
                           {exp.payment_status === "paid" ? t("expenses.status_paid") : t("expenses.status_pending")}
                         </span>
+                        {exp.payment_status !== "paid" && (
+                          <button
+                            type="button"
+                            onClick={() => payPending(exp)}
+                            className="ms-2 px-2 py-0.5 rounded-lg bg-[#063D2E] text-[#D4AF62] text-[11px] font-bold"
+                          >
+                            Payer
+                          </button>
+                        )}
                       </td>
                       <td className="py-3 px-4 text-right">
                         <button
@@ -454,7 +481,7 @@ export const ExpensesPage: React.FC = () => {
                     className="w-full text-xs p-2 border border-gray-300 rounded focus:border-[#063D2E] outline-none"
                   >
                     <option value="cash">{t("expenses.modal_method_cash")}</option>
-                    <option value="bank">{t("expenses.modal_method_bank")}</option>
+                    <option value="bank_transfer">{t("expenses.modal_method_bank")}</option>
                     <option value="check">{t("expenses.modal_method_check")}</option>
                     <option value="other">{t("expenses.modal_method_other")}</option>
                   </select>

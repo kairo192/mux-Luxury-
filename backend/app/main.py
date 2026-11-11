@@ -3849,6 +3849,7 @@ _FR_CODES = {
     "pos_sale": "Vente magasin", "pos_refund": "Remboursement magasin", "cod_collection": "Commande livrée (COD)",
     "cod_refund": "Retour après livraison", "expense_payment": "Paiement dépense",
     "purchase_payment": "Paiement fournisseur", "manual_adjustment": "Mouvement manuel",
+    "expense_cancelled": "Annulation dépense",
     # stock movements
     "order_reserved": "Commande en ligne", "order_cancelled": "Commande annulée", "order_returned": "Commande retournée",
     "pos_sale_offline": "Vente hors ligne synchronisée", "physical_count_reconcile": "Inventaire physique",
@@ -4467,10 +4468,29 @@ class ExpenseCreateInput(BaseModel):
 
 class CashMovementCreateInput(BaseModel):
     account_type: str = Field("cash_box", regex=r"^(cash_box|bank_account)$")
-    movement_type: str = Field(..., regex=r"^(inflow|outflow|deposit|withdrawal)$")
+    movement_type: str = Field("inflow", regex=r"^(inflow|outflow|deposit|withdrawal)$")
     amount_dzd: int = Field(..., gt=0)
-    description: str = Field(..., min_length=3, max_length=255)
+    # What the entry is (CMS → Trésorerie). Transfers move money between the
+    # cash box and the bank and are recorded on both sides.
+    category: Optional[str] = Field(None, max_length=40)
+    description: Optional[str] = Field(None, max_length=255)
+    notes: Optional[str] = Field(None, max_length=255)
     source_reference: Optional[str] = None
+
+
+# category → (label, [(account, movement), ...])
+_TREASURY_ENTRY_KINDS = {
+    "cash_in": ("Fond de caisse / alimentation", [("cash_box", "inflow")]),
+    "capital_contribution": ("Apport du propriétaire", [(None, "inflow")]),
+    "other_inflow": ("Autre entrée", [(None, "inflow")]),
+    "cash_out": ("Retrait du propriétaire", [(None, "outflow")]),
+    "minor_expense": ("Petite dépense boutique", [("cash_box", "outflow")]),
+    "cash_adjustment": ("Régularisation d'écart de caisse", [("cash_box", "outflow")]),
+    "other_outflow": ("Autre sortie", [(None, "outflow")]),
+    "bank_deposit": ("Dépôt d'espèces à la banque", [("cash_box", "outflow"), ("bank_account", "inflow")]),
+    "bank_withdrawal": ("Retrait à la banque vers la caisse", [("bank_account", "outflow"), ("cash_box", "inflow")]),
+    "courier_remittance": ("Versement du livreur sur le compte", [("cash_box", "outflow"), ("bank_account", "inflow")]),
+}
 
 
 # --- SUPPLIER ENDPOINTS ---
@@ -4702,19 +4722,32 @@ def admin_create_purchase_order(
             p = cur.fetchone()
             if not p:
                 raise HTTPException(status_code=400, detail=f"Produit ID {it.product_id} introuvable")
-            variant_title = "Standard"
-            sku = p["sku"]
-            if it.variant_id:
-                cur.execute("SELECT * FROM product_variants WHERE id = ?", (it.variant_id,))
+            # Stock lives per variant (colour / size): every line must say
+            # which one is received. Without it, receiving would credit an
+            # arbitrary variant.
+            variant_id = it.variant_id
+            if variant_id:
+                cur.execute("SELECT * FROM product_variants WHERE id = ? AND product_id = ?", (variant_id, it.product_id))
                 v = cur.fetchone()
-                if v:
-                    variant_title = v["title"]
-                    sku = v["sku"]
+                if not v:
+                    raise HTTPException(status_code=400, detail=f"La variante choisie n'appartient pas à « {p['name_fr']} ».")
+            else:
+                cur.execute("SELECT * FROM product_variants WHERE product_id = ? AND is_active = 1 ORDER BY id", (it.product_id,))
+                variants = cur.fetchall()
+                if len(variants) != 1:
+                    raise HTTPException(
+                        status_code=400,
+                        detail=f"Choisissez la variante (couleur / taille) de « {p['name_fr']} » à commander.",
+                    )
+                v = variants[0]
+                variant_id = int(v["id"])
+            variant_title = v["title"]
+            sku = v["sku"]
             line_tot = it.quantity * it.unit_cost_dzd
             subtotal += line_tot
             enriched_items.append({
                 "product_id": it.product_id,
-                "variant_id": it.variant_id,
+                "variant_id": variant_id,
                 "product_name": p["name_fr"],
                 "variant_title": variant_title,
                 "sku": sku,
@@ -5011,7 +5044,7 @@ def admin_create_expense(
 
         # If paid, immediately register cash outflow and ledger entry
         if payload.payment_status == "paid":
-            acc_type = "bank_account" if payload.payment_method == "bank_transfer" else "cash_box"
+            acc_type = _account_for_method(payload.payment_method)
             cur.execute(
                 """INSERT INTO cash_movements (account_type, movement_type, amount_dzd, source_type, source_reference, description, recorded_by)
                    VALUES (?, 'outflow', ?, 'expense_payment', ?, ?, ?)""",
@@ -5052,8 +5085,41 @@ def admin_delete_expense(
         if not exp:
             raise HTTPException(status_code=404, detail="Dépense introuvable")
         cur.execute("DELETE FROM expenses WHERE id = ?", (expense_id,))
+        if exp["payment_status"] == "paid":
+            # The money was taken out of the treasury when it was paid: put
+            # it back with a visible correcting entry (history is kept).
+            _record_cash_movement(cur, account=_account_for_method(exp["payment_method"]), movement="inflow",
+                                  amount=int(exp["amount_dzd"]), source_type="expense_cancelled",
+                                  reference=f"EXP-{expense_id}", description=f"Annulation dépense: {exp['description']}",
+                                  user_id=int(admin["sub"]))
         log_audit(conn, int(admin["sub"]), "delete_expense", "expense", str(expense_id), {"description": exp["description"]})
         return {"deleted": True, "expense_id": expense_id}
+
+
+@app.post("/api/v1/admin/expenses/{expense_id}/pay")
+def admin_pay_expense(
+    expense_id: int,
+    payment_method: str = Query("cash", regex=r"^(cash|bank_transfer|check|card)$"),
+    admin: dict = Depends(require_permission("settings:write")),
+):
+    """An expense recorded as "à régler" is paid now: status → paid and the
+    money leaves the cash box or the bank."""
+    with db_session(commit=True) as conn:
+        cur = conn.cursor()
+        cur.execute("SELECT * FROM expenses WHERE id = ?", (expense_id,))
+        exp = cur.fetchone()
+        if not exp:
+            raise HTTPException(status_code=404, detail="Dépense introuvable")
+        if exp["payment_status"] == "paid":
+            raise HTTPException(status_code=400, detail="Cette dépense est déjà payée.")
+        cur.execute("UPDATE expenses SET payment_status = 'paid', payment_method = ? WHERE id = ?", (payment_method, expense_id))
+        _record_cash_movement(cur, account=_account_for_method(payment_method), movement="outflow",
+                              amount=int(exp["amount_dzd"]), source_type="expense_payment",
+                              reference=f"EXP-{expense_id}", description=f"Dépense: {exp['description']}",
+                              user_id=int(admin["sub"]))
+        log_audit(conn, int(admin["sub"]), "pay_expense", "expense", str(expense_id), {"amount_dzd": int(exp["amount_dzd"])})
+        cur.execute("SELECT * FROM expenses WHERE id = ?", (expense_id,))
+        return dict(cur.fetchone())
 
 
 # --- CASH REGISTER & TREASURY (CAISSE & TRÉSORERIE) ---
@@ -5077,7 +5143,7 @@ def admin_get_treasury_summary(admin: dict = Depends(require_permission("dashboa
         bank_balance = bank_in - bank_out
 
         # Pending COD Receivables (Orders Shipped / In Prep not yet marked Delivered)
-        cur.execute("SELECT COALESCE(SUM(total_dzd), 0) AS s FROM orders WHERE status IN ('shipped', 'in_preparation', 'confirmed')")
+        cur.execute("SELECT COALESCE(SUM(total_dzd), 0) AS s FROM orders WHERE status IN ('confirmed', 'preparing', 'ready_for_shipment', 'shipped')")
         pending_cod = int(cur.fetchone()["s"])
 
         # Total Delivered Orders Cash Collected
@@ -5116,14 +5182,19 @@ def admin_list_cash_movements(
 ):
     with db_session() as conn:
         cur = conn.cursor()
-        cur.execute("SELECT * FROM cash_movements ORDER BY id ASC")
+        cur.execute(
+            """SELECT cm.*, au.full_name AS created_by
+               FROM cash_movements cm LEFT JOIN admin_users au ON au.id = cm.recorded_by
+               ORDER BY cm.id ASC"""
+        )
         rows = [dict(r) for r in cur.fetchall()]
         cash_bal = 0
         bank_bal = 0
         for m in rows:
             amt = int(m.get("amount_dzd") or 0)
-            if m.get("movement_type") == "outflow":
+            if m.get("movement_type") in ("outflow", "withdrawal"):
                 amt = -amt
+            m["created_by"] = m.get("created_by") or ("Système" if not m.get("recorded_by") else None)
             if m.get("account_type") == "bank_account":
                 bank_bal += amt
                 m["balance_after_dzd"] = bank_bal
@@ -5138,22 +5209,26 @@ def admin_record_cash_movement(
     payload: CashMovementCreateInput,
     admin: dict = Depends(require_permission("settings:write"))
 ):
+    kind = _TREASURY_ENTRY_KINDS.get(payload.category or "")
+    if payload.category and not kind:
+        raise HTTPException(status_code=422, detail="Type de mouvement de trésorerie inconnu.")
+    label = kind[0] if kind else "Mouvement manuel"
+    text = " — ".join(x for x in [label, (payload.description or payload.notes or "").strip()] if x)
+    legs = kind[1] if kind else [(payload.account_type, payload.movement_type)]
     with db_session(commit=True) as conn:
         cur = conn.cursor()
-        cur.execute(
-            """INSERT INTO cash_movements (account_type, movement_type, amount_dzd, source_type, source_reference, description, recorded_by)
-               VALUES (?, ?, ?, 'manual_adjustment', ?, ?, ?)""",
-            (
-                payload.account_type,
-                payload.movement_type,
-                payload.amount_dzd,
-                payload.source_reference,
-                payload.description.strip(),
-                int(admin["sub"]),
+        ids = []
+        for account, movement in legs:
+            cur.execute(
+                """INSERT INTO cash_movements (account_type, movement_type, amount_dzd, source_type, source_reference, description, recorded_by)
+                   VALUES (?, ?, ?, 'manual_adjustment', ?, ?, ?)""",
+                (account or payload.account_type, movement, payload.amount_dzd,
+                 payload.source_reference, text[:255], int(admin["sub"])),
             )
-        )
-        mov_id = cur.lastrowid
-        return {"created": True, "movement_id": mov_id}
+            ids.append(cur.lastrowid)
+        log_audit(conn, int(admin["sub"]), "treasury_manual_entry", "cash_movement", str(ids[0]),
+                  {"category": payload.category, "amount_dzd": payload.amount_dzd, "legs": len(ids)})
+        return {"created": True, "movement_id": ids[0], "movement_ids": ids}
 
 
 # --- COMPTABILITÉ & CALCUL DES BÉNÉFICES (P&L, MARGINS & LEDGER) ---
