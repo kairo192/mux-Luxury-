@@ -5397,7 +5397,12 @@ def pos_open_register(payload: RegisterOpenInput, admin: dict = Depends(require_
             "opening_float_dzd": payload.opening_float_dzd, "register_name": payload.register_name,
         })
         cur.execute("SELECT * FROM cash_register_sessions WHERE id = ?", (session_id,))
-        return dict(cur.fetchone())
+        sd = dict(cur.fetchone())
+        # Same shape as /register/current: the float shows as expected cash at once.
+        totals = _register_runtime_totals(conn, sd["id"])
+        sd.update(totals)
+        sd["expected_cash_dzd"] = int(sd["opening_float_dzd"]) + totals["net_cash_dzd"]
+        return sd
 
 
 @app.get("/api/v1/admin/pos/register/current")
@@ -5461,7 +5466,17 @@ def pos_list_register_sessions(
                ORDER BY crs.id DESC LIMIT ?""",
             (limit,),
         )
-        return {"items": [dict(r) for r in cur.fetchall()]}
+        items = [dict(r) for r in cur.fetchall()]
+        # Totals are stored when a register is closed; an open one is computed live.
+        for sd in items:
+            if sd.get("status") == "open" or sd.get("closed_at") in (None, ""):
+                totals = _register_runtime_totals(conn, sd["id"])
+                sd.update(totals)
+                sd["expected_cash_dzd"] = int(sd["opening_float_dzd"]) + totals["net_cash_dzd"]
+                # Same field names as a closed register.
+                sd["total_sales_dzd"] = totals["sales_total_dzd"]
+                sd["total_refunds_dzd"] = totals["refunds_total_dzd"]
+        return {"items": items}
 
 
 # ============================================================================
@@ -5904,7 +5919,7 @@ def pos_refund_sale(
 
         # Sold quantities per variant on the original sale
         cur.execute(
-            "SELECT variant_id, product_id, product_name, variant_title, sku, unit_price_dzd, quantity "
+            "SELECT variant_id, product_id, product_name, variant_title, sku, unit_price_dzd, quantity, line_total_dzd "
             "FROM pos_sale_items WHERE sale_id = ?",
             (sale_id,),
         )
@@ -5931,8 +5946,21 @@ def pos_refund_sale(
         if not requested:
             raise HTTPException(status_code=400, detail="Nothing left to refund on this sale")
 
+        # A refund gives back what the customer actually PAID: each unit at its
+        # share of the ticket total (line discounts, ticket discount and tax
+        # included) — never the list price.
+        items_total = sum(int(l["line_total_dzd"] or 0) for l in sold.values())
+        paid_total = int(orig["total_dzd"])
+        cur.execute(
+            "SELECT COALESCE(SUM(total_dzd), 0) AS s FROM pos_sales WHERE sale_type = 'refund' AND reverses_sale_id = ?",
+            (sale_id,),
+        )
+        already_refunded = int(cur.fetchone()["s"])
+        refundable_left = max(0, paid_total - already_refunded)
+
         refund_lines = []
-        refund_subtotal = 0
+        refund_subtotal = 0      # list price of the returned units
+        refund_total = 0         # money given back
         for vid, qty in requested.items():
             if vid not in sold:
                 raise HTTPException(status_code=400, detail=f"Variant {vid} was not part of sale #{sale_id}")
@@ -5943,9 +5971,22 @@ def pos_refund_sale(
                     detail=f"Cannot refund {qty} of variant {vid}: only {remaining} remain refundable",
                 )
             unit_price = int(sold[vid]["unit_price_dzd"])
-            line_total = unit_price * qty
-            refund_subtotal += line_total
-            refund_lines.append((sold[vid], qty, unit_price, line_total))
+            sold_line_total = int(sold[vid]["line_total_dzd"] or 0)
+            share = (sold_line_total / items_total) if items_total > 0 else 0
+            line_paid = round(paid_total * share * qty / int(sold[vid]["quantity"]))
+            refund_subtotal += unit_price * qty
+            refund_total += line_paid
+            refund_lines.append([sold[vid], qty, unit_price, line_paid])
+
+        # Last refund on the ticket: give back exactly what is left (no rounding drift).
+        empties_ticket = all(
+            refunded_qty.get(v, 0) + requested.get(v, 0) >= sold[v]["quantity"] for v in sold
+        )
+        if empties_ticket or refund_total > refundable_left:
+            diff = refundable_left - refund_total
+            refund_total = refundable_left
+            if refund_lines:
+                refund_lines[-1][3] += diff
 
         ref = ""
         refund_id = None
@@ -5956,9 +5997,9 @@ def pos_refund_sale(
                     """INSERT INTO pos_sales
                        (sale_reference, register_session_id, cashier_admin_id, customer_id, sale_type,
                         reverses_sale_id, subtotal_dzd, discount_dzd, tax_dzd, total_dzd, status, notes)
-                       VALUES (?, ?, ?, ?, 'refund', ?, ?, 0, 0, ?, 'completed', ?)""",
+                       VALUES (?, ?, ?, ?, 'refund', ?, ?, ?, 0, ?, 'completed', ?)""",
                     (ref, int(session["id"]), int(admin["sub"]), orig["customer_id"], sale_id,
-                     refund_subtotal, refund_subtotal, payload.notes),
+                     refund_subtotal, refund_subtotal - refund_total, refund_total, payload.notes),
                 )
                 refund_id = cur.lastrowid
                 break
@@ -5971,9 +6012,9 @@ def pos_refund_sale(
                 """INSERT INTO pos_sale_items
                    (sale_id, product_id, variant_id, product_name, variant_title, sku,
                     unit_price_dzd, line_discount_dzd, quantity, line_total_dzd)
-                   VALUES (?, ?, ?, ?, ?, ?, ?, 0, ?, ?)""",
+                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
                 (refund_id, line["product_id"], line["variant_id"], line["product_name"],
-                 line["variant_title"], line["sku"], unit_price, qty, line_total),
+                 line["variant_title"], line["sku"], unit_price, unit_price * qty - line_total, qty, line_total),
             )
             # Restock the returned units
             cur.execute("UPDATE product_variants SET stock_qty = stock_qty + ? WHERE id = ?", (qty, line["variant_id"]))
@@ -5990,7 +6031,7 @@ def pos_refund_sale(
 
         cur.execute(
             "INSERT INTO pos_payments (sale_id, method, amount_dzd, change_dzd) VALUES (?, ?, ?, 0)",
-            (refund_id, payload.refund_method, refund_subtotal),
+            (refund_id, payload.refund_method, refund_total),
         )
 
         # Update original sale status: fully vs partially refunded
@@ -6003,7 +6044,7 @@ def pos_refund_sale(
 
         log_audit(conn, int(admin["sub"]), "pos_refund", "pos_sale", str(refund_id), {
             "refund_reference": ref, "reverses_sale_id": sale_id,
-            "refund_total_dzd": refund_subtotal, "original_new_status": new_status,
+            "refund_total_dzd": refund_total, "original_new_status": new_status,
         })
         return _pos_sale_payload(conn, int(refund_id))
 

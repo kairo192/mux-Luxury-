@@ -276,7 +276,11 @@ def export_snapshot(conn) -> Dict[str, Any]:
     tables = list_tables(conn)
     data: Dict[str, Any] = {}
     for t in tables:
-        cols, rows = _query(conn, f"SELECT * FROM {_q(t)}")
+        # In id order: a row that points to another row of the same table
+        # (a refund → its sale) must be restored after it. PostgreSQL returns
+        # rows in storage order, which changes when a row is updated.
+        order = " ORDER BY id" if "id" in _table_columns(conn, t) else ""
+        cols, rows = _query(conn, f"SELECT * FROM {_q(t)}{order}")
         data[t] = {"columns": cols, "rows": [[_encode(v) for v in r] for r in rows]}
     return {
         "format": FORMAT,
@@ -527,9 +531,14 @@ def _replace_all(conn, snap: Dict[str, Any]) -> Dict[str, int]:
         live_cols = set(_table_columns(conn, t))
         idx = [i for i, c in enumerate(block["columns"]) if c in live_cols]
         cols = [block["columns"][i] for i in idx]
+        rows = block["rows"]
+        if "id" in block["columns"]:
+            # Older backups were not sorted: sort here too (see snapshot).
+            id_i = block["columns"].index("id")
+            rows = sorted(rows, key=lambda r: (r[id_i] is None, r[id_i] if isinstance(r[id_i], int) else 0))
         sql = f"INSERT INTO {_q(t)} ({', '.join(_q(c) for c in cols)}) VALUES ({', '.join([ph] * len(cols))})"
         cur = _raw(conn).cursor()
-        cur.executemany(sql, [tuple(_decode(row[i]) for i in idx) for row in block["rows"]])
+        cur.executemany(sql, [tuple(_decode(row[i]) for i in idx) for row in rows])
         restored[t] = len(block["rows"])
     _reset_sequences(conn, order, restart=False)
     return restored

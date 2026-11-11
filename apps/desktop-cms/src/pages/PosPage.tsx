@@ -483,7 +483,10 @@ export const PosPage: React.FC<{ onInventoryUpdated?: () => void }> = ({ onInven
   const orderDisc = Math.min(parseInt(orderDiscount || "0", 10) || 0, subtotal - lineDiscounts);
   const total = subtotal - lineDiscounts - orderDisc;
   const itemCount = cart.reduce((s, l) => s + l.quantity, 0);
+  // Empty = the customer pays the exact amount. The amount received is never
+  // pre-filled, so a discount applied afterwards cannot leave a stale figure.
   const tenderedNum = parseInt(tendered || "0", 10) || 0;
+  const receivedShown = tenderedNum > 0 ? tenderedNum : total;
   const change = payMethod === "cash" ? Math.max(0, tenderedNum - total) : 0;
 
   const clearCart = () => {
@@ -531,6 +534,7 @@ export const PosPage: React.FC<{ onInventoryUpdated?: () => void }> = ({ onInven
 
   // ------------------------------------------------------------ checkout
   const handleConfirmSale = async () => {
+    // (tendered empty = exact amount)
     if (!cart.length) return flashError("Panier vide");
     if (total <= 0) return flashError("Total invalide");
     if (payMethod === "cash" && tenderedNum > 0 && tenderedNum < total) {
@@ -1020,7 +1024,9 @@ export const PosPage: React.FC<{ onInventoryUpdated?: () => void }> = ({ onInven
                               : "bg-emerald-100 text-emerald-700"
                           }`}
                         >
-                          {s.sale_type === "refund" ? "Remb." : s.status === "completed" ? "Payé" : s.status}
+                          {s.sale_type === "refund"
+                            ? "Avoir"
+                            : ({ completed: "Payé", refunded: "Remboursé", partially_refunded: "Remb. partiel", voided: "Annulé" } as Record<string, string>)[s.status] || s.status}
                         </span>
                       </div>
                       <div className="flex items-center gap-2">
@@ -1098,17 +1104,17 @@ export const PosPage: React.FC<{ onInventoryUpdated?: () => void }> = ({ onInven
                         <div className="font-bold text-[#063D2E] truncate text-base">{l.product_name}</div>
                         <div className="text-gray-500 font-mono">{l.variant_title} · {fmt(l.unit_price_dzd)}</div>
                       </div>
-                      <button type="button" onClick={() => removeLine(l.variant_id)} className="w-10 h-10 rounded-xl flex items-center justify-center text-gray-300 hover:text-red-600 active:scale-95">
+                      <button type="button" aria-label={`Retirer ${l.product_name} du ticket`} onClick={() => removeLine(l.variant_id)} className="w-10 h-10 rounded-xl flex items-center justify-center text-gray-300 hover:text-red-600 active:scale-95">
                         <Trash2 className="w-5 h-5" />
                       </button>
                     </div>
                     <div className="flex items-center justify-between mt-2">
                       <div className="flex items-center gap-2">
-                        <button type="button" onClick={() => updateQty(l.variant_id, -1)} className="w-12 h-12 rounded-2xl bg-gray-100 flex items-center justify-center active:scale-95">
+                        <button type="button" aria-label="Un de moins" onClick={() => updateQty(l.variant_id, -1)} className="w-12 h-12 rounded-2xl bg-gray-100 flex items-center justify-center active:scale-95">
                           <Minus className="w-5 h-5" />
                         </button>
                         <span className="w-10 text-center font-bold text-xl tabular-nums">{l.quantity}</span>
-                        <button type="button" onClick={() => updateQty(l.variant_id, 1)} className="w-12 h-12 rounded-2xl bg-emerald-100 text-emerald-900 flex items-center justify-center active:scale-95">
+                        <button type="button" aria-label="Un de plus" onClick={() => updateQty(l.variant_id, 1)} className="w-12 h-12 rounded-2xl bg-emerald-100 text-emerald-900 flex items-center justify-center active:scale-95">
                           <Plus className="w-5 h-5" />
                         </button>
                       </div>
@@ -1139,7 +1145,7 @@ export const PosPage: React.FC<{ onInventoryUpdated?: () => void }> = ({ onInven
                   type="button"
                   disabled={busy || cart.length === 0}
                   onClick={() => {
-                    setTendered(String(total));
+                    setTendered("");
                     setShowPay(true);
                   }}
                   className="w-full h-16 rounded-2xl bg-gradient-to-r from-[#D4AF62] to-[#E8D4A5] text-[#02291F] font-extrabold text-xl flex items-center justify-center gap-3 disabled:opacity-40 active:scale-[0.99] shadow-sm"
@@ -1194,12 +1200,13 @@ export const PosPage: React.FC<{ onInventoryUpdated?: () => void }> = ({ onInven
               <div className="grid grid-cols-2 gap-3 mb-3">
                 <div className="p-3 rounded-2xl bg-[#F5F3EE] text-center">
                   <div className="text-xs uppercase tracking-wide text-gray-500 font-bold">Reçu</div>
-                  <div className="text-2xl font-bold text-[#063D2E] font-mono tabular-nums">{fmt(tenderedNum)}</div>
+                  <div className="text-2xl font-bold text-[#063D2E] font-mono tabular-nums">{fmt(receivedShown)}</div>
+                  {tenderedNum === 0 && <div className="text-[11px] text-gray-500">montant exact</div>}
                 </div>
-                <div className={`p-3 rounded-2xl text-center ${tenderedNum >= total ? "bg-emerald-50" : "bg-red-50"}`}>
+                <div className={`p-3 rounded-2xl text-center ${receivedShown >= total ? "bg-emerald-50" : "bg-red-50"}`}>
                   <div className="text-xs uppercase tracking-wide text-gray-500 font-bold">Monnaie</div>
-                  <div className={`text-2xl font-bold font-mono tabular-nums ${tenderedNum >= total ? "text-emerald-700" : "text-red-600"}`}>
-                    {tenderedNum >= total ? fmt(change) : `-${fmt(total - tenderedNum)}`}
+                  <div className={`text-2xl font-bold font-mono tabular-nums ${receivedShown >= total ? "text-emerald-700" : "text-red-600"}`}>
+                    {receivedShown >= total ? fmt(change) : `-${fmt(total - receivedShown)}`}
                   </div>
                 </div>
               </div>
@@ -1300,6 +1307,8 @@ export const PosPage: React.FC<{ onInventoryUpdated?: () => void }> = ({ onInven
                 <div className="text-gray-500 mt-1 grid grid-cols-2 gap-x-3 gap-y-0.5 font-mono text-[11px]">
                   <span>Fond: {fmt(s.opening_float_dzd)}</span>
                   <span>Ventes: {fmt(s.total_sales_dzd || 0)}</span>
+                  {(s.total_refunds_dzd || 0) > 0 && <span>Remb.: {fmt(s.total_refunds_dzd)}</span>}
+                  {s.status === "open" && <span>Caisse attendue: {fmt(s.expected_cash_dzd || 0)}</span>}
                   {s.status === "closed" && <span>Attendu: {fmt(s.expected_cash_dzd || 0)}</span>}
                   {s.status === "closed" && <span>Compté: {fmt(s.counted_cash_dzd || 0)}</span>}
                   {s.status === "closed" && (

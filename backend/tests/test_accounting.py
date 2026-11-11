@@ -130,6 +130,31 @@ class TestAccounting(unittest.TestCase):
         self.assertEqual(row["total_cost_sold_dzd"], 3 * COST)
         self.assertEqual(row["total_profit_dzd"], 3 * (PRICE - COST))
 
+    def test_pos_refund_gives_back_what_was_paid_with_discount(self):
+        """2 units at 10 000 with a 2 000 ticket discount: paid 18 000.
+        Refunding 1 unit gives 9 000 back (not the 10 000 list price), the
+        last unit gives back exactly what is left, the till matches."""
+        _, vid = self._product()
+        self.client.post("/api/v1/admin/pos/register/open", headers=self.h, json={"register_name": "Compta", "opening_float_dzd": 0})
+        reg0 = self.client.get("/api/v1/admin/pos/register/current", headers=self.h).json()
+        sale = self.client.post("/api/v1/admin/pos/sales", headers={**self.h, "Idempotency-Key": uuid.uuid4().hex}, json={
+            "items": [{"variant_id": vid, "quantity": 2}], "order_discount_dzd": 2000,
+            "payments": [{"method": "cash", "amount_dzd": 18000}]})
+        self.assertEqual(sale.status_code, 201, sale.text)
+        sid = sale.json()["id"]
+        self.assertEqual(sale.json()["total_dzd"], 18000)
+        r1 = self.client.post(f"/api/v1/admin/pos/sales/{sid}/refund", headers=self.h,
+                              json={"items": [{"variant_id": vid, "quantity": 1}], "refund_method": "cash"})
+        self.assertEqual(r1.status_code, 201, r1.text)
+        self.assertEqual(r1.json()["total_dzd"], 9000)
+        r2 = self.client.post(f"/api/v1/admin/pos/sales/{sid}/refund", headers=self.h, json={"refund_method": "cash"})
+        self.assertEqual(r2.status_code, 201, r2.text)
+        self.assertEqual(r2.json()["total_dzd"], 9000)
+        reg1 = self.client.get("/api/v1/admin/pos/register/current", headers=self.h).json()
+        e0 = (reg0.get("session") or reg0).get("expected_cash_dzd", 0)
+        e1 = (reg1.get("session") or reg1).get("expected_cash_dzd", 0)
+        self.assertEqual(e1 - e0, 0, "sold 18 000 cash, refunded 18 000 cash: drawer unchanged")
+
 
 if __name__ == "__main__":
     unittest.main()
