@@ -12,34 +12,45 @@ export interface RevenueDataPoint {
 }
 
 interface RevenueChartProps {
-  data?: RevenueDataPoint[];
+  /** dashboard.revenue_by_day from the server: last 30 days, oldest first. */
+  byDay?: { date: string; revenue_dzd: number; orders: number }[];
   title?: string;
-  totalRevenue?: number;
-  totalOrders?: number;
 }
 
+const DAY_LABELS = ["Dim", "Lun", "Mar", "Mer", "Jeu", "Ven", "Sam"];
+
 export const RevenueTrendChart: React.FC<RevenueChartProps> = ({
-  data,
-  title = "Évolution du Chiffre d'Affaires & Flux des Ventes",
-  totalRevenue = 0,
-  totalOrders = 0,
+  byDay = [],
+  title = "Chiffre d'affaires par jour",
 }) => {
-  const [activeRange, setActiveRange] = useState<"7d" | "30d" | "all">("7d");
+  const [activeRange, setActiveRange] = useState<"7d" | "30d">("7d");
   const [hoveredIndex, setHoveredIndex] = useState<number | null>(null);
 
-  // Generate sensible dynamic points if data is empty (fresh store or preview)
-  const defaultDays = ["Lun", "Mar", "Mer", "Jeu", "Ven", "Sam", "Dim"];
-  const points: RevenueDataPoint[] =
-    data && data.length > 0
-      ? data
-      : defaultDays.map((d, i) => ({
-          date: `2026-11-0${i + 1}`,
-          label: d,
-          revenue: totalRevenue > 0 ? Math.round((totalRevenue / 7) * (0.6 + (i * 0.15))) : 0,
-          orders: totalOrders > 0 ? Math.max(1, Math.round(totalOrders / 7)) : 0,
-        }));
+  // Real figures only: every point is one day of non-cancelled, non-returned
+  // orders. A day without sales is 0 — nothing is estimated or invented.
+  const days = activeRange === "7d" ? byDay.slice(-7) : byDay.slice(-30);
+  const points: RevenueDataPoint[] = days.map((d) => {
+    const dt = new Date(`${d.date}T12:00:00`);
+    return {
+      date: d.date,
+      label: activeRange === "7d" ? DAY_LABELS[dt.getDay()] : `${dt.getDate()}/${dt.getMonth() + 1}`,
+      revenue: Number(d.revenue_dzd || 0),
+      orders: Number(d.orders || 0),
+    };
+  });
+  const periodRevenue = points.reduce((acc, p) => acc + p.revenue, 0);
+  const periodOrders = points.reduce((acc, p) => acc + p.orders, 0);
+  const showLabel = (idx: number) => activeRange === "7d" || idx % 5 === 0 || idx === points.length - 1;
 
   const maxRev = Math.max(...points.map((p) => p.revenue), 10000);
+  if (points.length === 0) {
+    return (
+      <div className="bg-white rounded-2xl border border-[#063D2E]/10 p-5 shadow-sm text-xs text-gray-500">
+        <h3 className="font-serif font-bold text-sm text-[#063D2E] mb-1">{title}</h3>
+        Aucune donnée de vente pour le moment.
+      </div>
+    );
+  }
   const chartHeight = 180;
   const chartWidth = 560;
   const paddingX = 40;
@@ -77,12 +88,15 @@ export const RevenueTrendChart: React.FC<RevenueChartProps> = ({
           </div>
           <div>
             <h3 className="font-serif font-bold text-sm text-[#063D2E] tracking-tight">{title}</h3>
-            <p className="text-[11px] text-gray-500">Flux consolidé des transactions et volume d'expéditions</p>
+            <p className="text-[11px] text-gray-500">
+              {activeRange === "7d" ? "7 derniers jours" : "30 derniers jours"} :{" "}
+              <strong className="text-[#063D2E]">{periodRevenue.toLocaleString("fr-FR")} DA</strong> · {periodOrders} commande(s)
+            </p>
           </div>
         </div>
 
         <div className="flex items-center gap-1.5 bg-[#F8F6F0] p-1 rounded-xl border border-[#D4AF62]/30 text-[11px]">
-          {(["7d", "30d", "all"] as const).map((r) => (
+          {(["7d", "30d"] as const).map((r) => (
             <button
               key={r}
               type="button"
@@ -93,7 +107,7 @@ export const RevenueTrendChart: React.FC<RevenueChartProps> = ({
                   : "text-gray-500 hover:text-gray-900"
               }`}
             >
-              {r === "7d" ? "7 Jours" : r === "30d" ? "30 Jours" : "Global"}
+              {r === "7d" ? "7 jours" : "30 jours"}
             </button>
           ))}
         </div>
@@ -173,7 +187,7 @@ export const RevenueTrendChart: React.FC<RevenueChartProps> = ({
                   strokeWidth="2"
                   className="transition-all duration-200 pointer-events-none"
                 />
-                <text
+                {showLabel(idx) && <text
                   x={x}
                   y={chartHeight - 8}
                   textAnchor="middle"
@@ -182,7 +196,7 @@ export const RevenueTrendChart: React.FC<RevenueChartProps> = ({
                   }`}
                 >
                   {p.label}
-                </text>
+                </text>}
               </g>
             );
           })}
@@ -214,14 +228,10 @@ export const RevenueTrendChart: React.FC<RevenueChartProps> = ({
         <div className="flex items-center gap-4">
           <div className="flex items-center gap-1.5">
             <span className="w-2.5 h-2.5 rounded-full bg-[#063D2E]" />
-            <span className="font-medium text-gray-700">Chiffre d'affaires brut (DZD)</span>
-          </div>
-          <div className="flex items-center gap-1.5">
-            <span className="w-2.5 h-2.5 rounded-full bg-[#D4AF62]" />
-            <span className="font-medium text-gray-700">Pic d'activité</span>
+            <span className="font-medium text-gray-700">Ventes du jour (DA) — hors commandes annulées et retournées</span>
           </div>
         </div>
-        <span className="font-mono text-gray-400">Mise à jour en temps réel</span>
+        <span className="text-gray-400">Survolez un point pour le détail</span>
       </div>
     </div>
   );
@@ -232,19 +242,21 @@ export const RevenueTrendChart: React.FC<RevenueChartProps> = ({
 // ============================================================================
 interface OrderStatusDistributionProps {
   ordersByStatus: Record<string, number>;
-  totalOrders: number;
 }
 
 export const OrderStatusDistributionChart: React.FC<OrderStatusDistributionProps> = ({
   ordersByStatus,
-  totalOrders,
 }) => {
+  // Every order, whatever its status — so the slices always add up to 100 %.
+  const totalOrders = Object.values(ordersByStatus || {}).reduce((acc, n) => acc + Number(n || 0), 0);
   const [hoveredKey, setHoveredKey] = useState<string | null>(null);
 
   const statusMeta: Record<string, { label: string; color: string; desc: string }> = {
     new: { label: "Nouvelles", color: "#3B82F6", desc: "À confirmer par appel/WhatsApp" },
+    pending_confirmation: { label: "En attente de confirmation", color: "#0EA5E9", desc: "Client à rappeler" },
     confirmed: { label: "Confirmées", color: "#10B981", desc: "Validées, prêtes pour emballage" },
     preparing: { label: "En Préparation", color: "#6366F1", desc: "Colis en cours de conditionnement" },
+    ready_for_shipment: { label: "Prêtes à expédier", color: "#8B5CF6", desc: "Colis emballé, en attente du livreur" },
     shipped: { label: "Expédiées", color: "#F59E0B", desc: "Prises en charge par livreur" },
     delivered: { label: "Livrées & Encaissées", color: "#063D2E", desc: "Fonds COD perçus" },
     returned: { label: "Retours COD", color: "#EF4444", desc: "Colis refusé ou injoignable" },
@@ -386,20 +398,22 @@ export const OrderStatusDistributionChart: React.FC<OrderStatusDistributionProps
 // 3. INVENTORY & STOCK VELOCITY GAUGE
 // ============================================================================
 interface StockGaugeProps {
-  totalActive: number;
+  /** Variants (size / colour) of products still in the catalogue. */
+  totalVariants: number;
+  /** Variants with 1..threshold units left (out of stock not included). */
   lowStock: number;
   outOfStock: number;
   onNavigateToProducts?: () => void;
 }
 
 export const InventoryHealthWidget: React.FC<StockGaugeProps> = ({
-  totalActive,
+  totalVariants,
   lowStock,
   outOfStock,
   onNavigateToProducts,
 }) => {
-  const total = Math.max(totalActive + outOfStock, 1);
-  const inStock = Math.max(0, totalActive - lowStock);
+  const total = Math.max(totalVariants, 1);
+  const inStock = Math.max(0, totalVariants - lowStock - outOfStock);
   const inStockPct = ((inStock / total) * 100).toFixed(0);
   const lowStockPct = ((lowStock / total) * 100).toFixed(0);
   const outOfStockPct = ((outOfStock / total) * 100).toFixed(0);
@@ -413,7 +427,7 @@ export const InventoryHealthWidget: React.FC<StockGaugeProps> = ({
           </div>
           <div>
             <h3 className="font-serif font-bold text-sm text-[#063D2E]">Santé des Stocks & Disponibilité</h3>
-            <p className="text-[11px] text-gray-500">Protection anti-rupture & alertes d'approvisionnement</p>
+            <p className="text-[11px] text-gray-500">{totalVariants} variante(s) en vente (taille / couleur)</p>
           </div>
         </div>
         {onNavigateToProducts && (
@@ -460,7 +474,7 @@ export const InventoryHealthWidget: React.FC<StockGaugeProps> = ({
           <p className="text-xl font-mono font-black text-emerald-900 mt-1">{inStock}</p>
         </div>
         <div className="p-3 rounded-xl bg-amber-50 border border-amber-200">
-          <span className="text-[10px] font-bold uppercase tracking-wider text-amber-800">Faible (≤3)</span>
+          <span className="text-[10px] font-bold uppercase tracking-wider text-amber-800">Faible</span>
           <p className="text-xl font-mono font-black text-amber-900 mt-1">{lowStock}</p>
         </div>
         <div className="p-3 rounded-xl bg-red-50 border border-red-200">

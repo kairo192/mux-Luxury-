@@ -7,7 +7,24 @@
 
 ---
 
-## 0c. CMS PRODUCT EDITOR (2026-11-11, latest)
+## 0d. SHOP CONTENT FROM CMS, NO FAKE DATA (2026-11-11, latest)
+- Storefront home is driven by `GET /api/v1/store/layout` (settings + ALL homepage_sections with
+  `is_active` + active banners). Fixed promo cards / hero texts / contacts were removed from
+  `apps/storefront/index.html`: see `renderHero()`, `renderPromos()`, `renderFooterCollections()`,
+  `applyStoreContacts()`, `setting()`, `waNumber()`. Do NOT re-add hardcoded phone numbers or promos.
+- Backend: `_free_delivery_threshold()` applied in order creation + `/delivery-zones/calculate`
+  (`free_delivery_applied`); `PUT /admin/banners/{id}`; `GET /admin/homepage-sections` (standard
+  blocks, auto-created on PUT); dashboard `revenue_by_day`, `active_variants`,
+  `low_stock_only_variants` (stock counts exclude archived/deleted products); `/ready` = 69 zones
+  exist + storage writable (inactive wilayas allowed).
+- CMS: `components/HomepageContentPanel.tsx` (top of the Contenu tab); settings form has
+  `instagram_url` / `tiktok_url`; static pages edit FR/AR/EN (`pageDraft`); `settingsDirtyRef` /
+  `pageDirtyRef` stop background refresh from wiping unsaved typing. `RevenueTrendChart` takes
+  `byDay` only (no estimates); `OrderStatusDistributionChart` computes its own total;
+  `InventoryHealthWidget` takes `totalVariants`.
+- Tests: `backend/tests/test_storefront_content.py`.
+
+## 0c. CMS PRODUCT EDITOR (2026-11-11)
 - `mediaUrl()` / `storefrontBaseUrl()` / `PLACEHOLDER_IMG` in `src/api/adminClient.ts`: ALWAYS wrap stored
   image paths with `mediaUrl()` in the CMS (`/uploads` → API host, `/assets` → shop host).
 - `components/StorefrontPreview.tsx` replaces `LiveProductCardPreview` (deleted): card + product page,

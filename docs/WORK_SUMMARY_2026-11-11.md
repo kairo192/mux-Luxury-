@@ -218,13 +218,50 @@ Tested end to end in a browser: created a dress with FR/AR/EN texts, 3 uploaded 
 the red photo on the red variant, published it, then opened it on the shop (red photo when "Rouge" is
 picked, Arabic description and buttons). New tests: `backend/tests/test_product_media.py`.
 
+## 14. Shop content controlled from the CMS — no fixed or invented data
+
+**Where did the "-20 %" promotion cards come from?** They were typed directly into the shop's page
+code (three fixed cards: Chaussures -20 %, etc.). They were connected to nothing: the CMS could not
+change or remove them, and no real promotion was behind them. The CMS also had a banner form and
+home-page switches in its code, but **neither was ever shown on screen**.
+
+| Problem found | Fix |
+|---|---|
+| 3 promotion cards fixed in the shop's code | Removed. Promotion cards now come only from **CMS → Contenu & Bannières → Carte promo**. With none, the block is hidden |
+| Big banner at the top of the home page fixed in the code | **Bannière principale** in the CMS: title/text in FR/AR/EN, button text, photo, where the button leads. Several = they rotate every 7 s. With none, the brand text is shown (translated) |
+| Banner form and home-page switches existed in the CMS code but were never displayed; the hidden form invented values ("Collection Exclusive Mus Luxury", link `/categories/sacs` that does not exist on the shop) | New **Page d'accueil** panel: switch each home block on/off; create / edit / hide / reorder / delete banners; choose the destination from the real categories and products (or an https:// link); upload the photo; live preview |
+| Banners could not be edited, only created | New server route to edit a banner (`PUT /admin/banners/{id}`), with protection against script links |
+| **Free delivery was promised but not applied**: the shop showed "livraison offerte dès 25 000 DA" but the server still charged delivery, so the courier collected more than the customer had seen | The server applies the CMS threshold on the preview AND on the stored order. The shop's confirmation shows the server's own totals. `0` = no free delivery, and the shop then stops promising it |
+| Phone, WhatsApp, Instagram, TikTok typed by hand in many places in the shop | All come from **CMS → Contenu → Coordonnées de la boutique** (Instagram and TikTok fields added). WhatsApp numbers are validated |
+| Footer "Collections" links fixed | Built from the real categories |
+| Products above 25 000 DA hidden by the price filter's starting value | No price limit until the customer moves the slider; the slider's maximum follows the most expensive product |
+| Information pages (À propos, FAQ, Retours, CGV): CMS edited only French, and **saving erased the Arabic/English texts** | FR / AR / EN tabs in the CMS; the shop shows the customer's language (French when a translation is empty) |
+| Typing in the settings or a page was wiped when the CMS refreshed in the background (window focus) | Unsaved edits are kept until saved |
+| **Dashboard chart was invented**: daily values computed from the total (`total ÷ 7 × …`), dates fixed in November 2026, the 7 days / 30 days / Global buttons did nothing | Real revenue per day from the server (last 30 days, cancelled/returned excluded); 7 / 30 days buttons work; "Aucune donnée" when empty |
+| Order status ring: percentages could exceed 100 % (cancelled orders counted on top, divided by a total without them); "En attente de confirmation" and "Prêtes à expédier" orders were missing | Total = all orders; every status shown |
+| Stock widget mixed products and variants ("normal" stock = products − variants), counted variants of archived products, and "Stock faible" also counted the out-of-stock ones twice in the sidebar badge | Counts variants of products still in the catalogue only; low and out-of-stock counted separately |
+| Revenue card counted returned orders | Cancelled and returned orders excluded |
+| "69 Wilayas couvertes" written in the CMS whatever the real delivery settings | Shows the real number of wilayas switched on |
+| "Protection Système Active / Chiffrement matériel certifié" shown even when the Windows vault was not used | Says which protection is really in use |
+| Health check said "degraded" as soon as the owner switched off delivery to one wilaya | Health = the 69 wilayas exist + photos can be saved; switched-off wilayas are a business choice |
+
+Tested in a browser: created a hero banner (with photo, Arabic title, link to a category) and a
+promotion card in the CMS, switched off the guarantees bar, set free delivery at 30 000 DA and a new
+Instagram link → all visible on the shop within a minute; the banner button opens the chosen
+category; the dashboard chart shows the real 5 510 DA order of the test database.
+New tests: `backend/tests/test_storefront_content.py` (7).
+
+**On your PC's local database:** if it was created before the demo data was removed, it may still
+contain old example banners (e.g. "CHAUSSURES — Jusqu'à -20%"). Delete or edit them in
+**Contenu & Bannières**. The server (VPS) database never had them.
+
 ---
 
 ## Verification
 
 | Check | Result |
 |---|---|
-| Backend tests | 249 run (7 new for backups/categories). Only 4 failures, all caused by `@babel/core` missing in the cloud container; those 4 pass with a substitute TypeScript compiler and pass in CI. |
+| Backend tests | 263 run (7 new in round 14, 7 for backups/categories). Only 4 failures, all caused by `@babel/core` missing in the cloud container; those 4 pass with a substitute TypeScript compiler and pass in CI. |
 | CMS TypeScript + build | OK |
 | Rust (`cargo check`) | OK |
 | Browser tests (Playwright) | Notifications, message box queue, bell, update dialog, new-order alert, Arabic layout, category delete + reload, archived tab, database panel, backup, reset: all OK |

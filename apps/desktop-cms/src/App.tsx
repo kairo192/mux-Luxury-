@@ -81,6 +81,7 @@ import {
   HardDrive,
   Users,
 } from "lucide-react";
+import { HomepageContentPanel } from "./components/HomepageContentPanel";
 import { RevenueTrendChart, OrderStatusDistributionChart, InventoryHealthWidget } from "./components/CmsCharts";
 import { DesktopCmsApi, restoreSessionFromOsKeychain, getApiBaseUrl, configureApiBaseUrl, mediaUrl } from "./api/adminClient";
 import { CategoryBuilderPage } from "./pages/CategoryBuilderPage";
@@ -279,9 +280,7 @@ export default function App() {
   const [orders, setOrders] = useState<any[]>([]);
   const [customers, setCustomers] = useState<any[]>([]);
   const [movements, setMovements] = useState<any[]>([]);
-  const [banners, setBanners] = useState<any[]>([]);
   const [coupons, setCoupons] = useState<any[]>([]);
-  const [homepageSections, setHomepageSections] = useState<any[]>([]);
   const [staticPages, setStaticPages] = useState<any[]>([]);
   // backups state removed — admin-facing backup page gone.
   const [auditLogs, setAuditLogs] = useState<any[]>([]);
@@ -293,8 +292,6 @@ export default function App() {
   const [loadingWorkspace, setLoadingWorkspace] = useState(false);
   const [selectedProductIds, setSelectedProductIds] = useState<number[]>([]);
   const [newBrandName, setNewBrandName] = useState("");
-  const [bannerTitleFr, setBannerTitleFr] = useState("");
-  const [bannerImageUrl, setBannerImageUrl] = useState("/assets/hero_banner_mus.jpg");
   const [orderSearch, setOrderSearch] = useState("");
   const [codBlacklist, setCodBlacklist] = useState<any[]>([]);
   const [codCheckPhone, setCodCheckPhone] = useState("");
@@ -339,15 +336,26 @@ export default function App() {
   // Store Settings, Coupon & Static Page State (Tab 7)
   const [storePhoneInput, setStorePhoneInput] = useState("");
   const [storeWhatsappInput, setStoreWhatsappInput] = useState("");
-  const [storeLocationInput, setStoreLocationInput] = useState("FVX6+GCJ Mus luxury, Ouled Yaïch");
-  const [freeThresholdInput, setFreeThresholdInput] = useState("25000");
+  const [storeLocationInput, setStoreLocationInput] = useState("");
+  const [freeThresholdInput, setFreeThresholdInput] = useState("");
+  const [instagramInput, setInstagramInput] = useState("");
+  const [tiktokInput, setTiktokInput] = useState("");
+  // Set while the owner is typing: a background refresh (window focus,
+  // auto-reload) must not wipe what has not been saved yet.
+  const settingsDirtyRef = useRef(false);
+  const pageDirtyRef = useRef(false);
   const [couponCode, setCouponCode] = useState("");
   const [couponType, setCouponType] = useState<"percentage" | "fixed_dzd">("percentage");
   const [couponValue, setCouponValue] = useState(10);
   const [couponMinOrder, setCouponMinOrder] = useState(5000);
   const [pageSlug, setPageSlug] = useState("about");
-  const [pageTitleFr, setPageTitleFr] = useState("Maison Mus Luxury — Ouled Yaïch");
-  const [pageContentFr, setPageContentFr] = useState("Boutique officielle Mus Luxury à Ouled Yaïch (Blida 09). Livraison rapide 69 Wilayas avec paiement à la livraison.");
+  const EMPTY_PAGE = { title_fr: "", title_ar: "", title_en: "", content_fr: "", content_ar: "", content_en: "" };
+  const [pageDraft, setPageDraft] = useState<Record<string, string>>(EMPTY_PAGE);
+  const [pageLang, setPageLang] = useState<"fr" | "ar" | "en">("fr");
+  const pageDraftFrom = (pg: any) => ({
+    title_fr: pg?.title_fr || "", title_ar: pg?.title_ar || "", title_en: pg?.title_en || "",
+    content_fr: pg?.content_fr || "", content_ar: pg?.content_ar || "", content_en: pg?.content_en || "",
+  });
 
   const [keychainReady, setKeychainReady] = useState(false);
 
@@ -379,7 +387,7 @@ export default function App() {
     setLoadingWorkspace(true);
     setError("");
     try {
-      const [dashData, repData, brdData, catData, prodData, ordData, custData, movData, layData, bnrData, pgData, hltData, blData, kcStatus, outboxData, auditData, readyData, cpnData] = await Promise.all([
+      const [dashData, repData, brdData, catData, prodData, ordData, custData, movData, layData, pgData, hltData, blData, kcStatus, outboxData, auditData, readyData, cpnData] = await Promise.all([
         DesktopCmsApi.getDashboard(),
         DesktopCmsApi.getReports().catch(() => null),
         DesktopCmsApi.listBrands().catch(() => ({ items: [] })),
@@ -389,7 +397,6 @@ export default function App() {
         DesktopCmsApi.listCustomers().catch(() => ({ items: [] })),
         DesktopCmsApi.listInventoryMovements(),
         DesktopCmsApi.getStoreLayout().catch(() => ({ homepage_sections: [] })),
-        DesktopCmsApi.listBanners().catch(() => ({ items: [] })),
         DesktopCmsApi.listStaticPages().catch(() => ({ items: [] })),
         // listBackups & getRecoveryStatus removed — endpoints gone.
         DesktopCmsApi.checkHealth().catch(() => ({ status: "ok" })),
@@ -414,23 +421,19 @@ export default function App() {
       setOrders(ordData.items || []);
       setCustomers(custData.items || []);
       setMovements(movData.items || []);
-      setHomepageSections(layData.homepage_sections || []);
-      if (layData.settings) {
+      if (layData.settings && !settingsDirtyRef.current) {
         const s = layData.settings;
-        if (s.store_phone || s.contact_phone) setStorePhoneInput(String(s.store_phone || s.contact_phone));
-        if (s.whatsapp_contact_number || s.whatsapp_phone) setStoreWhatsappInput(String(s.whatsapp_contact_number || s.whatsapp_phone));
-        if (s.store_location) setStoreLocationInput(String(s.store_location));
-        if (s.free_delivery_threshold_dzd !== undefined || s.free_shipping_threshold_dzd !== undefined) {
-          setFreeThresholdInput(String(s.free_delivery_threshold_dzd ?? s.free_shipping_threshold_dzd));
-        }
+        setStorePhoneInput(String(s.store_phone || s.contact_phone || ""));
+        setStoreWhatsappInput(String(s.whatsapp_contact_number || s.whatsapp_phone || ""));
+        setStoreLocationInput(String(s.store_location || ""));
+        setFreeThresholdInput(String(s.free_delivery_threshold_dzd ?? s.free_shipping_threshold_dzd ?? ""));
+        setInstagramInput(String(s.instagram_url || ""));
+        setTiktokInput(String(s.tiktok_url || ""));
       }
-      setBanners(bnrData.items || []);
       const loadedPages = pgData.items || [];
       setStaticPages(loadedPages);
-      const currentPg = loadedPages.find((p: any) => p.slug === pageSlug) || loadedPages[0];
-      if (currentPg) {
-        setPageTitleFr(currentPg.title_fr || "");
-        setPageContentFr(currentPg.content_fr || "");
+      if (!pageDirtyRef.current) {
+        setPageDraft(pageDraftFrom(loadedPages.find((p: any) => p.slug === pageSlug)));
       }
       setHealthStatus(hltData);
       if (catData.items?.length && !prodCategoryId) {
@@ -820,13 +823,32 @@ export default function App() {
       notifyClientWarning("Paramètres incomplets", "Veuillez renseigner le téléphone et l'adresse officielle de la boutique Mus Luxury.");
       return;
     }
+    const threshold = freeThresholdInput.replace(/\s/g, "");
+    if (threshold && !/^\d+$/.test(threshold)) {
+      notifyClientWarning("Seuil invalide", "Le seuil de livraison gratuite est un montant en DA (chiffres seulement), ou 0 pour le désactiver.");
+      return;
+    }
+    const waDigits = storeWhatsappInput.replace(/[^\d]/g, "");
+    if (storeWhatsappInput.trim() && (waDigits.length < 9 || waDigits.length > 15)) {
+      notifyClientWarning("Numéro WhatsApp invalide", "Exemple : +213 655 53 41 54");
+      return;
+    }
+    for (const [label, url] of [["Instagram", instagramInput], ["TikTok", tiktokInput]]) {
+      if (url.trim() && !/^https:\/\/[^\s]+$/.test(url.trim())) {
+        notifyClientWarning(`Lien ${label} invalide`, "Collez l'adresse complète de la page, commençant par https://");
+        return;
+      }
+    }
     try {
       await DesktopCmsApi.updateStoreSettings({
         store_phone: storePhoneInput.trim(),
         whatsapp_contact_number: storeWhatsappInput.trim(),
         store_location: storeLocationInput.trim(),
-        free_delivery_threshold_dzd: freeThresholdInput.trim(),
+        free_delivery_threshold_dzd: threshold || "0",
+        instagram_url: instagramInput.trim(),
+        tiktok_url: tiktokInput.trim(),
       });
+      settingsDirtyRef.current = false;
       const okMsg = "Paramètres de la boutique Mus Luxury enregistrés et synchronisés.";
       setSuccessMsg(okMsg);
       notifyClientSuccess("Paramètres boutique enregistrés", okMsg);
@@ -897,7 +919,7 @@ export default function App() {
   async function handleSaveStaticPage(e: React.FormEvent) {
     e.preventDefault();
     setError("");
-    if (pageTitleFr.trim().length < 2 || pageContentFr.trim().length < 5) {
+    if (pageDraft.title_fr.trim().length < 2 || pageDraft.content_fr.trim().length < 5) {
       notifyClientWarning(
         "Contenu de page incomplet",
         "Veuillez saisir un titre et un texte complet avant de publier la page statique."
@@ -906,10 +928,15 @@ export default function App() {
     }
     try {
       await DesktopCmsApi.upsertStaticPage(pageSlug, {
-        title_fr: pageTitleFr.trim(),
-        content_fr: pageContentFr.trim(),
+        title_fr: pageDraft.title_fr.trim(),
+        title_ar: pageDraft.title_ar.trim(),
+        title_en: pageDraft.title_en.trim(),
+        content_fr: pageDraft.content_fr.trim(),
+        content_ar: pageDraft.content_ar.trim(),
+        content_en: pageDraft.content_en.trim(),
         is_published: true,
       });
+      pageDirtyRef.current = false;
       const okMsg = `Page statique "/pages/${pageSlug}" enregistrée et publiée.`;
       setSuccessMsg(okMsg);
       notifyClientSuccess("Page statique publiée", okMsg);
@@ -981,54 +1008,6 @@ export default function App() {
       await loadAllWorkspaceData();
     } catch (err: any) {
       const tr = notifyClientError(err, "Mise à jour groupée impossible");
-      setError(tr.message);
-    }
-  }
-
-  async function handleToggleHomepageSection(sec: any) {
-    setError("");
-    try {
-      await DesktopCmsApi.updateHomepageSection(sec.section_key, {
-        title_fr: sec.title_fr,
-        is_active: !sec.is_active,
-        display_order: sec.display_order || 1,
-        config: sec.config || {},
-      });
-      const okMsg = `Section d'accueil "${sec.title_fr}" mise à jour.`;
-      setSuccessMsg(okMsg);
-      notifyClientSuccess("Mise en page mise à jour", okMsg);
-      await loadAllWorkspaceData();
-    } catch (err: any) {
-      const tr = notifyClientError(err, "Modification de la section d'accueil impossible");
-      setError(tr.message);
-    }
-  }
-
-  async function handleCreateBanner(e: React.FormEvent) {
-    e.preventDefault();
-    if (!bannerTitleFr.trim()) {
-      notifyClientWarning("Titre de bannière requis", "Veuillez saisir le titre de la bannière promotionnelle avant de la publier.");
-      return;
-    }
-    setError("");
-    try {
-      await DesktopCmsApi.createBanner({
-        position: "promo_grid",
-        title_fr: bannerTitleFr.trim(),
-        subtitle_fr: "Collection Exclusive Mus Luxury",
-        cta_text_fr: "Découvrir",
-        cta_link: "/categories/sacs",
-        image_url: bannerImageUrl,
-        is_active: true,
-        display_order: banners.length + 1,
-      });
-      setBannerTitleFr("");
-      const okMsg = "Bannière promotionnelle créée et publiée.";
-      setSuccessMsg(okMsg);
-      notifyClientSuccess("Bannière publiée", okMsg);
-      await loadAllWorkspaceData();
-    } catch (err: any) {
-      const tr = notifyClientError(err, "Création de la bannière impossible");
       setError(tr.message);
     }
   }
@@ -1497,7 +1476,8 @@ export default function App() {
   const navBadges = {
     orders: orders.filter((o) => o.status === "new" || o.status === "pending_confirmation").length,
     // Same per-variant figure as the dashboard's "stock faible" + "ruptures" cards.
-    low_stock: Number(dashboard?.low_stock_variants || 0) + Number(dashboard?.out_of_stock_variants || 0),
+    // low_stock_variants already includes the out-of-stock ones.
+    low_stock: Number(dashboard?.low_stock_variants || 0),
   };
 
   const filteredProducts = products.filter((p) => {
@@ -1735,7 +1715,7 @@ export default function App() {
 
               {/* Low Stock Alert */}
               <div className={`bg-white p-4 rounded-2xl border shadow-sm hover:shadow-md transition-all duration-200 relative overflow-hidden group ${
-                dashboard.low_stock_variants > 0 ? "border-amber-300 bg-amber-50/30" : "border-[#063D2E]/10"
+                (dashboard.low_stock_only_variants ?? 0) > 0 ? "border-amber-300 bg-amber-50/30" : "border-[#063D2E]/10"
               }`}>
                 <div className="flex items-center justify-between text-amber-800">
                   <span className="font-bold text-[10px] uppercase tracking-wider text-amber-800">{t("dashboard_tab.low_stock_title")}</span>
@@ -1743,7 +1723,7 @@ export default function App() {
                     <AlertTriangle className="w-4 h-4 text-amber-700" />
                   </div>
                 </div>
-                <p className="text-xl font-bold font-mono text-amber-700 mt-2">{dashboard.low_stock_variants}</p>
+                <p className="text-xl font-bold font-mono text-amber-700 mt-2">{dashboard.low_stock_only_variants ?? 0}</p>
                 <div className="text-[10px] text-amber-700 font-semibold mt-1">
                   {t("dashboard_tab.low_stock_desc")}
                 </div>
@@ -1769,16 +1749,10 @@ export default function App() {
             {/* Interactive Charts Row: Revenue Area Chart (8 cols) & Orders Donut (4 cols) */}
             <div className="grid grid-cols-1 lg:grid-cols-12 gap-5">
               <div className="lg:col-span-7">
-                <RevenueTrendChart
-                  totalRevenue={Number(dashboard.total_revenue_dzd || 0)}
-                  totalOrders={dashboard.total_orders}
-                />
+                <RevenueTrendChart byDay={dashboard.revenue_by_day || []} />
               </div>
               <div className="lg:col-span-5">
-                <OrderStatusDistributionChart
-                  ordersByStatus={dashboard.orders_by_status || {}}
-                  totalOrders={dashboard.total_orders}
-                />
+                <OrderStatusDistributionChart ordersByStatus={dashboard.orders_by_status || {}} />
               </div>
             </div>
 
@@ -1786,9 +1760,9 @@ export default function App() {
             <div className="grid grid-cols-1 lg:grid-cols-12 gap-5 text-xs">
               <div className="lg:col-span-5">
                 <InventoryHealthWidget
-                  totalActive={dashboard.total_active_products ?? dashboard.published_products}
-                  lowStock={dashboard.low_stock_variants}
-                  outOfStock={dashboard.out_of_stock_variants}
+                  totalVariants={dashboard.active_variants ?? 0}
+                  lowStock={dashboard.low_stock_only_variants ?? 0}
+                  outOfStock={dashboard.out_of_stock_variants ?? 0}
                   onNavigateToProducts={() => setActiveTab("products")}
                 />
               </div>
@@ -2734,28 +2708,46 @@ export default function App() {
         {/* TAB 7: STORE CONTENT, COUPONS, STATIC PAGES & REAL SOCIAL/LOCATION SETTINGS (KEEP-ALIVE) */}
         <div className={activeTab === "content" ? "block" : "hidden"}>
           <div className="space-y-6 text-xs">
-            <form onSubmit={handleSaveStoreSettings} className="bg-white p-6 rounded-2xl border border-[#D4AF62]/40 space-y-4">
-              <h3 className="text-base font-serif font-bold text-[#063D2E]">Coordonnées Officielles &amp; Paramètres Boutique (Ouled Yaïch — Blida 09)</h3>
-              <div className="grid grid-cols-1 md:grid-cols-4 gap-3">
+            <HomepageContentPanel categories={categories} products={products} />
+
+            <form onSubmit={handleSaveStoreSettings} onChange={() => { settingsDirtyRef.current = true; }} className="bg-white p-6 rounded-2xl border border-[#D4AF62]/40 space-y-4">
+              <div>
+                <h3 className="text-base font-serif font-bold text-[#063D2E]">Coordonnées de la boutique</h3>
+                <p className="text-gray-500">Affichées partout sur la boutique en ligne (en-tête, pied de page, boutons WhatsApp, page produit).</p>
+              </div>
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
                 <div>
-                  <label className="block font-bold mb-1">Téléphone Boutique</label>
-                  <input value={storePhoneInput} onChange={(e) => setStorePhoneInput(e.target.value)} className="w-full px-3 py-2 border rounded-xl font-mono" />
+                  <label className="block font-bold mb-1">Téléphone affiché</label>
+                  <input value={storePhoneInput} onChange={(e) => setStorePhoneInput(e.target.value)} placeholder="0655 53 41 54" className="w-full px-3 py-2 border rounded-xl font-mono" />
                 </div>
                 <div>
-                  <label className="block font-bold mb-1">WhatsApp Direct (E.164)</label>
-                  <input value={storeWhatsappInput} onChange={(e) => setStoreWhatsappInput(e.target.value)} className="w-full px-3 py-2 border rounded-xl font-mono" />
+                  <label className="block font-bold mb-1">Numéro WhatsApp</label>
+                  <input value={storeWhatsappInput} onChange={(e) => setStoreWhatsappInput(e.target.value)} placeholder="+213 655 53 41 54" className="w-full px-3 py-2 border rounded-xl font-mono" />
                 </div>
                 <div>
-                  <label className="block font-bold mb-1">Adresse &amp; Google Maps</label>
+                  <label className="block font-bold mb-1">Adresse de la boutique</label>
                   <input value={storeLocationInput} onChange={(e) => setStoreLocationInput(e.target.value)} className="w-full px-3 py-2 border rounded-xl" />
                 </div>
                 <div>
-                  <label className="block font-bold mb-1">Seuil Livraison Gratuite (DA)</label>
-                  <input value={freeThresholdInput} onChange={(e) => setFreeThresholdInput(e.target.value)} className="w-full px-3 py-2 border rounded-xl font-bold" />
+                  <label className="block font-bold mb-1">Page Instagram (lien)</label>
+                  <input value={instagramInput} onChange={(e) => setInstagramInput(e.target.value)} placeholder="https://www.instagram.com/…" className="w-full px-3 py-2 border rounded-xl font-mono" />
+                </div>
+                <div>
+                  <label className="block font-bold mb-1">Page TikTok (lien)</label>
+                  <input value={tiktokInput} onChange={(e) => setTiktokInput(e.target.value)} placeholder="https://www.tiktok.com/@…" className="w-full px-3 py-2 border rounded-xl font-mono" />
+                </div>
+                <div>
+                  <label className="block font-bold mb-1">Livraison gratuite à partir de (DA)</label>
+                  <input inputMode="numeric" value={freeThresholdInput} onChange={(e) => setFreeThresholdInput(e.target.value)} placeholder="0 = pas de livraison gratuite" className="w-full px-3 py-2 border rounded-xl font-bold" />
+                  <p className="text-[11px] text-gray-500 mt-1">
+                    {Number(freeThresholdInput.replace(/\s/g, "")) > 0
+                      ? `Commandes de ${Number(freeThresholdInput.replace(/\s/g, "")).toLocaleString("fr-FR")} DA ou plus : livraison offerte (appliquée aussi par le serveur).`
+                      : "Désactivée : la livraison est toujours payante."}
+                  </p>
                 </div>
               </div>
               <button type="submit" className="px-5 py-2.5 rounded-xl bg-[#D4AF62] text-[#02291F] font-extrabold">
-                Enregistrer les paramètres de la boutique
+                Enregistrer les coordonnées
               </button>
             </form>
 
@@ -2807,37 +2799,50 @@ export default function App() {
                 )}
               </form>
 
-              <form onSubmit={handleSaveStaticPage} className="bg-white p-6 rounded-2xl border border-[#D4AF62]/40 space-y-3">
-                <h3 className="text-base font-serif font-bold text-[#063D2E]">Éditeur de Pages Statiques (/pages/*)</h3>
+              <form onSubmit={handleSaveStaticPage} onChange={() => { pageDirtyRef.current = true; }} className="bg-white p-6 rounded-2xl border border-[#D4AF62]/40 space-y-3">
+                <div>
+                  <h3 className="text-base font-serif font-bold text-[#063D2E]">Pages d'information</h3>
+                  <p className="text-gray-500">Ouvertes depuis le pied de page de la boutique. Sans texte arabe / anglais, le texte français est affiché.</p>
+                </div>
                 <div className="grid grid-cols-2 gap-3">
                   <div>
-                    <label className="block font-bold mb-1">Slug de la page</label>
+                    <label className="block font-bold mb-1">Page</label>
                     <select value={pageSlug} onChange={(e) => {
                       const nextSlug = e.target.value;
+                      if (pageDirtyRef.current && !window.confirm("Les modifications non enregistrées de cette page seront perdues. Continuer ?")) return;
                       setPageSlug(nextSlug);
-                      const foundPg = staticPages.find((p: any) => p.slug === nextSlug);
-                      if (foundPg) {
-                        setPageTitleFr(foundPg.title_fr || "");
-                        setPageContentFr(foundPg.content_fr || "");
-                      }
-                    }} className="w-full px-3 py-2 border rounded-xl bg-white font-mono">
-                      <option value="about">about (À propos)</option>
-                      <option value="faq">faq (Questions fréquentes)</option>
-                      <option value="returns">returns (Livraison &amp; Retours)</option>
-                      <option value="terms">terms (Conditions générales)</option>
+                      pageDirtyRef.current = false;
+                      setPageDraft(pageDraftFrom(staticPages.find((p: any) => p.slug === nextSlug)));
+                    }} className="w-full px-3 py-2 border rounded-xl bg-white">
+                      <option value="about">À propos</option>
+                      <option value="faq">Questions fréquentes</option>
+                      <option value="returns">Livraison &amp; retours</option>
+                      <option value="terms">Conditions générales</option>
                     </select>
                   </div>
                   <div>
-                    <label className="block font-bold mb-1">Titre (FR)</label>
-                    <input value={pageTitleFr} onChange={(e) => setPageTitleFr(e.target.value)} required className="w-full px-3 py-2 border rounded-xl" />
+                    <label className="block font-bold mb-1">Langue</label>
+                    <div className="flex gap-1">
+                      {(["fr", "ar", "en"] as const).map((l) => (
+                        <button key={l} type="button" onClick={() => setPageLang(l)}
+                          className={`flex-1 py-2 rounded-xl border font-bold ${pageLang === l ? "bg-[#063D2E] text-[#D4AF62] border-[#063D2E]" : "bg-white text-gray-600"}`}>
+                          {l.toUpperCase()}{l === "fr" ? " *" : pageDraft[`content_${l}`] ? "" : " (vide)"}
+                        </button>
+                      ))}
+                    </div>
                   </div>
                 </div>
                 <div>
-                  <label className="block font-bold mb-1">Contenu (FR)</label>
-                  <textarea rows={2} value={pageContentFr} onChange={(e) => setPageContentFr(e.target.value)} required className="w-full px-3 py-2 border rounded-xl" />
+                  <label className="block font-bold mb-1">Titre ({pageLang.toUpperCase()})</label>
+                  <input dir={pageLang === "ar" ? "rtl" : "ltr"} value={pageDraft[`title_${pageLang}`] || ""} onChange={(e) => setPageDraft({ ...pageDraft, [`title_${pageLang}`]: e.target.value })} required={pageLang === "fr"} className="w-full px-3 py-2 border rounded-xl" />
+                </div>
+                <div>
+                  <label className="block font-bold mb-1">Texte ({pageLang.toUpperCase()})</label>
+                  <textarea dir={pageLang === "ar" ? "rtl" : "ltr"} rows={9} value={pageDraft[`content_${pageLang}`] || ""} onChange={(e) => setPageDraft({ ...pageDraft, [`content_${pageLang}`]: e.target.value })} required={pageLang === "fr"} className="w-full px-3 py-2 border rounded-xl leading-relaxed" />
+                  <p className="text-[11px] text-gray-500">Un retour à la ligne = un nouveau paragraphe sur la boutique.</p>
                 </div>
                 <button type="submit" className="px-5 py-2 rounded-xl bg-[#063D2E] text-[#D4AF62] font-bold">
-                  Publier la Page
+                  Publier la page
                 </button>
               </form>
             </div>
@@ -2850,14 +2855,18 @@ export default function App() {
             <DatabasePanel active={activeTab === "backups"} isOwner={user?.role === "super_admin"} />
             <div className="bg-white p-6 rounded-2xl border border-[#D4AF62]/40 flex flex-wrap items-center justify-between gap-4">
               <div>
-                <h3 className="text-base font-serif font-bold text-[#063D2E]">Protection &amp; Chiffrement Matériel des Sessions</h3>
+                <h3 className="text-base font-serif font-bold text-[#063D2E]">Protection de la session</h3>
                 <p className="text-gray-500">
-                  Coffre-fort système : <strong>Chiffrement matériel certifié</strong> • Protection des identifiants et clés de session active
+                  {keychainStatus?.os_keychain
+                    ? "Votre connexion est gardée dans le coffre-fort de Windows (Gestionnaire d'identification), pas dans un fichier."
+                    : "Application ouverte dans un navigateur : la connexion n'est gardée que pendant cette session."}
                 </p>
               </div>
-              <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-emerald-50 border border-emerald-200 text-emerald-900 font-extrabold">
-                <ShieldCheck className="w-4 h-4 text-emerald-700" />
-                <span>Protection Système Active</span>
+              <span className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl border font-extrabold ${
+                keychainStatus?.os_keychain ? "bg-emerald-50 border-emerald-200 text-emerald-900" : "bg-amber-50 border-amber-200 text-amber-900"
+              }`}>
+                <ShieldCheck className="w-4 h-4" />
+                <span>{keychainStatus?.os_keychain ? "Coffre-fort système actif" : "Coffre-fort système indisponible"}</span>
               </span>
             </div>
             <div className="bg-white p-6 rounded-2xl border border-[#D4AF62]/40 space-y-3">
@@ -2868,7 +2877,7 @@ export default function App() {
                 </h3>
                 {readinessStatus && (
                   <span className="px-2.5 py-1 rounded-full bg-emerald-50 border border-emerald-300 text-emerald-900 font-bold text-[11px]">
-                    Catalogue &amp; Wilayas : 69 Wilayas couvertes
+                    Wilayas livrées : {readinessStatus.active_wilayas ?? "?"} / 69
                   </span>
                 )}
               </div>

@@ -528,6 +528,9 @@ export const DesktopCmsApi = {
     adminFetch("/admin/banners", { method: "POST", body: JSON.stringify(payload) }),
   deleteBanner: (bannerId: number) =>
     adminFetch(`/admin/banners/${bannerId}`, { method: "DELETE" }),
+  updateBanner: (bannerId: number, payload: unknown) =>
+    adminFetch(`/admin/banners/${bannerId}`, { method: "PUT", body: JSON.stringify(payload) }),
+  listHomepageSections: () => adminFetch("/admin/homepage-sections"),
   listCoupons: () => adminFetch("/admin/coupons"),
   createCoupon: (payload: unknown) =>
     adminFetch("/admin/coupons", { method: "POST", body: JSON.stringify(payload) }),

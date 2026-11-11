@@ -87,6 +87,24 @@ Short caches keep the server fast:
    **"Prêt pour la boutique ?"** list.
 5. Set **Statut = Publié** and save. Use **Copier le lien boutique** to share it.
 
+### 3.2d The home page, banners, contacts (CMS → Contenu & Bannières)
+Everything the customer sees on the home page is set here; nothing is fixed in the shop's code.
+- **Blocs de la page d'accueil**: switch on/off the big banner, the guarantees bar, the categories,
+  the products, the promotion cards.
+- **Bannière principale** (top of the home page): title and text in FR/AR/EN, button text, photo, and
+  where the button leads (the whole shop, a category, a product, or an https:// link). Several
+  banners rotate every 7 seconds. With none, the brand text is shown.
+- **Carte promo** (e.g. "-20 % sur les sacs"): same fields. With none, the block disappears. A promo
+  card only *announces* a promotion: to really lower prices, change the product's price / old price
+  (Produits) or create a **Code promo** (same tab).
+- Eye icon = hide without deleting; arrows = order.
+- **Coordonnées de la boutique**: phone, WhatsApp, address, Instagram, TikTok, and **Livraison
+  gratuite à partir de (DA)**. The threshold is applied by the server on every order; `0` = no free
+  delivery (the shop then stops announcing it).
+- **Pages d'information**: À propos, FAQ, Livraison & retours, Conditions, in FR / AR / EN.
+
+Changes appear on the shop within about a minute (the shop checks every 60 seconds).
+
 ### 3.3 Server ↔ POS PCs
 * **Catalog:** each till downloads the full catalog the first time, then only
   the changes, every time the CMS starts and every time the internet comes back.

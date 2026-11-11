@@ -740,6 +740,23 @@ def _is_protected_setting_key(key: str) -> bool:
     k = (key or "").strip().lower()
     return k in _INTERNAL_SETTING_KEYS or k.startswith("system_") or k.startswith("internal_") or k.startswith("session_revoked_ns:")
 
+def _free_delivery_threshold(cur) -> int:
+    """CMS → Contenu → "Seuil Livraison Gratuite (DA)". 0 / empty = no free delivery."""
+    cur.execute("SELECT setting_value FROM store_settings WHERE setting_key = ?", ("free_delivery_threshold_dzd",))
+    row = cur.fetchone()
+    if not row:
+        return 0
+    raw = row["setting_value"]
+    try:
+        raw = json.loads(raw)
+    except Exception:
+        pass
+    try:
+        return max(0, int(str(raw).replace(" ", "").strip() or 0))
+    except (TypeError, ValueError):
+        return 0
+
+
 def _ensure_safe_url_or_text(val: str, field_name: str = "value") -> str:
     s = str(val or "").strip()
     if re.search(r"(<\s*/?\s*(script|iframe|svg|object|embed)|javascript\s*:|vbscript\s*:|data\s*:\s*text/html|on\w+\s*=)", s, re.IGNORECASE):
@@ -1144,6 +1161,12 @@ def create_guest_order(
             if cur.rowcount == 0:
                 raise HTTPException(status_code=400, detail=f"Coupon '{cpn['code']}' has reached its maximum usage limit")
 
+        # Free delivery promised by the shop (CMS threshold) is applied HERE, so
+        # the stored order (what the courier collects) matches what the
+        # customer was shown.
+        free_threshold = _free_delivery_threshold(cur)
+        if free_threshold and subtotal_dzd >= free_threshold:
+            delivery_fee_dzd = 0
         total_dzd = (subtotal_dzd - discount_dzd) + delivery_fee_dzd
 
         # 3. Upsert Guest Customer Contact Record (NO account/password created)
@@ -1330,7 +1353,7 @@ def admin_logout(admin: dict = Depends(get_current_admin)):
 def admin_dashboard(admin: dict = Depends(require_permission("dashboard:read"))):
     with db_session() as conn:
         cur = conn.cursor()
-        cur.execute("SELECT COUNT(*) AS cnt, COALESCE(SUM(total_dzd), 0) AS rev FROM orders WHERE status != 'cancelled'")
+        cur.execute("SELECT COUNT(*) AS cnt, COALESCE(SUM(total_dzd), 0) AS rev FROM orders WHERE status NOT IN ('cancelled', 'returned')")
         ord_row = cur.fetchone()
         cur.execute("SELECT COUNT(*) AS cnt FROM orders WHERE status IN ('new', 'pending_confirmation')")
         pending_cnt = cur.fetchone()["cnt"]
@@ -1338,11 +1361,19 @@ def admin_dashboard(admin: dict = Depends(require_permission("dashboard:read")))
         pub_cnt = cur.fetchone()["cnt"]
         cur.execute("SELECT COUNT(*) AS cnt FROM categories WHERE is_active = 1 AND deleted_at IS NULL")
         cat_cnt = cur.fetchone()["cnt"]
-        cur.execute("SELECT COUNT(*) AS cnt FROM product_variants WHERE stock_qty > 0 AND stock_qty <= 3 AND is_active = 1")
+        # Stock figures count the variants (size / colour) of products that are
+        # still in the catalogue — archived or deleted products are left out.
+        live_variant = (
+            "FROM product_variants v JOIN products p ON p.id = v.product_id "
+            "WHERE v.is_active = 1 AND p.deleted_at IS NULL AND p.status != 'archived'"
+        )
+        cur.execute(f"SELECT COUNT(*) AS cnt {live_variant}")
+        active_variant_cnt = cur.fetchone()["cnt"]
+        cur.execute(f"SELECT COUNT(*) AS cnt {live_variant} AND v.stock_qty > 0 AND v.stock_qty <= COALESCE(v.low_stock_threshold, 3)")
         low_stock_only_cnt = cur.fetchone()["cnt"]
-        cur.execute("SELECT COUNT(*) AS cnt FROM product_variants WHERE stock_qty <= 3 AND is_active = 1")
+        cur.execute(f"SELECT COUNT(*) AS cnt {live_variant} AND v.stock_qty <= COALESCE(v.low_stock_threshold, 3)")
         low_stock_cnt = cur.fetchone()["cnt"]
-        cur.execute("SELECT COUNT(*) AS cnt FROM product_variants WHERE stock_qty = 0 AND is_active = 1")
+        cur.execute(f"SELECT COUNT(*) AS cnt {live_variant} AND v.stock_qty <= 0")
         out_of_stock_cnt = cur.fetchone()["cnt"]
 
         status_keys = [
@@ -1370,13 +1401,32 @@ def admin_dashboard(admin: dict = Depends(require_permission("dashboard:read")))
         cur.execute("SELECT COUNT(*) AS cnt FROM backup_records WHERE status = 'failed'")
         failed_bkp_cnt = cur.fetchone()["cnt"]
 
+        # Real day-by-day revenue for the dashboard chart (last 30 days, same
+        # orders as the revenue card: everything except cancelled/returned).
+        since_day = (datetime.utcnow() - timedelta(days=29)).strftime("%Y-%m-%d")
+        cur.execute(
+            """SELECT DATE(created_at) AS day, COUNT(*) AS cnt, COALESCE(SUM(total_dzd), 0) AS rev
+               FROM orders
+               WHERE status NOT IN ('cancelled', 'returned') AND DATE(created_at) >= ?
+               GROUP BY DATE(created_at)""",
+            (since_day,),
+        )
+        by_day = {str(r["day"])[:10]: (int(r["rev"]), int(r["cnt"])) for r in cur.fetchall()}
+        revenue_by_day = []
+        for i in range(30):
+            day = (datetime.utcnow() - timedelta(days=29 - i)).strftime("%Y-%m-%d")
+            rev, cnt = by_day.get(day, (0, 0))
+            revenue_by_day.append({"date": day, "revenue_dzd": rev, "orders": cnt})
+
         return {
+            "revenue_by_day": revenue_by_day,
             "total_orders": ord_row["cnt"],
             "total_revenue_dzd": ord_row["rev"],
             "pending_orders": pending_cnt,
             "published_products": pub_cnt,
             "total_active_products": pub_cnt,
             "total_categories": cat_cnt,
+            "active_variants": active_variant_cnt,
             "low_stock_variants": low_stock_cnt,
             "low_stock_only_variants": low_stock_only_cnt,
             "out_of_stock_variants": out_of_stock_cnt,
@@ -2364,14 +2414,21 @@ def serve_uploaded_image(filename: str):
 # ============================================================================
 
 class BannerCreateUpdate(BaseModel):
-    position: str = Field("hero", regex=r"^(hero|promo_grid|seasonal)$")
-    title_fr: str
-    title_ar: Optional[str] = ""
-    title_en: Optional[str] = ""
-    subtitle_fr: Optional[str] = ""
-    cta_text_fr: Optional[str] = "Découvrir"
-    cta_link: Optional[str] = "/categories/sacs"
-    image_url: str = "/assets/hero_bag_clean.jpg"
+    # hero = big banner at the top of the home page; promo_grid = promotion
+    # cards on the home page. No invented defaults: every field comes from
+    # the CMS form.
+    position: str = Field("promo_grid", regex=r"^(hero|promo_grid|seasonal)$")
+    title_fr: str = Field(..., min_length=1, max_length=160)
+    title_ar: Optional[str] = Field("", max_length=160)
+    title_en: Optional[str] = Field("", max_length=160)
+    subtitle_fr: Optional[str] = Field("", max_length=300)
+    subtitle_ar: Optional[str] = Field("", max_length=300)
+    subtitle_en: Optional[str] = Field("", max_length=300)
+    cta_text_fr: Optional[str] = Field("", max_length=60)
+    # Shop address the banner opens: /categorie/<slug>, /produit/<slug>,
+    # #/boutique, or a full https:// link.
+    cta_link: Optional[str] = Field("", max_length=400)
+    image_url: Optional[str] = Field("", max_length=400)
     is_active: bool = True
     display_order: int = 1
 
@@ -2402,7 +2459,8 @@ def get_public_storefront_layout():
             except Exception:
                 settings[r["setting_key"]] = r["setting_value"]
 
-        cur.execute("SELECT * FROM homepage_sections WHERE is_active = 1 ORDER BY display_order ASC")
+        # All blocks, with their on/off state: the shop hides the ones switched off.
+        cur.execute("SELECT * FROM homepage_sections ORDER BY display_order ASC")
         sections = []
         for s in cur.fetchall():
             sd = dict(s)
@@ -2441,18 +2499,50 @@ def admin_create_banner(
         cur = conn.cursor()
         cur.execute(
             """INSERT INTO banners
-               (position, title_fr, title_ar, title_en, subtitle_fr, cta_text_fr, cta_link, image_url, is_active, display_order)
-               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+               (position, title_fr, title_ar, title_en, subtitle_fr, subtitle_ar, subtitle_en,
+                cta_text_fr, cta_link, image_url, is_active, display_order)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
             (
-                payload.position, payload.title_fr, payload.title_ar, payload.title_en,
-                payload.subtitle_fr, payload.cta_text_fr, payload.cta_link,
-                payload.image_url, 1 if payload.is_active else 0, payload.display_order
+                payload.position, payload.title_fr.strip(), payload.title_ar or "", payload.title_en or "",
+                payload.subtitle_fr or "", payload.subtitle_ar or "", payload.subtitle_en or "",
+                payload.cta_text_fr or "", (payload.cta_link or "").strip(),
+                (payload.image_url or "").strip(), 1 if payload.is_active else 0, payload.display_order
             )
         )
         bid = cur.lastrowid
         log_audit(conn, int(admin["sub"]), "create_banner", "banner", str(bid), {"title_fr": payload.title_fr})
         cur.execute("SELECT * FROM banners WHERE id = ?", (bid,))
         return dict(cur.fetchone())
+
+@app.put("/api/v1/admin/banners/{banner_id}")
+def admin_update_banner(
+    banner_id: int,
+    payload: BannerCreateUpdate,
+    admin: dict = Depends(require_permission("content:write"))
+):
+    for field in ("title_fr", "title_ar", "title_en", "subtitle_fr", "subtitle_ar", "subtitle_en", "cta_text_fr", "cta_link", "image_url"):
+        _ensure_safe_url_or_text(getattr(payload, field) or "", field)
+    with db_session(commit=True) as conn:
+        cur = conn.cursor()
+        cur.execute("SELECT id FROM banners WHERE id = ?", (banner_id,))
+        if not cur.fetchone():
+            raise HTTPException(status_code=404, detail="Banner not found")
+        cur.execute(
+            """UPDATE banners SET position = ?, title_fr = ?, title_ar = ?, title_en = ?,
+                   subtitle_fr = ?, subtitle_ar = ?, subtitle_en = ?, cta_text_fr = ?, cta_link = ?,
+                   image_url = ?, is_active = ?, display_order = ?
+               WHERE id = ?""",
+            (
+                payload.position, payload.title_fr.strip(), payload.title_ar or "", payload.title_en or "",
+                payload.subtitle_fr or "", payload.subtitle_ar or "", payload.subtitle_en or "",
+                payload.cta_text_fr or "", (payload.cta_link or "").strip(), (payload.image_url or "").strip(),
+                1 if payload.is_active else 0, payload.display_order, banner_id,
+            ),
+        )
+        log_audit(conn, int(admin["sub"]), "update_banner", "banner", str(banner_id), {"title_fr": payload.title_fr})
+        cur.execute("SELECT * FROM banners WHERE id = ?", (banner_id,))
+        return dict(cur.fetchone())
+
 
 @app.delete("/api/v1/admin/banners/{banner_id}")
 def admin_delete_banner(
@@ -2469,6 +2559,36 @@ def admin_delete_banner(
         log_audit(conn, int(admin["sub"]), "delete_banner", "banner", str(banner_id), {"title_fr": b["title_fr"]})
         return {"deleted": True, "banner_id": banner_id}
 
+# The home page blocks the shop knows how to draw (key → titles, default order).
+STANDARD_HOMEPAGE_SECTIONS = {
+    "hero_banner": ("Bannière principale", "البانر الرئيسي", "Main banner", 1),
+    "trust_bar": ("Barre de confiance (4 garanties)", "شريط الثقة", "Trust bar", 2),
+    "categories_grid": ("Grille des catégories", "شبكة الفئات", "Categories grid", 3),
+    "featured_products": ("Produits en vedette", "المنتجات المميزة", "Featured products", 4),
+    "promo_banners": ("Cartes promotionnelles", "العروض", "Promotion cards", 5),
+}
+
+
+@app.get("/api/v1/admin/homepage-sections")
+def admin_list_homepage_sections(admin: dict = Depends(require_permission("content:write"))):
+    """Every standard section, with its saved state (visible + order) or the default."""
+    with db_session() as conn:
+        cur = conn.cursor()
+        cur.execute("SELECT * FROM homepage_sections")
+        saved = {r["section_key"]: dict(r) for r in cur.fetchall()}
+    items = []
+    for key, (t_fr, t_ar, t_en, order) in STANDARD_HOMEPAGE_SECTIONS.items():
+        row = saved.get(key)
+        items.append({
+            "section_key": key,
+            "title_fr": (row or {}).get("title_fr") or t_fr,
+            "is_active": bool(row["is_active"]) if row else True,
+            "display_order": int(row["display_order"]) if row else order,
+        })
+    items.sort(key=lambda x: x["display_order"])
+    return {"items": items}
+
+
 @app.put("/api/v1/admin/homepage-sections/{section_key}")
 def admin_update_homepage_section(
     section_key: str,
@@ -2479,6 +2599,15 @@ def admin_update_homepage_section(
         cur = conn.cursor()
         cur.execute("SELECT * FROM homepage_sections WHERE section_key = ?", (section_key,))
         sec = cur.fetchone()
+        if not sec and section_key in STANDARD_HOMEPAGE_SECTIONS:
+            t_fr, t_ar, t_en, order = STANDARD_HOMEPAGE_SECTIONS[section_key]
+            cur.execute(
+                "INSERT INTO homepage_sections (section_key, title_fr, title_ar, title_en, is_active, display_order, config_json) "
+                "VALUES (?, ?, ?, ?, 1, ?, '{}')",
+                (section_key, t_fr, t_ar, t_en, order),
+            )
+            cur.execute("SELECT * FROM homepage_sections WHERE section_key = ?", (section_key,))
+            sec = cur.fetchone()
         if not sec:
             raise HTTPException(status_code=404, detail="Homepage section not found")
         cur.execute(
@@ -3250,6 +3379,12 @@ def calculate_delivery_and_order_preview(
                     discount_dzd = int(cpn["discount_value"])
                 discount_dzd = min(discount_dzd, subtotal_dzd)
 
+        # Free delivery promised by the shop (CMS threshold) is applied HERE, so
+        # the stored order (what the courier collects) matches what the
+        # customer was shown.
+        free_threshold = _free_delivery_threshold(cur)
+        if free_threshold and subtotal_dzd >= free_threshold:
+            delivery_fee_dzd = 0
         total_dzd = (subtotal_dzd - discount_dzd) + delivery_fee_dzd
         return {
             "wilaya_code": zone["wilaya_code"],
@@ -3262,6 +3397,8 @@ def calculate_delivery_and_order_preview(
             "subtotal_dzd": subtotal_dzd,
             "discount_dzd": discount_dzd,
             "delivery_fee_dzd": delivery_fee_dzd,
+            "free_delivery_threshold_dzd": free_threshold,
+            "free_delivery_applied": bool(free_threshold and subtotal_dzd >= free_threshold),
             "total_dzd": total_dzd
         }
 
@@ -4052,14 +4189,20 @@ def api_readiness_check():
     try:
         with db_session() as conn:
             cur = conn.cursor()
+            # Ready = the 69 wilayas exist (seeded) and photos can be saved.
+            # The owner switching off delivery to some wilayas is a business
+            # choice, not a fault: it is reported, not counted against health.
+            cur.execute("SELECT COUNT(*) AS cnt FROM delivery_zones")
+            zones_cnt = int(cur.fetchone()["cnt"])
             cur.execute("SELECT COUNT(*) AS cnt FROM delivery_zones WHERE is_active = 1")
             w_cnt = int(cur.fetchone()["cnt"])
             cur.execute("SELECT COUNT(*) AS cnt FROM products WHERE deleted_at IS NULL")
             p_cnt = int(cur.fetchone()["cnt"])
         storage_ok = os.path.isdir(UPLOAD_STORAGE_DIR) and os.access(UPLOAD_STORAGE_DIR, os.W_OK)
+        ok = zones_cnt == 69 and storage_ok
         return {
-            "ready": w_cnt == 69 and storage_ok,
-            "status": "ready" if (w_cnt == 69 and storage_ok) else "degraded",
+            "ready": ok,
+            "status": "ready" if ok else "degraded",
             "database": "connected",
             "storage_writable": storage_ok,
             "active_wilayas": w_cnt,

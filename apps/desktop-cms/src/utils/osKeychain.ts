@@ -66,18 +66,22 @@ export async function getOsKeychainStatus(): Promise<{
   service: string;
   provider: string;
   localstorage_tokens_disabled: boolean;
+  /** true only when the Windows/macOS credential vault really answered. */
+  os_keychain: boolean;
 }> {
   const invoke = getTauriInvoke();
   if (invoke) {
     try {
-      return await invoke("keychain_status");
+      const res: any = await invoke("keychain_status");
+      return { ...res, os_keychain: true };
     } catch {
-      // Fallback metadata
+      // fall through: report honestly that the vault is not available
     }
   }
   return {
     service: "dz.musluxury.cms.secure",
-    provider: "Protection Matérielle & Coffre-Fort Sécurisé du Système",
+    provider: "Session du navigateur (sans coffre-fort système)",
     localstorage_tokens_disabled: true,
+    os_keychain: false,
   };
 }

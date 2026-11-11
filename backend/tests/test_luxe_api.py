@@ -1688,7 +1688,7 @@ console.log("ALL_TSX_COMPILED_OK");
         # 2. The live shop (index.html; the unused React copy was removed) calls
         #    every public endpoint it depends on.
         for endpoint in [
-            "/api/v1/categories", "/api/v1/products", "/api/v1/delivery-zones", "/api/v1/store/settings",
+            "/api/v1/categories", "/api/v1/products", "/api/v1/delivery-zones", "/api/v1/store/layout",
             "/api/v1/coupons/validate", "/api/v1/orders", "/api/v1/orders/track", "/api/v1/pages/",
         ]:
             self.assertIn(endpoint, shtml, f"Storefront does not call {endpoint}")

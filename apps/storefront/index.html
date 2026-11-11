@@ -329,8 +329,8 @@
     <!-- HOMEPAGE EDITORIAL HERO & CATEGORY SHOWCASE -->
     <div id="store-home-sections">
 
-      <!-- Editorial Hero Banner (Matches 1000589999.png & 1000590075.png) -->
-      <section class="hero-luxury-bg text-white border-b border-gold-reflective/30 relative overflow-hidden">
+      <!-- Editorial Hero Banner: CMS « Bannière principale » (brand text when none) -->
+      <section id="home-hero" class="hero-luxury-bg text-white border-b border-gold-reflective/30 relative overflow-hidden">
         <div class="max-w-7xl mx-auto px-4 sm:px-6 py-6 sm:py-10 lg:py-14">
           <div class="grid grid-cols-1 lg:grid-cols-12 gap-6 lg:gap-10 items-center">
             <!-- Hero Typography -->
@@ -359,7 +359,7 @@
                     <polyline points="12 5 19 12 12 19"></polyline>
                   </svg>
                 </button>
-                <button type="button" onclick="filterByCategory('sacs')" class="w-full sm:w-auto text-center justify-center px-4 sm:px-6 py-3 sm:py-3.5 rounded-full bg-white/5 hover:bg-white/10 text-gold-light border border-gold-reflective/40 font-semibold text-xs sm:text-sm transition flex items-center" id="hero-cta-secondary">
+                <button type="button" onclick="openHeroSecondary()" class="w-full sm:w-auto text-center justify-center px-4 sm:px-6 py-3 sm:py-3.5 rounded-full bg-white/5 hover:bg-white/10 text-gold-light border border-gold-reflective/40 font-semibold text-xs sm:text-sm transition flex items-center" id="hero-cta-secondary">
                   Collection Sacs
                 </button>
               </div>
@@ -368,12 +368,13 @@
             <!-- Hero Visual Showcase -->
             <div class="lg:col-span-6">
               <div class="relative rounded-2xl overflow-hidden border border-gold-reflective/40 shadow-2xl bg-emerald-forest">
-                <img src="/assets/hero_bag_clean.jpg" alt="Collection Mus Luxury — Maroquinerie d'Exception" fetchpriority="high" decoding="async" class="w-full h-52 sm:h-72 lg:h-[370px] object-cover object-center" />
+                <img id="hero-image" src="/assets/hero_bag_clean.jpg" data-default-src="/assets/hero_bag_clean.jpg" alt="Collection Mus Luxury — Maroquinerie d'Exception" fetchpriority="high" decoding="async" class="w-full h-52 sm:h-72 lg:h-[370px] object-cover object-center" />
                 <div class="absolute inset-0 bg-gradient-to-t from-emerald-forest/60 via-transparent to-transparent"></div>
                 <div class="absolute bottom-4 left-4 right-4 flex items-center justify-between text-xs text-gold-light/95 bg-emerald-forest/85 backdrop-blur-md px-4 py-2.5 rounded-xl border border-gold-reflective/30">
                   <span id="hero-caption-collection" class="font-luxury italic text-sm text-gold-reflective">Nouvelle Collection 2026</span>
                   <span id="hero-caption-cod" class="font-semibold">Paiement à la livraison • 69 Wilayas</span>
                 </div>
+                <div id="hero-dots" class="hidden absolute top-3 end-3 flex gap-1.5"></div>
               </div>
             </div>
           </div>
@@ -381,7 +382,7 @@
       </section>
 
       <!-- 4 Luxury Trust Indicators Bar (Clean Vector Icons, Zero Emojis) -->
-      <section class="bg-white border-b border-gold-reflective/20 py-4 sm:py-5 px-3 sm:px-6">
+      <section id="home-trust" class="bg-white border-b border-gold-reflective/20 py-4 sm:py-5 px-3 sm:px-6">
         <div class="max-w-7xl mx-auto grid grid-cols-2 lg:grid-cols-4 gap-2.5 sm:gap-4 items-stretch">
           <div class="h-full flex items-center gap-2.5 sm:gap-3.5 p-2.5 sm:p-3.5 rounded-xl bg-cream-card border border-gold-reflective/20">
             <div class="w-10 h-10 rounded-full bg-emerald-deep text-gold-reflective flex items-center justify-center flex-shrink-0">
@@ -440,7 +441,7 @@
       </section>
 
       <!-- Shop by Category Section (Matches 1000589999.png Dark Emerald Cards) -->
-      <section class="max-w-7xl mx-auto px-4 sm:px-6 pt-10 pb-4 space-y-5">
+      <section id="home-categories" class="max-w-7xl mx-auto px-4 sm:px-6 pt-10 pb-4 space-y-5">
         <div class="flex items-end justify-between">
           <div>
             <span class="text-[11px] uppercase tracking-[0.2em] text-gold-dark font-bold">COLLECTIONS</span>
@@ -535,10 +536,10 @@
               <span id="lbl-price-max" class="text-charcoal/80">Prix maximum</span>
               <span id="filter-price-display" class="text-emerald-deep font-bold">25 000 DA</span>
             </div>
-            <input type="range" id="filter-max-price" min="1500" max="25000" step="500" value="25000" oninput="handlePriceFilter(this.value)" class="w-full accent-emerald-deep cursor-pointer" />
+            <input type="range" id="filter-max-price" min="0" max="25000" step="500" value="25000" oninput="handlePriceFilter(this.value)" class="w-full accent-emerald-deep cursor-pointer" />
             <div class="flex justify-between text-[11px] text-gray-400">
               <span>1 500 DA</span>
-              <span>25 000 DA</span>
+              <span id="filter-price-max-label">25 000 DA</span>
             </div>
           </div>
 
@@ -614,47 +615,8 @@
         </div>
       </div>
 
-      <!-- 3 Promotional Collection Cards (Matches Bottom of 1000589999.png) -->
-      <div class="grid grid-cols-1 md:grid-cols-3 gap-5 pt-6">
-        <div onclick="filterByCategory('chaussures')" class="group cursor-pointer rounded-2xl overflow-hidden hero-luxury-bg p-5 text-white border border-gold-reflective/35 flex items-center justify-between gap-4 shadow-luxury hover:shadow-luxury-hover transition">
-          <div class="space-y-1.5">
-            <span class="text-[10px] uppercase tracking-[0.2em] text-gold-reflective font-bold">CHAUSSURES</span>
-            <h3 class="font-luxury text-2xl font-bold text-gold-light">Jusqu'à -20%</h3>
-            <p class="text-xs text-white/75">Baskets &amp; créations urbaines</p>
-            <span class="inline-flex items-center gap-1.5 pt-2 text-xs font-bold text-gold-reflective group-hover:translate-x-1 transition">
-              <span>Voir la collection</span>
-              <svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="5" y1="12" x2="19" y2="12"></line><polyline points="12 5 19 12 12 19"></polyline></svg>
-            </span>
-          </div>
-          <img src="/assets/prod_baskets_elegantes.jpg" alt="Chaussures" class="w-24 h-24 object-cover rounded-xl border border-gold-reflective/40 group-hover:scale-105 transition duration-300" />
-        </div>
-
-        <div onclick="filterByCategory('les-lunettes')" class="group cursor-pointer rounded-2xl overflow-hidden hero-luxury-bg p-5 text-white border border-gold-reflective/35 flex items-center justify-between gap-4 shadow-luxury hover:shadow-luxury-hover transition">
-          <div class="space-y-1.5">
-            <span class="text-[10px] uppercase tracking-[0.2em] text-gold-reflective font-bold">LUNETTES</span>
-            <h3 class="font-luxury text-2xl font-bold text-gold-light">Élégance &amp; protection</h3>
-            <p class="text-xs text-white/75">Montures solaires UV400</p>
-            <span class="inline-flex items-center gap-1.5 pt-2 text-xs font-bold text-gold-reflective group-hover:translate-x-1 transition">
-              <span>Voir la collection</span>
-              <svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="5" y1="12" x2="19" y2="12"></line><polyline points="12 5 19 12 12 19"></polyline></svg>
-            </span>
-          </div>
-          <img src="/assets/prod_lunettes_soleil.jpg" alt="Lunettes" class="w-24 h-24 object-cover rounded-xl border border-gold-reflective/40 group-hover:scale-105 transition duration-300" />
-        </div>
-
-        <div onclick="filterByCategory('les-montres')" class="group cursor-pointer rounded-2xl overflow-hidden hero-luxury-bg p-5 text-white border border-gold-reflective/35 flex items-center justify-between gap-4 shadow-luxury hover:shadow-luxury-hover transition">
-          <div class="space-y-1.5">
-            <span class="text-[10px] uppercase tracking-[0.2em] text-gold-reflective font-bold">MONTRES</span>
-            <h3 class="font-luxury text-2xl font-bold text-gold-light">Le temps du style</h3>
-            <p class="text-xs text-white/75">Chronographes acier &amp; or</p>
-            <span class="inline-flex items-center gap-1.5 pt-2 text-xs font-bold text-gold-reflective group-hover:translate-x-1 transition">
-              <span>Voir la collection</span>
-              <svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="5" y1="12" x2="19" y2="12"></line><polyline points="12 5 19 12 12 19"></polyline></svg>
-            </span>
-          </div>
-          <img src="/assets/prod_montre_or.jpg" alt="Montres" class="w-24 h-24 object-cover rounded-xl border border-gold-reflective/40 group-hover:scale-105 transition duration-300" />
-        </div>
-      </div>
+      <!-- Promotion cards: CMS → Contenu & Bannières → « Carte promo » (hidden when none) -->
+      <div id="home-promos" class="hidden grid grid-cols-1 md:grid-cols-3 gap-5 pt-6"></div>
     </section>
     <!-- =================================================================== -->
     <!-- DEDICATED "LA MAISON" PHYSICAL BOUTIQUE PAGE (#/maison)              -->
@@ -974,12 +936,8 @@
 
       <div class="space-y-2.5">
         <h4 class="font-bold text-gold-reflective uppercase tracking-[0.16em] text-xs">Collections</h4>
-        <ul class="space-y-2 text-gold-light/80">
-          <li><button type="button" onclick="filterByCategory('sacs')" class="hover:text-white transition">Sacs à main &amp; Bandoulière</button></li>
-          <li><button type="button" onclick="filterByCategory('chaussures')" class="hover:text-white transition">Chaussures &amp; Baskets</button></li>
-          <li><button type="button" onclick="filterByCategory('chale')" class="hover:text-white transition">Châles &amp; Écharpes</button></li>
-          <li><button type="button" onclick="filterByCategory('maquillage')" class="hover:text-white transition">Maquillage &amp; Coffrets</button></li>
-          <li><button type="button" onclick="filterByCategory('les-montres')" class="hover:text-white transition">Montres &amp; Lunettes</button></li>
+        <ul id="footer-collections" class="space-y-2 text-gold-light/80">
+          <!-- Filled from the real categories (renderFooterCollections) -->
         </ul>
       </div>
 
@@ -1421,7 +1379,7 @@
         heroCta1: "Voir la boutique",
         heroCta2: "Collection Sacs",
         tariffs: "Tarifs 69 Wilayas",
-        heroCaptionCollection: "Nouvelle Collection 2026",
+        heroCaptionCollection: "Maison Mus Luxury",
         heroCaptionCod: "Paiement à la livraison • 69 Wilayas",
         categoriesTitle: "Nos Catégories",
         filtersHeading: "Filtres",
@@ -1454,7 +1412,7 @@
         heroCta1: "تصفح المتجر",
         heroCta2: "مجموعة الحقائب",
         tariffs: "أسعار التوصيل لـ 69 ولاية",
-        heroCaptionCollection: "تشكيلة 2026 الجديدة",
+        heroCaptionCollection: "Maison Mus Luxury",
         heroCaptionCod: "الدفع عند الاستلام • 69 ولاية",
         categoriesTitle: "فئات المتجر",
         filtersHeading: "التصفية",
@@ -1487,7 +1445,7 @@
         heroCta1: "Explore Boutique",
         heroCta2: "Handbag Collection",
         tariffs: "Delivery rates · 69 wilayas",
-        heroCaptionCollection: "New Collection 2026",
+        heroCaptionCollection: "Maison Mus Luxury",
         heroCaptionCod: "Cash on delivery • 69 wilayas",
         categoriesTitle: "Shop by Category",
         filtersHeading: "Filters",
@@ -1508,376 +1466,6 @@
       }
     };
 
-    const CATEGORIES = [
-      {
-        id: 1, slug: "sacs", name_fr: "Sacs", name_ar: "حقائب", name_en: "Bags",
-        description_fr: "Élégance et praticité au quotidien : sacs à main matelassés, cabas et sacs bandoulière.",
-        image: ASSET_MAP.cat_sacs,
-        attributes: [
-          { key: "color", label_fr: "Couleur", label_ar: "اللون", label_en: "Color", type: "color", variant: true, filterable: true, options: ["Bordeaux", "Vert Émeraude", "Noir", "Beige", "Rose Poudré"] },
-          { key: "size", label_fr: "Taille", label_ar: "المقاس", label_en: "Size", type: "size", variant: true, filterable: true, options: ["S", "M", "L", "Standard"] },
-          { key: "bag_type", label_fr: "Type de sac", label_ar: "نوع الحقيبة", label_en: "Bag Type", type: "single_select", variant: false, filterable: true, options: ["Sac à main", "Sac bandoulière"] },
-          { key: "material", label_fr: "Matériau", label_ar: "الخامة", label_en: "Material", type: "short_text", variant: false, filterable: false, options: [] },
-          { key: "lining", label_fr: "Doublure", label_ar: "البطانة", label_en: "Lining", type: "short_text", variant: false, filterable: false, options: [] },
-          { key: "closure", label_fr: "Fermeture", label_ar: "الإغلاق", label_en: "Closure", type: "short_text", variant: false, filterable: false, options: [] },
-          { key: "dimensions", label_fr: "Dimensions", label_ar: "الأبعاد", label_en: "Dimensions", type: "measurement", variant: false, filterable: false, options: [] },
-          { key: "strap_type", label_fr: "Bandoulière", label_ar: "الحزام", label_en: "Strap Type", type: "short_text", variant: false, filterable: false, options: [] }
-        ]
-      },
-      {
-        id: 2, slug: "chaussures", name_fr: "Chaussures", name_ar: "أحذية", name_en: "Shoes",
-        description_fr: "Baskets urbaines et chaussures de ville aux finitions irréprochables.",
-        image: ASSET_MAP.cat_chaussures,
-        attributes: [
-          { key: "color", label_fr: "Couleur", label_ar: "اللون", label_en: "Color", type: "color", variant: true, filterable: true, options: ["Blanc & Noir", "Noir", "Or"] },
-          { key: "size", label_fr: "Pointure", label_ar: "المقاس", label_en: "Shoe Size", type: "size", variant: true, filterable: true, options: ["37", "38", "39", "40", "41"] },
-          { key: "gender", label_fr: "Genre", label_ar: "الجنس", label_en: "Gender", type: "single_select", variant: false, filterable: true, options: ["Femme", "Homme", "Unisexe"] },
-          { key: "shoe_type", label_fr: "Type de chaussure", label_ar: "نوع الحذاء", label_en: "Shoe Type", type: "single_select", variant: false, filterable: true, options: ["Baskets", "Escarpins"] },
-          { key: "material", label_fr: "Matériau", label_ar: "الخامة", label_en: "Material", type: "short_text", variant: false, filterable: false, options: [] },
-          { key: "sole", label_fr: "Semelle", label_ar: "النعل", label_en: "Sole", type: "short_text", variant: false, filterable: false, options: [] }
-        ]
-      },
-      {
-        id: 3, slug: "chale", name_fr: "Châle", name_ar: "شال", name_en: "Shawls",
-        description_fr: "Châles et écharpes soyeuses aux motifs raffinés.",
-        image: ASSET_MAP.cat_chale,
-        attributes: [
-          { key: "color", label_fr: "Couleur", label_ar: "اللون", label_en: "Color", type: "color", variant: true, filterable: true, options: ["Beige & Noir", "Vert Émeraude", "Or"] },
-          { key: "size", label_fr: "Dimensions", label_ar: "المقاس", label_en: "Dimensions", type: "size", variant: true, filterable: true, options: ["180 × 70 cm", "200 × 80 cm"] },
-          { key: "fabric", label_fr: "Matière", label_ar: "القماش", label_en: "Fabric", type: "single_select", variant: false, filterable: true, options: ["Soie & Cachemire", "Laine fine"] }
-        ]
-      },
-      {
-        id: 4, slug: "maquillage", name_fr: "Maquillage", name_ar: "مكياج", name_en: "Makeup",
-        description_fr: "Coffrets beauté complets, rouges à lèvres satinés et palettes.",
-        image: ASSET_MAP.cat_maquillage,
-        attributes: [
-          { key: "shade", label_fr: "Teinte / Coffret", label_ar: "الدرجة", label_en: "Shade", type: "color", variant: true, filterable: true, options: ["Teinte 01 Rose Nude", "Teinte 02 Rubis Intense"] },
-          { key: "size", label_fr: "Format", label_ar: "الحجم", label_en: "Format", type: "size", variant: true, filterable: true, options: ["Coffret Standard", "Coffret Prestige"] },
-          { key: "skin_type", label_fr: "Type de peau", label_ar: "نوع البشرة", label_en: "Skin Type", type: "single_select", variant: false, filterable: true, options: ["Tous types de peau", "Peau sensible"] },
-          { key: "finish", label_fr: "Fini", label_ar: "اللمسة النهائية", label_en: "Finish", type: "single_select", variant: false, filterable: true, options: ["Satiné & Velours", "Mat"] },
-          { key: "volume", label_fr: "Poids / Volume", label_ar: "الوزن", label_en: "Weight", type: "measurement", variant: false, filterable: false, options: [] }
-        ]
-      },
-      {
-        id: 5, slug: "chapeau", name_fr: "Chapeau", name_ar: "قبعات", name_en: "Hats",
-        description_fr: "Chapeaux d'été et feutres classiques à ruban contrasté.",
-        image: ASSET_MAP.cat_chapeau,
-        attributes: [
-          { key: "color", label_fr: "Couleur", label_ar: "اللون", label_en: "Color", type: "color", variant: true, filterable: true, options: ["Beige", "Noir"] },
-          { key: "size", label_fr: "Tour de tête", label_ar: "المقاس", label_en: "Size", type: "size", variant: true, filterable: true, options: ["M (56-57cm)", "L (58-59cm)"] },
-          { key: "material", label_fr: "Matière", label_ar: "الخامة", label_en: "Material", type: "short_text", variant: false, filterable: false, options: [] }
-        ]
-      },
-      {
-        id: 6, slug: "casquette", name_fr: "Casquette", name_ar: "قبعات رياضية", name_en: "Caps",
-        description_fr: "Casquettes brodées au style sport-chic.",
-        image: ASSET_MAP.casquette,
-        attributes: [
-          { key: "color", label_fr: "Couleur", label_ar: "اللون", label_en: "Color", type: "color", variant: true, filterable: true, options: ["Noir & Blanc", "Vert Émeraude"] },
-          { key: "size", label_fr: "Taille", label_ar: "المقاس", label_en: "Size", type: "size", variant: true, filterable: true, options: ["Ajustable", "M/L"] },
-          { key: "material", label_fr: "Matière", label_ar: "الخامة", label_en: "Material", type: "short_text", variant: false, filterable: false, options: [] }
-        ]
-      },
-      {
-        id: 7, slug: "les-lunettes", name_fr: "Les Lunettes", name_ar: "نظارات", name_en: "Eyewear",
-        description_fr: "Lunettes solaires UV400 aux montures écaille et dorées.",
-        image: ASSET_MAP.lunettes,
-        attributes: [
-          { key: "frame_color", label_fr: "Couleur monture", label_ar: "لون الإطار", label_en: "Frame Color", type: "color", variant: true, filterable: true, options: ["Écaille & Or", "Noir Intense"] },
-          { key: "size", label_fr: "Calibre", label_ar: "المقاس", label_en: "Lens Width", type: "size", variant: true, filterable: true, options: ["52 mm", "55 mm"] },
-          { key: "uv_protection", label_fr: "Protection UV", label_ar: "حماية الأشعة", label_en: "UV Protection", type: "single_select", variant: false, filterable: true, options: ["UV400 Polarisé", "UV400 Catégorie 3"] },
-          { key: "material", label_fr: "Matériau monture", label_ar: "خامة الإطار", label_en: "Frame Material", type: "short_text", variant: false, filterable: false, options: [] }
-        ]
-      },
-      {
-        id: 8, slug: "les-montres", name_fr: "Les Montres", name_ar: "ساعات", name_en: "Watches",
-        description_fr: "Garde-temps chronographes aux finitions dorées.",
-        image: ASSET_MAP.montre,
-        attributes: [
-          { key: "dial_color", label_fr: "Couleur du cadran", label_ar: "لون الميناء", label_en: "Dial Color", type: "color", variant: true, filterable: true, options: ["Noir & Or", "Émeraude & Or"] },
-          { key: "size", label_fr: "Diamètre boîtier", label_ar: "قطر الساعة", label_en: "Case Diameter", type: "size", variant: true, filterable: true, options: ["38 mm", "41 mm"] },
-          { key: "movement", label_fr: "Mouvement", label_ar: "الحركة", label_en: "Movement", type: "single_select", variant: false, filterable: true, options: ["Chronographe Quartz Précision", "Automatique"] },
-          { key: "water_resistance", label_fr: "Étanchéité", label_ar: "مقاومة الماء", label_en: "Water Resistance", type: "short_text", variant: false, filterable: false, options: [] },
-          { key: "strap_material", label_fr: "Bracelet", label_ar: "السوار", label_en: "Strap Material", type: "short_text", variant: false, filterable: false, options: [] }
-        ]
-      },
-      {
-        id: 9, slug: "accessoires", name_fr: "Accessoires", name_ar: "إكسسوارات", name_en: "Accessories",
-        description_fr: "Parures dorées, bagues et boucles d'oreilles ciselées.",
-        image: ASSET_MAP.accessoires,
-        attributes: [
-          { key: "finish", label_fr: "Finition", label_ar: "الطلاء", label_en: "Finish", type: "color", variant: true, filterable: true, options: ["Or 18K Plaqué", "Or"] },
-          { key: "size", label_fr: "Taille coffret", label_ar: "الحجم", label_en: "Set Size", type: "size", variant: true, filterable: true, options: ["Parure 5 pièces", "Parure Complète 8 pièces"] },
-          { key: "material", label_fr: "Alliage", label_ar: "المعدن", label_en: "Material", type: "short_text", variant: false, filterable: false, options: [] }
-        ]
-      }
-    ];
-
-    const PRODUCTS = [
-      {
-        id: 1, category_id: 1, category_slug: "sacs", sku: "LUX-BAG-001",
-        badge: "Nouveau",
-        name_fr: "Sac à main Chanel style", name_ar: "حقيبة يد ستايل شانيل", name_en: "Chanel Style Quilted Handbag",
-        brand: "CHANEL STYLE",
-        rating: "4.8", reviews: 12,
-        description_fr: "Un sac iconique au style intemporel. Élégant, pratique et parfait pour toutes les occasions. Ce modèle allie luxe et raffinement avec ses finitions soignées et sa chaîne argentée.",
-        image: ASSET_MAP.sac_chanel,
-        gallery: [ASSET_MAP.sac_chanel, ASSET_MAP.sac_burgundy, ASSET_MAP.sac_noir, ASSET_MAP.sac_rose],
-        selling_price_dzd: 4500, previous_price_dzd: 5500, discount_percent: 18,
-        sales_count: 24,
-        attributes: {
-          bag_type: "Sac à main",
-          material: "Cuir synthétique matelassé",
-          lining: "Tissu premium doux",
-          closure: "Fermoir rotatif à rabat",
-          dimensions: "26 × 15 × 8 cm",
-          strap_type: "Chaîne argentée tressée cuir"
-        },
-        swatches: ["#5B1E31", "#181818", "#DFC9AC", "#C98594"],
-        variants: [
-          { id: 1001, sku: "LUX-BAG-001-BOR-S", title: "Bordeaux / S", stock: 3, price: 4300, attrs: { color: "Bordeaux", size: "S" }, img: ASSET_MAP.sac_chanel },
-          { id: 1002, sku: "LUX-BAG-001-BOR-M", title: "Bordeaux / M", stock: 4, price: 4500, attrs: { color: "Bordeaux", size: "M" }, img: ASSET_MAP.sac_chanel },
-          { id: 1003, sku: "LUX-BAG-001-BOR-L", title: "Bordeaux / L", stock: 6, price: 4500, attrs: { color: "Bordeaux", size: "L" }, img: ASSET_MAP.sac_chanel },
-          { id: 1004, sku: "LUX-BAG-001-NOI-M", title: "Noir / M", stock: 5, price: 4500, attrs: { color: "Noir", size: "M" }, img: ASSET_MAP.sac_noir },
-          { id: 1005, sku: "LUX-BAG-001-NOI-L", title: "Noir / L", stock: 4, price: 4500, attrs: { color: "Noir", size: "L" }, img: ASSET_MAP.sac_noir },
-          { id: 1006, sku: "LUX-BAG-001-BEI-M", title: "Beige / M", stock: 3, price: 4500, attrs: { color: "Beige", size: "M" }, img: ASSET_MAP.sac_beige },
-          { id: 1007, sku: "LUX-BAG-001-ROS-M", title: "Rose Poudré / M", stock: 2, price: 4500, attrs: { color: "Rose Poudré", size: "M" }, img: ASSET_MAP.sac_rose }
-        ]
-      },
-      {
-        id: 2, category_id: 2, category_slug: "chaussures", sku: "LUX-SHOE-001",
-        badge: "Meilleure vente",
-        name_fr: "Baskets élégantes", name_ar: "حذاء رياضي أنيق", name_en: "Luxury Urban Sneakers",
-        brand: "MUS LUXURY",
-        rating: "4.9", reviews: 8,
-        description_fr: "Baskets basses bicolores à semelle confort et finitions dorées subtiles, pensées pour un style urbain chic au quotidien.",
-        image: ASSET_MAP.baskets,
-        gallery: [ASSET_MAP.baskets],
-        selling_price_dzd: 6800, previous_price_dzd: 8500, discount_percent: 20,
-        sales_count: 19,
-        attributes: {
-          gender: "Unisexe",
-          shoe_type: "Baskets",
-          material: "Cuir grainé supérieur",
-          sole: "Caoutchouc antidérapant cousu"
-        },
-        swatches: ["#EAEAEA", "#181818"],
-        variants: [
-          { id: 2001, sku: "LUX-SHOE-001-BN-37", title: "Blanc & Noir / 37", stock: 3, price: 6800, attrs: { color: "Blanc & Noir", size: "37" } },
-          { id: 2002, sku: "LUX-SHOE-001-BN-38", title: "Blanc & Noir / 38", stock: 4, price: 6800, attrs: { color: "Blanc & Noir", size: "38" } },
-          { id: 2003, sku: "LUX-SHOE-001-BN-39", title: "Blanc & Noir / 39", stock: 6, price: 6800, attrs: { color: "Blanc & Noir", size: "39" } },
-          { id: 2004, sku: "LUX-SHOE-001-BN-40", title: "Blanc & Noir / 40", stock: 3, price: 6800, attrs: { color: "Blanc & Noir", size: "40" } },
-          { id: 2005, sku: "LUX-SHOE-001-BN-41", title: "Blanc & Noir / 41", stock: 0, price: 6800, attrs: { color: "Blanc & Noir", size: "41" } },
-          { id: 2006, sku: "LUX-SHOE-001-NOI-39", title: "Noir / 39", stock: 5, price: 6800, attrs: { color: "Noir", size: "39" } },
-          { id: 2007, sku: "LUX-SHOE-001-NOI-40", title: "Noir / 40", stock: 4, price: 6800, attrs: { color: "Noir", size: "40" } }
-        ]
-      },
-      {
-        id: 3, category_id: 3, category_slug: "chale", sku: "LUX-SHW-001",
-        badge: "Promo",
-        name_fr: "Écharpe luxueuse", name_ar: "شال فاخر", name_en: "Luxury Printed Shawl",
-        brand: "MAISON OR",
-        rating: "4.7", reviews: 5,
-        description_fr: "Écharpe et châle au tombé soyeux, rehaussé de motifs délicats noir et or sur fond beige.",
-        image: ASSET_MAP.chale,
-        gallery: [ASSET_MAP.chale],
-        selling_price_dzd: 2200, previous_price_dzd: 3200, discount_percent: 31,
-        sales_count: 15,
-        attributes: {
-          fabric: "Soie & Cachemire"
-        },
-        swatches: ["#D2B895", "#063D2E"],
-        variants: [
-          { id: 3001, sku: "LUX-SHW-001-BN-180", title: "Beige & Noir / 180 × 70 cm", stock: 8, price: 2200, attrs: { color: "Beige & Noir", size: "180 × 70 cm" } },
-          { id: 3002, sku: "LUX-SHW-001-BN-200", title: "Beige & Noir / 200 × 80 cm", stock: 4, price: 2500, attrs: { color: "Beige & Noir", size: "200 × 80 cm" } },
-          { id: 3003, sku: "LUX-SHW-001-EM-180", title: "Vert Émeraude / 180 × 70 cm", stock: 5, price: 2200, attrs: { color: "Vert Émeraude", size: "180 × 70 cm" } }
-        ]
-      },
-      {
-        id: 4, category_id: 4, category_slug: "maquillage", sku: "LUX-MKP-001",
-        badge: "Populaire",
-        name_fr: "Set maquillage complet", name_ar: "مجموعة مكياج كاملة", name_en: "Complete Luxury Makeup Set",
-        brand: "MUS BEAUTY",
-        rating: "4.8", reviews: 7,
-        description_fr: "Coffret beauté réunissant rouges à lèvres satinés, palette d'ombres à paupières haute pigmentation et poudre compacte.",
-        image: ASSET_MAP.maquillage,
-        gallery: [ASSET_MAP.maquillage],
-        selling_price_dzd: 3900, previous_price_dzd: 5200, discount_percent: 25,
-        sales_count: 21,
-        attributes: {
-          skin_type: "Tous types de peau",
-          finish: "Satiné & Velours",
-          volume: "145 g (Coffret 5 pièces)"
-        },
-        swatches: ["#C66B7D", "#8E1B2B"],
-        variants: [
-          { id: 4001, sku: "LUX-MKP-001-01-STD", title: "Teinte 01 Rose Nude / Coffret Standard", stock: 10, price: 3900, attrs: { shade: "Teinte 01 Rose Nude", size: "Coffret Standard" } },
-          { id: 4002, sku: "LUX-MKP-001-01-PR", title: "Teinte 01 Rose Nude / Coffret Prestige", stock: 4, price: 4600, attrs: { shade: "Teinte 01 Rose Nude", size: "Coffret Prestige" } },
-          { id: 4003, sku: "LUX-MKP-001-02-STD", title: "Teinte 02 Rubis Intense / Coffret Standard", stock: 6, price: 3900, attrs: { shade: "Teinte 02 Rubis Intense", size: "Coffret Standard" } }
-        ]
-      },
-      {
-        id: 5, category_id: 5, category_slug: "chapeau", sku: "LUX-HAT-001",
-        badge: "Été",
-        name_fr: "Chapeau élégant", name_ar: "قبعة أنيقة", name_en: "Classic Ribbon Sun Hat",
-        brand: "MUS LUXURY",
-        rating: "4.6", reviews: 4,
-        description_fr: "Chapeau finement tressé avec ruban noir contrasté pour une allure solaire et distinguée.",
-        image: ASSET_MAP.chapeau,
-        gallery: [ASSET_MAP.chapeau],
-        selling_price_dzd: 1800, previous_price_dzd: 2500, discount_percent: 28,
-        sales_count: 9,
-        attributes: {
-          material: "Paille naturelle tressée main"
-        },
-        swatches: ["#DFC9AC", "#181818"],
-        variants: [
-          { id: 5001, sku: "LUX-HAT-001-BEI-M", title: "Beige / M (56-57cm)", stock: 7, price: 1800, attrs: { color: "Beige", size: "M (56-57cm)" } },
-          { id: 5002, sku: "LUX-HAT-001-BEI-L", title: "Beige / L (58-59cm)", stock: 4, price: 1800, attrs: { color: "Beige", size: "L (58-59cm)" } }
-        ]
-      },
-      {
-        id: 6, category_id: 1, category_slug: "sacs", sku: "LUX-BAG-002",
-        badge: "Exclusif",
-        name_fr: "Sac à main élégant Émeraude", name_ar: "حقيبة يد أنيقة زمردية", name_en: "Emerald Signature Handbag",
-        brand: "ÉMERAUDE PARIS",
-        rating: "4.9", reviews: 18,
-        description_fr: "Ce sac à main est conçu pour les femmes modernes qui recherchent à la fois l'élégance et la praticité. Fabriqué en cuir synthétique haut de gamme avec doublure douce.",
-        image: ASSET_MAP.sac_emeraude,
-        gallery: [ASSET_MAP.sac_emeraude, ASSET_MAP.sac_beige, ASSET_MAP.sac_noir],
-        selling_price_dzd: 12500, previous_price_dzd: 16900, discount_percent: 26,
-        sales_count: 27,
-        attributes: {
-          bag_type: "Sac à main",
-          material: "Cuir synthétique haut de gamme",
-          lining: "Tissu suédé doux",
-          closure: "Zippée & fermoir doré",
-          dimensions: "28 × 20 × 12 cm",
-          strap_type: "Poignée structurée & bandoulière amovible"
-        },
-        swatches: ["#063D2E", "#181818", "#DFC9AC"],
-        variants: [
-          { id: 1008, sku: "LUX-BAG-002-EME-STD", title: "Vert Émeraude / Standard", stock: 5, price: 12500, attrs: { color: "Vert Émeraude", size: "Standard" }, img: ASSET_MAP.sac_emeraude },
-          { id: 1009, sku: "LUX-BAG-002-EME-L", title: "Vert Émeraude / L", stock: 3, price: 13200, attrs: { color: "Vert Émeraude", size: "L" }, img: ASSET_MAP.sac_emeraude },
-          { id: 1010, sku: "LUX-BAG-002-NOI-STD", title: "Noir / Standard", stock: 4, price: 12500, attrs: { color: "Noir", size: "Standard" }, img: ASSET_MAP.sac_noir },
-          { id: 1011, sku: "LUX-BAG-002-BEI-STD", title: "Beige / Standard", stock: 2, price: 12500, attrs: { color: "Beige", size: "Standard" }, img: ASSET_MAP.sac_beige }
-        ]
-      },
-      {
-        id: 7, category_id: 1, category_slug: "sacs", sku: "LUX-BAG-003",
-        badge: null,
-        name_fr: "Sac bandoulière Beige", name_ar: "حقيبة كتف بيج أنيقة", name_en: "Minimalist Beige Crossbody Bag",
-        brand: "MUS LUXURY",
-        rating: "4.8", reviews: 9,
-        description_fr: "Sac bandoulière structuré couleur beige sablé avec fermoir doré.",
-        image: ASSET_MAP.sac_beige,
-        gallery: [ASSET_MAP.sac_beige, ASSET_MAP.sac_rose],
-        selling_price_dzd: 9800, previous_price_dzd: 11900, discount_percent: 18,
-        sales_count: 11,
-        attributes: {
-          bag_type: "Sac bandoulière",
-          material: "Cuir lisse",
-          lining: "Coton sergé",
-          closure: "Rabat magnétique doré",
-          dimensions: "24 × 16 × 7 cm",
-          strap_type: "Bandoulière réglable"
-        },
-        swatches: ["#DFC9AC", "#C98594"],
-        variants: [
-          { id: 1012, sku: "LUX-BAG-003-BEI-S", title: "Beige / S", stock: 3, price: 9500, attrs: { color: "Beige", size: "S" }, img: ASSET_MAP.sac_beige },
-          { id: 1013, sku: "LUX-BAG-003-BEI-M", title: "Beige / M", stock: 4, price: 9800, attrs: { color: "Beige", size: "M" }, img: ASSET_MAP.sac_beige },
-          { id: 1014, sku: "LUX-BAG-003-ROS-M", title: "Rose Poudré / M", stock: 3, price: 9800, attrs: { color: "Rose Poudré", size: "M" }, img: ASSET_MAP.sac_rose }
-        ]
-      },
-      {
-        id: 8, category_id: 6, category_slug: "casquette", sku: "LUX-CAP-001",
-        badge: null,
-        name_fr: "Casquette brodée Urbaine", name_ar: "قبعة رياضية مطرزة", name_en: "Embroidered Urban Cap",
-        brand: "MUS LUXURY",
-        rating: "4.7", reviews: 6,
-        description_fr: "Casquette noire ajustée avec broderie blanche en relief.",
-        image: ASSET_MAP.casquette,
-        gallery: [ASSET_MAP.casquette],
-        selling_price_dzd: 2400, previous_price_dzd: 3000, discount_percent: 20,
-        sales_count: 10,
-        attributes: {
-          material: "Coton sergé respirant"
-        },
-        swatches: ["#222222", "#063D2E"],
-        variants: [
-          { id: 6001, sku: "LUX-CAP-001-NB-ADJ", title: "Noir & Blanc / Ajustable", stock: 9, price: 2400, attrs: { color: "Noir & Blanc", size: "Ajustable" } },
-          { id: 6002, sku: "LUX-CAP-001-EM-ADJ", title: "Vert Émeraude / Ajustable", stock: 5, price: 2400, attrs: { color: "Vert Émeraude", size: "Ajustable" } }
-        ]
-      },
-      {
-        id: 9, category_id: 7, category_slug: "les-lunettes", sku: "LUX-SUN-001",
-        badge: "UV400",
-        name_fr: "Lunettes solaires Prestige", name_ar: "نظارات شمسية فاخرة", name_en: "Prestige UV400 Sunglasses",
-        brand: "MAISON OR",
-        rating: "4.9", reviews: 11,
-        description_fr: "Lunettes solaires aux verres dégradés UV400 et branches finement dorées.",
-        image: ASSET_MAP.lunettes,
-        gallery: [ASSET_MAP.lunettes],
-        selling_price_dzd: 5400, previous_price_dzd: 6900, discount_percent: 22,
-        sales_count: 14,
-        attributes: {
-          uv_protection: "UV400 Polarisé",
-          material: "Acétate écaille & branches dorées"
-        },
-        swatches: ["#5C3A21", "#121212"],
-        variants: [
-          { id: 7001, sku: "LUX-SUN-001-EC-52", title: "Écaille & Or / 52 mm", stock: 5, price: 5400, attrs: { frame_color: "Écaille & Or", size: "52 mm" } },
-          { id: 7002, sku: "LUX-SUN-001-EC-55", title: "Écaille & Or / 55 mm", stock: 3, price: 5400, attrs: { frame_color: "Écaille & Or", size: "55 mm" } },
-          { id: 7003, sku: "LUX-SUN-001-NO-55", title: "Noir Intense / 55 mm", stock: 4, price: 5400, attrs: { frame_color: "Noir Intense", size: "55 mm" } }
-        ]
-      },
-      {
-        id: 10, category_id: 8, category_slug: "les-montres", sku: "LUX-WTC-001",
-        badge: "Édition Or",
-        name_fr: "Montre Chronographe Impériale", name_ar: "ساعة كرونوغراف ذهبية", name_en: "Imperial Gold Chronograph Watch",
-        brand: "MAISON OR",
-        rating: "4.9", reviews: 16,
-        description_fr: "Chronographe en acier doré à cadran soleillé noir et étanchéité 5 ATM.",
-        image: ASSET_MAP.montre,
-        gallery: [ASSET_MAP.montre],
-        selling_price_dzd: 15900, previous_price_dzd: 19500, discount_percent: 18,
-        sales_count: 17,
-        attributes: {
-          movement: "Chronographe Quartz Précision",
-          water_resistance: "5 ATM (50 mètres)",
-          strap_material: "Maillons acier inoxydable doré"
-        },
-        swatches: ["#1C2421", "#063D2E"],
-        variants: [
-          { id: 8001, sku: "LUX-WTC-001-NO-41", title: "Noir & Or / 41 mm", stock: 4, price: 15900, attrs: { dial_color: "Noir & Or", size: "41 mm" } },
-          { id: 8002, sku: "LUX-WTC-001-NO-38", title: "Noir & Or / 38 mm", stock: 3, price: 15500, attrs: { dial_color: "Noir & Or", size: "38 mm" } },
-          { id: 8003, sku: "LUX-WTC-001-EO-41", title: "Émeraude & Or / 41 mm", stock: 2, price: 15900, attrs: { dial_color: "Émeraude & Or", size: "41 mm" } }
-        ]
-      },
-      {
-        id: 11, category_id: 9, category_slug: "accessoires", sku: "LUX-ACC-001",
-        badge: null,
-        name_fr: "Parure Bijoux & Bagues Dorées", name_ar: "طقم مجوهرات وإكسسوارات ذهبية", name_en: "Gold-Plated Jewelry Set",
-        brand: "MAISON OR",
-        rating: "4.8", reviews: 10,
-        description_fr: "Ensemble raffiné de bagues, boucles d'oreilles et chaîne dorée.",
-        image: ASSET_MAP.accessoires,
-        gallery: [ASSET_MAP.accessoires],
-        selling_price_dzd: 3800, previous_price_dzd: 4800, discount_percent: 21,
-        sales_count: 13,
-        attributes: {
-          material: "Acier chirurgical plaqué Or 18K"
-        },
-        swatches: ["#D4AF62"],
-        variants: [
-          { id: 9001, sku: "LUX-ACC-001-OR-5P", title: "Or 18K Plaqué / Parure 5 pièces", stock: 8, price: 3800, attrs: { finish: "Or 18K Plaqué", size: "Parure 5 pièces" } },
-          { id: 9002, sku: "LUX-ACC-001-OR-8P", title: "Or 18K Plaqué / Parure Complète 8 pièces", stock: 4, price: 4900, attrs: { finish: "Or 18K Plaqué", size: "Parure Complète 8 pièces" } }
-        ]
-      }
-    ];
-
-    // Official List of All 69 Algerian Wilayas (01 Adrar to 69 El Abiodh Sidi Cheikh — Law n° 26-06)
     const WILAYAS = [
       { code: "01", name_fr: "Adrar", name_ar: "أدرار", communes: ["Adrar", "Reggane", "Aoulef"], home_fee: 900, desk_fee: 600 },
       { code: "02", name_fr: "Chlef", name_ar: "الشلف", communes: ["Chlef", "Ténès", "Oued Fodda"], home_fee: 600, desk_fee: 400 },
@@ -1959,7 +1547,7 @@
       lang: "fr",
       activeCategorySlug: "all",
       searchQuery: "",
-      maxPriceFilter: 25000,
+      maxPriceFilter: null,
       isCatalogLoaded: false,
       inStockOnly: false,
       onlyFavorites: false,
@@ -2042,7 +1630,7 @@
           }
           if (isAbort || isNet) {
             throw new Error(
-              "Connexion interrompue avec la boutique Mus Luxury. Vérifiez votre connexion Internet ou commandez sur WhatsApp au 0655 53 41 54."
+              "Connexion interrompue avec la boutique Mus Luxury. Vérifiez votre connexion Internet ou commandez sur WhatsApp au " + storePhoneDisplay() + "."
             );
           }
           throw err;
@@ -2070,7 +1658,7 @@
       if (status === 429) return "Trop de tentatives rapprochées. Veuillez patienter quelques secondes avant de réessayer.";
       if (status === 404) return "Aucun résultat trouvé pour cette référence ou cet article.";
       if (status >= 500 || !raw || /sqlite|postgres|traceback|internal|exception/i.test(raw)) {
-        return "Le service est momentanément indisponible. Veuillez réessayer dans un instant ou commander via WhatsApp au 0655 53 41 54.";
+        return "Le service est momentanément indisponible. Veuillez réessayer dans un instant ou commander via WhatsApp au " + storePhoneDisplay() + ".";
       }
       return raw;
     }
@@ -2164,6 +1752,224 @@
       return /^#[0-9a-fA-F]{3,8}$/.test(s) ? s : null;
     }
 
+    // =========================================================================
+    // SHOP CONTENT FROM THE CMS (CMS → Contenu & Bannières)
+    // Defaults below are the shop's real details, used until the CMS values
+    // load (or if they are left empty).
+    // =========================================================================
+    const DEFAULT_CONTACT = {
+      phone: "0655 53 41 54",
+      wa: "213655534154",
+      instagram: "https://www.instagram.com/musluxury09",
+      tiktok: "https://www.tiktok.com/@musluxury.092",
+    };
+
+    function setting(key) {
+      const v = state.storeSettings ? state.storeSettings[key] : "";
+      return v === null || v === undefined ? "" : decodeHtml(String(v)).trim();
+    }
+
+    function storePhoneDisplay() {
+      return setting("store_phone") || DEFAULT_CONTACT.phone;
+    }
+
+    function waNumber() {
+      const digits = (setting("whatsapp_contact_number") || setting("store_phone")).replace(/\D/g, "");
+      if (!digits) return DEFAULT_CONTACT.wa;
+      return digits.startsWith("0") ? "213" + digits.slice(1) : digits;
+    }
+
+    function safeHttpUrl(url) {
+      return /^https:\/\/[^\s"'<>]+$/i.test(url || "") ? url : "";
+    }
+
+    // Free delivery from this cart subtotal (0 = no free delivery). The SAME
+    // rule is enforced by the server when the order is created.
+    function freeDeliveryThreshold() {
+      const n = parseInt(setting("free_delivery_threshold_dzd").replace(/\s/g, ""), 10);
+      return Number.isFinite(n) && n > 0 ? n : 0;
+    }
+
+    function deliveryFeeFor(wObj, method, subtotal) {
+      if (!wObj) return 0;
+      const base = method === "stop_desk" ? wObj.desk_fee : wObj.home_fee;
+      const threshold = freeDeliveryThreshold();
+      return threshold && subtotal >= threshold ? 0 : base;
+    }
+
+    let shownPhone = DEFAULT_CONTACT.phone;
+    function applyStoreContacts() {
+      const phone = storePhoneDisplay();
+      const wa = waNumber();
+      const ig = safeHttpUrl(setting("instagram_url"));
+      const tk = safeHttpUrl(setting("tiktok_url"));
+      document.querySelectorAll('a[href*="wa.me/"]').forEach((a) => {
+        a.setAttribute("href", a.getAttribute("href").replace(/wa\.me\/\d+/, "wa.me/" + wa));
+      });
+      document.querySelectorAll('a[href^="tel:"]').forEach((a) => a.setAttribute("href", "tel:" + phone.replace(/\s/g, "")));
+      if (ig) document.querySelectorAll('a[href*="instagram.com/"]').forEach((a) => a.setAttribute("href", ig));
+      if (tk) document.querySelectorAll('a[href*="tiktok.com/"]').forEach((a) => a.setAttribute("href", tk));
+      if (phone !== shownPhone) {
+        const walker = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT);
+        const nodes = [];
+        while (walker.nextNode()) {
+          const n = walker.currentNode;
+          if (n.nodeValue && n.nodeValue.includes(shownPhone) && !/SCRIPT|STYLE|TEXTAREA/.test(n.parentNode.nodeName)) nodes.push(n);
+        }
+        nodes.forEach((n) => { n.nodeValue = n.nodeValue.split(shownPhone).join(phone); });
+        shownPhone = phone;
+      }
+    }
+
+    function bannerText(b, field) {
+      const l = state.lang;
+      return (l !== "fr" && b[`${field}_${l}`]) || b[`${field}_fr`] || "";
+    }
+
+    function activeBanners(position) {
+      return ((state.homeLayout && state.homeLayout.banners) || []).filter((b) => b.position === position && Number(b.is_active) !== 0);
+    }
+
+    // Home blocks the owner can switch off (CMS → Contenu → Blocs de la page d'accueil).
+    function sectionVisible(key) {
+      const secs = (state.homeLayout && state.homeLayout.sections) || [];
+      const sec = secs.find((x) => x.section_key === key);
+      return sec ? Number(sec.is_active) !== 0 : true;
+    }
+
+    // Where a banner button leads: /categorie/x, /produit/x, #/…, or https://…
+    function openBannerLink(rawLink) {
+      const link = decodeHtml(rawLink || "").trim();
+      if (!link) return navigateTo("#/boutique");
+      if (/^https:\/\//i.test(link)) return window.open(link, "_blank", "noopener,noreferrer");
+      const cat = link.match(/^\/categorie\/([a-z0-9-]+)\/?$/);
+      if (cat) return navigateTo("#/category/" + cat[1]);
+      const prod = link.match(/^\/produit\/([a-z0-9-]+)\/?$/);
+      if (prod) {
+        history.pushState(null, "", "/produit/" + prod[1]);
+        return handleRoute();
+      }
+      if (link.startsWith("#/")) return navigateTo(link);
+      return navigateTo("#/boutique");
+    }
+
+    function openHeroSecondary() {
+      const first = state.categories[0];
+      navigateTo(first ? "#/category/" + first.slug : "#/boutique");
+    }
+
+    function renderHero() {
+      const hero = document.getElementById("home-hero");
+      if (!hero) return;
+      hero.classList.toggle("hidden", !sectionVisible("hero_banner"));
+      const t = I18N[state.lang] || I18N.fr;
+      const list = activeBanners("hero");
+      const img = document.getElementById("hero-image");
+      const title1 = document.getElementById("hero-title-1");
+      const title2 = document.getElementById("hero-title-2");
+      const desc = document.getElementById("hero-desc");
+      const cta1 = document.getElementById("hero-cta-primary");
+      const cta2 = document.getElementById("hero-cta-secondary");
+      const caption = document.getElementById("hero-caption-collection");
+      const dots = document.getElementById("hero-dots");
+      const ctaBtn = cta1 ? cta1.closest("button") : null;
+      if (!list.length) {
+        // Brand text (translated) and photo when no CMS banner exists.
+        title1.textContent = t.heroTitle1; title2.textContent = t.heroTitle2; title2.classList.remove("hidden");
+        desc.textContent = t.heroDesc; cta1.textContent = t.heroCta1;
+        if (caption) caption.textContent = t.heroCaptionCollection;
+        if (img && img.getAttribute("src") !== img.dataset.defaultSrc) img.setAttribute("src", img.dataset.defaultSrc);
+        if (ctaBtn) ctaBtn.onclick = () => navigateTo("#/boutique");
+        const first = state.categories[0];
+        if (cta2) {
+          cta2.classList.toggle("hidden", !first);
+          if (first) cta2.textContent = decodeHtml(catName(first));
+        }
+        if (dots) dots.classList.add("hidden");
+        return;
+      }
+      const idx = (state.heroIndex || 0) % list.length;
+      const b = list[idx];
+      title1.textContent = decodeHtml(bannerText(b, "title"));
+      title2.textContent = ""; title2.classList.add("hidden");
+      desc.textContent = decodeHtml(bannerText(b, "subtitle"));
+      cta1.textContent = state.lang === "fr" && b.cta_text_fr ? decodeHtml(b.cta_text_fr) : t.heroCta1;
+      if (ctaBtn) ctaBtn.onclick = () => openBannerLink(b.cta_link);
+      if (caption) caption.textContent = decodeHtml(bannerText(b, "title"));
+      if (img) img.setAttribute("src", decodeHtml(b.image_url) || PLACEHOLDER_IMG);
+      if (cta2) cta2.classList.add("hidden");
+      if (dots) {
+        dots.classList.toggle("hidden", list.length < 2);
+        dots.innerHTML = list.map((_, i) => `<button type="button" onclick="state.heroIndex=${i};renderHero()" aria-label="Bannière ${i + 1}" class="w-2.5 h-2.5 rounded-full ${i === idx ? "bg-gold-reflective" : "bg-white/50"}"></button>`).join("");
+      }
+    }
+
+    function renderPromos() {
+      const box = document.getElementById("home-promos");
+      if (!box) return;
+      const list = activeBanners("promo_grid");
+      const show = list.length > 0 && sectionVisible("promo_banners");
+      box.classList.toggle("hidden", !show);
+      if (!show) { box.innerHTML = ""; return; }
+      const t = I18N[state.lang] || I18N.fr;
+      box.innerHTML = list.map((b, i) => `
+        <div onclick="openBannerLink(activeBanners('promo_grid')[${i}].cta_link)" class="group cursor-pointer rounded-2xl overflow-hidden hero-luxury-bg p-5 text-white border border-gold-reflective/35 flex items-center justify-between gap-4 shadow-luxury hover:shadow-luxury-hover transition">
+          <div class="space-y-1.5 min-w-0">
+            <h3 class="font-luxury text-2xl font-bold text-gold-light">${bannerText(b, "title")}</h3>
+            ${bannerText(b, "subtitle") ? `<p class="text-xs text-white/75">${bannerText(b, "subtitle")}</p>` : ""}
+            <span class="inline-flex items-center gap-1.5 pt-2 text-xs font-bold text-gold-reflective group-hover:translate-x-1 transition">
+              <span>${state.lang === "fr" && b.cta_text_fr ? b.cta_text_fr : (t.viewCollection || "Voir la collection")}</span>
+            </span>
+          </div>
+          ${b.image_url ? `<img src="${b.image_url}" alt="" loading="lazy" class="w-24 h-24 object-cover rounded-xl border border-gold-reflective/40 group-hover:scale-105 transition duration-300" />` : ""}
+        </div>`).join("");
+    }
+
+    function renderFooterCollections() {
+      const ul = document.getElementById("footer-collections");
+      if (!ul) return;
+      ul.innerHTML = state.categories.slice(0, 6).map((c) =>
+        `<li><button type="button" onclick="navigateTo('#/category/${c.slug}')" class="hover:text-white transition">${catName(c)}</button></li>`
+      ).join("");
+    }
+
+    // Home blocks + banners; called at the end of every renderStorefront().
+    function renderHomeContent() {
+      renderFooterCollections();
+      renderHero();
+      renderPromos();
+      const trust = document.getElementById("home-trust");
+      if (trust) trust.classList.toggle("hidden", !sectionVisible("trust_bar"));
+      const cats = document.getElementById("home-categories");
+      if (cats) cats.classList.toggle("hidden", !sectionVisible("categories_grid") || !state.categories.length);
+      const catalog = document.getElementById("catalog-section");
+      if (catalog && currentRouteHash() === "#/home" && !sectionVisible("featured_products")) catalog.classList.add("hidden");
+      updatePriceFilterRange();
+    }
+
+    // Price filter covers the real price range of the catalog (it used to stop
+    // at 25 000 DA, which hid every more expensive product).
+    function catalogMaxPrice() {
+      const max = state.products.reduce((m, p) => Math.max(m, Number(p.selling_price_dzd) || 0), 0);
+      return Math.max(1000, Math.ceil(max / 500) * 500);
+    }
+    function updatePriceFilterRange() {
+      const max = catalogMaxPrice();
+      const input = document.getElementById("filter-max-price");
+      if (!input) return;
+      const wasAtMax = state.maxPriceFilter === null || state.maxPriceFilter >= Number(input.max || 0);
+      input.max = String(max);
+      input.min = "0";
+      if (wasAtMax) {
+        state.maxPriceFilter = null; // null = no price limit
+        input.value = String(max);
+        const disp = document.getElementById("filter-price-display");
+        if (disp) disp.textContent = formatDZD(max);
+      }
+      const maxLabel = document.getElementById("filter-price-max-label");
+      if (maxLabel) maxLabel.textContent = formatDZD(max);
+    }
+
     // Shown when a product or category has no photo yet (never a photo of
     // another product).
     const PLACEHOLDER_IMG = "/assets/placeholder_product.svg";
@@ -2212,8 +2018,8 @@
         return;
       }
       const wObj = WILAYAS.find((w) => w.code === state.checkoutWilaya) || WILAYAS[15] || WILAYAS[0];
-      const fee = state.checkoutMethod === "stop_desk" ? wObj.desk_fee : wObj.home_fee;
       const subtotal = computeCartSubtotal();
+      const fee = deliveryFeeFor(wObj, state.checkoutMethod, subtotal);
       const discount = computeCouponDiscount(subtotal);
       const total = subtotal - discount + fee;
       const lines = state.cart.map((item) => {
@@ -2227,7 +2033,7 @@
         `Wilaya : ${wObj.code} - ${wObj.name_fr} (${state.checkoutMethod === "stop_desk" ? "Stop-Desk" : "Livraison à Domicile"})`,
         `Total avec livraison : ${formatDZD(total)} (Paiement à la livraison)`,
       ].join("\n");
-      window.open(`https://wa.me/213655534154?text=${encodeURIComponent(decodeHtml(text))}`, "_blank", "noopener,noreferrer");
+      window.open(`https://wa.me/${waNumber()}?text=${encodeURIComponent(decodeHtml(text))}`, "_blank", "noopener,noreferrer");
     }
 
     function showToast(msg, type = "success", showModalOnErr = false) {
@@ -2725,13 +2531,13 @@
     function resetCatalogFilters() {
       state.activeCategorySlug = "all";
       state.searchQuery = "";
-      state.maxPriceFilter = 25000;
+      state.maxPriceFilter = null;
       state.inStockOnly = false;
       state.onlyFavorites = false;
       state.dynamicFilterSelections = {};
       document.getElementById("store-search-input").value = "";
-      document.getElementById("filter-max-price").value = "25000";
-      document.getElementById("filter-price-display").textContent = formatDZD(25000);
+      document.getElementById("filter-max-price").value = String(catalogMaxPrice());
+      document.getElementById("filter-price-display").textContent = formatDZD(catalogMaxPrice());
       document.getElementById("filter-instock-only").checked = false;
       document.getElementById("store-home-sections").classList.remove("hidden");
       renderStorefront();
@@ -2812,6 +2618,7 @@
 
       renderDynamicSidebarFilters();
       renderCatalogProducts();
+      renderHomeContent();
     }
 
     function renderDynamicSidebarFilters() {
@@ -2899,7 +2706,7 @@
             (p.brand && p.brand.toLowerCase().includes(state.searchQuery))
         );
       }
-      list = list.filter((p) => p.selling_price_dzd <= state.maxPriceFilter);
+      if (state.maxPriceFilter !== null) list = list.filter((p) => p.selling_price_dzd <= state.maxPriceFilter);
 
       if (state.inStockOnly) {
         list = list.filter((p) => p.variants.reduce((s, v) => s + v.stock, 0) > 0);
@@ -3574,13 +3381,13 @@
                 </button>
               </div>
               <a
-                href="https://wa.me/213655534154?text=${encodeURIComponent(decodeHtml(`Bonjour Mus Luxury, je souhaite commander : ${prodName(prod)} (${variant ? variant.title : ""}) - Qté: ${state.activePdpQty} - Prix: ${formatDZD(effectivePrice * state.activePdpQty)}`) + "\n" + window.location.origin + "/produit/" + encodeURIComponent(decodeHtml(prod.slug)))}"
+                href="https://wa.me/${waNumber()}?text=${encodeURIComponent(decodeHtml(`Bonjour Mus Luxury, je souhaite commander : ${prodName(prod)} (${variant ? variant.title : ""}) - Qté: ${state.activePdpQty} - Prix: ${formatDZD(effectivePrice * state.activePdpQty)}`) + "\n" + window.location.origin + "/produit/" + encodeURIComponent(decodeHtml(prod.slug)))}"
                 target="_blank"
                 rel="noopener noreferrer"
                 class="w-full py-2.5 px-4 rounded-xl bg-emerald-50 hover:bg-emerald-100 text-emerald-900 border border-emerald-300 font-bold text-xs flex items-center justify-center gap-2 transition"
               >
                 <svg class="w-4 h-4 text-emerald-600" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5z"></path></svg>
-                <span>Commander ou poser une question sur WhatsApp (0655 53 41 54)</span>
+                <span>Commander ou poser une question sur WhatsApp (${storePhoneDisplay()})</span>
               </a>
             </div>
 
@@ -3629,7 +3436,7 @@
               </div>
               <div class="flex items-center justify-between pt-1.5 border-t border-emerald-deep/15 text-[11px]">
                 <span class="text-charcoal/80">Total estimé (${state.activePdpQty} article${state.activePdpQty > 1 ? "s" : ""} + ${state.activePdpDeliveryMethod === "stop_desk" ? "Stop-Desk" : "Domicile"}) :</span>
-                <strong class="text-sm font-extrabold text-emerald-deep">${formatDZD(effectivePrice * state.activePdpQty + (state.activePdpDeliveryMethod === "stop_desk" ? selWilaya.desk_fee : selWilaya.home_fee))}</strong>
+                <strong class="text-sm font-extrabold text-emerald-deep">${formatDZD(effectivePrice * state.activePdpQty + deliveryFeeFor(selWilaya, state.activePdpDeliveryMethod, effectivePrice * state.activePdpQty))}</strong>
               </div>
             </div>
 
@@ -3861,8 +3668,8 @@
         }
       }
 
-      const fee = state.checkoutMethod === "stop_desk" ? wObj.desk_fee : wObj.home_fee;
       const subtotal = computeCartSubtotal();
+      const fee = deliveryFeeFor(wObj, state.checkoutMethod, subtotal);
       const discount = computeCouponDiscount(subtotal);
       const total = subtotal - discount + fee;
 
@@ -3891,7 +3698,7 @@
         return;
       }
       if (!/^(\+213|0)(5|6|7)[0-9]{8}$/.test(phone)) {
-        showToast("Numéro de téléphone mobile algérien invalide (ex: 0655534154)", "error");
+        showToast("Numéro de téléphone mobile algérien invalide (ex: 0555 12 34 56)", "error");
         return;
       }
       if (address.length < 5) {
@@ -3900,7 +3707,7 @@
       }
 
       const wObj = WILAYAS.find((w) => w.code === wilayaCode) || WILAYAS[0];
-      const deliveryFee = method === "stop_desk" ? wObj.desk_fee : wObj.home_fee;
+      let serverTotals = null; // totals computed by the server (the truth)
       let subtotal = 0;
       const orderItems = [];
 
@@ -3954,6 +3761,7 @@
           }),
         });
         if (createdOrd && createdOrd.order_reference) {
+          serverTotals = createdOrd;
           orderRef = createdOrd.order_reference;
         }
       } catch (err) {
@@ -3992,10 +3800,12 @@
         commune,
         address,
         delivery_method: method,
-        subtotal_dzd: subtotal,
-        discount_dzd: discount,
-        delivery_fee_dzd: deliveryFee,
-        total_dzd: subtotal - discount + deliveryFee,
+        subtotal_dzd: serverTotals ? serverTotals.subtotal_dzd : subtotal,
+        discount_dzd: serverTotals ? serverTotals.discount_dzd : discount,
+        // Show what the server recorded (free delivery, coupon, prices) —
+        // the amount the courier will collect.
+        delivery_fee_dzd: serverTotals ? serverTotals.delivery_fee_dzd : deliveryFeeFor(wObj, method, subtotal),
+        total_dzd: serverTotals ? serverTotals.total_dzd : subtotal - discount + deliveryFeeFor(wObj, method, subtotal),
         status: "Nouvelle — En attente d'confirmation téléphonique",
         items: orderItems
       };
@@ -4096,9 +3906,9 @@
         })
         .join("");
 
-      const freeShipThreshold = 25000;
-      const remainingForFree = Math.max(0, freeShipThreshold - subtotal);
-      const freeShipPct = Math.min(100, Math.round((subtotal / freeShipThreshold) * 100));
+      const freeShipThreshold = freeDeliveryThreshold();
+      const remainingForFree = freeShipThreshold ? Math.max(0, freeShipThreshold - subtotal) : 0;
+      const freeShipPct = freeShipThreshold ? Math.min(100, Math.round((subtotal / freeShipThreshold) * 100)) : 0;
 
       container.innerHTML = `
         <div class="p-3.5 rounded-xl bg-emerald-deep text-white border border-gold-reflective/40 space-y-2 shadow-sm">
@@ -4106,7 +3916,7 @@
             <span class="font-semibold text-gold-light">
               ${
                 remainingForFree === 0
-                  ? "Livraison Prioritaire Offerte débloquée (Commande ≥ 25 000 DA)"
+                  ? `Livraison Prioritaire Offerte débloquée (Commande ≥ ${formatDZD(freeShipThreshold)})`
                   : `Plus que <strong class="text-gold-reflective">${formatDZD(remainingForFree)}</strong> pour la Livraison Gratuite (69 Wilayas)`
               }
             </span>
@@ -4135,7 +3945,7 @@
             </div>
             <div>
               <label class="block font-bold mb-1">Téléphone *</label>
-              <input type="tel" id="chk-phone" placeholder="0655 53 41 54" class="w-full px-3.5 py-2.5 rounded-xl border border-gray-300 font-mono focus:outline-none focus:border-emerald-deep" />
+              <input type="tel" id="chk-phone" placeholder="05 XX XX XX XX" class="w-full px-3.5 py-2.5 rounded-xl border border-gray-300 font-mono focus:outline-none focus:border-emerald-deep" />
             </div>
             <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
               <div>
@@ -4235,7 +4045,7 @@
             Confirmer la commande (Paiement à la livraison)
           </button>
           <button type="button" onclick="openWhatsAppCartConcierge()" class="w-full py-2.5 rounded-xl bg-emerald-50 hover:bg-emerald-100 text-emerald-900 border border-emerald-300 font-bold text-xs flex items-center justify-center gap-2 transition">
-            <svg class="w-4 h-4 text-emerald-700 flex-shrink-0" viewBox="0 0 24 24" fill="currentColor"><path d="M12.04 2c-5.46 0-9.91 4.45-9.91 9.91 0 1.75.46 3.45 1.32 4.95L2.05 22l5.25-1.38c1.45.79 3.08 1.21 4.74 1.21 5.46 0 9.91-4.45 9.91-9.91 0-2.65-1.03-5.14-2.9-7.01A9.816 9.816 0 0 0 12.04 2m.01 1.67c2.2 0 4.26.86 5.82 2.42a8.225 8.225 0 0 1 2.41 5.83c0 4.54-3.7 8.24-8.24 8.24-1.48 0-2.93-.4-4.2-1.15l-.3-.18-3.12.82.83-3.04-.2-.31a8.196 8.196 0 0 1-1.26-4.38c0-4.54 3.7-8.24 8.24-8.24m4.52 11.66c-.25-.13-1.47-.72-1.7-.81-.23-.08-.39-.13-.56.13-.17.25-.64.81-.79.97-.14.17-.29.19-.54.06-.25-.13-1.06-.39-2.03-1.25-.75-.67-1.26-1.5-1.41-1.75-.15-.25-.02-.39.11-.51.11-.11.25-.29.37-.44.13-.14.17-.25.25-.42.08-.17.04-.31-.02-.44-.06-.13-.56-1.34-.76-1.84-.2-.49-.4-.42-.56-.43h-.48c-.17 0-.44.06-.67.31-.23.25-.88.86-.88 2.1s.9 2.43 1.03 2.6c.13.17 1.77 2.7 4.29 3.79.6.26 1.07.41 1.44.53.6.19 1.15.16 1.58.1.48-.07 1.47-.6 1.68-1.18.21-.58.21-1.07.15-1.18-.06-.1-.23-.17-.48-.29z"/></svg><span>Commander en 1 clic via Conciergerie WhatsApp (0655 53 41 54)</span>
+            <svg class="w-4 h-4 text-emerald-700 flex-shrink-0" viewBox="0 0 24 24" fill="currentColor"><path d="M12.04 2c-5.46 0-9.91 4.45-9.91 9.91 0 1.75.46 3.45 1.32 4.95L2.05 22l5.25-1.38c1.45.79 3.08 1.21 4.74 1.21 5.46 0 9.91-4.45 9.91-9.91 0-2.65-1.03-5.14-2.9-7.01A9.816 9.816 0 0 0 12.04 2m.01 1.67c2.2 0 4.26.86 5.82 2.42a8.225 8.225 0 0 1 2.41 5.83c0 4.54-3.7 8.24-8.24 8.24-1.48 0-2.93-.4-4.2-1.15l-.3-.18-3.12.82.83-3.04-.2-.31a8.196 8.196 0 0 1-1.26-4.38c0-4.54 3.7-8.24 8.24-8.24m4.52 11.66c-.25-.13-1.47-.72-1.7-.81-.23-.08-.39-.13-.56.13-.17.25-.64.81-.79.97-.14.17-.29.19-.54.06-.25-.13-1.06-.39-2.03-1.25-.75-.67-1.26-1.5-1.41-1.75-.15-.25-.02-.39.11-.51.11-.11.25-.29.37-.44.13-.14.17-.25.25-.42.08-.17.04-.31-.02-.44-.06-.13-.56-1.34-.76-1.84-.2-.49-.4-.42-.56-.43h-.48c-.17 0-.44.06-.67.31-.23.25-.88.86-.88 2.1s.9 2.43 1.03 2.6c.13.17 1.77 2.7 4.29 3.79.6.26 1.07.41 1.44.53.6.19 1.15.16 1.58.1.48-.07 1.47-.6 1.68-1.18.21-.58.21-1.07.15-1.18-.06-.1-.23-.17-.48-.29z"/></svg><span>Commander en 1 clic via Conciergerie WhatsApp (${storePhoneDisplay()})</span>
           </button>
         </div>
       `;
@@ -4318,7 +4128,7 @@
           </div>
           <div class="flex items-center justify-between pt-2 border-t border-gold-reflective/25">
             <span class="font-extrabold text-emerald-deep">Total COD : ${formatDZD(found.total_dzd)}</span>
-            <a href="https://wa.me/213655534154?text=${encodeURIComponent(`Bonjour Mus Luxury, suivi commande #${found.reference}`)}" target="_blank" rel="noopener noreferrer" class="px-3 py-1 rounded-lg bg-emerald-deep text-gold-reflective font-bold text-[11px]">Support WhatsApp</a>
+            <a href="https://wa.me/${waNumber()}?text=${encodeURIComponent(`Bonjour Mus Luxury, suivi commande #${found.reference}`)}" target="_blank" rel="noopener noreferrer" class="px-3 py-1 rounded-lg bg-emerald-deep text-gold-reflective font-bold text-[11px]">Support WhatsApp</a>
           </div>
         </div>
       `;
@@ -4332,7 +4142,7 @@
           <p>Nous livrons dans les <strong>69 Wilayas d'Algérie</strong> (à domicile ou en bureau Stop-Desk) avec paiement simple et sécurisé à la réception de votre colis.</p>
           <div class="p-4 rounded-xl bg-cream border border-gold-reflective/40 space-y-2 mt-3 text-xs">
             <p><strong>Adresse Boutique :</strong> <a href="https://www.google.com/maps/search/?api=1&query=FVX6%2BGCJ+Mus+luxury%2C+Ouled+Ya%C3%AFch" target="_blank" rel="noopener noreferrer" class="text-emerald-deep underline font-bold">FVX6+GCJ Mus luxury, Ouled Yaïch (Blida — 09)</a></p>
-            <p><strong>Téléphone &amp; WhatsApp :</strong> <a href="https://wa.me/213655534154" target="_blank" rel="noopener noreferrer" class="font-mono font-bold text-emerald-deep underline">0655 53 41 54</a></p>
+            <p><strong>Téléphone &amp; WhatsApp :</strong> <a href="https://wa.me/${waNumber()}" target="_blank" rel="noopener noreferrer" class="font-mono font-bold text-emerald-deep underline">${storePhoneDisplay()}</a></p>
             <p><strong>Instagram officiel :</strong> <a href="https://www.instagram.com/musluxury09?rpxt=emk3bjBhdjV5d2Ux" target="_blank" rel="noopener noreferrer" class="text-emerald-deep underline font-semibold">@musluxury09</a></p>
             <p><strong>TikTok officiel :</strong> <a href="https://www.tiktok.com/@musluxury.092?_r=1&_t=ZS-9B2mO0gpA7V" target="_blank" rel="noopener noreferrer" class="text-emerald-deep underline font-semibold">@musluxury.092</a></p>
           </div>
@@ -4371,12 +4181,17 @@
         const pgRes = await fetch(`/api/v1/pages/${encodeURIComponent(pageKey)}`, { headers: { "X-Request-ID": "sf_" + Date.now().toString(36) } });
         if (pgRes.ok) {
           const pgData = await pgRes.json();
-          if (pgData.title_fr) document.getElementById("static-page-title").textContent = pgData.title_fr;
-          if (pgData.content_fr) {
-            const bodyEl = document.getElementById("static-page-body");
-            bodyEl.textContent = pgData.content_fr;
+          // The customer's language when the owner wrote it, French otherwise.
+          const lang = state.lang || "fr";
+          const title = (pgData["title_" + lang] || "").trim() || pgData.title_fr;
+          const content = (pgData["content_" + lang] || "").trim() || pgData.content_fr;
+          const bodyEl = document.getElementById("static-page-body");
+          if (title) document.getElementById("static-page-title").textContent = title;
+          if (content) {
+            bodyEl.textContent = content;
             bodyEl.style.whiteSpace = "pre-line";
           }
+          bodyEl.dir = (pgData["content_" + lang] || "").trim() && lang === "ar" ? "rtl" : "ltr";
         }
       } catch (_e) {}
     }
@@ -4483,6 +4298,7 @@
     let lastCatJson = "";
     let lastProdJson = "";
     let lastWilJson = "";
+    let lastLayoutJson = "";
     async function syncStorefrontWithBackend() {
       if (isSyncingBackend) return;
       isSyncingBackend = true;
@@ -4494,7 +4310,7 @@
           fetchPublicJson("/api/v1/categories").catch(() => null),
           fetchAllProducts().catch(() => null),
           fetchPublicJson("/api/v1/delivery-zones").catch(() => null),
-          fetchPublicJson("/api/v1/store/settings").catch(() => null),
+          fetchPublicJson("/api/v1/store/layout").catch(() => null),
         ]);
         let dataChanged = false;
         if (catRes && Array.isArray(catRes.items)) {
@@ -4600,14 +4416,26 @@
           );
         }
         if (setRes && typeof setRes === "object") {
-          state.storeSettings = escapeDeep(setRes);
-          if (setRes.store_phone) {
-            const el = document.getElementById("maison-store-phone");
-            if (el) el.textContent = setRes.store_phone;
-          }
-          if (setRes.store_location) {
-            const el = document.getElementById("maison-store-address");
-            if (el) el.textContent = setRes.store_location;
+          // /store/layout = shop settings + home banners + home blocks (CMS → Contenu & Bannières).
+          const settings = setRes.settings || {};
+          const rawLayout = JSON.stringify([settings, setRes.banners || [], setRes.homepage_sections || []]);
+          if (rawLayout !== lastLayoutJson) {
+            lastLayoutJson = rawLayout;
+            dataChanged = true;
+            state.storeSettings = escapeDeep(settings);
+            state.homeLayout = {
+              banners: escapeDeep(setRes.banners || []),
+              sections: setRes.homepage_sections || [],
+            };
+            if (settings.store_phone) {
+              const el = document.getElementById("maison-store-phone");
+              if (el) el.textContent = settings.store_phone;
+            }
+            if (settings.store_location) {
+              const el = document.getElementById("maison-store-address");
+              if (el) el.textContent = settings.store_location;
+            }
+            applyStoreContacts();
           }
         }
         if (dataChanged || !state.isCatalogLoaded) {
@@ -4647,6 +4475,12 @@
         syncStorefrontWithBackend();
       };
       setInterval(() => syncIfStale(55000), 60000);
+      setInterval(() => {
+        if (document.visibilityState === "visible" && activeBanners("hero").length > 1) {
+          state.heroIndex = ((state.heroIndex || 0) + 1) % activeBanners("hero").length;
+          renderHero();
+        }
+      }, 7000);
       document.addEventListener("visibilitychange", () => syncIfStale(30000));
       window.addEventListener("focus", () => syncIfStale(30000));
 
