@@ -31,6 +31,7 @@ import datetime as _dt
 import decimal
 import gzip
 import hashlib
+import io
 import json
 import os
 import re
@@ -46,7 +47,8 @@ from cryptography.hazmat.primitives.kdf.pbkdf2 import PBKDF2HMAC
 
 from .database import PostgresCompatConnection, db_session
 
-FORMAT = "luxe-backup/1"
+FORMAT = "luxe-backup/2"       # JSON Lines, tables in restore order (streamed both ways)
+FORMAT_V1 = "luxe-backup/1"    # one JSON document (older backups, still restorable)
 MAGIC = b"LUXEBK1\n"  # encrypted file = MAGIC + salt(16) + nonce(12) + AES-GCM ciphertext
 KDF_ITERATIONS = 200_000
 
@@ -297,26 +299,33 @@ def _iter_table(conn, table: str, batch: int = 500):
 
 
 def write_snapshot(conn, out_path: Path) -> Dict[str, Any]:
-    """Writes the whole store database as gzip-compressed JSON, streamed table
-    by table (in id order: a row pointing to another row of the same table,
-    a refund to its sale, is restored after it). Same format as before."""
+    """Writes the whole store database as gzip-compressed JSON Lines:
+
+        {"format": "luxe-backup/2", "created_at": ..., "engine": ...}
+        {"table": "roles", "columns": [...]}
+        [row], [row], ...                      one line per row, in id order
+        {"table": ...} ...
+        {"end": true, "counts": {...}}
+
+    Tables come in restore order (parents before children), so a restore can
+    stream the file once with little memory — the API container has 256 MB."""
     created = _dt.datetime.now(_dt.timezone.utc).isoformat()
     engine = "postgresql" if _is_pg(conn) else "sqlite"
     counts: Dict[str, int] = {}
     dump = lambda v: json.dumps(v, ensure_ascii=False, separators=(",", ":"))  # noqa: E731
+    tables = list_tables(conn)
+    order = _topological(tables, _fk_parents(conn, tables))
     with gzip.open(out_path, "wt", encoding="utf-8", compresslevel=6) as f:
-        f.write('{"format":' + dump(FORMAT) + ',"created_at":' + dump(created) + ',"engine":' + dump(engine) + ',"tables":{')
-        for i, table in enumerate(list_tables(conn)):
+        f.write(dump({"format": FORMAT, "created_at": created, "engine": engine}) + "\n")
+        for table in order:
             rows = _iter_table(conn, table)
-            cols = next(rows)
-            f.write(("," if i else "") + dump(table) + ':{"columns":' + dump(cols) + ',"rows":[')
+            f.write(dump({"table": table, "columns": next(rows)}) + "\n")
             n = 0
             for row in rows:
-                f.write(("," if n else "") + dump([_encode(v) for v in row]))
+                f.write(dump([_encode(v) for v in row]) + "\n")
                 n += 1
-            f.write("]}")
             counts[table] = n
-        f.write('},"counts":' + dump(counts) + "}")
+        f.write(dump({"end": True, "counts": counts}) + "\n")
     return {"created_at": created, "engine": engine, "counts": counts}
 
 
@@ -507,11 +516,11 @@ def import_pc_copy(blob: bytes, original_name: str, actor_id: Optional[int] = No
         raise BackupError("Ce fichier n'est pas une sauvegarde chiffrée de la boutique.")
     raw = _decrypt(blob, _encryption_secret())
     try:
-        with gzip.GzipFile(fileobj=__import__("io").BytesIO(raw)) as g:
+        with gzip.GzipFile(fileobj=io.BytesIO(raw)) as g:
             head = g.read(400).decode("utf-8", "replace")
     except Exception as exc:
         raise BackupError("La sauvegarde est illisible (archive endommagée).") from exc
-    if f'"format":"{FORMAT}"' not in head:
+    if f'"format":"{FORMAT}"' not in head and f'"format":"{FORMAT_V1}"' not in head:
         raise BackupError("Format de sauvegarde non pris en charge.")
     m = re.search(r'"created_at":"([^"]+)"', head)
     stamp = _dt.datetime.now().strftime("%Y%m%d_%H%M%S") + "_" + secrets.token_hex(2)
@@ -529,24 +538,113 @@ def import_pc_copy(blob: bytes, original_name: str, actor_id: Optional[int] = No
     return meta
 
 
-def load_snapshot(name: str) -> Dict[str, Any]:
+def _read_backup(name: str) -> bytes:
+    """The compressed backup (decrypted when needed) after its checksum is
+    verified. Compressed data is about a tenth of the database."""
     path = _resolve(name)
     meta = _meta_for(path)
     if meta.get("sha256") and _sha256_file(path) != meta["sha256"]:
         raise BackupError("La sauvegarde est corrompue (empreinte SHA-256 différente).")
     blob = path.read_bytes()
-    raw = _decrypt(blob, _encryption_secret()) if blob.startswith(MAGIC) else blob
+    return _decrypt(blob, _encryption_secret()) if blob.startswith(MAGIC) else blob
+
+
+def _lines(raw: bytes):
+    """Decompressed lines, one at a time (never the whole text in memory)."""
+    with gzip.GzipFile(fileobj=io.BytesIO(raw)) as g:
+        for line in io.TextIOWrapper(g, encoding="utf-8"):
+            if line.strip():
+                yield line
+
+
+def _is_v2(raw: bytes) -> bool:
+    try:
+        first = next(_lines(raw))
+    except Exception as exc:
+        raise BackupError("La sauvegarde est illisible (archive endommagée).") from exc
+    return first.startswith("{") and f'"format":"{FORMAT}"' in first.replace(" ", "")
+
+
+def _scan_v2(raw: bytes) -> Dict[str, Any]:
+    """Reads the whole file once to prove it is complete and coherent BEFORE
+    anything in the database is touched."""
+    header: Optional[Dict[str, Any]] = None
+    counts: Dict[str, int] = {}
+    table: Optional[str] = None
+    width = 0
+    end: Optional[Dict[str, Any]] = None
+    try:
+        for line in _lines(raw):
+            if end is not None:
+                raise BackupError("La sauvegarde est illisible (données après la fin).")
+            item = json.loads(line)
+            if header is None:
+                if not isinstance(item, dict) or item.get("format") != FORMAT:
+                    raise BackupError("Format de sauvegarde non pris en charge.")
+                header = item
+            elif isinstance(item, list):
+                if table is None or len(item) != width:
+                    raise BackupError("La sauvegarde est illisible (ligne incohérente).")
+                counts[table] += 1
+            elif isinstance(item, dict) and "table" in item:
+                table, width = str(item["table"]), len(item.get("columns") or [])
+                counts[table] = 0
+            elif isinstance(item, dict) and item.get("end"):
+                end = item
+            else:
+                raise BackupError("La sauvegarde est illisible (ligne inconnue).")
+    except BackupError:
+        raise
+    except Exception as exc:
+        raise BackupError("La sauvegarde est illisible (archive endommagée).") from exc
+    if header is None or end is None:
+        raise BackupError("La sauvegarde est incomplète (fin du fichier absente).")
+    if end.get("counts") != counts:
+        raise BackupError("La sauvegarde est incomplète (nombre de lignes différent).")
+    if not counts.get("roles"):
+        raise BackupError("La sauvegarde ne contient pas une base de boutique valide.")
+    return {"engine": header.get("engine"), "counts": counts, "created_at": header.get("created_at")}
+
+
+def _parse_v1(raw: bytes) -> Dict[str, Any]:
     try:
         snap = json.loads(gzip.decompress(raw).decode("utf-8"))
     except Exception as exc:
         raise BackupError("La sauvegarde est illisible (archive endommagée).") from exc
-    if snap.get("format") != FORMAT or "tables" not in snap:
+    if snap.get("format") != FORMAT_V1 or "tables" not in snap:
         raise BackupError("Format de sauvegarde non pris en charge.")
     return snap
 
 
+def load_snapshot(name: str) -> Dict[str, Any]:
+    """Whole snapshot as a dict (tests and old-format backups). Restores do
+    not use this for new backups: they stream."""
+    raw = _read_backup(name)
+    if not _is_v2(raw):
+        return _parse_v1(raw)
+    _scan_v2(raw)
+    snap: Dict[str, Any] = {"format": FORMAT, "tables": {}, "counts": {}}
+    current = None
+    for line in _lines(raw):
+        item = json.loads(line)
+        if isinstance(item, list):
+            snap["tables"][current]["rows"].append(item)
+        elif "table" in item:
+            current = item["table"]
+            snap["tables"][current] = {"columns": item["columns"], "rows": []}
+        elif item.get("end"):
+            snap["counts"] = item["counts"]
+        else:
+            snap.update({k: v for k, v in item.items() if k in ("created_at", "engine")})
+    return snap
+
+
 def verify_backup(name: str) -> Dict[str, Any]:
-    snap = load_snapshot(name)
+    raw = _read_backup(name)
+    if _is_v2(raw):
+        info = _scan_v2(raw)
+        return {"name": name, "ok": True, "engine": info["engine"], "total_rows": sum(info["counts"].values())}
+    snap = _parse_v1(raw)
     return {"name": name, "ok": True, "engine": snap.get("engine"), "total_rows": sum(snap.get("counts", {}).values())}
 
 
@@ -630,6 +728,51 @@ def _replace_all(conn, snap: Dict[str, Any]) -> Dict[str, int]:
     return restored
 
 
+def _replace_all_stream(conn, raw: bytes, batch: int = 500) -> Dict[str, int]:
+    """Same as _replace_all for a version-2 backup, streamed: rows go to the
+    database in batches of 500, the file is read once."""
+    current = list_tables(conn)
+    order = _topological(current, _fk_parents(conn, current))
+    for t in reversed(order):
+        _exec(conn, f"DELETE FROM {_q(t)}")
+    live_tables = set(current)
+    restored: Dict[str, int] = {}
+    ph = _ph(conn)
+    cur = _raw(conn).cursor()
+    table: Optional[str] = None
+    idx: List[int] = []
+    sql = ""
+    pending: List[tuple] = []
+
+    def flush() -> None:
+        if pending:
+            cur.executemany(sql, pending)
+            pending.clear()
+
+    for line in _lines(raw):
+        item = json.loads(line)
+        if isinstance(item, list):
+            if table is None or table not in live_tables or not idx:
+                continue
+            pending.append(tuple(_decode(item[i]) for i in idx))
+            restored[table] += 1
+            if len(pending) >= batch:
+                flush()
+        elif isinstance(item, dict) and "table" in item:
+            flush()
+            table = item["table"]
+            restored.setdefault(table, 0)
+            if table in live_tables:
+                live_cols = set(_table_columns(conn, table))
+                cols_all = item.get("columns") or []
+                idx = [i for i, c in enumerate(cols_all) if c in live_cols]
+                cols = [cols_all[i] for i in idx]
+                sql = f"INSERT INTO {_q(table)} ({', '.join(_q(c) for c in cols)}) VALUES ({', '.join([ph] * len(cols))})"
+    flush()
+    _reset_sequences(conn, order, restart=False)
+    return {t: n for t, n in restored.items() if t in live_tables}
+
+
 def _new_epoch(conn) -> str:
     """A new catalog epoch tells every POS PC to drop its offline copy of the
     catalog and download it again (see /api/v1/pos/catalog/snapshot)."""
@@ -656,12 +799,19 @@ def restore_backup(name: str, actor_id: Optional[int] = None) -> Dict[str, Any]:
     if not _OP_LOCK.acquire(blocking=False):
         raise BackupError("Une autre opération sur la base de données est déjà en cours.")
     try:
-        snap = load_snapshot(name)  # validate BEFORE touching anything
+        # Validate BEFORE touching anything.
+        raw = _read_backup(name)
+        streamed = _is_v2(raw)
+        if streamed:
+            _scan_v2(raw)
+            snap = None
+        else:
+            snap = _parse_v1(raw)
         safety = create_backup("pre-restore", actor_id)
         with db_session() as conn:
             _begin_bulk(conn)
             try:
-                restored = _replace_all(conn, snap)
+                restored = _replace_all_stream(conn, raw) if streamed else _replace_all(conn, snap)
                 _check_integrity(conn)
                 epoch = _new_epoch(conn)
                 _audit(conn, actor_id, "database_restore", {"backup": name, "safety_backup": safety["name"]})

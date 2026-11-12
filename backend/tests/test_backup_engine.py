@@ -191,6 +191,56 @@ class TestBackupEngine(unittest.TestCase):
         kinds = {b["kind"] for b in bk.list_backups()}
         self.assertTrue({"manual", "pre-reset", "pre-restore"} <= kinds)
 
+    def test_06b_restore_streams_and_refuses_damaged_files_before_touching_data(self):
+        import gzip as _gzip
+        import json as _json
+        import tracemalloc
+        with db_session(commit=True) as conn:
+            cur = conn.cursor()
+            for i in range(6000):
+                cur.execute(
+                    "INSERT INTO audit_logs (admin_user_id, action, entity_type, entity_id, details_json) VALUES (?, ?, ?, ?, ?)",
+                    (None, "restore_probe", "product", str(i), _json.dumps({"note": "y" * 200})))
+        meta = bk.create_backup("manual")
+        before = _count("audit_logs")
+
+        # A truncated file is refused and nothing is deleted.
+        path = bk.backup_dir() / meta["name"]
+        raw = bk._read_backup(meta["name"])
+        text = _gzip.decompress(raw).decode("utf-8").splitlines(keepends=True)
+        cut = _gzip.compress("".join(text[: len(text) // 2]).encode("utf-8"))
+        broken = "luxe_app_manual_20260101_000000_beef.json.gz"
+        (bk.backup_dir() / broken).write_bytes(cut)
+        with self.assertRaises(bk.BackupError):
+            bk.restore_backup(broken)
+        self.assertEqual(_count("audit_logs"), before, "a damaged backup never empties the database")
+        (bk.backup_dir() / broken).unlink()
+
+        # A good one restores with little memory (rows streamed in batches).
+        tracemalloc.start()
+        res = bk.restore_backup(meta["name"])
+        _, peak = tracemalloc.get_traced_memory()
+        tracemalloc.stop()
+        self.assertTrue(res["restored"])
+        self.assertGreaterEqual(_count("audit_logs"), before)
+        self.assertLess(peak, 12 * 1024 * 1024, f"restore peak {peak / 1e6:.1f} MB")
+        self.assertTrue(path.exists())
+
+    def test_06c_old_format_backup_still_restores(self):
+        """Backups made before the streamed format (one JSON document)."""
+        import gzip as _gzip
+        import json as _json
+        snap = bk.load_snapshot(bk.create_backup("manual")["name"])
+        v1 = {"format": bk.FORMAT_V1, "created_at": snap.get("created_at"), "engine": snap.get("engine"),
+              "tables": snap["tables"], "counts": snap["counts"]}
+        name = "luxe_app_manual_20250101_000000_01d1.json.gz"
+        (bk.backup_dir() / name).write_bytes(_gzip.compress(_json.dumps(v1).encode("utf-8")))
+        self.assertTrue(bk.verify_backup(name)["ok"])
+        cats = _count("categories")
+        self.assertTrue(bk.restore_backup(name)["restored"])
+        self.assertEqual(_count("categories"), cats)
+        (bk.backup_dir() / name).unlink()
+
     # ------------------------------------------------------- categories --
     def test_07_deleted_category_never_comes_back_and_archive_can_be_restored(self):
         def create(slug):

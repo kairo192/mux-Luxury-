@@ -10,7 +10,7 @@
 ## 0h. REAL SERVER SIZE + BACKUPS ON THE OWNER'S PC (2026-11-12, latest)
 VPS = 1 vCPU, 2 GB RAM, **40 GB** disk (confirmed by the owner). Details: WORK_SUMMARY §20, VPS_DEPLOYMENT.md.
 - Backup script: photos only when changed (`.media_manifest`), `BACKUP_MEDIA_KEEP=3`, `BACKUP_MIN_FREE_PCT=15`.
-- `backup_engine.write_snapshot()` streams; never go back to building the snapshot in memory.
+- `backup_engine.write_snapshot()` writes format `luxe-backup/2` (JSON Lines, restore order) and `restore_backup()` streams it after `_scan_v2()` validation; v1 files still load. Never go back to whole-file JSON in memory.
 - PC copies: `GET /admin/system/backups/{name}/download` (owner, `.enc` only, audited),
   `POST /admin/system/backups/import`; Tauri commands `backup_copy_save/list/read` (src-tauri/src/backup_copies.rs),
   `utils/backupCopies.ts`, auto-copy effect in App.tsx (owner, desktop app).
