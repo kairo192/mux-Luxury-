@@ -119,6 +119,20 @@ class TestCustomers(unittest.TestCase):
         self.assertEqual(self.client.get("/api/v1/admin/customers/search", headers=self.editor_headers, params={"q": "x"}).status_code, 403)
         self.assertEqual(self.client.get("/api/v1/admin/customers/search", params={"q": "x"}).status_code, 401)
 
+    def test_list_is_paged_best_customers_first(self):
+        """The list comes in pages (a shop with 20 000 customers sent 5 MB and
+        took minutes); total tells the CMS how many there are."""
+        r = self.client.get("/api/v1/admin/customers?limit=2", headers=self.headers)
+        self.assertEqual(r.status_code, 200, r.text)
+        d = r.json()
+        self.assertLessEqual(len(d["items"]), 2)
+        self.assertGreaterEqual(d["total"], len(d["items"]))
+        spent = [c["total_spent_dzd"] for c in d["items"]]
+        self.assertEqual(spent, sorted(spent, reverse=True))
+        nxt = self.client.get("/api/v1/admin/customers?limit=2&offset=2", headers=self.headers).json()
+        self.assertFalse({c["id"] for c in d["items"]} & {c["id"] for c in nxt["items"]}, "pages do not overlap")
+        self.assertEqual(self.client.get("/api/v1/admin/customers?limit=0", headers=self.headers).status_code, 422)
+
 
 if __name__ == "__main__":
     unittest.main()

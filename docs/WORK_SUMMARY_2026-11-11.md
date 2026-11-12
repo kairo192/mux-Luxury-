@@ -525,6 +525,19 @@ the container had older packages than a fresh CI machine. Found from the CI logs
   swapped by the language switch (French kept to switch back). The Arabic phone test checks it.
 
 
+## 28. Load test: two years of a busy shop
+
+A PostgreSQL copy filled with 20 000 customers, 60 000 orders (120 000 lines), 100 000 audit entries, 60 000
+treasury movements and 80 000 stock movements; every daily screen timed through the API:
+
+| Screen | Before | After |
+|---|---|---|
+| **Clients** | **never loaded** (over 2 minutes): total spent / order count re-read all orders for each customer, and `orders.customer_id` / `pos_sales.customer_id` had no index | **45 ms**: indexes (migration 005, both engines), totals computed once per table, list in pages of 200 (best customers first, *Afficher plus*; search still finds anyone) |
+| Client search | (same cause) | 30–140 ms |
+| Trésorerie — mouvements | 470 ms, every movement since opening loaded into the 256 MB API to compute running balances | 105 ms: running balances computed by the database (window function), only the rows shown are read — checked identical to the old figures on 60 000 movements, cash and bank |
+| Dashboard, Analytique, Commandes, Journal d'audit, Comptabilité, stock screens | — | 5–150 ms (no change needed) |
+
+
 ## Verification
 
 | Check | Result |

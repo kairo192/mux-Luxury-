@@ -34,6 +34,8 @@ interface Customer {
 export const CustomersPage: React.FC = () => {
   const t = useT();
   const [customers, setCustomers] = useState<Customer[]>([]);
+  // Whole list = best customers first, 200 at a time; null while searching.
+  const [totalCustomers, setTotalCustomers] = useState<number | null>(null);
   const [query, setQuery] = useState("");
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -47,6 +49,7 @@ export const CustomersPage: React.FC = () => {
     try {
       const d = await DesktopCmsApi.listCustomers();
       setCustomers(d.items || []);
+      setTotalCustomers(typeof d.total === "number" ? d.total : null);
       setError(null);
     } catch (e: any) {
       setError(e?.userMessage || "Chargement impossible");
@@ -71,10 +74,24 @@ export const CustomersPage: React.FC = () => {
     try {
       const d = await DesktopCmsApi.searchCustomers(query.trim());
       setCustomers(d.items || []);
+      setTotalCustomers(null);
     } catch (e: any) {
       setError(e?.userMessage || "Recherche échouée");
     } finally {
       setLoading(false);
+    }
+  };
+
+  const loadMore = async () => {
+    setBusy(true);
+    try {
+      const d = await DesktopCmsApi.listCustomers(customers.length);
+      setCustomers((prev) => [...prev, ...(d.items || [])]);
+      if (typeof d.total === "number") setTotalCustomers(d.total);
+    } catch (e: any) {
+      setError(e?.userMessage || "Chargement impossible");
+    } finally {
+      setBusy(false);
     }
   };
 
@@ -191,6 +208,14 @@ export const CustomersPage: React.FC = () => {
               ))}
             </tbody>
           </table>
+          {totalCustomers !== null && totalCustomers > customers.length && (
+            <div className="flex items-center justify-between gap-3 px-4 py-3 border-t border-gray-100 text-sm text-gray-500">
+              <span>{t("customers.shown_of").replace("{shown}", String(customers.length)).replace("{total}", String(totalCustomers))}</span>
+              <button type="button" disabled={busy} onClick={loadMore} className="h-10 px-4 rounded-xl border-2 border-[#063D2E] text-[#063D2E] font-bold active:scale-95 disabled:opacity-50">
+                {t("customers.show_more")}
+              </button>
+            </div>
+          )}
         </div>
       )}
 

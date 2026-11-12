@@ -3545,14 +3545,36 @@ _CUSTOMER_COUNT_SQL = """
 _CUSTOMER_MANAGE = require_any_permission(["orders:write", "pos:sell"])
 
 @app.get("/api/v1/admin/customers")
-def admin_list_customers(admin: dict = Depends(_CUSTOMER_MANAGE)):
+def admin_list_customers(
+    limit: int = Query(200, ge=1, le=1000),
+    offset: int = Query(0, ge=0),
+    admin: dict = Depends(_CUSTOMER_MANAGE),
+):
+    """Best customers first, one page at a time (a shop with 20 000 customers
+    sent 5 MB and drew 20 000 table rows); /admin/customers/search finds anyone."""
     with db_session() as conn:
         cur = conn.cursor()
+        cur.execute("SELECT COUNT(*) AS n FROM customers")
+        total = int(cur.fetchone()["n"])
+        # Totals computed once per table and joined (same figures as
+        # _CUSTOMER_SPENT_SQL / _CUSTOMER_COUNT_SQL), not once per customer:
+        # with 20 000 customers the per-row version took minutes.
         cur.execute(
-            f"""SELECT * FROM (
-                   SELECT c.*, {_CUSTOMER_SPENT_SQL} AS spent_live, {_CUSTOMER_COUNT_SQL} AS count_live
-                   FROM customers c
-               ) AS x ORDER BY spent_live DESC, id DESC"""
+            """SELECT c.*,
+                      COALESCE(o.spent, 0) + COALESCE(p.spent, 0) AS spent_live,
+                      COALESCE(o.cnt, 0) + COALESCE(p.cnt, 0) AS count_live
+               FROM customers c
+               LEFT JOIN (SELECT customer_id, SUM(total_dzd) AS spent, COUNT(*) AS cnt
+                            FROM orders WHERE status NOT IN ('cancelled', 'returned')
+                           GROUP BY customer_id) o ON o.customer_id = c.id
+               LEFT JOIN (SELECT customer_id,
+                                 SUM(CASE WHEN sale_type = 'refund' THEN -total_dzd ELSE total_dzd END) AS spent,
+                                 SUM(CASE WHEN sale_type = 'sale' THEN 1 ELSE 0 END) AS cnt
+                            FROM pos_sales WHERE customer_id IS NOT NULL
+                           GROUP BY customer_id) p ON p.customer_id = c.id
+               ORDER BY spent_live DESC, c.id DESC
+               LIMIT ? OFFSET ?""",
+            (limit, offset),
         )
         items = []
         for r in cur.fetchall():
@@ -3560,7 +3582,7 @@ def admin_list_customers(admin: dict = Depends(_CUSTOMER_MANAGE)):
             d["total_spent_dzd"] = int(d.pop("spent_live") or 0)
             d["orders_count"] = int(d.pop("count_live") or 0)
             items.append(d)
-        return {"items": items}
+        return {"items": items, "total": total, "limit": limit, "offset": offset}
 
 @app.get("/api/v1/admin/reports")
 def admin_analytics_reports(admin: dict = Depends(require_permission("finance:read"))):
@@ -5528,27 +5550,27 @@ def admin_list_cash_movements(
 ):
     with db_session() as conn:
         cur = conn.cursor()
+        # Running balance per account (bank / cash) computed by the database
+        # (window function, PostgreSQL and SQLite) and only the last `limit`
+        # rows returned — not every movement since opening loaded into Python.
         cur.execute(
-            """SELECT cm.*, au.full_name AS created_by
-               FROM cash_movements cm LEFT JOIN admin_users au ON au.id = cm.recorded_by
-               ORDER BY cm.id ASC"""
+            """SELECT * FROM (
+                   SELECT cm.*, au.full_name AS created_by,
+                          SUM(CASE WHEN cm.movement_type IN ('outflow', 'withdrawal')
+                                   THEN -cm.amount_dzd ELSE cm.amount_dzd END)
+                            OVER (PARTITION BY CASE WHEN cm.account_type = 'bank_account' THEN 1 ELSE 0 END
+                                  ORDER BY cm.id ROWS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW) AS balance_after_dzd
+                   FROM cash_movements cm LEFT JOIN admin_users au ON au.id = cm.recorded_by
+               ) AS x ORDER BY id DESC LIMIT ?""",
+            (limit,),
         )
-        rows = [dict(r) for r in cur.fetchall()]
-        cash_bal = 0
-        bank_bal = 0
-        for m in rows:
-            amt = int(m.get("amount_dzd") or 0)
-            if m.get("movement_type") in ("outflow", "withdrawal"):
-                amt = -amt
+        rows = []
+        for r in cur.fetchall():
+            m = dict(r)
+            m["balance_after_dzd"] = int(m.get("balance_after_dzd") or 0)
             m["created_by"] = m.get("created_by") or ("Système" if not m.get("recorded_by") else None)
-            if m.get("account_type") == "bank_account":
-                bank_bal += amt
-                m["balance_after_dzd"] = bank_bal
-            else:
-                cash_bal += amt
-                m["balance_after_dzd"] = cash_bal
-        rows.reverse()
-        return {"items": rows[:limit]}
+            rows.append(m)
+        return {"items": rows}
 
 @app.post("/api/v1/admin/treasury/movements", status_code=201)
 def admin_record_cash_movement(

@@ -472,7 +472,7 @@ export const DesktopCmsApi = {
   getOrderInvoice: (orderId: number) => adminFetch(`/admin/orders/${orderId}/invoice`),
   getOrderDeliveryNote: (orderId: number) => adminFetch(`/admin/orders/${orderId}/delivery-note`),
   exportOrdersCsv: () => adminFetch("/admin/orders/export.csv"),
-  listCustomers: () => adminFetch("/admin/customers"),
+  listCustomers: (offset = 0, limit = 200) => adminFetch(`/admin/customers?limit=${limit}&offset=${offset}`),
   searchCustomers: (q: string) => adminFetch(`/admin/customers/search?q=${encodeURIComponent(q)}`),
   getCustomer: (customerId: number) => adminFetch(`/admin/customers/${customerId}`),
   createCustomer: (payload: { full_name: string; phone: string; email?: string | null; wilaya_code?: string | null; commune?: string | null; address?: string | null; notes?: string | null }) =>
