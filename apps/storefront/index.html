@@ -4096,8 +4096,10 @@
         return;
       }
       let found = null;
+      let serverAnswered = false;
       try {
         const trackRes = await fetch(`/api/v1/orders/track?reference=${encodeURIComponent(ref)}&phone=${encodeURIComponent(phone)}`, { headers: { "X-Request-ID": "sf_" + Date.now().toString(36) } });
+        serverAnswered = trackRes.ok || trackRes.status === 404;
         if (trackRes.ok) {
           const apiOrd = await trackRes.json();
           found = {
@@ -4112,22 +4114,36 @@
           };
         }
       } catch (_e) {}
-      if (!found) {
+      // The shop's answer is the truth; the copy kept in this browser is only
+      // used when the shop cannot be reached at all.
+      if (!found && !serverAnswered) {
         found = state.orders.find((o) => o.reference.toUpperCase() === ref && o.customer_phone.replace(/[\s\-\.]/g, "") === phone);
       }
       if (!found) {
         resEl.innerHTML = `<div class="p-3.5 rounded-xl bg-red-50 border border-red-200 text-red-700 font-semibold">Aucune commande trouvée pour ce numéro et ce téléphone.</div>`;
         return;
       }
-      const stLower = String(found.status || "").toLowerCase();
-      const stepIdx = stLower.includes("delivered") || stLower.includes("livr")
-        ? 4
-        : stLower.includes("shipped") || stLower.includes("expéd")
-        ? 3
-        : stLower.includes("confirmed") || stLower.includes("preparing") || stLower.includes("confirm")
-        ? 2
-        : 1;
-      const steps = ["1. Reçue", "2. Confirmée", "3. Expédiée", "4. Livrée"];
+      const ORDER_STATUS = {
+        new:                  { fr: "Reçue — nous allons vous appeler", ar: "تم الاستلام — سنتصل بك", en: "Received — we will call you", step: 1 },
+        pending_confirmation: { fr: "En attente de confirmation", ar: "في انتظار التأكيد", en: "Awaiting confirmation", step: 1 },
+        confirmed:            { fr: "Confirmée", ar: "مؤكدة", en: "Confirmed", step: 2 },
+        preparing:            { fr: "En préparation", ar: "قيد التحضير", en: "Being prepared", step: 2 },
+        ready_for_shipment:   { fr: "Prête à expédier", ar: "جاهزة للشحن", en: "Ready to ship", step: 2 },
+        shipped:              { fr: "Expédiée — chez le livreur", ar: "تم الشحن — عند عامل التوصيل", en: "Shipped — with the courier", step: 3 },
+        delivered:            { fr: "Livrée", ar: "تم التوصيل", en: "Delivered", step: 4 },
+        cancelled:            { fr: "Annulée", ar: "ملغاة", en: "Cancelled", step: 0 },
+        returned:             { fr: "Retournée", ar: "مرتجعة", en: "Returned", step: 0 },
+      };
+      const lang = state.lang === "ar" || state.lang === "en" ? state.lang : "fr";
+      const stInfo = ORDER_STATUS[String(found.status || "")] || null;
+      const statusLabel = stInfo ? stInfo[lang] : String(found.status || "");
+      const stepIdx = stInfo ? stInfo.step : 1;
+      const steps = lang === "ar" ? ["1. استلام", "2. تأكيد", "3. شحن", "4. توصيل"]
+        : lang === "en" ? ["1. Received", "2. Confirmed", "3. Shipped", "4. Delivered"]
+        : ["1. Reçue", "2. Confirmée", "3. Expédiée", "4. Livrée"];
+      const L = lang === "ar" ? { client: "الزبون", items: "المنتجات", total: "المبلغ عند الاستلام" }
+        : lang === "en" ? { client: "Customer", items: "Items", total: "Cash on delivery" }
+        : { client: "Client", items: "Articles", total: "Total COD" };
       const timelineHtml = steps
         .map((label, idx) => {
           const active = idx + 1 <= stepIdx;
@@ -4143,15 +4159,17 @@
         <div class="p-4 rounded-xl bg-cream border border-gold-reflective/40 space-y-3">
           <div class="flex items-center justify-between">
             <span class="font-mono font-extrabold text-emerald-deep text-sm">#${escapeHtml(found.reference)}</span>
-            <span class="px-2.5 py-0.5 rounded-full bg-emerald-deep text-gold-reflective font-bold text-[11px]">${escapeHtml(found.status)}</span>
+            <span class="px-2.5 py-0.5 rounded-full ${stepIdx === 0 ? "bg-red-700 text-white" : "bg-emerald-deep text-gold-reflective"} font-bold text-[11px]">${escapeHtml(statusLabel)}</span>
           </div>
-          <div class="flex items-center gap-1.5">${timelineHtml}</div>
+          ${stepIdx === 0
+            ? `<div class="p-2.5 rounded-lg bg-red-50 border border-red-200 text-red-700 font-semibold text-xs">${escapeHtml(statusLabel)}</div>`
+            : `<div class="flex items-center gap-1.5">${timelineHtml}</div>`}
           <div class="space-y-1 text-xs">
-            <p><strong>Client :</strong> ${escapeHtml(found.customer_name)} (${escapeHtml(found.wilaya_code)} - ${escapeHtml(found.wilaya_name)}, ${escapeHtml(found.commune)})</p>
-            <p><strong>Articles :</strong> ${found.items.map((i) => `${Number(i.quantity) || 1}× ${escapeHtml(i.product_name)}`).join(", ")}</p>
+            <p><strong>${L.client} :</strong> ${escapeHtml(found.customer_name)} (${escapeHtml(found.wilaya_code)} - ${escapeHtml(found.wilaya_name)}, ${escapeHtml(found.commune)})</p>
+            <p><strong>${L.items} :</strong> ${found.items.map((i) => `${Number(i.quantity) || 1}× ${escapeHtml(i.product_name)}`).join(", ")}</p>
           </div>
           <div class="flex items-center justify-between pt-2 border-t border-gold-reflective/25">
-            <span class="font-extrabold text-emerald-deep">Total COD : ${formatDZD(found.total_dzd)}</span>
+            <span class="font-extrabold text-emerald-deep">${L.total} : ${formatDZD(found.total_dzd)}</span>
             <a href="https://wa.me/${waNumber()}?text=${encodeURIComponent(`Bonjour Mus Luxury, suivi commande #${found.reference}`)}" target="_blank" rel="noopener noreferrer" class="px-3 py-1 rounded-lg bg-emerald-deep text-gold-reflective font-bold text-[11px]">Support WhatsApp</a>
           </div>
         </div>

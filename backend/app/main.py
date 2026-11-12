@@ -2892,10 +2892,14 @@ def track_guest_order(request: Request, reference: str = Query(...), phone: str 
         ord_row = cur.fetchone()
         if not ord_row:
             raise HTTPException(status_code=404, detail="Aucune commande ne correspond à cette référence et à ce numéro")
-        od = dict(ord_row)
-        od.pop("internal_notes", None)
-        od.pop("idempotency_hash", None)
-        cur.execute("SELECT product_name, variant_title, quantity, unit_price_dzd, line_total_dzd FROM order_items WHERE order_id = ?", (od["id"],))
+        # Only what the customer needs: no internal notes, ids or keys — a new
+        # column added to orders is never exposed here by accident.
+        row = dict(ord_row)
+        public = ("order_reference", "status", "customer_name", "wilaya_code", "wilaya_name", "commune",
+                  "delivery_address", "delivery_method", "payment_method", "subtotal_dzd", "discount_dzd",
+                  "coupon_code", "delivery_fee_dzd", "total_dzd", "customer_notes", "created_at", "updated_at")
+        od = {k: row.get(k) for k in public if k in row}
+        cur.execute("SELECT product_name, variant_title, quantity, unit_price_dzd, line_total_dzd FROM order_items WHERE order_id = ?", (row["id"],))
         od["items"] = [dict(r) for r in cur.fetchall()]
         return od
 

@@ -289,5 +289,18 @@ class TestBusinessFlow(unittest.TestCase):
                 self.assertEqual(self.c.get(path, headers={"If-None-Match": etag}).status_code, 304, path)
 
 
+    def test_order_tracking_shows_only_public_fields(self):
+        pr = self.c.get("/api/v1/products", params={"page_size": 50}).json()["items"]
+        vid = next(v["id"] for p in pr for v in p["variants"] if (v.get("stock_qty") or v.get("stock") or 0) > 0)
+        phone = "0662" + str(uuid.uuid4().int)[:6]
+        o = self.ok(self.c.post("/api/v1/orders", headers={"Idempotency-Key": uuid.uuid4().hex}, json={
+            "full_name": "Suivi Public", "phone": phone, "wilaya_code": "16", "commune": "Alger Centre",
+            "delivery_address": "4 rue du Suivi, Alger", "delivery_method": "home", "items": [{"variant_id": vid, "quantity": 1}]}))
+        t = self.c.get("/api/v1/orders/track", params={"reference": o["order_reference"], "phone": phone}).json()
+        self.assertEqual(t["status"], "new")
+        for private in ("id", "customer_id", "customer_phone", "idempotency_hash", "internal_notes", "stock_deducted"):
+            self.assertNotIn(private, t)
+
+
 if __name__ == "__main__":
     unittest.main()
