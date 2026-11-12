@@ -275,5 +275,19 @@ class TestBusinessFlow(unittest.TestCase):
             self.c.put("/api/v1/admin/settings", headers=self.h, json={"settings": {"store_phone": "0655534154", "fiscal_phone": "0655534154"}})
 
 
+    def test_shop_data_is_never_served_stale(self):
+        """A sold-out item, a new price, an archived product or a new delivery
+        price must reach the shop on the next load: the browser revalidates."""
+        for path in ("/api/v1/products", "/api/v1/categories", "/api/v1/delivery-zones"):
+            r = self.c.get(path)
+            self.assertEqual(r.status_code, 200, path)
+            cc = r.headers.get("cache-control", "")
+            self.assertIn("no-cache", cc, path)
+            self.assertNotIn("max-age=3600", cc)
+            etag = r.headers.get("etag")
+            if etag:
+                self.assertEqual(self.c.get(path, headers={"If-None-Match": etag}).status_code, 304, path)
+
+
 if __name__ == "__main__":
     unittest.main()

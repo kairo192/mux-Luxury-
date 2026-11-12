@@ -802,6 +802,13 @@ def get_store_settings():
                 out[r["setting_key"]] = val
         return out
 
+# Shop data the owner changes in the CMS (stock, prices, visibility,
+# delivery prices): the browser keeps a copy but checks it on every load
+# (ETag -> 304 when nothing changed), so a sold-out bag, a new price or an
+# archived product shows at once — never minutes or hours late.
+_PUBLIC_LIVE_CACHE = "public, no-cache"
+
+
 @app.get("/api/v1/categories")
 def list_public_categories(response: Response, request: Request):
     with db_session() as conn:
@@ -814,7 +821,7 @@ def list_public_categories(response: Response, request: Request):
         etag = f'"{hashlib.md5(json.dumps(payload, sort_keys=True).encode()).hexdigest()}"'
         response.headers["ETag"] = etag
         # Short cache: a category deleted in the CMS disappears from the shop within ~30 s.
-        response.headers["Cache-Control"] = "public, max-age=30, stale-while-revalidate=60"
+        response.headers["Cache-Control"] = _PUBLIC_LIVE_CACHE
         if request.headers.get("if-none-match") == etag:
             return Response(status_code=304, headers={"ETag": etag, "Cache-Control": response.headers["Cache-Control"]})
         return payload
@@ -861,7 +868,7 @@ def list_delivery_zones(response: Response, request: Request):
         payload = {"items": zones}
         etag = f'"{hashlib.md5(json.dumps(payload, sort_keys=True).encode()).hexdigest()}"'
         response.headers["ETag"] = etag
-        response.headers["Cache-Control"] = "public, max-age=3600, stale-while-revalidate=86400"
+        response.headers["Cache-Control"] = _PUBLIC_LIVE_CACHE
         if request.headers.get("if-none-match") == etag:
             return Response(status_code=304, headers={"ETag": etag, "Cache-Control": response.headers["Cache-Control"]})
         return payload
@@ -941,7 +948,7 @@ def list_public_products(
             }
             etag = f'"{hashlib.md5(json.dumps(payload, sort_keys=True).encode()).hexdigest()}"'
             response.headers["ETag"] = etag
-            response.headers["Cache-Control"] = "public, max-age=60, stale-while-revalidate=300"
+            response.headers["Cache-Control"] = _PUBLIC_LIVE_CACHE
             if request.headers.get("if-none-match") == etag:
                 return Response(status_code=304, headers={"ETag": etag, "Cache-Control": response.headers["Cache-Control"]})
             return payload

@@ -154,8 +154,8 @@ class TestBackupEngine(unittest.TestCase):
 
         gone, archived = create("cat-gone"), create("cat-archived")
         public_before = self.client.get("/api/v1/categories")
-        # The public list is cacheable only briefly; admin lists never.
-        self.assertIn("max-age=30", public_before.headers.get("cache-control", ""))
+        # The public list is revalidated on every load; admin lists are never stored.
+        self.assertIn("no-cache", public_before.headers.get("cache-control", ""))  # browsers revalidate: no stale category
         admin_list = self.client.get("/api/v1/admin/categories?include_archived=true", headers=self.headers)
         self.assertIn("no-store", admin_list.headers.get("cache-control", ""))
 
