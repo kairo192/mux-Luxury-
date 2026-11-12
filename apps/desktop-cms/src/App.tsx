@@ -425,25 +425,29 @@ export default function App() {
     setLoadingWorkspace(true);
     setError("");
     try {
+      // Only ask for what this role may read (a cashier does not load the
+      // accounts, the catalogue editor or the audit log).
+      const perms: string[] = (user as any)?.permissions || [];
+      const may = (...need: string[]) => need.some((p) => perms.includes(p));
+      const emptyList = Promise.resolve({ items: [] as any[] });
       const [dashData, repData, brdData, catData, prodData, ordData, custData, movData, layData, pgData, hltData, blData, kcStatus, outboxData, auditData, readyData, cpnData] = await Promise.all([
         DesktopCmsApi.getDashboard(),
-        DesktopCmsApi.getReports().catch(() => null),
-        DesktopCmsApi.listBrands().catch(() => ({ items: [] })),
-        DesktopCmsApi.listCategories().catch(() => ({ items: [] })),
-        DesktopCmsApi.listAdminProducts({ include_archived: true }).catch(() => ({ items: [] })),
-        DesktopCmsApi.listOrders(orderStatusFilter || undefined).catch(() => ({ items: [] })),
-        DesktopCmsApi.listCustomers().catch(() => ({ items: [] })),
-        DesktopCmsApi.listInventoryMovements().catch(() => ({ items: [] })),
+        may("finance:read") ? DesktopCmsApi.getReports().catch(() => null) : Promise.resolve(null),
+        may("products:write", "categories:write") ? DesktopCmsApi.listBrands().catch(() => ({ items: [] })) : emptyList,
+        may("products:write", "categories:write") ? DesktopCmsApi.listCategories().catch(() => ({ items: [] })) : emptyList,
+        may("products:write") ? DesktopCmsApi.listAdminProducts({ include_archived: true }).catch(() => ({ items: [] })) : emptyList,
+        may("orders:write") ? DesktopCmsApi.listOrders(orderStatusFilter || undefined).catch(() => ({ items: [] })) : emptyList,
+        may("orders:write", "pos:sell") ? DesktopCmsApi.listCustomers().catch(() => ({ items: [] })) : emptyList,
+        may("products:write") ? DesktopCmsApi.listInventoryMovements().catch(() => ({ items: [] })) : emptyList,
         DesktopCmsApi.getStoreLayout().catch(() => ({ homepage_sections: [] })),
-        DesktopCmsApi.listStaticPages().catch(() => ({ items: [] })),
-        // listBackups & getRecoveryStatus removed — endpoints gone.
+        may("content:write") ? DesktopCmsApi.listStaticPages().catch(() => ({ items: [] })) : emptyList,
         DesktopCmsApi.checkHealth().catch(() => ({ status: "ok" })),
-        DesktopCmsApi.listCodBlacklist().catch(() => ({ items: [] })),
+        may("orders:write") ? DesktopCmsApi.listCodBlacklist().catch(() => ({ items: [] })) : emptyList,
         DesktopCmsApi.getKeychainStatus().catch(() => null),
-        DesktopCmsApi.listCommunicationsOutbox().catch(() => ({ items: [] })),
-        DesktopCmsApi.listAuditLogs({ limit: 30 }).catch(() => ({ items: [] })),
+        may("orders:write") ? DesktopCmsApi.listCommunicationsOutbox().catch(() => ({ items: [] })) : emptyList,
+        may("settings:write") ? DesktopCmsApi.listAuditLogs({ limit: 30 }).catch(() => ({ items: [] })) : emptyList,
         DesktopCmsApi.checkReadiness().catch(() => ({ ready: true })),
-        DesktopCmsApi.listCoupons().catch(() => ({ items: [] })),
+        may("content:write") ? DesktopCmsApi.listCoupons().catch(() => ({ items: [] })) : emptyList,
       ]);
       setCodBlacklist(blData.items || []);
       setKeychainStatus(kcStatus);
@@ -525,7 +529,7 @@ export default function App() {
   }, [user, keychainReady]);
 
   useEffect(() => {
-    if (user && keychainReady) {
+    if (user && keychainReady && canOpenTab("orders", (user as any)?.permissions)) {
       DesktopCmsApi.listOrders(orderStatusFilter || undefined)
         .then((ordData) => setOrders(ordData.items || []))
         .catch(() => {});
@@ -538,7 +542,8 @@ export default function App() {
   const orderStatusFilterRef = useRef(orderStatusFilter);
   orderStatusFilterRef.current = orderStatusFilter;
   useEffect(() => {
-    if (!user || !keychainReady) return;
+    // Only roles that handle online orders are alerted about new ones.
+    if (!user || !keychainReady || !canOpenTab("orders", (user as any)?.permissions)) return;
     const seen = new Set<number>();
     let seeded = false;
     let stopped = false;
@@ -728,7 +733,11 @@ export default function App() {
     setError("");
     try {
       await DesktopCmsApi.adjustVariantStock(variantId, delta, "cms_manual_adjustment");
-      const okMsg = `Stock de la variante #${variantId} mis à jour (${delta > 0 ? `+${delta}` : delta}).`;
+      const owner = products.find((p: any) => (p.variants || []).some((v: any) => v.id === variantId));
+      const variant: any = owner ? (owner.variants || []).find((v: any) => v.id === variantId) : null;
+      const label = variant ? `${owner?.name_fr || ""} — ${variant.title || variant.sku}` : `l'article`;
+      const okMsg = `Stock de ${label} corrigé (${delta > 0 ? `+${delta}` : delta}).` +
+        (delta < 0 ? " Pour un article abîmé, perdu ou offert, utilisez « Sortie de stock » : il sera compté en perte." : "");
       setSuccessMsg(okMsg);
       notifyClientSuccess("Stock mis à jour", okMsg);
       await loadAllWorkspaceData();
@@ -1924,12 +1933,14 @@ export default function App() {
         </div>
 
         {/* TAB: BUSINESS SUMMARY (POS + online, real records) (KEEP-ALIVE) */}
-        <div className={activeTab === "business" ? "block" : "hidden"}><BusinessDashboardPage /></div>
+        {canOpen("business") && <div className={activeTab === "business" ? "block" : "hidden"}><BusinessDashboardPage /></div>}
 
         {/* TAB: POINT OF SALE (POS) — in-store cash register & sales (KEEP-ALIVE) */}
+        {canOpen("pos") && (
         <div className={activeTab === "pos" ? "block" : "hidden"}>
           <PosPage onInventoryUpdated={loadAllWorkspaceData} />
         </div>
+        )}
 
         {/* TAB 2: PRODUCTS & DYNAMIC CATEGORY ATTRIBUTES (KEEP-ALIVE) */}
         <div className={activeTab === "products" ? "block" : "hidden"}>
@@ -2393,12 +2404,14 @@ export default function App() {
         </div>
 
         {/* TAB 3: DYNAMIC CATEGORIES & ATTRIBUTES (KEEP-ALIVE — NEVER UNMOUNTS) */}
-        <div className={activeTab === "categories" ? "block" : "hidden"}><CategoryBuilderPage onCategoryChanged={loadAllWorkspaceData} /></div>
+        {canOpen("categories") && <div className={activeTab === "categories" ? "block" : "hidden"}><CategoryBuilderPage onCategoryChanged={loadAllWorkspaceData} /></div>}
 
         {/* TAB 4: PURCHASES & SUPPLIERS (KEEP-ALIVE) */}
+        {canOpen("purchases") && (
         <div className={activeTab === "purchases" ? "block" : "hidden"}>
           <PurchasesPage onInventoryUpdated={loadAllWorkspaceData} />
         </div>
+        )}
 
         {/* TAB 4: INVENTORY & MOVEMENTS (KEEP-ALIVE) */}
         <div className={activeTab === "inventory" ? "block" : "hidden"}>
@@ -2735,63 +2748,69 @@ export default function App() {
         </div>
 
         {/* TAB 7: OPERATING EXPENSES (KEEP-ALIVE) */}
+        {canOpen("expenses") && (
         <div className={activeTab === "expenses" ? "block" : "hidden"}>
           <ExpensesPage />
         </div>
+        )}
 
         {/* TAB 8: CASH REGISTER & TREASURY (KEEP-ALIVE) */}
+        {canOpen("treasury") && (
         <div className={activeTab === "treasury" ? "block" : "hidden"}>
           <TreasuryPage />
         </div>
+        )}
 
         {/* TAB 9: ACCOUNTING & FINANCIAL REPORTS (KEEP-ALIVE) */}
+        {canOpen("accounting") && (
         <div className={activeTab === "accounting" ? "block" : "hidden"}>
           <AccountingPage />
         </div>
+        )}
 
         {/* TAB 10: 69 WILAYAS DELIVERY TARIFFS (KEEP-ALIVE — NEVER UNMOUNTS) */}
-        <div className={activeTab === "delivery_wilayas" ? "block" : "hidden"}><DeliveryWilayasPage /></div>
+        {canOpen("delivery_wilayas") && <div className={activeTab === "delivery_wilayas" ? "block" : "hidden"}><DeliveryWilayasPage /></div>}
 
         {/* TAB: DEVICES & HARDWARE (KEEP-ALIVE) */}
-        <div className={activeTab === "devices" ? "block" : "hidden"}><DevicesPage /></div>
+        {canOpen("devices") && <div className={activeTab === "devices" ? "block" : "hidden"}><DevicesPage /></div>}
 
         {/* TAB: CUSTOMERS (KEEP-ALIVE) */}
-        <div className={activeTab === "customers" ? "block" : "hidden"}><CustomersPage /></div>
+        {canOpen("customers") && <div className={activeTab === "customers" ? "block" : "hidden"}><CustomersPage /></div>}
 
         {/* TAB: USERS & ROLES (KEEP-ALIVE) */}
-        <div className={activeTab === "users" ? "block" : "hidden"}><UsersRolesPage /></div>
+        {canOpen("users") && <div className={activeTab === "users" ? "block" : "hidden"}><UsersRolesPage /></div>}
 
         {/* TAB: PHYSICAL INVENTORY (KEEP-ALIVE) */}
-        <div className={activeTab === "inventory_count" ? "block" : "hidden"}><InventoryCountPage onInventoryUpdated={loadAllWorkspaceData} /></div>
+        {canOpen("inventory_count") && <div className={activeTab === "inventory_count" ? "block" : "hidden"}><InventoryCountPage onInventoryUpdated={loadAllWorkspaceData} /></div>}
 
         {/* TAB: SALES REPORT (KEEP-ALIVE) */}
-        <div className={activeTab === "sales_report" ? "block" : "hidden"}><SalesReportPage /></div>
+        {canOpen("sales_report") && <div className={activeTab === "sales_report" ? "block" : "hidden"}><SalesReportPage /></div>}
 
         {/* TAB: FISCAL SETTINGS (KEEP-ALIVE) */}
-        <div className={activeTab === "fiscal" ? "block" : "hidden"}><FiscalSettingsPage /></div>
+        {canOpen("fiscal") && <div className={activeTab === "fiscal" ? "block" : "hidden"}><FiscalSettingsPage /></div>}
 
         {/* TAB: AUDIT LOG (KEEP-ALIVE) */}
-        <div className={activeTab === "audit" ? "block" : "hidden"}><AuditLogPage /></div>
+        {canOpen("audit") && <div className={activeTab === "audit" ? "block" : "hidden"}><AuditLogPage /></div>}
 
         {/* TAB: SUPPLIERS (KEEP-ALIVE) */}
-        <div className={activeTab === "suppliers" ? "block" : "hidden"}><SuppliersPage /></div>
+        {canOpen("suppliers") && <div className={activeTab === "suppliers" ? "block" : "hidden"}><SuppliersPage /></div>}
 
         {/* TAB: LOW STOCK (KEEP-ALIVE) */}
-        <div className={activeTab === "low_stock" ? "block" : "hidden"}><LowStockPage /></div>
+        {canOpen("low_stock") && <div className={activeTab === "low_stock" ? "block" : "hidden"}><LowStockPage /></div>}
 
         {/* TAB: EXPENSE REPORT (KEEP-ALIVE) */}
-        <div className={activeTab === "expense_report" ? "block" : "hidden"}><ExpenseReportPage /></div>
+        {canOpen("expense_report") && <div className={activeTab === "expense_report" ? "block" : "hidden"}><ExpenseReportPage /></div>}
 
         {/* TAB: STOCK MOVEMENTS REPORT (KEEP-ALIVE) */}
-        <div className={activeTab === "stock_movements" ? "block" : "hidden"}><InventoryMovementsReportPage /></div>
+        {canOpen("stock_movements") && <div className={activeTab === "stock_movements" ? "block" : "hidden"}><InventoryMovementsReportPage /></div>}
 
         {/* TAB: TREASURY REPORT (KEEP-ALIVE) */}
-        <div className={activeTab === "treasury_report" ? "block" : "hidden"}><TreasuryReportPage /></div>
+        {canOpen("treasury_report") && <div className={activeTab === "treasury_report" ? "block" : "hidden"}><TreasuryReportPage /></div>}
 
         {/* TAB 7: STORE CONTENT, COUPONS, STATIC PAGES & REAL SOCIAL/LOCATION SETTINGS (KEEP-ALIVE) */}
         <div className={activeTab === "content" ? "block" : "hidden"}>
           <div className="space-y-6 text-xs">
-            <HomepageContentPanel categories={categories} products={products} />
+            {canOpen("content") && <HomepageContentPanel categories={categories} products={products} />}
 
             <form onSubmit={handleSaveStoreSettings} onChange={() => { settingsDirtyRef.current = true; }} className="bg-white p-6 rounded-2xl border border-[#D4AF62]/40 space-y-4">
               <div>
@@ -2935,7 +2954,7 @@ export default function App() {
         {/* TAB 8: BACKUPS, WHATSAPP RECOVERY STATUS & ISOLATED RESTORE VERIFICATION (KEEP-ALIVE) */}
         <div className={activeTab === "backups" ? "block" : "hidden"}>
           <div className="space-y-6 text-xs">
-            <DatabasePanel active={activeTab === "backups"} isOwner={user?.role === "super_admin"} />
+            {canOpen("backups") && <DatabasePanel active={activeTab === "backups"} isOwner={user?.role === "super_admin"} />}
             <div className="bg-white p-6 rounded-2xl border border-[#D4AF62]/40 flex flex-wrap items-center justify-between gap-4">
               <div>
                 <h3 className="text-base font-serif font-bold text-[#063D2E]">Protection de la session</h3>

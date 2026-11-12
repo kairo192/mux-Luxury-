@@ -64,6 +64,14 @@ class TestRolesFinance(unittest.TestCase):
             self.assertIsNone(d["total_revenue_dzd"])
             self.assertEqual(d["revenue_by_day"], [])
 
+    def test_cashier_screens_load(self):
+        """Every screen in the cashier's menu can load its data."""
+        _, h = self._user("cashier")
+        for path in ("/api/v1/admin/dashboard", "/api/v1/admin/customers", "/api/v1/admin/customers/search?q=a",
+                     "/api/v1/admin/pos/register/current", "/api/v1/admin/pos/catalog/snapshot", "/api/v1/admin/devices"):
+            self.assertEqual(self.client.get(path, headers=h).status_code, 200, path)
+        self.assertEqual(self.client.get("/api/v1/admin/orders", headers=h).status_code, 403)
+
     def test_administrator_sees_money(self):
         _, h = self._user("admin")
         for path in MONEY:

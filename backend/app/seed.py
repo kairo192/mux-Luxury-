@@ -346,6 +346,12 @@ def backfill_treasury_from_sales(cur) -> dict:
 
 def seed_initial_data() -> None:
     init_db()
+    # Apply pending versioned migrations on EVERY database at start — the VPS
+    # deploy runs them too, but a shop PC (local SQLite) or a fresh install
+    # never did, and the till's offline catalogue needs them. Already-applied
+    # files are skipped (schema_migrations); PostgreSQL is serialised by a lock.
+    from .migration_runner import run as _apply_pending_migrations
+    _apply_pending_migrations()
     sync_wilaya_communes()
     with db_session(commit=True) as conn:
         cur = conn.cursor()

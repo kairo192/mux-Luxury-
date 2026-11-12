@@ -3403,8 +3403,11 @@ _CUSTOMER_COUNT_SQL = """
     (SELECT COUNT(*) FROM orders o WHERE o.customer_id = c.id AND o.status NOT IN ('cancelled', 'returned'))
   + (SELECT COUNT(*) FROM pos_sales ps WHERE ps.customer_id = c.id AND ps.sale_type = 'sale')"""
 
+# Customers: managed from Commandes (orders:write) and from the till (pos:sell).
+_CUSTOMER_MANAGE = require_any_permission(["orders:write", "pos:sell"])
+
 @app.get("/api/v1/admin/customers")
-def admin_list_customers(admin: dict = Depends(require_permission("orders:write"))):
+def admin_list_customers(admin: dict = Depends(_CUSTOMER_MANAGE)):
     with db_session() as conn:
         cur = conn.cursor()
         cur.execute(
@@ -7644,7 +7647,6 @@ def admin_reset_user_password(user_id: int, payload: AdminPasswordReset, admin: 
 # sales. Privacy: only the fields the business needs are stored.
 # ============================================================================
 
-_CUSTOMER_MANAGE = require_any_permission(["orders:write", "pos:sell"])
 
 
 class CustomerCreate(BaseModel):
