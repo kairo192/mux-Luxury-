@@ -362,7 +362,11 @@ opened in French, English and Arabic as owner and as cashier, looking for errors
 | The till's offline catalogue crashed on databases where the VPS deploy had not run the migrations (shop PC, fresh install) | Pending migrations applied at every API start (idempotent, locked on PostgreSQL) |
 | "Clients" in the cashier's menu, but the list was refused; a cashier's CMS made 34 refused background calls | Customer list uses the till's permission; screens and data loading follow the role |
 
-All 298 tests pass on SQLite and PostgreSQL 16 (the 4 `@babel/core` ones with the substitute compiler).
+| Shop + CMS in real browsers: the shop cached the product list up to ~6 min and delivery prices up to a day, so an archived product stayed orderable and a sold-out bag showed "En stock" (`20d0e67`) | Browsers revalidate on every load (ETag, 304 when unchanged). Checked: shop order with promo = identical server order; stock, price, sold out at the till, cancel and archive appear at once |
+| Customer order tracking showed raw codes (`ready_for_shipment`), put cancelled orders at "Reçue", could show a deleted order from the browser copy (`db71fac`) | Clear status in FR / AR / EN, red notice for cancelled / returned, server answer always wins, public fields only |
+| Concurrency (6 simultaneous buyers of the last unit, online / till / mixed, PostgreSQL) | Exactly one sale, others refused in French, stock never negative — no change needed |
+
+All 300 tests pass on SQLite and PostgreSQL 16 (the 4 `@babel/core` ones with the substitute compiler).
 
 ---
 
@@ -370,7 +374,7 @@ All 298 tests pass on SQLite and PostgreSQL 16 (the 4 `@babel/core` ones with th
 
 | Check | Result |
 |---|---|
-| Backend tests | 298 run on SQLite and on PostgreSQL 16 (incl. the end-to-end business day, round 18). Only 4 failures, all caused by `@babel/core` missing in the cloud container; those 4 pass with a substitute TypeScript compiler and pass in CI. |
+| Backend tests | 300 run on SQLite and on PostgreSQL 16 (incl. the end-to-end business day, round 18). Only 4 failures, all caused by `@babel/core` missing in the cloud container; those 4 pass with a substitute TypeScript compiler and pass in CI. |
 | CMS TypeScript + build | OK |
 | Rust (`cargo check`) | OK |
 | Browser tests (Playwright) | Notifications, message box queue, bell, update dialog, new-order alert, Arabic layout, category delete + reload, archived tab, database panel, backup, reset: all OK |

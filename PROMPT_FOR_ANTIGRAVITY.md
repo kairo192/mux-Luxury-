@@ -56,7 +56,7 @@ cd ..\..\..
 - Push the merge: `git push origin feat/pos-core-cash-register`
 
 ## Part B. Verify on real Windows (things the cloud could not test)
-1. **Backend tests** (from `backend`): `python -m unittest discover -s tests`. Expected: 298 tests,
+1. **Backend tests** (from `backend`): `python -m unittest discover -s tests`. Expected: 300 tests,
    **all passing** on this PC (the 4 `@babel/core` failures only happen in the cloud container). Report
    any failure with its output; do not skip or delete tests.
 2. **CMS build:** `cd apps\desktop-cms; npm run build` then `npm run tauri dev`.
