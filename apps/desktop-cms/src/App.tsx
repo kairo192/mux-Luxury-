@@ -36,18 +36,11 @@ import React, { useEffect, useRef, useState } from "react";
 import {
   ShoppingBag,
   Tags,
-  Boxes,
-  Landmark,
-  TrendingUp,
   ShieldCheck,
   Plus,
   RefreshCw,
-  ArrowUpRight,
   AlertTriangle,
-  AlertCircle,
   CheckCircle2,
-  DollarSign,
-  Download,
   Clock,
   Sparkles,
   Edit3,
@@ -59,16 +52,12 @@ import {
   PackagePlus,
   ShieldAlert,
   X,
-  ScanLine,
 } from "lucide-react";
-import { HomepageContentPanel } from "./components/HomepageContentPanel";
-import { movementReasonLabel } from "./utils/movementReasons";
 import { orderStatusLabel } from "./utils/orderStatus";
 import { openExternalUrl } from "./utils/openExternal";
 import { useEscapeToClose } from "./utils/useEscapeToClose";
 import { canOpenTab } from "./utils/tabAccess";
 import { copyNewestBackupIfMissing, pcCopiesAvailable } from "./utils/backupCopies";
-import { RevenueTrendChart, OrderStatusDistributionChart, InventoryHealthWidget } from "./components/CmsCharts";
 import { DesktopCmsApi, restoreSessionFromOsKeychain, getApiBaseUrl, configureApiBaseUrl, mediaUrl } from "./api/adminClient";
 import { CategoryBuilderPage } from "./pages/CategoryBuilderPage";
 import { DeliveryWilayasPage } from "./pages/DeliveryWilayasPage";
@@ -89,6 +78,9 @@ import { ExpenseReportPage } from "./pages/ExpenseReportPage";
 import { InventoryMovementsReportPage } from "./pages/InventoryMovementsReportPage";
 import { TreasuryReportPage } from "./pages/TreasuryReportPage";
 import { OrdersPage } from "./pages/OrdersPage";
+import { DashboardPage } from "./pages/DashboardPage";
+import { InventoryPage } from "./pages/InventoryPage";
+import { ContentSettingsPage } from "./pages/ContentSettingsPage";
 import { BarcodeLabelModal } from "./components/BarcodeLabelModal";
 import { StockWriteOffModal } from "./components/StockWriteOffModal";
 import { ExpensesPage } from "./pages/ExpensesPage";
@@ -125,12 +117,6 @@ type CmsTab =
   | "backups";
 
 
-// The shop's hours as they were written in the page, shown until the owner
-// saves their own (CMS → Paramètres boutique).
-const DEFAULT_OPENING_HOURS = [
-  "Samedi : 10h00 – 20h00", "Dimanche : 10h00 – 20h00", "Lundi : 10h00 – 20h00", "Mardi : 10h00 – 20h00",
-  "Mercredi : 10h00 – 20h00", "Jeudi : 10h00 – 20h00", "Vendredi (prière du vendredi) : 15h00 – 21h00",
-].join("\n");
 
 export default function App() {
   const t = useT();
@@ -273,8 +259,6 @@ export default function App() {
   const [products, setProducts] = useState<any[]>([]);
   const [orders, setOrders] = useState<any[]>([]);
   const [movements, setMovements] = useState<any[]>([]);
-  const [coupons, setCoupons] = useState<any[]>([]);
-  const [staticPages, setStaticPages] = useState<any[]>([]);
   // backups state removed — admin-facing backup page gone.
   const [auditLogs, setAuditLogs] = useState<any[]>([]);
   const [readinessStatus, setReadinessStatus] = useState<any | null>(null);
@@ -357,31 +341,6 @@ export default function App() {
   const [orderSearchInput, setOrderSearchInput] = useState("");
   const [orderSearch, setOrderSearch] = useState("");
 
-  // Store Settings, Coupon & Static Page State (Tab 7)
-  const [storePhoneInput, setStorePhoneInput] = useState("");
-  const [storeWhatsappInput, setStoreWhatsappInput] = useState("");
-  const [storeLocationInput, setStoreLocationInput] = useState("");
-  const [mapsUrlInput, setMapsUrlInput] = useState("");
-  const [openingHoursInput, setOpeningHoursInput] = useState(DEFAULT_OPENING_HOURS);
-  const [freeThresholdInput, setFreeThresholdInput] = useState("");
-  const [instagramInput, setInstagramInput] = useState("");
-  const [tiktokInput, setTiktokInput] = useState("");
-  // Set while the owner is typing: a background refresh (window focus,
-  // auto-reload) must not wipe what has not been saved yet.
-  const settingsDirtyRef = useRef(false);
-  const pageDirtyRef = useRef(false);
-  const [couponCode, setCouponCode] = useState("");
-  const [couponType, setCouponType] = useState<"percentage" | "fixed_dzd">("percentage");
-  const [couponValue, setCouponValue] = useState(10);
-  const [couponMinOrder, setCouponMinOrder] = useState(5000);
-  const [pageSlug, setPageSlug] = useState("about");
-  const EMPTY_PAGE = { title_fr: "", title_ar: "", title_en: "", content_fr: "", content_ar: "", content_en: "" };
-  const [pageDraft, setPageDraft] = useState<Record<string, string>>(EMPTY_PAGE);
-  const [pageLang, setPageLang] = useState<"fr" | "ar" | "en">("fr");
-  const pageDraftFrom = (pg: any) => ({
-    title_fr: pg?.title_fr || "", title_ar: pg?.title_ar || "", title_en: pg?.title_en || "",
-    content_fr: pg?.content_fr || "", content_ar: pg?.content_ar || "", content_en: pg?.content_en || "",
-  });
 
   const [keychainReady, setKeychainReady] = useState(false);
 
@@ -418,50 +377,30 @@ export default function App() {
       const perms: string[] = (user as any)?.permissions || [];
       const may = (...need: string[]) => need.some((p) => perms.includes(p));
       const emptyList = Promise.resolve({ items: [] as any[] });
-      const [dashData, brdData, catData, prodData, ordData, movData, layData, pgData, blData, kcStatus, outboxData, auditData, readyData, cpnData] = await Promise.all([
+      const [dashData, brdData, catData, prodData, ordData, movData, blData, kcStatus, outboxData, auditData, readyData] = await Promise.all([
         DesktopCmsApi.getDashboard(),
         may("products:write", "categories:write") ? DesktopCmsApi.listBrands().catch(() => ({ items: [] })) : emptyList,
         may("products:write", "categories:write") ? DesktopCmsApi.listCategories().catch(() => ({ items: [] })) : emptyList,
         may("products:write") ? DesktopCmsApi.listAdminProducts({ include_archived: true }).catch(() => ({ items: [] })) : emptyList,
         may("orders:write") ? DesktopCmsApi.listOrders(orderStatusFilter || undefined, orderSearchRef.current).catch(() => ({ items: [] })) : emptyList,
         may("products:write") ? DesktopCmsApi.listInventoryMovements().catch(() => ({ items: [] })) : emptyList,
-        DesktopCmsApi.getStoreLayout().catch(() => ({ homepage_sections: [] })),
-        may("content:write") ? DesktopCmsApi.listStaticPages().catch(() => ({ items: [] })) : emptyList,
         may("orders:write") ? DesktopCmsApi.listCodBlacklist().catch(() => ({ items: [] })) : emptyList,
         DesktopCmsApi.getKeychainStatus().catch(() => null),
         may("orders:write") ? DesktopCmsApi.listCommunicationsOutbox().catch(() => ({ items: [] })) : emptyList,
         may("settings:write") ? DesktopCmsApi.listAuditLogs({ limit: 30 }).catch(() => ({ items: [] })) : emptyList,
         DesktopCmsApi.checkReadiness().catch(() => ({ ready: true })),
-        may("content:write") ? DesktopCmsApi.listCoupons().catch(() => ({ items: [] })) : emptyList,
       ]);
       setCodBlacklist(blData.items || []);
       setKeychainStatus(kcStatus);
       setWaOutbox(outboxData.items || []);
       setAuditLogs(auditData.items || []);
       setReadinessStatus(readyData);
-      setCoupons(cpnData.items || []);
       setDashboard(dashData);
       setBrands(brdData.items || []);
       setCategories(catData.items || []);
       setProducts(prodData.items || []);
       setOrders(ordData.items || []);
       setMovements(movData.items || []);
-      if (layData.settings && !settingsDirtyRef.current) {
-        const s = layData.settings;
-        setStorePhoneInput(String(s.store_phone || s.contact_phone || ""));
-        setStoreWhatsappInput(String(s.whatsapp_contact_number || s.whatsapp_phone || ""));
-        setStoreLocationInput(String(s.store_location || ""));
-        setMapsUrlInput(String(s.store_maps_url || ""));
-        setOpeningHoursInput(String(s.opening_hours || "").trim() || DEFAULT_OPENING_HOURS);
-        setFreeThresholdInput(String(s.free_delivery_threshold_dzd ?? s.free_shipping_threshold_dzd ?? ""));
-        setInstagramInput(String(s.instagram_url || ""));
-        setTiktokInput(String(s.tiktok_url || ""));
-      }
-      const loadedPages = pgData.items || [];
-      setStaticPages(loadedPages);
-      if (!pageDirtyRef.current) {
-        setPageDraft(pageDraftFrom(loadedPages.find((p: any) => p.slug === pageSlug)));
-      }
       if (catData.items?.length && !prodCategoryId) {
         setProdCategoryId(catData.items[0].id);
       }
@@ -887,129 +826,6 @@ export default function App() {
     }
   }
 
-  async function handleSaveStoreSettings(e: React.FormEvent) {
-    e.preventDefault();
-    setError("");
-    if (!storePhoneInput.trim() || !storeLocationInput.trim()) {
-      notifyClientWarning("Paramètres incomplets", "Veuillez renseigner le téléphone et l'adresse officielle de la boutique Mus Luxury.");
-      return;
-    }
-    const hourLines = openingHoursInput.split("\n").map((l) => l.trim()).filter(Boolean);
-    if (hourLines.length > 14 || hourLines.some((l) => l.length > 80 || !l.includes(":"))) {
-      notifyClientWarning("Horaires invalides", "Une ligne par jour, sous la forme « Samedi : 10h00 – 20h00 » (14 lignes au plus).");
-      return;
-    }
-    const threshold = freeThresholdInput.replace(/\s/g, "");
-    if (threshold && !/^\d+$/.test(threshold)) {
-      notifyClientWarning("Seuil invalide", "Le seuil de livraison gratuite est un montant en DA (chiffres seulement), ou 0 pour le désactiver.");
-      return;
-    }
-    const waDigits = storeWhatsappInput.replace(/[^\d]/g, "");
-    if (storeWhatsappInput.trim() && (waDigits.length < 9 || waDigits.length > 15)) {
-      notifyClientWarning("Numéro WhatsApp invalide", "Exemple : +213 655 53 41 54");
-      return;
-    }
-    for (const [label, url] of [["Instagram", instagramInput], ["TikTok", tiktokInput], ["Google Maps", mapsUrlInput]]) {
-      if (url.trim() && !/^https:\/\/[^\s]+$/.test(url.trim())) {
-        notifyClientWarning(`Lien ${label} invalide`, "Collez l'adresse complète de la page, commençant par https://");
-        return;
-      }
-    }
-    try {
-      await DesktopCmsApi.updateStoreSettings({
-        store_phone: storePhoneInput.trim(),
-        whatsapp_contact_number: storeWhatsappInput.trim(),
-        store_location: storeLocationInput.trim(),
-        opening_hours: hourLines.join("\n"),
-        store_maps_url: mapsUrlInput.trim(),
-        free_delivery_threshold_dzd: threshold || "0",
-        instagram_url: instagramInput.trim(),
-        tiktok_url: tiktokInput.trim(),
-      });
-      settingsDirtyRef.current = false;
-      const okMsg = "Paramètres de la boutique Mus Luxury enregistrés et synchronisés.";
-      setSuccessMsg(okMsg);
-      notifyClientSuccess("Paramètres boutique enregistrés", okMsg);
-      await loadAllWorkspaceData();
-    } catch (err: any) {
-      const tr = notifyClientError(err, "Enregistrement des paramètres refusé");
-      setError(tr.message);
-    }
-  }
-
-  async function handleCreateCoupon(e: React.FormEvent) {
-    e.preventDefault();
-    setError("");
-    const cleanCode = couponCode.trim().toUpperCase();
-    if (cleanCode.length < 3 || Number(couponValue) <= 0) {
-      notifyClientWarning(
-        "Code promo invalide",
-        "Veuillez saisir un code promo d'au moins 3 caractères et une valeur de remise strictement positive."
-      );
-      return;
-    }
-    try {
-      await DesktopCmsApi.createCoupon({
-        code: cleanCode,
-        discount_type: couponType,
-        discount_value: Number(couponValue),
-        min_order_dzd: Math.max(0, Number(couponMinOrder) || 0),
-      });
-      const okMsg = `Code promo "${cleanCode}" créé et activé sur la boutique.`;
-      setSuccessMsg(okMsg);
-      notifyClientSuccess("Code promotionnel activé", okMsg);
-      setCouponCode("");
-      await loadAllWorkspaceData();
-    } catch (err: any) {
-      const tr = notifyClientError(err, "Création du code promo refusée");
-      setError(tr.message);
-    }
-  }
-
-  async function handleDeactivateCoupon(couponId: number, code: string) {
-    setError("");
-    try {
-      await DesktopCmsApi.deactivateCoupon(couponId);
-      const okMsg = `Code promo "${code}" désactivé avec succès.`;
-      setSuccessMsg(okMsg);
-      notifyClientSuccess("Code promo désactivé", okMsg);
-      await loadAllWorkspaceData();
-    } catch (err: any) {
-      const tr = notifyClientError(err, "Désactivation du code promo impossible");
-      setError(tr.message);
-    }
-  }
-
-  async function handleSaveStaticPage(e: React.FormEvent) {
-    e.preventDefault();
-    setError("");
-    if (pageDraft.title_fr.trim().length < 2 || pageDraft.content_fr.trim().length < 5) {
-      notifyClientWarning(
-        "Contenu de page incomplet",
-        "Veuillez saisir un titre et un texte complet avant de publier la page statique."
-      );
-      return;
-    }
-    try {
-      await DesktopCmsApi.upsertStaticPage(pageSlug, {
-        title_fr: pageDraft.title_fr.trim(),
-        title_ar: pageDraft.title_ar.trim(),
-        title_en: pageDraft.title_en.trim(),
-        content_fr: pageDraft.content_fr.trim(),
-        content_ar: pageDraft.content_ar.trim(),
-        content_en: pageDraft.content_en.trim(),
-        is_published: true,
-      });
-      pageDirtyRef.current = false;
-      const okMsg = `Page statique "/pages/${pageSlug}" enregistrée et publiée.`;
-      setSuccessMsg(okMsg);
-      notifyClientSuccess("Page statique publiée", okMsg);
-      await loadAllWorkspaceData();
-    } catch (err: any) {
-      const tr = notifyClientError(err, "Enregistrement de la page statique impossible");
-      setError(tr.message);
-    }
-  }
 
   // handleTriggerBackup / handleVerifyBackupRestore removed — the admin-facing
   // backup endpoints are gone. Backups now run as operational infrastructure:
@@ -1634,281 +1450,17 @@ export default function App() {
         {loadingWorkspace && <div className="text-xs text-gray-500">Synchronisation des données en cours...</div>}
 
         {/* TAB 1: DASHBOARD (KEEP-ALIVE) */}
-        <div className={activeTab === "dashboard" ? "block" : "hidden"}>{dashboard && (
-          <div className="space-y-6">
-            {/* Pro Action & Quick Launch Bar */}
-            <div className="bg-white p-4 rounded-2xl border border-[#063D2E]/10 shadow-sm flex flex-col md:flex-row md:items-center justify-between gap-4">
-              <div className="flex items-center gap-3">
-                <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-[#063D2E] to-[#0A5C45] flex items-center justify-center text-[#D4AF62] shadow-sm">
-                  <Sparkles className="w-5 h-5 text-[#D4AF62]" />
-                </div>
-                <div>
-                  <h3 className="font-serif font-bold text-sm text-[#063D2E]">Panneau de Pilotage — Direction Générale</h3>
-                  <p className="text-[11px] text-gray-500">Maison Mus Luxury • Gestion en direct du catalogue, commandes et finances</p>
-                </div>
-              </div>
-
-              <div className="flex flex-wrap items-center gap-2">
-                <button
-                  type="button"
-                  onClick={() => { setActiveTab("products"); if (categories.length > 0) openProductEditor(null); }}
-                  className="px-3.5 py-2 rounded-xl bg-[#063D2E] text-[#D4AF62] hover:bg-[#0A5C45] transition-all font-bold text-xs flex items-center gap-1.5 shadow-sm"
-                >
-                  <Plus className="w-3.5 h-3.5" />
-                  <span>Nouveau Produit</span>
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setActiveTab("categories")}
-                  className="px-3.5 py-2 rounded-xl bg-white hover:bg-gray-50 border border-[#063D2E]/20 text-[#063D2E] font-bold text-xs flex items-center gap-1.5 transition-all shadow-sm"
-                >
-                  <Tags className="w-3.5 h-3.5 text-[#063D2E]" />
-                  <span>Catégories</span>
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setActiveTab("treasury")}
-                  className="px-3.5 py-2 rounded-xl bg-white hover:bg-gray-50 border border-[#063D2E]/20 text-[#063D2E] font-bold text-xs flex items-center gap-1.5 transition-all shadow-sm"
-                >
-                  <Landmark className="w-3.5 h-3.5 text-[#063D2E]" />
-                  <span>Trésorerie</span>
-                </button>
-                <button
-                  type="button"
-                  onClick={handleExportOrdersCsv}
-                  className="px-3.5 py-2 rounded-xl bg-white hover:bg-gray-50 border border-[#063D2E]/20 text-gray-700 font-bold text-xs flex items-center gap-1.5 transition-all shadow-sm"
-                >
-                  <Download className="w-3.5 h-3.5 text-gray-500" />
-                  <span>Export CSV</span>
-                </button>
-                <button
-                  type="button"
-                  onClick={loadAllWorkspaceData}
-                  className="p-2 rounded-xl bg-white hover:bg-gray-50 border border-[#063D2E]/20 text-gray-700 font-bold transition-all shadow-sm"
-                  title="Actualiser les données"
-                >
-                  <RefreshCw className="w-4 h-4 text-[#063D2E]" />
-                </button>
-              </div>
-            </div>
-
-            {/* 6 Key Pro KPI Cards with Lucide Icons */}
-            <div className="grid grid-cols-2 md:grid-cols-6 gap-4 text-xs">
-              {/* Revenue */}
-              <div className="bg-white p-4 rounded-2xl border border-[#063D2E]/10 shadow-sm hover:shadow-md hover:border-[#D4AF62]/40 transition-all duration-200 relative overflow-hidden group">
-                <div className="flex items-center justify-between text-gray-500">
-                  <span className="font-bold text-[10px] uppercase tracking-wider text-gray-400">{t("dashboard_tab.revenue_title")}</span>
-                  <div className="w-8 h-8 rounded-lg bg-emerald-50 text-emerald-800 flex items-center justify-center">
-                    <DollarSign className="w-4 h-4 text-emerald-700" />
-                  </div>
-                </div>
-                <p className="text-xl font-bold font-mono text-[#063D2E] mt-2 tracking-tight">
-                  {dashboard.finance_visible === false ? "—" : Number(dashboard.total_revenue_dzd || 0).toLocaleString()} <span className="text-xs font-sans text-[#D4AF62]">{dashboard.finance_visible === false ? "" : "DA"}</span>
-                </p>
-                <div className="text-[10px] text-gray-400 mt-1 flex items-center gap-1">
-                  <TrendingUp className="w-3 h-3 text-emerald-600" />
-                  <span>{dashboard.finance_visible === false ? "Réservé à la direction" : `Panier moy: ${Math.round(Number(dashboard.total_revenue_dzd || 0) / Math.max(dashboard.total_orders, 1)).toLocaleString()} DA`}</span>
-                </div>
-              </div>
-
-              {/* Total Orders */}
-              <div className="bg-white p-4 rounded-2xl border border-[#063D2E]/10 shadow-sm hover:shadow-md hover:border-[#D4AF62]/40 transition-all duration-200 relative overflow-hidden group">
-                <div className="flex items-center justify-between text-gray-500">
-                  <span className="font-bold text-[10px] uppercase tracking-wider text-gray-400">{t("dashboard_tab.orders_title")}</span>
-                  <div className="w-8 h-8 rounded-lg bg-blue-50 text-blue-700 flex items-center justify-center">
-                    <ShoppingBag className="w-4 h-4 text-blue-600" />
-                  </div>
-                </div>
-                <p className="text-xl font-bold font-mono text-[#063D2E] mt-2">{dashboard.total_orders}</p>
-                <div className="text-[10px] text-blue-600 font-semibold mt-1">
-                  {t("dashboard_tab.orders_delivered", { count: dashboard.orders_by_status?.delivered || 0 })}
-                </div>
-              </div>
-
-              {/* Active Products */}
-              <div className="bg-white p-4 rounded-2xl border border-[#063D2E]/10 shadow-sm hover:shadow-md hover:border-[#D4AF62]/40 transition-all duration-200 relative overflow-hidden group">
-                <div className="flex items-center justify-between text-gray-500">
-                  <span className="font-bold text-[10px] uppercase tracking-wider text-gray-400">{t("dashboard_tab.active_products")}</span>
-                  <div className="w-8 h-8 rounded-lg bg-purple-50 text-purple-700 flex items-center justify-center">
-                    <Boxes className="w-4 h-4 text-purple-600" />
-                  </div>
-                </div>
-                <p className="text-xl font-bold font-mono text-[#063D2E] mt-2">{dashboard.total_active_products ?? dashboard.published_products}</p>
-                <div className="text-[10px] text-purple-600 font-semibold mt-1">
-                  {t("dashboard_tab.active_products_desc")}
-                </div>
-              </div>
-
-              {/* Categories */}
-              <div className="bg-white p-4 rounded-2xl border border-[#063D2E]/10 shadow-sm hover:shadow-md hover:border-[#D4AF62]/40 transition-all duration-200 relative overflow-hidden group">
-                <div className="flex items-center justify-between text-gray-500">
-                  <span className="font-bold text-[10px] uppercase tracking-wider text-gray-400">{t("dashboard_tab.categories_title")}</span>
-                  <div className="w-8 h-8 rounded-lg bg-amber-50 text-amber-800 flex items-center justify-center">
-                    <Tags className="w-4 h-4 text-amber-700" />
-                  </div>
-                </div>
-                <p className="text-xl font-bold font-mono text-[#063D2E] mt-2">{dashboard.total_categories}</p>
-                <div className="text-[10px] text-gray-400 mt-1">
-                  {t("dashboard_tab.categories_desc")}
-                </div>
-              </div>
-
-              {/* Low Stock Alert */}
-              <div className={`bg-white p-4 rounded-2xl border shadow-sm hover:shadow-md transition-all duration-200 relative overflow-hidden group ${
-                (dashboard.low_stock_only_variants ?? 0) > 0 ? "border-amber-300 bg-amber-50/30" : "border-[#063D2E]/10"
-              }`}>
-                <div className="flex items-center justify-between text-amber-800">
-                  <span className="font-bold text-[10px] uppercase tracking-wider text-amber-800">{t("dashboard_tab.low_stock_title")}</span>
-                  <div className="w-8 h-8 rounded-lg bg-amber-100 text-amber-800 flex items-center justify-center">
-                    <AlertTriangle className="w-4 h-4 text-amber-700" />
-                  </div>
-                </div>
-                <p className="text-xl font-bold font-mono text-amber-700 mt-2">{dashboard.low_stock_only_variants ?? 0}</p>
-                <div className="text-[10px] text-amber-700 font-semibold mt-1">
-                  {t("dashboard_tab.low_stock_desc")}
-                </div>
-              </div>
-
-              {/* Out of Stock Alert */}
-              <div className={`bg-white p-4 rounded-2xl border shadow-sm hover:shadow-md transition-all duration-200 relative overflow-hidden group ${
-                dashboard.out_of_stock_variants > 0 ? "border-red-300 bg-red-50/30" : "border-[#063D2E]/10"
-              }`}>
-                <div className="flex items-center justify-between text-red-800">
-                  <span className="font-bold text-[10px] uppercase tracking-wider text-red-800">{t("dashboard_tab.out_of_stock_title")}</span>
-                  <div className="w-8 h-8 rounded-lg bg-red-100 text-red-800 flex items-center justify-center">
-                    <AlertCircle className="w-4 h-4 text-red-700" />
-                  </div>
-                </div>
-                <p className="text-xl font-bold font-mono text-red-700 mt-2">{dashboard.out_of_stock_variants}</p>
-                <div className="text-[10px] text-red-700 font-semibold mt-1">
-                  {t("dashboard_tab.out_of_stock_desc")}
-                </div>
-              </div>
-            </div>
-
-            {/* Interactive Charts Row: Revenue Area Chart (8 cols) & Orders Donut (4 cols) */}
-            <div className="grid grid-cols-1 lg:grid-cols-12 gap-5">
-              <div className="lg:col-span-7">
-                {dashboard.finance_visible === false ? (
-                  <div className="bg-white rounded-2xl border border-[#063D2E]/10 p-5 text-xs text-gray-500">
-                    Les chiffres d'affaires sont réservés à la direction.
-                  </div>
-                ) : (
-                  <RevenueTrendChart byDay={dashboard.revenue_by_day || []} />
-                )}
-              </div>
-              <div className="lg:col-span-5">
-                <OrderStatusDistributionChart ordersByStatus={dashboard.orders_by_status || {}} />
-              </div>
-            </div>
-
-            {/* Second Visuals Row: Inventory Health (5 cols) & Recent Activity Stream (7 cols) */}
-            <div className="grid grid-cols-1 lg:grid-cols-12 gap-5 text-xs">
-              <div className="lg:col-span-5">
-                <InventoryHealthWidget
-                  totalVariants={dashboard.active_variants ?? 0}
-                  lowStock={dashboard.low_stock_only_variants ?? 0}
-                  outOfStock={dashboard.out_of_stock_variants ?? 0}
-                  onNavigateToProducts={() => setActiveTab("products")}
-                />
-              </div>
-
-              {/* Recent Orders Stream */}
-              <div className="lg:col-span-7 bg-white p-5 rounded-2xl border border-[#063D2E]/10 shadow-sm space-y-3">
-                <div className="flex items-center justify-between pb-2 border-b border-gray-100">
-                  <div className="flex items-center gap-2.5">
-                    <div className="w-9 h-9 rounded-xl bg-blue-50 text-blue-700 flex items-center justify-center font-bold">
-                      <Clock className="w-4 h-4" />
-                    </div>
-                    <div>
-                      <h3 className="font-serif font-bold text-sm text-[#063D2E]">{t("dashboard_tab.recent_orders_title")}</h3>
-                      <p className="text-[11px] text-gray-500">{t("dashboard_tab.recent_orders_desc")}</p>
-                    </div>
-                  </div>
-                  <button
-                    type="button"
-                    onClick={() => setActiveTab("orders")}
-                    className="text-[11px] font-bold text-[#063D2E] hover:text-[#0A5C45] flex items-center gap-1 transition"
-                  >
-                    <span>{t("dashboard_tab.view_all_orders", { count: dashboard.all_orders_count ?? dashboard.total_orders })}</span>
-                    <ArrowUpRight className="w-3.5 h-3.5" />
-                  </button>
-                </div>
-
-                {(dashboard.recent_orders || []).length === 0 ? (
-                  <div className="p-8 text-center bg-[#F8F6F0] rounded-xl border border-dashed border-[#D4AF62]/40 text-gray-400">
-                    <p className="font-serif italic text-gray-600">{t("dashboard_tab.empty_orders")}</p>
-                    <p className="text-[10px] text-gray-400 mt-1">{t("dashboard_tab.empty_orders_desc")}</p>
-                  </div>
-                ) : (
-                  <div className="space-y-2">
-                    {(dashboard.recent_orders || []).slice(0, 5).map((ro: any) => (
-                      <div
-                        key={ro.id}
-                        className="p-3 rounded-xl bg-[#F8F6F0]/70 hover:bg-[#F8F6F0] border border-[#D4AF62]/20 flex items-center justify-between transition-colors"
-                      >
-                        <div className="flex items-center gap-3">
-                          <span className="px-2 py-0.5 rounded-lg bg-[#063D2E] text-[#D4AF62] font-mono text-[11px] font-bold">
-                            #{ro.order_reference}
-                          </span>
-                          <div>
-                            <span className="font-bold text-gray-800">{ro.customer_name}</span>
-                            <span className="text-gray-400 text-[11px] ml-1.5">({ro.wilaya_name})</span>
-                          </div>
-                        </div>
-                        <div className="flex items-center gap-3">
-                          <span className="font-mono font-bold text-[#063D2E]">{ro.total_dzd?.toLocaleString()} DA</span>
-                          <span className="px-2 py-0.5 rounded-full text-[10px] font-bold uppercase bg-emerald-100 text-emerald-800">
-                            {orderStatusLabel(ro.status)}
-                          </span>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                )}
-              </div>
-            </div>
-
-            {/* System Security & Backup Status Card */}
-            <div className="p-4 rounded-2xl bg-gradient-to-r from-[#011C15] via-[#063D2E] to-[#02291F] text-white border border-[#D4AF62]/30 shadow-md flex flex-col md:flex-row items-center justify-between gap-4 text-xs">
-              <div className="flex items-center gap-3.5">
-                <div className="w-10 h-10 rounded-xl bg-white/10 flex items-center justify-center text-[#D4AF62] shrink-0 border border-[#D4AF62]/40">
-                  <ShieldCheck className="w-5 h-5 text-[#D4AF62]" />
-                </div>
-                <div>
-                  <div className="flex items-center gap-2">
-                    <span className="font-bold text-sm text-[#E8D4A5]">{t("dashboard_tab.security_title")}</span>
-                    <span className={`w-2 h-2 rounded-full ${Number(dashboard.failed_backups_count || 0) > 0 ? "bg-red-400" : "bg-emerald-400"}`} />
-                  </div>
-                  <p className="text-[11px] text-gray-300 mt-0.5">
-                    {dashboard.database_engine === "postgres" ? t("dashboard_tab.security_desc_pg") : t("dashboard_tab.security_desc_sqlite")}
-                    {Number(dashboard.failed_backups_count || 0) > 0 && (
-                      <span className="text-red-300 font-bold"> • {t("dashboard_tab.failed_backups", { count: dashboard.failed_backups_count })}</span>
-                    )}
-                  </p>
-                </div>
-              </div>
-
-              <div className="flex items-center gap-3 text-[11px]">
-                {dashboard.last_backup ? (
-                  <div className="px-3 py-1.5 rounded-xl bg-white/10 border border-white/10 font-mono text-gray-300">
-                    {t("dashboard_tab.last_backup", { filename: dashboard.last_backup.filename })}
-                  </div>
-                ) : (
-                  <span className="text-gray-400 font-mono">{t("dashboard_tab.backups_ready")}</span>
-                )}
-                <button
-                  type="button"
-                  onClick={() => setActiveTab("backups")}
-                  className="px-3.5 py-1.5 rounded-xl bg-[#D4AF62] text-[#02291F] font-bold hover:brightness-105 transition"
-                >
-                  {t("dashboard_tab.btn_manage")}
-                </button>
-              </div>
-            </div>
-          </div>
-        )}
-
+        <div className={activeTab === "dashboard" ? "block" : "hidden"}>
+          {dashboard && (
+            <DashboardPage
+              dashboard={dashboard}
+              categories={categories}
+              onOpenTab={setActiveTab}
+              onNewProduct={() => openProductEditor(null)}
+              onRefresh={loadAllWorkspaceData}
+              onExportOrdersCsv={handleExportOrdersCsv}
+            />
+          )}
         </div>
 
         {/* TAB: BUSINESS SUMMARY (POS + online, real records) (KEEP-ALIVE) */}
@@ -2394,71 +1946,13 @@ export default function App() {
 
         {/* TAB 4: INVENTORY & MOVEMENTS (KEEP-ALIVE) */}
         <div className={activeTab === "inventory" ? "block" : "hidden"}>
-          <div className="space-y-6 text-xs">
-            <div className="bg-white p-6 rounded-2xl border border-[#D4AF62]/40 space-y-3">
-              <h3 className="text-base font-serif font-bold text-[#063D2E]">{t("sidebar.inventory")}</h3>
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                {products.flatMap((p) =>
-                  (p.variants || []).map((v: any) => (
-                    <div key={v.id} className="p-3 rounded-xl border flex items-center justify-between">
-                      <div>
-                        <div className="font-bold text-[#063D2E]">{p.name_fr} — {v.title}</div>
-                        <div className="font-mono text-gray-500">SKU: {v.sku} • {t("stock_writeoff.current_stock_lbl")}: <strong>{v.stock_qty}</strong></div>
-                        <div className="font-mono text-gray-400 text-[11px]">
-                          {v.barcode ? `⌗ ${v.barcode}` : "⌗ —"}
-                        </div>
-                      </div>
-                      <div className="flex items-center gap-1.5">
-                        <button type="button" aria-label="Retirer une unité" disabled={Number(v.stock_qty) <= 0} title={Number(v.stock_qty) <= 0 ? "Stock déjà à 0" : undefined} onClick={() => handleAdjustStock(v.id, -1)} className="px-2.5 py-1 rounded bg-gray-100 font-bold disabled:opacity-40">-1</button>
-                        <button type="button" onClick={() => handleAdjustStock(v.id, 1)} className="px-2.5 py-1 rounded bg-emerald-100 text-emerald-900 font-bold">+1</button>
-                        <button type="button" onClick={() => handleAdjustStock(v.id, 5)} className="px-2.5 py-1 rounded bg-[#063D2E] text-[#D4AF62] font-bold">+5</button>
-                        <button type="button" onClick={() => setBarcodeVariantId(v.id)} title="Code-barres & étiquette" className="px-2.5 py-1 rounded bg-[#D4AF62]/20 text-[#7a5c16] font-bold flex items-center gap-1">
-                          <ScanLine className="w-3.5 h-3.5" /> {t("devices.label_printer")}
-                        </button>
-                        <button
-                          type="button"
-                          disabled={v.stock_qty <= 0}
-                          onClick={() => setWriteOffTarget({ variantId: v.id, sku: v.sku, productName: p.name_fr, variantTitle: v.title, currentStock: v.stock_qty })}
-                          title="Sortie de stock"
-                          className="px-2.5 py-1 rounded bg-red-100 text-red-700 font-bold disabled:opacity-40"
-                        >
-                          {t("stock_writeoff.title")}
-                        </button>
-                      </div>
-                    </div>
-                  ))
-                )}
-              </div>
-            </div>
-
-            <div className="bg-white p-6 rounded-2xl border border-[#D4AF62]/40 space-y-3">
-              <h3 className="text-base font-serif font-bold text-[#063D2E]">{t("inventory_report.title")} ({movements.length})</h3>
-              <div className="overflow-x-auto">
-                <table className="w-full text-left border-collapse">
-                  <thead>
-                    <tr className="bg-[#063D2E] text-[#E8D4A5]">
-                      <th className="p-2">ID</th>
-                      <th className="p-2">{t("low_stock.th_product")}</th>
-                      <th className="p-2">{t("inventory_count.th_gap")}</th>
-                      <th className="p-2">{t("inventory_report.th_before_after")}</th>
-                      <th className="p-2">{t("inventory_report.th_reason")}</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y">
-                    {movements.map((m) => (
-                      <tr key={m.id}>
-                        <td className="p-2 font-mono">#{m.id}</td>
-                        <td className="p-2 font-bold">{m.product_name} ({m.variant_title})</td>
-                        <td className="p-2 font-extrabold">{m.change_qty > 0 ? `+${m.change_qty}` : m.change_qty}</td>
-                        <td className="p-2 font-mono">{m.previous_qty} → {m.new_qty}</td>
-                        <td className="p-2">{movementReasonLabel(m.reason)}</td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            </div>
-          </div>
+          <InventoryPage
+            products={products}
+            movements={movements}
+            onAdjustStock={handleAdjustStock}
+            onPrintLabel={setBarcodeVariantId}
+            onWriteOff={setWriteOffTarget}
+          />
         </div>
 
         {/* TAB 5: ORDERS & INVOICES (KEEP-ALIVE) */}
@@ -2554,155 +2048,12 @@ export default function App() {
 
         {/* TAB 7: STORE CONTENT, COUPONS, STATIC PAGES & REAL SOCIAL/LOCATION SETTINGS (KEEP-ALIVE) */}
         <div className={activeTab === "content" ? "block" : "hidden"}>
-          <div className="space-y-6 text-xs">
-            {canOpen("content") && <HomepageContentPanel categories={categories} products={products} />}
-
-            <form onSubmit={handleSaveStoreSettings} onChange={() => { settingsDirtyRef.current = true; }} className="bg-white p-6 rounded-2xl border border-[#D4AF62]/40 space-y-4">
-              <div>
-                <h3 className="text-base font-serif font-bold text-[#063D2E]">Coordonnées de la boutique</h3>
-                <p className="text-gray-500">Affichées partout sur la boutique en ligne (en-tête, pied de page, boutons WhatsApp, page produit).</p>
-              </div>
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-                <div>
-                  <label className="block font-bold mb-1">Téléphone affiché</label>
-                  <input value={storePhoneInput} onChange={(e) => setStorePhoneInput(e.target.value)} placeholder="0655 53 41 54" className="w-full px-3 py-2 border rounded-xl font-mono" />
-                </div>
-                <div>
-                  <label className="block font-bold mb-1">Numéro WhatsApp</label>
-                  <input value={storeWhatsappInput} onChange={(e) => setStoreWhatsappInput(e.target.value)} placeholder="+213 655 53 41 54" className="w-full px-3 py-2 border rounded-xl font-mono" />
-                </div>
-                <div>
-                  <label className="block font-bold mb-1">Adresse de la boutique</label>
-                  <input value={storeLocationInput} onChange={(e) => setStoreLocationInput(e.target.value)} className="w-full px-3 py-2 border rounded-xl" />
-                </div>
-                <div>
-                  <label className="block font-bold mb-1">Lien Google Maps de la boutique</label>
-                  <input value={mapsUrlInput} onChange={(e) => setMapsUrlInput(e.target.value)} placeholder="https://www.google.com/maps/…" className="w-full px-3 py-2 border rounded-xl font-mono" />
-                </div>
-                <div>
-                  <label className="block font-bold mb-1">Page Instagram (lien)</label>
-                  <input value={instagramInput} onChange={(e) => setInstagramInput(e.target.value)} placeholder="https://www.instagram.com/…" className="w-full px-3 py-2 border rounded-xl font-mono" />
-                </div>
-                <div>
-                  <label className="block font-bold mb-1">Page TikTok (lien)</label>
-                  <input value={tiktokInput} onChange={(e) => setTiktokInput(e.target.value)} placeholder="https://www.tiktok.com/@…" className="w-full px-3 py-2 border rounded-xl font-mono" />
-                </div>
-                <div>
-                  <label className="block font-bold mb-1">Livraison gratuite à partir de (DA)</label>
-                  <input inputMode="numeric" value={freeThresholdInput} onChange={(e) => setFreeThresholdInput(e.target.value)} placeholder="0 = pas de livraison gratuite" className="w-full px-3 py-2 border rounded-xl font-bold" />
-                  <p className="text-[11px] text-gray-500 mt-1">
-                    {Number(freeThresholdInput.replace(/\s/g, "")) > 0
-                      ? `Commandes de ${Number(freeThresholdInput.replace(/\s/g, "")).toLocaleString("fr-FR")} DA ou plus : livraison offerte (appliquée aussi par le serveur).`
-                      : "Désactivée : la livraison est toujours payante."}
-                  </p>
-                </div>
-              </div>
-              <div>
-                <label htmlFor="store-opening-hours" className="block font-bold mb-1">Horaires d'ouverture</label>
-                <textarea id="store-opening-hours" rows={7} value={openingHoursInput} onChange={(e) => setOpeningHoursInput(e.target.value)} className="w-full md:w-2/3 px-3 py-2 border rounded-xl font-mono text-xs" />
-                <p className="text-[11px] text-gray-500 mt-1">Une ligne par jour : « Jour : horaires » (ex. « Vendredi : Fermé »). Affichés sur la page Contact de la boutique.</p>
-              </div>
-              <button type="submit" className="px-5 py-2.5 rounded-xl bg-[#D4AF62] text-[#02291F] font-extrabold">
-                Enregistrer les coordonnées
-              </button>
-            </form>
-
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-              <form onSubmit={handleCreateCoupon} className="bg-white p-6 rounded-2xl border border-[#D4AF62]/40 space-y-3">
-                <h3 className="text-base font-serif font-bold text-[#063D2E]">+ Créer un Code Promo Client</h3>
-                <div className="grid grid-cols-2 gap-3">
-                  <div>
-                    <label className="block font-bold mb-1">Code (ex: RAMADAN15)</label>
-                    <input value={couponCode} onChange={(e) => setCouponCode(e.target.value)} required placeholder="LUXE20" className="w-full px-3 py-2 border rounded-xl font-mono uppercase" />
-                  </div>
-                  <div>
-                    <label className="block font-bold mb-1">Type de remise</label>
-                    <select value={couponType} onChange={(e) => setCouponType(e.target.value as "percentage" | "fixed_dzd")} className="w-full px-3 py-2 border rounded-xl bg-white">
-                      <option value="percentage">Pourcentage (%)</option>
-                      <option value="fixed_dzd">Montant fixe (DA)</option>
-                    </select>
-                  </div>
-                  <div>
-                    <label className="block font-bold mb-1">Valeur</label>
-                    <input type="number" min={1} value={couponValue} onChange={(e) => setCouponValue(Number(e.target.value))} required className="w-full px-3 py-2 border rounded-xl font-bold" />
-                  </div>
-                  <div>
-                    <label className="block font-bold mb-1">Minimum commande (DA)</label>
-                    <input type="number" min={0} value={couponMinOrder} onChange={(e) => setCouponMinOrder(Number(e.target.value))} required className="w-full px-3 py-2 border rounded-xl" />
-                  </div>
-                </div>
-                <button type="submit" className="px-5 py-2 rounded-xl bg-[#063D2E] text-[#D4AF62] font-bold">
-                  Activer le Code Promo
-                </button>
-                {coupons.length > 0 && (
-                  <div className="pt-3 border-t space-y-1.5">
-                    <p className="font-bold text-[#063D2E]">Codes Promo Enregistrés ({coupons.length})</p>
-                    {coupons.slice(0, 6).map((cpn: any) => (
-                      <div key={cpn.id} className="flex items-center justify-between bg-[#F8F6F0] px-3 py-1.5 rounded-lg border">
-                        <span>
-                          <strong className="font-mono text-[#063D2E]">{cpn.code}</strong> ({cpn.discount_value}{cpn.discount_type === "percentage" ? "%" : " DA"}) • Utilisations: {cpn.usage_count}{cpn.usage_limit ? `/${cpn.usage_limit}` : ""}{cpn.orders_count !== undefined ? ` • ${cpn.orders_count} commande(s) gardée(s), ${Number(cpn.discount_given_dzd || 0).toLocaleString("fr-FR")} DA de remise` : ""}
-                        </span>
-                        {cpn.is_active ? (
-                          <button type="button" onClick={() => handleDeactivateCoupon(cpn.id, cpn.code)} className="px-2 py-0.5 rounded bg-red-50 text-red-700 font-bold">
-                            Désactiver
-                          </button>
-                        ) : (
-                          <span className="text-gray-400 font-bold">Inactif</span>
-                        )}
-                      </div>
-                    ))}
-                  </div>
-                )}
-              </form>
-
-              <form onSubmit={handleSaveStaticPage} onChange={() => { pageDirtyRef.current = true; }} className="bg-white p-6 rounded-2xl border border-[#D4AF62]/40 space-y-3">
-                <div>
-                  <h3 className="text-base font-serif font-bold text-[#063D2E]">Pages d'information</h3>
-                  <p className="text-gray-500">Ouvertes depuis le pied de page de la boutique. Sans texte arabe / anglais, le texte français est affiché.</p>
-                </div>
-                <div className="grid grid-cols-2 gap-3">
-                  <div>
-                    <label className="block font-bold mb-1">Page</label>
-                    <select value={pageSlug} onChange={(e) => {
-                      const nextSlug = e.target.value;
-                      if (pageDirtyRef.current && !window.confirm("Les modifications non enregistrées de cette page seront perdues. Continuer ?")) return;
-                      setPageSlug(nextSlug);
-                      pageDirtyRef.current = false;
-                      setPageDraft(pageDraftFrom(staticPages.find((p: any) => p.slug === nextSlug)));
-                    }} className="w-full px-3 py-2 border rounded-xl bg-white">
-                      <option value="about">À propos</option>
-                      <option value="faq">Questions fréquentes</option>
-                      <option value="returns">Livraison &amp; retours</option>
-                      <option value="terms">Conditions générales</option>
-                    </select>
-                  </div>
-                  <div>
-                    <label className="block font-bold mb-1">Langue</label>
-                    <div className="flex gap-1">
-                      {(["fr", "ar", "en"] as const).map((l) => (
-                        <button key={l} type="button" onClick={() => setPageLang(l)}
-                          className={`flex-1 py-2 rounded-xl border font-bold ${pageLang === l ? "bg-[#063D2E] text-[#D4AF62] border-[#063D2E]" : "bg-white text-gray-600"}`}>
-                          {l.toUpperCase()}{l === "fr" ? " *" : pageDraft[`content_${l}`] ? "" : " (vide)"}
-                        </button>
-                      ))}
-                    </div>
-                  </div>
-                </div>
-                <div>
-                  <label className="block font-bold mb-1">Titre ({pageLang.toUpperCase()})</label>
-                  <input dir={pageLang === "ar" ? "rtl" : "ltr"} value={pageDraft[`title_${pageLang}`] || ""} onChange={(e) => setPageDraft({ ...pageDraft, [`title_${pageLang}`]: e.target.value })} required={pageLang === "fr"} className="w-full px-3 py-2 border rounded-xl" />
-                </div>
-                <div>
-                  <label className="block font-bold mb-1">Texte ({pageLang.toUpperCase()})</label>
-                  <textarea dir={pageLang === "ar" ? "rtl" : "ltr"} rows={9} value={pageDraft[`content_${pageLang}`] || ""} onChange={(e) => setPageDraft({ ...pageDraft, [`content_${pageLang}`]: e.target.value })} required={pageLang === "fr"} className="w-full px-3 py-2 border rounded-xl leading-relaxed" />
-                  <p className="text-[11px] text-gray-500">Un retour à la ligne = un nouveau paragraphe sur la boutique.</p>
-                </div>
-                <button type="submit" className="px-5 py-2 rounded-xl bg-[#063D2E] text-[#D4AF62] font-bold">
-                  Publier la page
-                </button>
-              </form>
-            </div>
-          </div>
+          <ContentSettingsPage
+            active={activeTab === "content"}
+            canEdit={canOpen("content")}
+            categories={categories}
+            products={products}
+          />
         </div>
 
         {/* TAB 8: BACKUPS, WHATSAPP RECOVERY STATUS & ISOLATED RESTORE VERIFICATION (KEEP-ALIVE) */}
