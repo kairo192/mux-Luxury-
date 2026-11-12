@@ -16,11 +16,10 @@
 #   SHELL=/bin/bash
 #   PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
 #   MAILTO=""
-#   30 2 * * * luxe set -a; . /opt/luxe/shared/.env; set +a; \
-#     cd /opt/luxe/current && \
-#     bash infrastructure/backups/backup_postgres_and_media.sh && \
-#     bash infrastructure/backups/upload_to_offsite.sh && \
-#     bash infrastructure/backups/verify_backup.sh \
+#   30 2 * * * luxe INSTALL_ROOT=/opt/luxe ENV_FILE=/opt/luxe/shared/.env \
+#     bash /opt/luxe/current/infrastructure/backups/nightly_backup.sh
+#   (nightly_backup.sh = backup → off-site copy → verify; reads the .env
+#    safely, never with ". .env" — see infrastructure/scripts/env-file.sh)
 #     >> /opt/luxe/logs/backup.log 2>&1
 #
 # The `&&` chain is deliberate: if the dump fails we do NOT upload a stale
@@ -59,7 +58,7 @@ cat > "$CRON_FILE" <<CRON
 SHELL=/bin/bash
 PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
 MAILTO=""
-$schedule $DEPLOY_USER { set -a; . $ENV_FILE; set +a; cd $INSTALL_ROOT/current && bash infrastructure/backups/backup_postgres_and_media.sh && bash infrastructure/backups/upload_to_offsite.sh && bash infrastructure/backups/verify_backup.sh; } >> $LOG_DIR/backup.log 2>&1
+$schedule $DEPLOY_USER INSTALL_ROOT=$INSTALL_ROOT ENV_FILE=$ENV_FILE bash $INSTALL_ROOT/current/infrastructure/backups/nightly_backup.sh >> $LOG_DIR/backup.log 2>&1
 CRON
 chmod 0644 "$CRON_FILE"
 chown root:root "$CRON_FILE"

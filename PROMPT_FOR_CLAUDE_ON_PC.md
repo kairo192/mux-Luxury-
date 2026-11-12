@@ -25,7 +25,7 @@ git fetch origin feat/pos-core-cash-register-18lsk6
 git checkout feat/pos-core-cash-register-18lsk6
 git pull origin feat/pos-core-cash-register-18lsk6
 ```
-Read, in this order: `docs/WORK_SUMMARY_2026-11-11.md` (sections 17–23), `HANDOFF_FOR_ANTIGRAVITY.md` (sections 0e–0k),
+Read, in this order: `docs/WORK_SUMMARY_2026-11-11.md` (sections 17–25), `HANDOFF_FOR_ANTIGRAVITY.md` (sections 0e–0l),
 `docs/OPERATIONS_GUIDE.md` (§5 backups, §7c), `docs/deployment/VPS_DEPLOYMENT.md`, `e2e/README.md`.
 
 ## 2. Verify on Windows
@@ -57,6 +57,9 @@ Report what you see for each, with screenshots if something is wrong:
    Afterwards, with the owner logged in on the VPS, collect (no secrets):
    `nproc; free -h; swapon --show; df -h /; docker stats --no-stream; sudo du -sh /var/lib/luxe/backups`
    and check `/var/lib/luxe/backups/last_backup_status.json` after the next night (03:30).
+   If the VPS was set up before 12 Nov 2026: after this deploy run `sudo bash infrastructure/backups/install_backup_cron.sh`
+   once (nightly backup now reads the .env safely), then `sudo bash infrastructure/scripts/certificates.sh setup`
+   (HTTPS renewal, VPS_DEPLOYMENT §6) and `bash infrastructure/scripts/health-check.sh`.
 2. **SSH safety**: prefer the deploy user with an SSH key + sudo; propose disabling password and root logins.
 3. **Unused photos**: `apps/storefront/public/assets` has 12 photos referenced nowhere (~16 MB, e.g.
    `store_photo_01…04.jpg`, `01…05.jpg`). Ask the owner: remove them, or use them on the site (CMS → Contenu).

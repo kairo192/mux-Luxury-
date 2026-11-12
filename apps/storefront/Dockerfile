@@ -1,7 +1,8 @@
 FROM node:20-alpine AS build
 WORKDIR /app
 COPY package*.json ./
-RUN npm install --no-audit --no-fund
+# Exactly the versions in package-lock.json (reproducible builds).
+RUN npm ci --no-audit --no-fund
 COPY . .
 RUN npx tsc --noEmit && npm run build
 

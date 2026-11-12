@@ -196,6 +196,9 @@ test.describe("shop in Arabic on a phone", () => {
     await drawer.locator("button", { hasText: "تأكيد الطلب" }).click();
     await expect(drawer).toContainText("تم تأكيد طلبك");
     await expect(drawer).toContainText("أمينة بن علي");
+    await page.evaluate(() => (window as any).openOrderTrackingModal());
+    await expect(page.locator("#trk-title")).toHaveText("تتبع الطلب");
+    await expect(page.locator("#trk-submit")).toContainText("البحث عن طلبي");
     w.expectClean();
   });
 });

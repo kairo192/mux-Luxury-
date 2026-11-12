@@ -334,6 +334,9 @@ jobs:
           tags: luxe-backend:ci-${{ github.sha }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
+      - name: The image starts and its libraries load (no compiler in the image)
+        run: |
+          docker run --rm luxe-backend:ci-${{ github.sha }} python -c "import psycopg, PIL.Image, cryptography, fastapi, uvicorn; print('libpq', psycopg.pq.version())"
 
   # ------------------------------------------------------------------ 8. Dependency vulnerability audit
   dependency-audit:

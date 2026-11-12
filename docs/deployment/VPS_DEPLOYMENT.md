@@ -152,6 +152,17 @@ sudo SSL_DIR=/var/www/luxe-ecommerce/infrastructure/nginx/ssl CERTBOT_EMAIL=<own
 
 Check at any time: `sudo luxe-certificates check` (exit 1 under 14 days left).
 
+## 6b. Things the deploy script now takes care of
+
+- **One Docker project for every release.** `shared/.env` gets `COMPOSE_PROJECT_NAME` on the first deploy (the
+  project of the database already running, else `luxe`). Never change it on a running shop: the database
+  volume is `<name>_pgdata`. If the deploy stops with "database volume … does not exist, but these do: …", put the
+  name before `_pgdata` in `shared/.env` and deploy again — nothing was changed.
+- **The `.env` is read like Docker reads it** (placeholders and special characters in passwords are fine); the
+  nightly backup runs `infrastructure/backups/nightly_backup.sh`. On a server installed before 12 Nov 2026, run
+  `sudo bash infrastructure/backups/install_backup_cron.sh` once after the next deploy.
+- **Disk:** old images and build cache are removed after each successful deploy.
+
 ## 7. Health check
 
 `bash infrastructure/scripts/health-check.sh` (on the VPS) tests what customers get, through the local nginx

@@ -477,6 +477,27 @@ reading). Checked on PostgreSQL with 20 orders and 5 receipts fired at the same 
 final stock exactly 100 − 20 + 50 = 130, no error or deadlock in the server log.
 
 
+## 25. Deploy rehearsal: two bugs that would have stopped the first real deploy
+
+The release script was run for real in the cloud sandbox (Docker), as the CD workflow runs it on the VPS, with a
+throw-away production `.env` made by the project's generator. Docker Hub then refused image downloads from the
+sandbox (*429 Too Many Requests*, shared address), so the end of the rehearsal was finished with a small stand-in
+stack using images already present. Found and fixed:
+
+| Found | Effect on the real server | Fixed |
+|---|---|---|
+| The deploy and the **nightly backup** read the production `.env` with bash (`set -a; . .env`). The generated file holds `<FILL_IN_…>` placeholders and passwords with `? # & ;` | Deploy stops at "syntax error near unexpected token"; **every nightly backup fails before starting** | `infrastructure/scripts/env-file.sh` reads it like Docker (values literal, quotes, comments, CRLF); used by the deploy and by the new `infrastructure/backups/nightly_backup.sh` (both cron installers now call it). Tested with placeholders, special characters and a `$(…)` value: nothing executed |
+| Docker Compose named the project after the folder: migrations ran in `releases/<version>` (project *<version>*), the start in `current/` (project *current*) | **First deploy fails** (second `luxe_postgres` container: name clash); each project has its own, **empty**, database volume | `infrastructure/scripts/compose-project.sh`: one `COMPOSE_PROJECT_NAME` in `shared/.env` for every release (Compose reads it for every command, manual ones too). Missing → keeps the project of the database already running, else `luxe`. Refuses to start when its database volume is missing but another shop volume exists. Reproduced, then checked: new server, server already running under another name (data kept), wrong name (refused) |
+| Rollback restarted with the images of the release being rolled back | Rollback would keep the faulty code | Rollback (and the deploy's automatic rollback) rebuild the target release (`--build`, cached layers) |
+| Old images and build cache never removed | 0.5–1 GB more on the 40 GB disk at each deploy | Removed after each successful deploy (images in use and data volumes untouched) |
+| API image installed `gcc` + `libpq-dev`; shop image used `npm install` | ~200 MB per image, slow builds on 1 vCPU; builds not reproducible | Removed (every Python dependency has a ready-made wheel for Python 3.11 / Linux — checked); `npm ci`; CI now starts the built API image and loads its libraries |
+
+**On a server that is already running:** after the next deploy, run `sudo bash infrastructure/backups/install_backup_cron.sh`
+once (from `/opt/luxe/current`) so the nightly backup uses the new safe loader.
+
+Also: Arabic order tracking (window, messages) translated; the order-tracking code no longer hides the `L()` helper.
+
+
 ## Verification
 
 | Check | Result |

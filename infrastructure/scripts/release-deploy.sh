@@ -101,10 +101,18 @@ fi
 
 # -------------------------------------------------- 3. Pre-migration backup
 log "== pre-migration backup =="
-set -a
-# shellcheck disable=SC1091
-source "$SHARED_DIR/.env"
-set +a
+# Read as Docker reads it (values taken literally, never run as shell code:
+# passwords may hold ? # & ; $ and unused services keep <FILL_IN_…>).
+# shellcheck source=env-file.sh
+source "$NEW_RELEASE/infrastructure/scripts/env-file.sh"
+luxe_load_env "$SHARED_DIR/.env" || fail "cannot read $SHARED_DIR/.env"
+# One Compose project for every release (else: second database container and
+# an empty database volume) — see compose-project.sh.
+# shellcheck source=compose-project.sh
+source "$NEW_RELEASE/infrastructure/scripts/compose-project.sh"
+luxe_ensure_compose_project "$SHARED_DIR/.env"
+log "compose project: $COMPOSE_PROJECT_NAME"
+luxe_check_db_volume || fail "database volume check failed — nothing was changed"
 # Back up the data of the CURRENTLY RUNNING shop (it lives in the Docker
 # containers, not in the release folder). The backup SCRIPT is taken from the
 # NEW release so backup fixes apply from this deploy on.
@@ -151,7 +159,9 @@ if [ "$HEALTH_OK" -ne 1 ]; then
   if [ -n "$PREVIOUS_RELEASE" ] && [ -d "$PREVIOUS_RELEASE" ]; then
     ln -snf "$PREVIOUS_RELEASE" "${CURRENT_LINK}.new"
     mv -Tf  "${CURRENT_LINK}.new" "$CURRENT_LINK"
-    (cd "$CURRENT_LINK" && docker compose up -d --remove-orphans) || true
+    # --build: the images of the release that just failed carry the same
+    # names; rebuild the previous release's code (layers are cached).
+    (cd "$CURRENT_LINK" && docker compose up -d --build --remove-orphans) || true
     log "rolled back to $PREVIOUS_RELEASE"
   else
     log "no previous release to roll back to — manual intervention needed"
@@ -171,5 +181,12 @@ ls -1dt "$RELEASES_DIR"/* 2>/dev/null \
         log "pruned $old"
       fi
     done
+
+# -------------------------------------------------- 10. Free disk (40 GB server)
+# Images replaced by this build and build cache older than a week. Images in
+# use and the database/photo volumes are never touched.
+docker image prune -f >/dev/null 2>&1 || true
+docker builder prune -f --filter until=168h >/dev/null 2>&1 || true
+log "old images and build cache removed"
 
 log "== deploy SUCCESS: $VERSION =="

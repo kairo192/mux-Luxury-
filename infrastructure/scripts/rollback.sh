@@ -52,9 +52,17 @@ TARGET_DIR="$RELEASES_DIR/$TARGET"
 [ -d "$TARGET_DIR" ] || { log "target $TARGET_DIR does not exist"; exit 1; }
 
 log "rolling back: $CURRENT_NAME -> $TARGET"
+# Same Compose project as the deploys (COMPOSE_PROJECT_NAME in shared/.env).
+# shellcheck source=compose-project.sh
+source "$TARGET_DIR/infrastructure/scripts/compose-project.sh" 2>/dev/null \
+  || source "$(dirname "$0")/compose-project.sh"
+luxe_ensure_compose_project "$INSTALL_ROOT/shared/.env"
+luxe_check_db_volume || { log "database volume check failed — nothing was changed"; exit 1; }
 ln -snf "$TARGET_DIR" "${CURRENT_LINK}.new"
 mv -Tf  "${CURRENT_LINK}.new" "$CURRENT_LINK"
-(cd "$CURRENT_LINK" && docker compose up -d --remove-orphans)
+# --build: every release's images carry the same names; rebuild this
+# release's code (cached layers make it quick) instead of restarting the newer one.
+(cd "$CURRENT_LINK" && docker compose up -d --build --remove-orphans)
 
 DEADLINE=$(( $(date +%s) + HEALTH_TIMEOUT_SEC ))
 while [ "$(date +%s)" -lt "$DEADLINE" ]; do

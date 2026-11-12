@@ -7,7 +7,16 @@
 
 ---
 
-## 0k. ARABIC SHOP ON A PHONE (2026-11-12, latest)
+## 0l. DEPLOY REHEARSAL FIXES (2026-11-12, latest)
+Details: WORK_SUMMARY §25.
+- Never `source`/`.` the production `.env`: use `infrastructure/scripts/env-file.sh` (`luxe_load_env FILE`, or
+  `bash env-file.sh FILE cmd…`). Nightly chain = `infrastructure/backups/nightly_backup.sh`.
+- Every `docker compose` command must run under `COMPOSE_PROJECT_NAME` from `shared/.env`
+  (`compose-project.sh`: `luxe_ensure_compose_project`, `luxe_check_db_volume`). Do not add a top-level `name:`
+  to docker-compose.yml — it would override the detected name of an existing server.
+- Rollback = `up -d --build`. Backend image has no compiler: keep dependencies wheel-only.
+
+## 0k. ARABIC SHOP ON A PHONE (2026-11-12)
 Details: WORK_SUMMARY §23. Storefront: `L(fr, ar, en)` for any visible text, `wilayaName(w)`, `ltr(text)` around
 anything left-to-right inside Arabic; `formatDZD()` already isolates prices in Arabic — never build "… DA" by hand.
 Left in French in Arabic: static pages (STATIC_PAGES_CONTENT), footer, tracking modal.

@@ -6,9 +6,9 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
     UPLOAD_DIR=/var/lib/luxe/uploads \
     BACKUP_DIR=/var/lib/luxe/backups
 
-RUN apt-get update && apt-get install -y --no-install-recommends \
-    libpq-dev gcc && rm -rf /var/lib/apt/lists/*
-
+# Every dependency ships a ready-made wheel (psycopg[binary] bundles libpq):
+# no compiler or system packages, ~200 MB less per image, faster builds on
+# the 1-vCPU server. CI starts the image and loads them (ci.yml, job 7).
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
