@@ -498,6 +498,20 @@ once (from `/opt/luxe/current`) so the nightly backup uses the new safe loader.
 Also: Arabic order tracking (window, messages) translated; the order-tracking code no longer hides the `L()` helper.
 
 
+## 26. CI was red — five causes, all fixed
+
+CI had been failing on this branch for several pushes while everything passed in the cloud container, because
+the container had older packages than a fresh CI machine. Found from the CI logs and fixed:
+
+| CI job | Cause | Fix |
+|---|---|---|
+| Backend tests (PostgreSQL) — all 37 test files | `httpx` 0.28 (installed fresh in CI) removed the `app=` argument that Starlette 0.25's test client uses | `httpx>=0.23,<0.28` in requirements |
+| Backend tests (SQLite) | The migration runner on an **empty** database marked the base schema as applied without creating it → "no such table: product_variants". Same would happen on any brand-new database run through the runner | The runner creates the base tables first when they are missing (checked on empty SQLite and empty PostgreSQL) |
+| Dependency audit | Vite 5 / esbuild advisories (development server only: path traversal, cross-origin requests) and `zod` — an unused CMS dependency | Vite 7 in the shop and the CMS (both build, e2e 33/33 on it); `zod` removed; `npm audit` = 0 for both |
+| Lint (actionlint) | The `raven-actions/actionlint` wrapper installs `@actions/tool-cache` into the workspace; its newest version cannot be `require()`d — the step crashed before linting | Official `rhysd/actionlint:1.7.12` image run directly |
+| End-to-end (tests green, job red) | `setup-python` asked to cache pip while installs used `--no-cache-dir` → the cache folder never existed and saving it failed | `--no-cache-dir` removed in the three jobs that cache pip |
+
+
 ## Verification
 
 | Check | Result |

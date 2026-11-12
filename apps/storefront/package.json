@@ -8,13 +8,12 @@
     "build": "tsc && vite build",
     "preview": "vite preview --port 4173"
   },
-  "dependencies": {},
   "devDependencies": {
     "autoprefixer": "^10.4.19",
     "postcss": "^8.4.39",
     "tailwindcss": "^3.4.6",
     "typescript": "^5.5.3",
-    "vite": "^5.3.4"
+    "vite": "^7.3.8"
   },
   "description": "Mus Luxury online shop: a single index.html (vanilla JS) styled by Tailwind."
 }

@@ -170,6 +170,15 @@ def ensure_baseline(conn, is_postgres: bool) -> None:
         checksum = hashlib.sha256(body.encode("utf-8")).hexdigest()
     except OSError:
         return
+    # A brand-new, empty database: create the base tables first, otherwise
+    # every later migration fails on a missing table ("no such table").
+    cur.execute(
+        "SELECT 1 FROM information_schema.tables WHERE table_name = 'products'"
+        if is_postgres else
+        "SELECT name FROM sqlite_master WHERE type='table' AND name='products'"
+    )
+    if not cur.fetchone():
+        conn.executescript(body)
     if is_postgres:
         conn.execute(
             "INSERT INTO schema_migrations (version, filename, checksum) "

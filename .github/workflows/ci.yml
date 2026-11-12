@@ -86,10 +86,12 @@ jobs:
         run: find infrastructure -type f -name '*.sh' -print0 | xargs -0 shellcheck -S warning
 
       - name: Lint GitHub workflows (actionlint)
-        uses: raven-actions/actionlint@3a24062651993d40fed1019b58ac6fbdfbf276cc  # v2.0.0
-        with:
-          fail-on-error: true
-          flags: "-ignore 'SC2006' -ignore 'SC2086'"
+        # The official actionlint image, pinned. (The raven-actions wrapper broke:
+        # it installs @actions/tool-cache into the workspace, whose newest
+        # version cannot be require()d — the step failed before linting.)
+        run: >-
+          docker run --rm -v "$PWD:/repo" -w /repo rhysd/actionlint:1.7.12
+          -color -ignore 'SC2006' -ignore 'SC2086'
 
   # ------------------------------------------------------------------ 3. Migration safety
   migrations-validate:
@@ -138,7 +140,7 @@ jobs:
           sudo apt-get install -y nodejs node-babel7
       - name: Install dependencies
         working-directory: ./backend
-        run: pip install --no-cache-dir -r requirements.txt
+        run: pip install -r requirements.txt
       - name: Run migration up (SQLite)
         working-directory: ./backend
         run: python -m app.migration_runner up
@@ -183,7 +185,7 @@ jobs:
           sudo apt-get install -y nodejs node-babel7 postgresql-client
       - name: Install dependencies
         working-directory: ./backend
-        run: pip install --no-cache-dir -r requirements.txt
+        run: pip install -r requirements.txt
       - name: Load initial schema
         env:
           PGPASSWORD: luxe_ci_password
@@ -283,7 +285,7 @@ jobs:
             e2e/package-lock.json
       - name: Install backend dependencies
         working-directory: ./backend
-        run: pip install --no-cache-dir -r requirements.txt
+        run: pip install -r requirements.txt
       - name: Install shop, CMS and test dependencies
         run: |
           npm ci --prefix apps/storefront --audit=false --fund=false
