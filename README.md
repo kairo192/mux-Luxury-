@@ -55,14 +55,16 @@ luxe-ecommerce/
 
 ## 3. Production Documentation Index
 
-- [System Architecture](file:///c:/Users/MOURAD/Desktop/mix%20luxury/luxe-ecommerce/docs/architecture/SYSTEM_ARCHITECTURE.md)
-- [Octenium VPS Deployment Guide](file:///c:/Users/MOURAD/Desktop/mix%20luxury/luxe-ecommerce/docs/deployment/VPS_DEPLOYMENT.md)
-- [CI/CD & GitHub Actions](file:///c:/Users/MOURAD/Desktop/mix%20luxury/luxe-ecommerce/docs/deployment/CI_CD.md)
-- [Security Hardening Standards](file:///c:/Users/MOURAD/Desktop/mix%20luxury/luxe-ecommerce/docs/security/SECURITY_HARDENING.md)
-- [Secrets Management Policy](file:///c:/Users/MOURAD/Desktop/mix%20luxury/luxe-ecommerce/docs/security/SECRETS_MANAGEMENT.md)
-- [Backup & Disaster Recovery Runbook](file:///c:/Users/MOURAD/Desktop/mix%20luxury/luxe-ecommerce/docs/operations/BACKUP_AND_RESTORE.md)
-- [Operations & Routine Maintenance](file:///c:/Users/MOURAD/Desktop/mix%20luxury/luxe-ecommerce/docs/operations/MAINTENANCE.md)
-- [Troubleshooting & Diagnostics](file:///c:/Users/MOURAD/Desktop/mix%20luxury/luxe-ecommerce/docs/operations/TROUBLESHOOTING.md)
+- [System Architecture](docs/architecture/SYSTEM_ARCHITECTURE.md)
+- [Desktop CMS / POS architecture](apps/desktop-cms/ARCHITECTURE.md) — folders, data flow, permissions, how to add a screen
+- [Operations guide for the owner](docs/OPERATIONS_GUIDE.md)
+- [Octenium VPS Deployment Guide](docs/deployment/VPS_DEPLOYMENT.md)
+- [CI/CD & GitHub Actions](docs/deployment/CI_CD.md)
+- [Security Hardening Standards](docs/security/SECURITY_HARDENING.md)
+- [Secrets Management Policy](docs/security/SECRETS_MANAGEMENT.md)
+- [Backup & Disaster Recovery Runbook](docs/operations/BACKUP_AND_RESTORE.md)
+- [Operations & Routine Maintenance](docs/operations/MAINTENANCE.md)
+- [Troubleshooting & Diagnostics](docs/operations/TROUBLESHOOTING.md)
 
 ---
 

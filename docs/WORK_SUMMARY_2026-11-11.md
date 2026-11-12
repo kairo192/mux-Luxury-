@@ -555,6 +555,25 @@ SQL-looking text, NUL and invisible characters), on SQLite and PostgreSQL. All g
 Test file `test_input_hygiene.py` (NUL, override characters, French message, uploads unaffected).
 
 
+## 30. CMS architecture: App.tsx was doing everything
+
+`App.tsx` was 3 047 lines: the shell *and* five whole screens. Now it is the shell (setup, login, session,
+workspace loading, layout, sidebar, notifications, shared catalogue/order actions) and every screen is a
+file in `pages/`:
+
+| Screen | Now | Data |
+|---|---|---|
+| Tableau de bord | `pages/DashboardPage.tsx` | from App (props) |
+| Produits | `pages/ProductsPage.tsx` (list, search, tabs, bulk actions; derived list moved with it) | from App (props) |
+| Stock | `pages/InventoryPage.tsx` | from App (props) |
+| Commandes | `pages/OrdersPage.tsx` | from App (props) |
+| Contenu & Bannières | `pages/ContentSettingsPage.tsx` | **loads and saves its own** (no longer fetched by every workspace refresh) |
+
+`App.tsx` 3 047 → 1 682 lines; behaviour unchanged — checked after each step: TypeScript clean, browser tests
+34/34, backend 315/315 (including the four tests that compile the CMS sources). New guide:
+`apps/desktop-cms/ARCHITECTURE.md` (folders, data flow, permissions, `utils/` by theme, how to add a screen).
+
+
 ## Verification
 
 | Check | Result |

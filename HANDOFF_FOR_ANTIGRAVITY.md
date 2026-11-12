@@ -7,7 +7,13 @@
 
 ---
 
-## 0l. DEPLOY REHEARSAL FIXES (2026-11-12, latest)
+## 0m. CMS ARCHITECTURE — READ apps/desktop-cms/ARCHITECTURE.md FIRST (2026-11-12, latest)
+- App.tsx is the shell only (3047 → 1682 lines). Screens live in `pages/`: Dashboard, Products, Inventory,
+  Orders and Contenu were moved out (`DashboardPage`, `ProductsPage`, `InventoryPage`, `OrdersPage`,
+  `ContentSettingsPage`). New screens follow ARCHITECTURE.md §5. Keep the keep-alive containers in App.tsx.
+- `ContentSettingsPage` loads/saves its own data; the others get shared data as typed props.
+
+## 0l. DEPLOY REHEARSAL FIXES (2026-11-12)
 Details: WORK_SUMMARY §25.
 - Never `source`/`.` the production `.env`: use `infrastructure/scripts/env-file.sh` (`luxe_load_env FILE`, or
   `bash env-file.sh FILE cmd…`). Nightly chain = `infrastructure/backups/nightly_backup.sh`.

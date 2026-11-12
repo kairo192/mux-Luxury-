@@ -25,7 +25,7 @@ git fetch origin feat/pos-core-cash-register-18lsk6
 git checkout feat/pos-core-cash-register-18lsk6
 git pull origin feat/pos-core-cash-register-18lsk6
 ```
-Read, in this order: `docs/WORK_SUMMARY_2026-11-11.md` (sections 17–29), `HANDOFF_FOR_ANTIGRAVITY.md` (sections 0e–0l),
+Read, in this order: `docs/WORK_SUMMARY_2026-11-11.md` (sections 17–30), `HANDOFF_FOR_ANTIGRAVITY.md` (sections 0e–0m),
 `docs/OPERATIONS_GUIDE.md` (§5 backups, §7c), `docs/deployment/VPS_DEPLOYMENT.md`, `e2e/README.md`.
 
 ## 2. Verify on Windows
