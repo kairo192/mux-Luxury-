@@ -4,8 +4,8 @@
   "description": "End-to-end tests: the shop and the back office (CMS) in a real browser against a fresh production-mode API.",
   "scripts": {
     "test": "playwright test",
-    "test:shop": "playwright test tests/shop",
-    "test:cms": "playwright test tests/cms",
+    "test:shop": "playwright test 03-shop",
+    "test:cms": "playwright test 01-first 02-catalogue 04-cms 05-cms 06-cms 07-backups",
     "report": "playwright show-report"
   },
   "devDependencies": {

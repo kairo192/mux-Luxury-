@@ -288,6 +288,23 @@ class TestBusinessFlow(unittest.TestCase):
             if etag:
                 self.assertEqual(self.c.get(path, headers={"If-None-Match": etag}).status_code, 304, path)
 
+        # Shared server cache (1 vCPU): repeated loads are answered from it, and
+        # a change made in the CMS empties it at once.
+        from app import main as m
+        m.public_cache_clear()
+        self.c.get("/api/v1/products", params={"page_size": 50})
+        self.assertTrue(any(k.startswith("/api/v1/products?") for k in m._PUBLIC_CACHE), "answer kept for other visitors")
+        items = self.c.get("/api/v1/products", params={"page_size": 50}).json()["items"]
+        if items:
+            prod = items[0]
+            full = next(p for p in self.get("/admin/products")["items"] if p["id"] == prod["id"])
+            new_price = int(full["selling_price_dzd"]) + 100
+            self.ok(self.c.put(f"/api/v1/admin/products/{prod['id']}", headers=self.h,
+                               json={**full, "selling_price_dzd": new_price, "expected_version": full["version"]}))
+            again = self.c.get("/api/v1/products", params={"page_size": 50}).json()["items"]
+            self.assertEqual(next(p for p in again if p["id"] == prod["id"])["selling_price_dzd"], new_price,
+                             "a CMS change is visible on the very next shop request")
+
 
     def test_order_tracking_shows_only_public_fields(self):
         pr = self.c.get("/api/v1/products", params={"page_size": 50}).json()["items"]

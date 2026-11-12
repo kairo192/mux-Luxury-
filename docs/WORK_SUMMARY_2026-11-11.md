@@ -393,10 +393,34 @@ and variant buttons had no accessible name / pressed state (fixed: screen reader
 **Clean code:** backend lint clean (incl. unused imports / variables); CMS now compiles with
 `noUnusedLocals` + `noUnusedParameters` (56 unused imports, states and handlers removed — including three
 lists fetched at every login and never shown); no debug output, no TODO/FIXME; stale comments fixed; the
-login brute-force limit is a setting (`LOGIN_ATTEMPTS_PER_MINUTE`, default 5); original specification notes
+login brute-force limit is a setting (`LOGIN_ATTEMPTS_PER_MINUTE`, default 5, never above 30); original specification notes
 moved to `docs/specs/`, Windows helpers to `scripts/windows/`; the Windows-only Chrome script replaced by
 the suite; README updated. Not removed: 12 photos in `apps/storefront/public/assets` that nothing
 references (~16 MB, e.g. `store_photo_01…04.jpg`, `01…05.jpg`) — they look like the owner's real shop photos.
+
+---
+
+## 20. Sized for the real server (1 vCPU, 2 GB RAM, 40 GB disk) + backups on the owner's PC
+
+| Risk on this server | Change |
+|---|---|
+| Nightly **full** photo archive kept 30 days: 30× the photos, more than 40 GB | Photos archived only when they change, newest 3 kept (never pruned by age); database 30 days; under 15 % free disk photos are skipped, under 7 % dumps older than 7 days are removed; warnings and `disk_free_pct` in `last_backup_status.json` (tested by running the script: unchanged photos, low disk, keep 3) |
+| Backup snapshot built entirely in memory in the 256 MB API container | Streamed table by table (server-side cursor on PostgreSQL): **1.5 MB peak instead of 38 MB** for the same data; test guards it |
+| Phone photos stored at full size (3–12 MB, with GPS in the camera data); 5 MB limit refused many | Uploads up to 15 MB are turned upright, stripped of metadata, reduced to 1600 px and saved as JPEG (WebP if transparent): a few hundred KB; huge PNG/WebP refused (memory); nginx allows 16 MB only on the upload route |
+| Every shop visitor's once-a-minute refresh rebuilt the product list | Shared 5 s server cache for products / categories / delivery prices, emptied by any change (4× less work per visit with 4 products, more with a real catalogue); a CMS change is still visible on the next request (test) |
+
+**Copies on the owner's PC** (requested): the desktop CMS copies the newest backup to
+`Documents\\Mus Luxury\\Sauvegardes` 20 s after the owner logs in and every 6 h (newest 60 kept); *Copier sur ce PC*
+per backup; *Copies sur ce PC* list with *Renvoyer au serveur*; send back from a file. Server side: download is owner
+only, **encrypted files only**, audited; an import must decrypt with this server's key and be a store backup (junk,
+tampered, other-key files refused); nginx allows 110 MB only on that route. Browser spec `07-backups` covers the cycle.
+
+Also fixed from the code review of the test suite: `test:shop` / `test:cms` selected no tests; a single spec could
+not log in on its own (now creates its accounts); CI retries ran on half-changed data (off); the test login limit
+could be copied to production (setting now capped at 30, nginx keeps 5/min in front); accounting test safe across a
+month boundary; secret-scanner exemption reduced to the two test passwords; API launcher reports a crash as a
+failure and runs on older Node 20; CI caches npm and Chromium. And in *Achats*, a product without a cost no longer
+pre-fills an invented 2 500 DA.
 
 ---
 

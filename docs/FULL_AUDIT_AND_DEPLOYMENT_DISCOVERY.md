@@ -1,7 +1,7 @@
 # MUS LUXURY (`LUXE`) — FULL CODEBASE AUDIT & DEPLOYMENT DISCOVERY REPORT
 
 **Target Platform:** Mus Luxury E-Commerce & Retail ERP Monorepo  
-**Production Host:** Octenium Ubuntu VPS (1 Intel Xeon vCore, 2 GB RAM, 150 GB RAID 10, Fixed Public IPv4)  
+**Production Host:** Octenium Ubuntu VPS (1 Intel Xeon vCore, 2 GB RAM, 40 GB NVMe, Fixed Public IPv4)  
 **Production Domain:** `mus-luxury.com`  
 **Audit Date:** November 9, 2026  
 **Auditor Roles:** Senior Software Architect, DevOps Engineer, Database Architect, Application Security Engineer  
@@ -328,7 +328,7 @@ Defensive source-code audit findings, classified by severity:
 ### VPS Specifications
 - **Provider:** Octenium
 - **Operating System:** Ubuntu 22.04 or 24.04 LTS
-- **Hardware Profile:** 1 Intel Xeon vCore, 2 GB RAM, 150 GB RAID 10 storage, 250 Mbps bandwidth, 1 fixed IPv4 address.
+- **Hardware Profile:** 1 Intel Xeon vCore, 2 GB RAM, 40 GB NVMe storage, 250 Mbps bandwidth, 1 fixed IPv4 address.
 - **Domain:** `mus-luxury.com` (API: `api.mus-luxury.com`)
 
 ### Memory Budgeting for 2 GB RAM

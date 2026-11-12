@@ -175,10 +175,18 @@ unsigned and the PCs do not look for updates.*
 ### 5.1 What is backed up, and when
 | When | What | Who triggers it |
 |---|---|---|
-| Every night at 03:30 | Full database (native PostgreSQL copy) + all photos + a "CMS snapshot" | Automatic (server) |
+| Every night at 03:30 | Full database (native PostgreSQL copy) + a "CMS snapshot" + the photos **when they changed** | Automatic (server) |
+| 20 s after the owner opens the desktop CMS, then every 6 h | A copy of the newest backup on **this PC** (`Documents\\Mus Luxury\\Sauvegardes`, newest 60 kept) | Automatic (desktop app, owner account) |
 | Before every production deploy | Same full set | Automatic |
 | Before every **restore** or **New database** | CMS snapshot ("Avant restauration" / "Avant remise à zéro") | Automatic |
 | Any time | CMS snapshot (+ photos if ticked) | Owner: **Sauvegarder maintenant** |
+
+**Why copies on the PC:** the server has a 40 GB disk, so it keeps a limited history (database
+30 days, the 3 newest photo archives). The PC keeps 60 copies more. They stay **encrypted**: a lost or stolen
+PC gives nothing without the backup key (keep that key in a password manager, guide §5.2).
+In *Sauvegardes & Sécurité*: **Copier sur ce PC** on any backup; **Copies sur ce PC** lists them; **Renvoyer au
+serveur** (or *Renvoyer une copie depuis un fichier…*) sends one back — for example to a new server — and it
+then appears in the list, to be restored with **Restaurer** (password + RESTAURER).
 
 ### 5.2 Protection
 * **Encrypted** with AES-256 using the server's backup key. A stolen backup

@@ -9,14 +9,47 @@ export const OWNER = { name: "Propriétaire E2E", email: "owner.e2e@musluxury.dz
 export const CASHIER = { name: "Caissière E2E", email: "caisse.e2e@musluxury.dz", password: "Caisse-E2E-2026!" };
 
 // ---------------------------------------------------------------- server API
+const ACCOUNTS: Record<string, { password: string }> = {
+  [OWNER.email]: { password: OWNER.password },
+  [CASHIER.email]: { password: CASHIER.password },
+};
 const tokens = new Map<string, string>();
 
-export async function token(email = OWNER.email, password = OWNER.password): Promise<string> {
-  const cached = tokens.get(email);
-  if (cached) return cached;
-  const r = await fetch(`${API}/api/v1/admin/auth/login`, {
+async function rawLogin(email: string, password: string): Promise<Response> {
+  return fetch(`${API}/api/v1/admin/auth/login`, {
     method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ email, password }),
   });
+}
+
+/** Makes sure the test account exists, so any spec can also run on its own
+ *  (normally 01-first-installation creates them through the screens). */
+export async function ensureAccount(email: string): Promise<void> {
+  const known = ACCOUNTS[email];
+  if (!known) throw new Error(`unknown test account ${email}`);
+  if ((await rawLogin(email, known.password)).ok) return;
+  if (email === OWNER.email) {
+    const r = await fetch(`${API}/api/v1/admin/auth/initialize-owner`, {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ full_name: OWNER.name, email: OWNER.email, password: OWNER.password, emergency_phone: OWNER.phone }),
+    });
+    if (r.status !== 201) throw new Error(`owner setup: ${r.status} ${await r.text()}`);
+    return;
+  }
+  const roles = (await api<any>("/admin/roles")).items as any[];
+  await api("/admin/users", { body: { email: CASHIER.email, full_name: CASHIER.name, password: CASHIER.password,
+    role_id: roles.find((r) => r.name === "cashier").id } });
+}
+
+export async function token(email = OWNER.email): Promise<string> {
+  const cached = tokens.get(email);
+  if (cached) return cached;
+  const known = ACCOUNTS[email];
+  if (!known) throw new Error(`unknown test account ${email}`);
+  let r = await rawLogin(email, known.password);
+  if (r.status === 401) {
+    await ensureAccount(email);
+    r = await rawLogin(email, known.password);
+  }
   if (!r.ok) throw new Error(`login ${email}: ${r.status} ${await r.text()}`);
   const t = (await r.json()).access_token as string;
   tokens.set(email, t);
@@ -25,15 +58,16 @@ export async function token(email = OWNER.email, password = OWNER.password): Pro
 
 /** Calls the admin API as the owner (or `as`); throws on an unexpected status. */
 export async function api<T = any>(path: string, init: { method?: string; body?: unknown; headers?: Record<string, string>; as?: string; expect?: number[] } = {}): Promise<T> {
-  const tok = await token(init.as ?? OWNER.email, init.as === CASHIER.email ? CASHIER.password : OWNER.password);
+  const method = init.method ?? (init.body === undefined ? "GET" : "POST");
+  const tok = await token(init.as ?? OWNER.email);
   const r = await fetch(`${API}/api/v1${path}`, {
-    method: init.method ?? (init.body === undefined ? "GET" : "POST"),
+    method,
     headers: { "Content-Type": "application/json", Authorization: `Bearer ${tok}`, ...(init.headers || {}) },
     body: init.body === undefined ? undefined : JSON.stringify(init.body),
   });
   const ok = init.expect ?? [200, 201];
   const text = await r.text();
-  if (!ok.includes(r.status)) throw new Error(`${init.method ?? "GET"} ${path}: ${r.status} ${text.slice(0, 300)}`);
+  if (!ok.includes(r.status)) throw new Error(`${method} ${path}: ${r.status} ${text.slice(0, 300)}`);
   return (text ? JSON.parse(text) : {}) as T;
 }
 
@@ -104,6 +138,7 @@ export async function closeMessageBoxes(page: Page) {
 }
 
 export async function cmsLogin(page: Page, who: { email: string; password: string } = OWNER, lang: "fr" | "en" | "ar" = "fr") {
+  await ensureAccount(who.email);
   await page.goto(CMS);
   await page.evaluate((l) => localStorage.setItem("luxe_cms_lang", l), lang);
   await page.reload();

@@ -27,11 +27,21 @@ To ensure high stability on the 2 GB RAM / 1 vCore Octenium VPS, strict memory a
 | :--- | :--- | :---: | :---: | :---: | :---: |
 | `luxe_postgres` | PostgreSQL 16 Alpine | 256 MB | 0.50 | 5432 | **None** (Private bridge) |
 | `luxe_api` | FastAPI Python 3.11 | 256 MB | 0.50 | 8000 | **None** (Internal bridge) |
-| `luxe_storefront` | React 18 Storefront | 32 MB | 0.15 | 80 | **None** (Internal bridge) |
+| `luxe_storefront` | Online shop (static index.html) | 32 MB | 0.15 | 80 | **None** (Internal bridge) |
 | `luxe_proxy` | Nginx 1.27 Alpine | 64 MB | 0.25 | 80, 443 | **80, 443** (Public) |
 | **Total** | | **608 MB** | **1.40** | | |
 
 *Remaining RAM (~1.4 GB) is reserved for Ubuntu OS kernel, disk buffers, SSH daemon, and system maintenance tasks.*
+
+### Keeping a 1 vCPU / 2 GB / 40 GB server comfortable
+
+| Pressure | What keeps it small |
+|---|---|
+| Disk (40 GB) | Photos reduced to 1600 px / ~300 KB on upload; nightly photo archive only when photos changed, newest 3 kept; database dumps 30 days; backup skips photos under 15 % free disk and drops dumps older than 7 days under 7 % (warning in `last_backup_status.json`); Docker logs rotated (10 MB); copies of every backup on the owner's PC |
+| Memory (API 256 MB) | Backup snapshot streamed table by table (≈1.5 MB peak instead of the whole database); photos decoded at reduced scale; one API process, database pool 15 ≤ 30 connections |
+| CPU (1 vCPU) | Shop lists (products, categories, delivery) computed once and shared for 5 s, emptied by any change; shop pages poll once a minute and only while visible; builds and tests run on GitHub, never on the VPS; backups at 03:30 |
+
+Check on the server: `nproc; free -h; df -h /; docker stats --no-stream; sudo du -sh /var/lib/luxe/backups`.
 
 ---
 

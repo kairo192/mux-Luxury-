@@ -272,8 +272,8 @@ export function sanitizeAndTranslateError(
   // 7. File Size Too Large (413)
   if (status === 413 || lower.includes("exceeds maximum allowed size")) {
     return {
-      title: "Image trop volumineuse (Max 5 Mo)",
-      message: "Le fichier sélectionné dépasse la limite de 5 Mo. Veuillez compresser l'image ou choisir un format JPEG, PNG ou WEBP.",
+      title: "Image trop volumineuse (max. 15 Mo)",
+      message: "Le fichier sélectionné dépasse 15 Mo. Choisissez une photo JPEG, PNG ou WEBP plus légère.",
       code: "PAYLOAD_TOO_LARGE",
       status: 413,
     };

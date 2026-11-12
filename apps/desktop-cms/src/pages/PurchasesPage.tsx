@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from "react";
 import { DesktopCmsApi } from "../api/adminClient";
 import { notifyClientError, notifyClientSuccess, notifyClientWarning, confirmClientAction } from "../utils/clientNotifier";
-import { 
+import {
   Building2,
   Clock,
   CheckCircle2,
@@ -81,12 +81,11 @@ export function PurchasesPage({ onInventoryUpdated }: { onInventoryUpdated?: () 
       }
       if (!selectedProdId && (prodRes.items || []).length > 0) {
         setSelectedProdId(prodRes.items[0].id);
-        setLineCost(prodRes.items[0].purchase_cost_dzd || 2500);
+        setLineCost(prodRes.items[0].purchase_cost_dzd || 0);
       }
     } catch (err: any) {
       const tr = notifyClientError(err, "Erreur chargement des achats");
       setError(tr.message);
-    } finally {
     }
   }
 

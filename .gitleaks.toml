@@ -13,14 +13,16 @@ regexes = [
   '''<editor@2050>''',
   '''ci_only_ephemeral_[A-Za-z0-9_]+''',
   '''test_only_ephemeral_[A-Za-z0-9_]+''',
+  # Browser tests (e2e/): accounts that only exist in the throwaway test
+  # database. Only these exact strings are exempt; the folder is still scanned.
+  '''Proprio-E2E-2026!''',
+  '''Caisse-E2E-2026!''',
 ]
 paths = [
   '''(^|/)\.env\.example$''',
   '''(^|/)infrastructure/environments/.*\.env\.example$''',
   '''(^|/)docs/''',
   '''(^|/)backend/tests/''',
-  # Browser tests: accounts that only exist in the throwaway test database.
-  '''(^|/)e2e/(tests|support)/''',
   '''(^|/).github/workflows/ci\.yml$''',
   '''(^|/).gitleaks\.toml$''',
 ]

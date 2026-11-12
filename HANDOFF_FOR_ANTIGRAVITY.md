@@ -7,12 +7,25 @@
 
 ---
 
-## 0g. BROWSER TEST SUITE + CLEAN CODE (2026-11-12, latest)
+## 0h. REAL SERVER SIZE + BACKUPS ON THE OWNER'S PC (2026-11-12, latest)
+VPS = 1 vCPU, 2 GB RAM, **40 GB** disk (confirmed by the owner). Details: WORK_SUMMARY §20, VPS_DEPLOYMENT.md.
+- Backup script: photos only when changed (`.media_manifest`), `BACKUP_MEDIA_KEEP=3`, `BACKUP_MIN_FREE_PCT=15`.
+- `backup_engine.write_snapshot()` streams; never go back to building the snapshot in memory.
+- PC copies: `GET /admin/system/backups/{name}/download` (owner, `.enc` only, audited),
+  `POST /admin/system/backups/import`; Tauri commands `backup_copy_save/list/read` (src-tauri/src/backup_copies.rs),
+  `utils/backupCopies.ts`, auto-copy effect in App.tsx (owner, desktop app).
+- Uploads: `_optimize_product_image` (Pillow, 1600 px, EXIF stripped), 15 MB limit; nginx 16M on /admin/upload,
+  110M on /backups/import, 6M elsewhere.
+- `public_catalog_cache` middleware (5 s, cleared by any POST/PUT/PATCH/DELETE under /api/v1/).
+- On Windows: build the desktop app once to check the new Rust module (`cargo check` passed here; linking needs
+  libcups only on Linux).
+
+## 0g. BROWSER TEST SUITE + CLEAN CODE (2026-11-12)
 - `e2e/` (Playwright 1.63): `npm run test:e2e` (or `npm --prefix e2e test`). Own stack on ports
   18000/11420/15173, fresh production-mode DB (`E2E_DATABASE_URL` for PostgreSQL). Must stay green; CI job `e2e`.
   When you change a screen, run it; when you add a screen, `06-cms-all-screens` covers it automatically.
 - CMS `tsconfig`: `noUnusedLocals` / `noUnusedParameters` are ON — `npm run build` fails on dead code.
-- `npm run lint` = ruff + tsc. Server setting `LOGIN_ATTEMPTS_PER_MINUTE` (default 5, tests use 500).
+- `npm run lint` = ruff + tsc. Server setting `LOGIN_ATTEMPTS_PER_MINUTE` (default 5, capped at 30; tests use 30; nginx keeps 5/min in front).
 - Specs moved to `docs/specs/` (e.g. `docs/specs/claude code.md`); Windows helpers in `scripts/windows/`.
 
 ## 0f. BUSINESS CONNECTED END TO END (2026-11-12)

@@ -37,10 +37,16 @@ Useful: `npm --prefix e2e run test:shop`, `npm --prefix e2e run test:cms`,
 | `03-shop` | Home, Arabic/English, product page, cart, phone validation, promo code checkout (server order = what the customer saw), stock reserved, order tracking, sold-out item |
 | `04-cms-operations` | Online order through every status (cash collected on delivery, cancel puts stock back); till sale with change, refund, register close with a shortage; damaged-stock loss; unpaid expense then payment |
 | `05-cms-finance` | Supplier purchase (stock, landed cost, debt, bank payment); every report exports a French CSV; Comptabilité = Analytique, each tab exports its CSV; a cashier cannot read the money |
+| `07-backups` | Owner backs up, copies the encrypted file to the PC, sends it back (listed for restore, audited); a cashier is refused |
 | `06-cms-all-screens` | Every CMS screen in FR / EN / AR for the owner and a cashier: no crash, no console error, no refused call, no `NaN` / `undefined` / raw key on screen |
 
 Every test fails on a page crash, a console error or an unexpected failed
 API call (`support/helpers.ts → watch()`).
 
-The specs run in order, like a shop's first days (one worker): the first file
-creates the owner and the cashier the others use.
+The specs run in order, like a shop's first days (one worker, no retries: a
+retry would run on the data left by the failed attempt). The first file creates
+the owner and the cashier through the screens; any other spec run on its own
+creates the accounts it needs (`ensureAccount`), so
+`npx playwright test 03-shop` works alone.
+
+Covered too: `07-backups` (backup, encrypted copy to the PC, send it back).

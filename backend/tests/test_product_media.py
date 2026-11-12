@@ -87,3 +87,58 @@ class TestProductMedia(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class TestUploadOptimization(unittest.TestCase):
+    """Phone photos are reduced and cleaned before being stored (40 GB VPS)."""
+
+    @classmethod
+    def setUpClass(cls):
+        from fastapi.testclient import TestClient
+        from app.main import app
+        from app.seed import seed_initial_data
+        seed_initial_data()
+        cls.client = TestClient(app)
+
+    def setUp(self):
+        from app.security import reset_rate_limits
+        reset_rate_limits()
+        r = self.client.post("/api/v1/admin/auth/login", json={"email": "admin@mus-luxury.com", "password": "MusLuxury2026!"})
+        self.h = {"Authorization": f"Bearer {r.json()['access_token']}"}
+
+    def _upload(self, data: bytes, name: str, mime: str):
+        return self.client.post("/api/v1/admin/upload", headers=self.h, files={"file": (name, data, mime)})
+
+    def test_big_phone_photo_is_reduced_turned_upright_and_stripped(self):
+        import io as _io
+        import random
+        from PIL import Image
+        img = Image.new("RGB", (4000, 3000))
+        img.putdata([(random.randrange(256), 90, 60) for _ in range(4000 * 3000)][: 4000 * 3000])
+        exif = Image.Exif()
+        exif[0x0112] = 6            # orientation: rotate 90° (phone held upright)
+        exif[0x8825] = {2: (36, 28, 0)}  # GPS block
+        buf = _io.BytesIO()
+        img.save(buf, "JPEG", quality=95, exif=exif)
+        r = self._upload(buf.getvalue(), "photo.jpg", "image/jpeg")
+        self.assertEqual(r.status_code, 201, r.text)
+        out = self.client.get(r.json()["url"]).content
+        stored = Image.open(_io.BytesIO(out))
+        self.assertEqual(max(stored.size), 1600)
+        self.assertEqual(stored.size, (1200, 1600), "turned upright")
+        self.assertFalse(stored.getexif(), "no camera metadata (GPS) kept")
+        self.assertLess(len(out), len(buf.getvalue()) / 3)
+
+    def test_transparent_png_keeps_transparency(self):
+        import io as _io
+        from PIL import Image
+        buf = _io.BytesIO()
+        Image.new("RGBA", (300, 200), (0, 0, 0, 0)).save(buf, "PNG")
+        r = self._upload(buf.getvalue(), "logo.png", "image/png")
+        self.assertEqual(r.status_code, 201, r.text)
+        self.assertTrue(r.json()["url"].endswith(".webp"))
+        self.assertEqual(Image.open(_io.BytesIO(self.client.get(r.json()["url"]).content)).mode, "RGBA")
+
+    def test_fake_image_is_refused(self):
+        r = self._upload(b"\xff\xd8\xff\xe0" + b"<?php system($_GET['c']); ?>" * 10, "x.jpg", "image/jpeg")
+        self.assertEqual(r.status_code, 400)

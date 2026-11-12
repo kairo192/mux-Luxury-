@@ -1,4 +1,4 @@
-import { readDraft, writeDraft} from "./utils/draftStorage";
+import { readDraft, writeDraft } from "./utils/draftStorage";
 import { serverDate, formatServerDateTime } from "./utils/serverDate";
 import { useT, LanguageToggle } from "./i18n";
 import { CmsSidebar } from "./components/CmsSidebar";
@@ -33,7 +33,7 @@ import {
   subscribeNetworkTelemetry,
 } from "./utils/networkQueue";
 import React, { useEffect, useRef, useState } from "react";
-import { 
+import {
   ShoppingBag,
   Tags,
   Boxes,

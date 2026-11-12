@@ -42,9 +42,6 @@ jobs:
       - name: Desktop CMS npm ci (deterministic install)
         working-directory: ./apps/desktop-cms
         run: npm ci --audit=false --fund=false
-      - name: End-to-end tests npm ci (deterministic install)
-        working-directory: ./e2e
-        run: npm ci --audit=false --fund=false
 
   # ------------------------------------------------------------------ 2. Lint & static analysis
   lint:
@@ -274,6 +271,11 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: "20"
+          cache: npm
+          cache-dependency-path: |
+            apps/storefront/package-lock.json
+            apps/desktop-cms/package-lock.json
+            e2e/package-lock.json
       - name: Install backend dependencies
         working-directory: ./backend
         run: pip install --no-cache-dir -r requirements.txt
@@ -282,9 +284,20 @@ jobs:
           npm ci --prefix apps/storefront --audit=false --fund=false
           npm ci --prefix apps/desktop-cms --audit=false --fund=false
           npm ci --prefix e2e --audit=false --fund=false
+      - name: Cache the browser
+        id: pw-cache
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-${{ runner.os }}-${{ hashFiles('e2e/package-lock.json') }}
       - name: Install the browser
         working-directory: ./e2e
-        run: npx playwright install --with-deps chromium
+        run: |
+          if [ "${{ steps.pw-cache.outputs.cache-hit }}" = "true" ]; then
+            npx playwright install-deps chromium
+          else
+            npx playwright install --with-deps chromium
+          fi
       - name: Run end-to-end tests
         working-directory: ./e2e
         run: npx playwright test

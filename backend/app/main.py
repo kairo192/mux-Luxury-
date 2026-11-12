@@ -97,6 +97,53 @@ async def add_security_headers(request: Request, call_next):
         response.headers["Cache-Control"] = "no-store, no-cache, must-revalidate, private"
     return response
 
+# ----------------------------------------------------------------------------
+# Shared cache for the shop's public lists (1 vCPU / 2 GB VPS).
+# Every open shop page asks for the catalogue once a minute; without this,
+# each visitor made the server rebuild the whole product list. One answer is
+# now computed and served to everyone for at most 5 s, and the cache is
+# emptied at once by ANY change (CMS edit, order, till sale...), so the shop
+# still shows a new price or a sold-out bag immediately.
+# ----------------------------------------------------------------------------
+_PUBLIC_CACHE_PATHS = {"/api/v1/products", "/api/v1/categories", "/api/v1/delivery-zones"}
+_PUBLIC_CACHE_TTL_S = 5.0
+_PUBLIC_CACHE: Dict[str, tuple] = {}
+_SKIP_CACHED_HEADERS = {"content-length", "date", "x-request-id", "x-response-time-ms"}
+
+
+def public_cache_clear() -> None:
+    _PUBLIC_CACHE.clear()
+
+
+@app.middleware("http")
+async def public_catalog_cache(request: Request, call_next):
+    method = request.method.upper()
+    path = request.url.path
+    if method != "GET" or path not in _PUBLIC_CACHE_PATHS:
+        response = await call_next(request)
+        if method in ("POST", "PUT", "PATCH", "DELETE") and path.startswith("/api/v1/"):
+            public_cache_clear()
+        return response
+    gz = "gzip" in (request.headers.get("accept-encoding") or "")
+    key = f"{path}?{request.url.query}|{'gz' if gz else 'id'}"
+    hit = _PUBLIC_CACHE.get(key)
+    now = time.monotonic()
+    if hit and now - hit[0] < _PUBLIC_CACHE_TTL_S:
+        _, body, headers = hit
+        if request.headers.get("if-none-match") and request.headers.get("if-none-match") == headers.get("etag"):
+            return Response(status_code=304, headers={"ETag": headers["etag"], "Cache-Control": headers.get("cache-control", "")})
+        return Response(content=body, status_code=200, headers=headers)
+    response = await call_next(request)
+    if response.status_code != 200:
+        return response
+    body = b"".join([chunk async for chunk in response.body_iterator])
+    headers = {k: v for k, v in response.headers.items() if k.lower() not in _SKIP_CACHED_HEADERS}
+    if len(_PUBLIC_CACHE) > 200:  # many filter / page combinations: start over
+        public_cache_clear()
+    _PUBLIC_CACHE[key] = (now, body, headers)
+    return Response(content=body, status_code=200, headers=headers)
+
+
 @app.on_event("startup")
 def on_startup():
     seed_initial_data()
@@ -1344,9 +1391,10 @@ def _int_env(name: str, default: int, low: int, high: int) -> int:
 
 
 # Login attempts allowed per minute and per IP address (brute-force guard).
-# Keep the default in production; the automated browser tests raise it
-# because they log in dozens of times from one machine.
-_LOGIN_ATTEMPTS_PER_MINUTE = _int_env("LOGIN_ATTEMPTS_PER_MINUTE", 5, 1, 1000)
+# Default 5. The browser tests raise it (they log in many times from one
+# machine); it can never exceed 30, and in production nginx limits logins to
+# 5 per minute in front of the API anyway (zone auth_limit).
+_LOGIN_ATTEMPTS_PER_MINUTE = _int_env("LOGIN_ATTEMPTS_PER_MINUTE", 5, 1, 30)
 
 
 @app.post("/api/v1/admin/auth/login")
@@ -2452,7 +2500,48 @@ UPLOAD_STORAGE_DIR = _resolve_writable_dir("UPLOAD_DIR", "uploads")
 # BACKUP_STORAGE_DIR removed with the admin-facing /admin/backups endpoints;
 # the shell backup script owns its own directory via $BACKUP_DIR directly.
 
-MAX_UPLOAD_IMAGE_BYTES = 5 * 1024 * 1024
+# Phone photos are often 5-12 MB; they are reduced to a few hundred KB on
+# arrival (_optimize_product_image), so the upload limit can be generous.
+MAX_UPLOAD_IMAGE_BYTES = 15 * 1024 * 1024
+
+PRODUCT_IMAGE_MAX_SIDE = 1600
+
+
+def _optimize_product_image(data: bytes) -> tuple:
+    """Phone photos are 3-5 MB; the shop shows them at most ~800 px wide.
+    Each upload is turned upright (phone rotation), stripped of its metadata
+    (camera EXIF can hold the shop's GPS position), reduced to 1600 px and
+    re-encoded: JPEG, or WebP when it has transparency. A few hundred KB
+    instead of several MB: disk (40 GB), backups and mobile data."""
+    from PIL import Image, ImageOps
+
+    Image.MAX_IMAGE_PIXELS = 64_000_000  # refuse decompression bombs (a 48 MP phone photo is fine)
+    try:
+        img = Image.open(io.BytesIO(data))
+        if img.format != "JPEG" and img.width * img.height > 16_000_000:
+            # PNG / WebP decode at full size: keep within the API's 256 MB.
+            raise HTTPException(status_code=400, detail="Image trop grande (dimensions). Réduisez-la avant de l'envoyer.")
+        if img.format == "JPEG":
+            # Decode directly at a reduced scale: fast and light on memory.
+            img.draft("RGB", (PRODUCT_IMAGE_MAX_SIDE * 2, PRODUCT_IMAGE_MAX_SIDE * 2))
+        img = ImageOps.exif_transpose(img)
+        img.thumbnail((PRODUCT_IMAGE_MAX_SIDE, PRODUCT_IMAGE_MAX_SIDE), Image.LANCZOS)
+        transparent = img.mode in ("RGBA", "LA") or (img.mode == "P" and "transparency" in img.info)
+        out = io.BytesIO()
+        if transparent:
+            img.convert("RGBA").save(out, "WEBP", quality=85, method=4)
+            ext = ".webp"
+        else:
+            img.convert("RGB").save(out, "JPEG", quality=82, optimize=True, progressive=True)
+            ext = ".jpg"
+        return out.getvalue(), ext, img.size
+    except (Image.DecompressionBombError, Image.DecompressionBombWarning):
+        raise HTTPException(status_code=400, detail="Image trop grande (dimensions). Réduisez-la avant de l'envoyer.")
+    except HTTPException:
+        raise
+    except Exception:
+        raise HTTPException(status_code=400, detail="Image illisible ou endommagée.")
+
 
 @app.post("/api/v1/admin/upload", status_code=201)
 async def upload_product_image(
@@ -2461,15 +2550,15 @@ async def upload_product_image(
 ):
     data = await file.read(MAX_UPLOAD_IMAGE_BYTES + 1)
     if len(data) > MAX_UPLOAD_IMAGE_BYTES:
-        raise HTTPException(status_code=413, detail="Image trop lourde (5 Mo maximum)")
-    validate_uploaded_image(file.filename or "upload.jpg", file.content_type or "", data)
+        raise HTTPException(status_code=413, detail="Image trop lourde (15 Mo maximum)")
+    validate_uploaded_image(file.filename or "upload.jpg", file.content_type or "", data, max_bytes=MAX_UPLOAD_IMAGE_BYTES)
+    data, ext, (width, height) = _optimize_product_image(data)
     digest = hashlib.sha256(data).hexdigest()[:16]
-    ext = {"image/jpeg": ".jpg", "image/png": ".png", "image/webp": ".webp"}[file.content_type]
     safe_name = f"img_{digest}{ext}"
     dest_path = os.path.join(UPLOAD_STORAGE_DIR, safe_name)
     with open(dest_path, "wb") as uf:
         uf.write(data)
-    return {"filename": safe_name, "url": f"/uploads/{safe_name}", "size_bytes": len(data)}
+    return {"filename": safe_name, "url": f"/uploads/{safe_name}", "size_bytes": len(data), "width": width, "height": height}
 
 @app.get("/uploads/{filename}")
 def serve_uploaded_image(filename: str):

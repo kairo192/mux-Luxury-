@@ -301,8 +301,8 @@ export function ProductEditor({ open, product, categories, brands, onClose, onSa
       notifyClientWarning("Format non supporté", "Formats acceptés : JPEG, PNG ou WEBP.");
       return;
     }
-    if (file.size > 5 * 1024 * 1024) {
-      notifyClientWarning("Image trop volumineuse", "La taille maximale est de 5 Mo.");
+    if (file.size > 15 * 1024 * 1024) {
+      notifyClientWarning("Image trop volumineuse", "La taille maximale est de 15 Mo (la photo est ensuite réduite automatiquement).");
       return;
     }
     setUploading(true);

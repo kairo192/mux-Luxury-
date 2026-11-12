@@ -13,7 +13,9 @@ export default defineConfig({
   // like a real shop's first days: one worker, files in order.
   fullyParallel: false,
   workers: 1,
-  retries: process.env.CI ? 1 : 0,
+  // No retries: the specs share one database, a retry would run against the
+  // state left by the failed attempt and hide the real problem.
+  retries: 0,
   timeout: 60_000,
   expect: { timeout: 10_000 },
   reporter: process.env.CI ? [["list"], ["html", { open: "never" }]] : [["list"]],

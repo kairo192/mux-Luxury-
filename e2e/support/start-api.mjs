@@ -5,10 +5,11 @@
 import { spawn } from "node:child_process";
 import { mkdtempSync, mkdirSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join, resolve } from "node:path";
+import { join } from "node:path";
+import { fileURLToPath } from "node:url";
 import { randomBytes } from "node:crypto";
 
-const root = resolve(import.meta.dirname, "..", "..");
+const root = fileURLToPath(new URL("../..", import.meta.url));
 const work = mkdtempSync(join(tmpdir(), "luxe-e2e-"));
 mkdirSync(join(work, "uploads"));
 mkdirSync(join(work, "backups"));
@@ -23,9 +24,10 @@ const env = {
   CORS_ORIGINS: `${process.env.E2E_CMS_URL},${process.env.E2E_SHOP_URL}`,
   STOREFRONT_INTERNAL_URL: process.env.E2E_SHOP_URL,
   PYTHONUNBUFFERED: "1",
-  // The browser tests log in dozens of times from one machine; production
-  // keeps the default brute-force limit (5 per minute).
-  LOGIN_ATTEMPTS_PER_MINUTE: "500",
+  // The browser tests log in many times from one machine. The server caps
+  // this setting at 30; production keeps the default (5) behind nginx's own
+  // login limit.
+  LOGIN_ATTEMPTS_PER_MINUTE: "30",
 };
 if (process.env.E2E_DATABASE_URL) {
   env.LUXE_DB_ENGINE = "postgres";
@@ -41,4 +43,5 @@ const child = spawn(process.env.PYTHON || "python3",
   ["-m", "uvicorn", "app.main:app", "--host", "127.0.0.1", "--port", port],
   { cwd: join(root, "backend"), env, stdio: "inherit" });
 for (const sig of ["SIGINT", "SIGTERM"]) process.on(sig, () => child.kill(sig));
-child.on("exit", (code) => process.exit(code ?? 0));
+// A crash (killed by a signal) must not look like a clean stop.
+child.on("exit", (code, signal) => process.exit(code ?? (signal ? 1 : 0)));

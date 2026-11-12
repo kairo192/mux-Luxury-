@@ -46,7 +46,13 @@ test.describe("CMS finance", () => {
     const w = watch(page);
     const pnl = await api("/admin/accounting/pnl");
     const biz = await api("/admin/dashboard/business");
-    // Everything in this test database happened this month.
+    // Analytique counts the shop's current month, Comptabilité since opening:
+    // they match only while all the test data is in one month (shop time).
+    const shopMonth = (d: Date) => d.toLocaleDateString("sv-SE", { timeZone: "Africa/Algiers" }).slice(0, 7);
+    const months = new Set<string>([shopMonth(new Date())]);
+    for (const o of (await api("/admin/orders")).items as any[]) months.add(shopMonth(new Date(String(o.created_at).replace(" ", "T") + "Z")));
+    for (const s of (await api("/admin/pos/sales")).items as any[]) months.add(shopMonth(new Date(String(s.created_at).replace(" ", "T") + "Z")));
+    test.skip(months.size > 1, "test data spans two months (run started just before midnight at the end of a month)");
     expect(biz.margin_month.revenue_dzd).toBe(pnl.total_revenue_dzd);
     expect(biz.margin_month.net_profit_dzd).toBe(pnl.net_operating_profit_dzd);
 

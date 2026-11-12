@@ -34,6 +34,15 @@ from app.main import app
 from app.seed import seed_initial_data
 from app.security import reset_rate_limits
 
+
+def _real_image(fmt: str = "PNG", size=(16, 16)) -> bytes:
+    """A small real picture: uploads are decoded and re-encoded, so a bare
+    file signature followed by junk is (rightly) refused."""
+    from PIL import Image
+    buf = io.BytesIO()
+    Image.new("RGB", size, (6, 61, 46)).save(buf, fmt)
+    return buf.getvalue()
+
 class TestLuxeEcommercePlatform(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
@@ -302,7 +311,7 @@ class TestLuxeEcommercePlatform(unittest.TestCase):
         self.assertEqual(r_bad.status_code, 400)
 
         # Accept valid PNG binary header
-        valid_png = io.BytesIO(b"\x89PNG\r\n\x1a\n\x00\x00\x00\rIHDR")
+        valid_png = io.BytesIO(_real_image("PNG"))
         r_good = self.client.post(
             "/api/v1/admin/upload",
             headers=headers,
@@ -865,7 +874,7 @@ class TestLuxeEcommercePlatform(unittest.TestCase):
         self.assertEqual(r_brand.status_code, 201)
         brand_id = r_brand.json()["id"]
 
-        valid_png = b"\x89PNG\r\n\x1a\n" + b"\x00" * 64
+        valid_png = _real_image("PNG")
         r_up = self.client.post(
             "/api/v1/admin/upload",
             headers=headers,
@@ -1698,7 +1707,7 @@ console.log("ALL_TSX_COMPILED_OK");
     # 47. Real Upload Disk Persistence, Safe Media Serving & Traversal Defense
     def test_47_upload_disk_persistence_and_safe_media_serving_traversal_defense(self):
         headers = self.get_admin_headers()
-        valid_png = b"\x89PNG\r\n\x1a\n" + b"\x00" * 128
+        valid_png = _real_image("PNG", (32, 24))
         r_up = self.client.post(
             "/api/v1/admin/upload",
             headers=headers,
@@ -1708,10 +1717,13 @@ console.log("ALL_TSX_COMPILED_OK");
         up_data = r_up.json()
         url_path = up_data["url"]
 
-        # Fetch the uploaded image via GET /uploads/{filename} and verify byte-for-byte persistence
+        # Fetch the uploaded image via GET /uploads/{filename}: it is the stored
+        # (optimized, metadata-free) picture, still the same image size.
         r_get = self.client.get(url_path)
         self.assertEqual(r_get.status_code, 200)
-        self.assertEqual(r_get.content, valid_png)
+        from PIL import Image
+        self.assertEqual(Image.open(io.BytesIO(r_get.content)).size, (32, 24))
+        self.assertEqual(len(r_get.content), up_data["size_bytes"])
         self.assertEqual(r_get.headers.get("X-Content-Type-Options"), "nosniff")
         self.assertIn("immutable", r_get.headers.get("Cache-Control", ""))
 
@@ -2602,7 +2614,7 @@ flushOfflineMutationQueue(async () => true).then((res) => {
         self.assertEqual(r_fake_webp.status_code, 400, r_fake_webp.text)
 
         # 3. Genuine WebP header (RIFF....WEBP) must succeed with 201 Created
-        real_webp = b"RIFF\x24\x00\x00\x00WEBPVP8 \x18\x00\x00\x00" + (b"\x00" * 32)
+        real_webp = _real_image("WEBP")
         r_good_webp = self.client.post(
             "/api/v1/admin/upload",
             headers=headers,
