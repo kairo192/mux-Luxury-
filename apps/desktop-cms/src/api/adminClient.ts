@@ -302,6 +302,26 @@ export const DesktopCmsApi = {
       method: "POST",
       body: JSON.stringify({ password, confirm }),
     }, 300000),
+  /** Encrypted backup file, for the copy kept on the owner's PC. */
+  downloadBackupForPc: async (name: string): Promise<Uint8Array> => {
+    const token = getAccessToken();
+    const res = await fetch(`${apiBaseUrl}/admin/system/backups/${encodeURIComponent(name)}/download`, {
+      cache: "no-store",
+      headers: token ? { Authorization: `Bearer ${token}` } : {},
+    });
+    if (!res.ok) {
+      const data = await res.json().catch(() => ({}));
+      const tr = sanitizeAndTranslateError(data, res.status, "/admin/system/backups/download", "Copie impossible");
+      throw new ClientSafeApiError({ status: res.status, title: tr.title, userMessage: tr.message, code: tr.code });
+    }
+    return new Uint8Array(await res.arrayBuffer());
+  },
+  /** Sends a copy kept on the PC back to the server so it can be restored. */
+  importBackupFromPc: (fileName: string, bytes: Uint8Array) => {
+    const fd = new FormData();
+    fd.append("file", new Blob([bytes as Uint8Array<ArrayBuffer>], { type: "application/octet-stream" }), fileName);
+    return adminFetch("/admin/system/backups/import", { method: "POST", body: fd }, 180000);
+  },
   resetDatabase: (password: string, confirm: string, keepSettings: boolean) =>
     adminFetch("/admin/system/reset", {
       method: "POST",

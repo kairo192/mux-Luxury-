@@ -71,6 +71,7 @@ import { allowedOrderStatuses, orderStatusLabel, ORDER_STATUSES } from "./utils/
 import { openExternalUrl } from "./utils/openExternal";
 import { useEscapeToClose } from "./utils/useEscapeToClose";
 import { canOpenTab } from "./utils/tabAccess";
+import { copyNewestBackupIfMissing, pcCopiesAvailable } from "./utils/backupCopies";
 import { RevenueTrendChart, OrderStatusDistributionChart, InventoryHealthWidget } from "./components/CmsCharts";
 import { DesktopCmsApi, restoreSessionFromOsKeychain, getApiBaseUrl, configureApiBaseUrl, mediaUrl } from "./api/adminClient";
 import { CategoryBuilderPage } from "./pages/CategoryBuilderPage";
@@ -506,6 +507,28 @@ export default function App() {
         .catch(() => {});
     }
   }, [orderStatusFilter, keychainReady]);
+
+  // Owner on the desktop app: keep the newest server backup on this PC
+  // (the VPS has a small disk). Silent unless a new copy was written.
+  useEffect(() => {
+    if (!user || !keychainReady || (user as any).role !== "super_admin" || !pcCopiesAvailable()) return;
+    let stopped = false;
+    const run = async () => {
+      try {
+        const copied = await copyNewestBackupIfMissing();
+        if (copied && !stopped) notifyClientSuccess("Sauvegarde copiée sur ce PC", `${copied} — Documents\\Mus Luxury\\Sauvegardes`);
+      } catch {
+        /* retried at the next run; the backup screen shows the details */
+      }
+    };
+    const first = window.setTimeout(run, 20_000);
+    const timer = window.setInterval(run, 6 * 60 * 60 * 1000);
+    return () => {
+      stopped = true;
+      window.clearTimeout(first);
+      window.clearInterval(timer);
+    };
+  }, [user, keychainReady]);
 
   // New online-order watcher: polls the "new" orders every 45 s. The first
   // poll only memorises what already exists; later ones raise a toast with a

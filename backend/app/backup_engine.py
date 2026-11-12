@@ -272,23 +272,52 @@ def _row_counts(conn, tables: Iterable[str]) -> Dict[str, int]:
 
 # --------------------------------------------------------------- export --
 
-def export_snapshot(conn) -> Dict[str, Any]:
-    tables = list_tables(conn)
-    data: Dict[str, Any] = {}
-    for t in tables:
-        # In id order: a row that points to another row of the same table
-        # (a refund → its sale) must be restored after it. PostgreSQL returns
-        # rows in storage order, which changes when a row is updated.
-        order = " ORDER BY id" if "id" in _table_columns(conn, t) else ""
-        cols, rows = _query(conn, f"SELECT * FROM {_q(t)}{order}")
-        data[t] = {"columns": cols, "rows": [[_encode(v) for v in r] for r in rows]}
-    return {
-        "format": FORMAT,
-        "created_at": _dt.datetime.now(_dt.timezone.utc).isoformat(),
-        "engine": "postgresql" if _is_pg(conn) else "sqlite",
-        "tables": data,
-        "counts": {t: len(v["rows"]) for t, v in data.items()},
-    }
+def _iter_table(conn, table: str, batch: int = 500):
+    """Rows of a table in id order, a batch at a time: the backup never holds
+    a whole table in memory (the API container has 256 MB on a 2 GB VPS).
+    PostgreSQL uses a server-side cursor; a normal one downloads everything."""
+    order = " ORDER BY id" if "id" in _table_columns(conn, table) else ""
+    sql = f"SELECT * FROM {_q(table)}{order}"
+    raw = _raw(conn)
+    cur = raw.cursor(name=f"bk_{secrets.token_hex(4)}") if _is_pg(conn) else raw.cursor()
+    try:
+        cur.execute(sql)
+        cols: Optional[List[str]] = None
+        while True:
+            chunk = cur.fetchmany(batch)
+            if cols is None:
+                cols = [d[0] for d in (cur.description or [])]
+                yield cols
+            if not chunk:
+                return
+            for r in chunk:
+                yield tuple(r[c] for c in cols) if isinstance(r, dict) else tuple(r)
+    finally:
+        cur.close()
+
+
+def write_snapshot(conn, out_path: Path) -> Dict[str, Any]:
+    """Writes the whole store database as gzip-compressed JSON, streamed table
+    by table (in id order: a row pointing to another row of the same table,
+    a refund to its sale, is restored after it). Same format as before."""
+    created = _dt.datetime.now(_dt.timezone.utc).isoformat()
+    engine = "postgresql" if _is_pg(conn) else "sqlite"
+    counts: Dict[str, int] = {}
+    dump = lambda v: json.dumps(v, ensure_ascii=False, separators=(",", ":"))  # noqa: E731
+    with gzip.open(out_path, "wt", encoding="utf-8", compresslevel=6) as f:
+        f.write('{"format":' + dump(FORMAT) + ',"created_at":' + dump(created) + ',"engine":' + dump(engine) + ',"tables":{')
+        for i, table in enumerate(list_tables(conn)):
+            rows = _iter_table(conn, table)
+            cols = next(rows)
+            f.write(("," if i else "") + dump(table) + ':{"columns":' + dump(cols) + ',"rows":[')
+            n = 0
+            for row in rows:
+                f.write(("," if n else "") + dump([_encode(v) for v in row]))
+                n += 1
+            f.write("]}")
+            counts[table] = n
+        f.write('},"counts":' + dump(counts) + "}")
+    return {"created_at": created, "engine": engine, "counts": counts}
 
 
 def _write_atomic(path: Path, data: bytes) -> None:
@@ -343,23 +372,34 @@ def create_backup(kind: str = "manual", actor_id: Optional[int] = None, include_
         raise BackupError("Type de sauvegarde invalide.")
     stamp = _dt.datetime.now().strftime("%Y%m%d_%H%M%S") + "_" + secrets.token_hex(2)
 
-    with db_session() as conn:
-        snap = export_snapshot(conn)
+    name_plain = f"luxe_app_{kind}_{stamp}.json.gz"
+    tmp = backup_dir() / (name_plain + ".part")
+    try:
+        with db_session() as conn:
+            snap = write_snapshot(conn, tmp)
+    except Exception:
+        tmp.unlink(missing_ok=True)
+        raise
 
     total_rows = sum(snap["counts"].values())
-    if not snap["tables"] or "roles" not in snap["tables"] or snap["counts"].get("roles", 0) == 0:
+    if not snap["counts"] or snap["counts"].get("roles", 0) == 0:
         # A database without roles is not a real store database (wrong file,
         # empty volume...). Refuse instead of producing a useless backup.
+        tmp.unlink(missing_ok=True)
         _record_backup(f"luxe_app_{kind}_{stamp}", "database", 0, "-" * 64, "failed", actor_id)
         raise BackupError("La base de données semble vide ou inaccessible : sauvegarde annulée.")
 
-    raw = gzip.compress(json.dumps(snap, ensure_ascii=False, separators=(",", ":")).encode("utf-8"), compresslevel=6)
     secret = _encryption_secret()
     encrypted = secret is not None
-    payload = _encrypt(raw, secret) if encrypted else raw
-    name = f"luxe_app_{kind}_{stamp}.json.gz" + (".enc" if encrypted else "")
+    name = name_plain + (".enc" if encrypted else "")
     path = backup_dir() / name
-    _write_atomic(path, payload)
+    if encrypted:
+        # The compressed file is small (about a tenth of the data).
+        _write_atomic(path, _encrypt(tmp.read_bytes(), secret))
+        tmp.unlink(missing_ok=True)
+    else:
+        os.chmod(tmp, 0o600)
+        os.replace(tmp, path)
     sha = _sha256_file(path)
 
     media = _media_archive(stamp, kind) if include_media else None
@@ -441,6 +481,52 @@ def _resolve(name: str) -> Path:
     if not path.is_file():
         raise BackupError("Sauvegarde introuvable sur le serveur.")
     return path
+
+
+# ------------------------------------------------- copies on the owner's PC --
+
+MAX_IMPORT_BYTES = 100 * 1024 * 1024
+
+
+def file_for_pc_copy(name: str) -> Path:
+    """A backup the owner may copy to the shop PC: only an ENCRYPTED one (a
+    stolen PC or USB key then gives nothing without the backup key)."""
+    path = _resolve(name)
+    if not name.endswith(".enc"):
+        raise BackupError("Copie refusée : cette sauvegarde n'est pas chiffrée "
+                          "(BACKUP_ENCRYPTION_KEY manquante sur le serveur).")
+    return path
+
+
+def import_pc_copy(blob: bytes, original_name: str, actor_id: Optional[int] = None) -> Dict[str, Any]:
+    """Stores a copy sent back from the PC so it can be restored like any
+    backup. It must decrypt with THIS server's key and be a store backup."""
+    if len(blob) > MAX_IMPORT_BYTES:
+        raise BackupError("Fichier trop volumineux pour une sauvegarde de la boutique.")
+    if not blob.startswith(MAGIC):
+        raise BackupError("Ce fichier n'est pas une sauvegarde chiffrée de la boutique.")
+    raw = _decrypt(blob, _encryption_secret())
+    try:
+        with gzip.GzipFile(fileobj=__import__("io").BytesIO(raw)) as g:
+            head = g.read(400).decode("utf-8", "replace")
+    except Exception as exc:
+        raise BackupError("La sauvegarde est illisible (archive endommagée).") from exc
+    if f'"format":"{FORMAT}"' not in head:
+        raise BackupError("Format de sauvegarde non pris en charge.")
+    m = re.search(r'"created_at":"([^"]+)"', head)
+    stamp = _dt.datetime.now().strftime("%Y%m%d_%H%M%S") + "_" + secrets.token_hex(2)
+    name = f"luxe_app_imported_{stamp}.json.gz.enc"
+    path = backup_dir() / name
+    _write_atomic(path, blob)
+    sha = _sha256_file(path)
+    meta = {
+        "name": name, "kind": "imported", "created_at": m.group(1) if m else _dt.datetime.now(_dt.timezone.utc).isoformat(),
+        "engine": None, "encrypted": True, "size": path.stat().st_size, "sha256": sha,
+        "total_rows": None, "counts": {}, "media": None, "imported_from": (original_name or "")[:120],
+    }
+    _write_atomic(backup_dir() / (name + ".meta.json"), json.dumps(meta, ensure_ascii=False, indent=1).encode("utf-8"))
+    _record_backup(name, "imported", meta["size"], sha, "verified", actor_id)
+    return meta
 
 
 def load_snapshot(name: str) -> Dict[str, Any]:

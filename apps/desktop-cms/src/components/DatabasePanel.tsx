@@ -25,11 +25,14 @@ import {
   ShieldAlert,
   Trash2,
   X,
+  HardDriveDownload,
+  Upload as UploadIcon,
 } from "lucide-react";
 import { useT } from "../i18n";
 import { DesktopCmsApi } from "../api/adminClient";
 import { notifyClientError, notifyClientSuccess } from "../utils/clientNotifier";
 import { serverDate } from "../utils/serverDate";
+import { copyBackupToPc, listPcCopies, pcCopiesAvailable, sendPcCopyToServer, type PcCopies } from "../utils/backupCopies";
 
 interface BackupMeta {
   name: string;
@@ -84,6 +87,8 @@ export function DatabasePanel({ active, isOwner }: { active: boolean; isOwner: b
   const [keepSettings, setKeepSettings] = useState(true);
   const [password, setPassword] = useState("");
   const [confirmWord, setConfirmWord] = useState("");
+  const [pcCopies, setPcCopies] = useState<PcCopies | null>(null);
+  const desktopApp = pcCopiesAvailable();
 
   const load = useCallback(async () => {
     if (!isOwner) return;
@@ -91,13 +96,14 @@ export function DatabasePanel({ active, isOwner }: { active: boolean; isOwner: b
     setLoadError("");
     try {
       setStatus((await DesktopCmsApi.getDatabaseStatus()) as DbStatus);
+      if (desktopApp) setPcCopies(await listPcCopies().catch(() => null));
     } catch (err: any) {
       const tr = notifyClientError(err, t("db.load_error"), false);
       setLoadError(tr.message);
     } finally {
       setLoading(false);
     }
-  }, [isOwner, t]);
+  }, [isOwner, t, desktopApp]);
 
   useEffect(() => {
     if (active) void load();
@@ -117,6 +123,32 @@ export function DatabasePanel({ active, isOwner }: { active: boolean; isOwner: b
       await load();
     } catch (err: any) {
       notifyClientError(err, t("db.backup_failed"));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function handleCopyToPc(name: string) {
+    setBusy(true);
+    try {
+      const where = await copyBackupToPc(name);
+      notifyClientSuccess(t("db.copy_done_title"), t("db.copy_done_body", { path: where }));
+      await load();
+    } catch (err: any) {
+      notifyClientError(err, t("db.copy_failed"));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function handleSendBack(source: { name: string } | File) {
+    setBusy(true);
+    try {
+      const meta: any = await sendPcCopyToServer(source);
+      notifyClientSuccess(t("db.send_back_done_title"), t("db.send_back_done_body", { name: meta?.name || "" }));
+      await load();
+    } catch (err: any) {
+      notifyClientError(err, t("db.send_back_failed"));
     } finally {
       setBusy(false);
     }
@@ -302,7 +334,18 @@ export function DatabasePanel({ active, isOwner }: { active: boolean; isOwner: b
                         </span>
                       </td>
                       <td className="px-3 py-3 font-mono text-gray-500">{formatBytes(b.size)}</td>
-                      <td className="px-5 py-3 text-end">
+                      <td className="px-5 py-3 text-end whitespace-nowrap">
+                        {b.encrypted && (
+                          <button
+                            type="button"
+                            onClick={() => handleCopyToPc(b.name)}
+                            disabled={busy}
+                            className="inline-flex items-center gap-1.5 px-3 py-1.5 me-2 rounded-lg border border-gray-300 text-[#063D2E] font-bold hover:bg-gray-50 transition disabled:opacity-40"
+                          >
+                            <HardDriveDownload className="w-3.5 h-3.5" />
+                            {pcCopies?.items.some((c) => c.name === b.name) ? t("db.copied_to_pc") : t("db.copy_to_pc")}
+                          </button>
+                        )}
                         <button
                           type="button"
                           onClick={() => openDanger({ mode: "restore", backup: b })}
@@ -318,6 +361,52 @@ export function DatabasePanel({ active, isOwner }: { active: boolean; isOwner: b
                 </tbody>
               </table>
             )}
+          </div>
+
+          {/* Copies kept on this PC */}
+          <div className="bg-white rounded-2xl border border-[#D4AF62]/40 p-5 space-y-3">
+            <h4 className="font-serif font-bold text-sm text-[#063D2E] flex items-center gap-2">
+              <HardDriveDownload className="w-4 h-4 text-[#D4AF62]" /> {t("db.pc_copies_title")}
+            </h4>
+            <p className="text-gray-600 leading-relaxed">
+              {desktopApp && pcCopies
+                ? t("db.pc_copies_desc", { folder: pcCopies.folder, keep: pcCopies.keep })
+                : t("db.pc_copies_browser")}
+            </p>
+            {desktopApp && pcCopies && (
+              pcCopies.items.length === 0 ? (
+                <p className="text-gray-500">{t("db.pc_copies_empty")}</p>
+              ) : (
+                <ul className="divide-y divide-gray-100">
+                  {pcCopies.items.slice(0, 8).map((c) => (
+                    <li key={c.name} className="py-2 flex items-center justify-between gap-3">
+                      <span className="font-mono text-[11px] text-gray-600 truncate">{c.name}</span>
+                      <span className="flex items-center gap-3 shrink-0">
+                        <span className="text-gray-500 font-mono">{formatBytes(c.size)}</span>
+                        <button type="button" disabled={busy} onClick={() => handleSendBack({ name: c.name })}
+                          className="px-3 py-1.5 rounded-lg border border-[#D4AF62] text-[#063D2E] font-bold hover:bg-[#D4AF62]/15 disabled:opacity-40">
+                          {t("db.send_back")}
+                        </button>
+                      </span>
+                    </li>
+                  ))}
+                </ul>
+              )
+            )}
+            <label className="inline-flex items-center gap-2 px-3 py-2 rounded-lg border border-dashed border-gray-300 cursor-pointer hover:bg-gray-50 font-bold text-[#063D2E]">
+              <UploadIcon className="w-4 h-4" /> {t("db.send_file_btn")}
+              <input
+                type="file"
+                accept=".enc"
+                className="hidden"
+                disabled={busy}
+                onChange={(e) => {
+                  const f = e.target.files?.[0];
+                  e.target.value = "";
+                  if (f) void handleSendBack(f);
+                }}
+              />
+            </label>
           </div>
 
           {/* Danger zone */}

@@ -12,6 +12,7 @@
 // ============================================================================
 
 mod app_services;
+mod backup_copies;
 mod pos_hardware;
 mod pos_mirror;
 
@@ -186,6 +187,9 @@ fn main() {
             app_services::updater_status,
             app_services::updater_check,
             app_services::updater_install,
+            backup_copies::backup_copy_save,
+            backup_copies::backup_copy_list,
+            backup_copies::backup_copy_read,
         ])
         .run(tauri::generate_context!());
 

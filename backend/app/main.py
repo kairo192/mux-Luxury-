@@ -12,6 +12,7 @@ import time
 from datetime import datetime, timedelta, timezone
 from typing import Any, Dict, Iterable, List, Optional
 from fastapi import Depends, FastAPI, File, Header, HTTPException, Query, Request, Response, UploadFile, status
+from fastapi.responses import FileResponse
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field, validator
 
@@ -4463,6 +4464,8 @@ _AUDIT_ACTION_FR: Dict[str, str] = {
     "create_supplier": "Fournisseur créé",
     "create_variant": "Déclinaison créée",
     "database_backup": "Sauvegarde de la base",
+    "download_backup": "Copie de sauvegarde enregistrée sur le PC",
+    "import_backup": "Sauvegarde renvoyée depuis le PC",
     "deactivate_coupon": "Code promo désactivé",
     "deactivate_variant": "Déclinaison désactivée",
     "delete_attribute_option": "Valeur de caractéristique supprimée",
@@ -8886,6 +8889,31 @@ def admin_create_backup(payload: BackupCreatePayload, admin: dict = Depends(requ
     meta = _bk_call(_bk.create_backup, "manual", uid, payload.include_media)
     with db_session(commit=True) as conn:
         log_audit(conn, uid, "database_backup", "database", "store", {"backup": meta["name"], "media": bool(meta.get("media"))})
+    return meta
+
+
+@app.get("/api/v1/admin/system/backups/{name}/download")
+def admin_download_backup_for_pc(name: str, admin: dict = Depends(require_permission("backups:write"))):
+    """The owner's desktop CMS keeps a copy of each backup on the shop PC (the
+    VPS disk is small). Owner only, encrypted files only, written to the
+    audit log."""
+    uid = _require_owner(admin)
+    path = _bk_call(_bk.file_for_pc_copy, name)
+    with db_session(commit=True) as conn:
+        log_audit(conn, uid, "download_backup", "database", "store", {"backup": name})
+    return FileResponse(str(path), media_type="application/octet-stream", filename=name,
+                        headers={"Cache-Control": "no-store"})
+
+
+@app.post("/api/v1/admin/system/backups/import", status_code=201)
+async def admin_import_backup_from_pc(file: UploadFile = File(...), admin: dict = Depends(require_permission("backups:write"))):
+    """A copy kept on the PC is sent back (new server, lost disk); it can then
+    be restored like any backup (password + RESTAURER)."""
+    uid = _require_owner(admin)
+    blob = await file.read(_bk.MAX_IMPORT_BYTES + 1)
+    meta = _bk_call(_bk.import_pc_copy, blob, file.filename or "", uid)
+    with db_session(commit=True) as conn:
+        log_audit(conn, uid, "import_backup", "database", "store", {"backup": meta["name"], "from": meta["imported_from"]})
     return meta
 
 

@@ -27,6 +27,13 @@ TIMESTAMP=$(date +"%Y%m%d_%H%M%S")
 BACKUP_DIR="${BACKUP_DIR:-/var/lib/luxe/backups}"
 UPLOAD_DIR="${UPLOAD_DIR:-/var/lib/luxe/uploads}"
 RETENTION_DAYS="${BACKUP_RETENTION_DAYS:-30}"
+# Photos: a new archive only when they changed; keep the newest few (never
+# pruned by age — unchanged photos keep their last archive however old).
+MEDIA_KEEP="${BACKUP_MEDIA_KEEP:-3}"
+# Disk guard for a small VPS (40 GB): below this % of free space the photo
+# archive is skipped; below half of it, database dumps older than 7 days go.
+MIN_FREE_PCT="${BACKUP_MIN_FREE_PCT:-15}"
+MEDIA_MANIFEST_FILE="$BACKUP_DIR/.media_manifest"
 PG_CONTAINER="${PG_CONTAINER:-luxe_postgres}"
 API_CONTAINER="${API_CONTAINER:-luxe_api}"
 mkdir -p "$BACKUP_DIR"
@@ -89,13 +96,39 @@ TABLES_IN_DUMP=$(gunzip -c "$DB_ARCHIVE" | grep -c "CREATE TABLE" || true)
 echo "      mode=$MODE, tables=$TABLES_IN_DUMP, size=$(du -h "$DB_ARCHIVE" | cut -f1)"
 
 # --------------------------------------------------------------- 2. photos --
-echo "[2/5] Archiving product photos and uploads..."
-if container_running "$API_CONTAINER"; then
-  docker exec "$API_CONTAINER" tar -czf - -C /var/lib/luxe/uploads . > "$MEDIA_ARCHIVE" \
-    || fail "could not archive uploads from $API_CONTAINER"
+free_pct() { df -P "$BACKUP_DIR" | awk 'NR==2 { gsub("%", "", $5); print 100 - $5 }'; }
+media_manifest() {
+  # List of photo files with size and date: changes when a photo is added,
+  # replaced or removed.
+  {
+    if container_running "$API_CONTAINER"; then
+      docker exec "$API_CONTAINER" sh -c 'cd /var/lib/luxe/uploads 2>/dev/null && find . -type f -printf "%P %s %T@\n" | sort' || true
+    else
+      (cd "$UPLOAD_DIR" 2>/dev/null && find . -type f -printf "%P %s %T@\n" | sort) || true
+    fi
+  } | sha256sum | cut -d" " -f1
+}
+FREE=$(free_pct)
+echo "[2/5] Product photos (free disk space: ${FREE}%)..."
+NEW_MANIFEST=$(media_manifest)
+LAST_MEDIA=$(ls -1t "$BACKUP_DIR"/luxe_media_*.tar.gz* 2>/dev/null | head -n 1 || true)
+if [ "${FREE:-100}" -lt "$MIN_FREE_PCT" ]; then
+  MEDIA_ARCHIVE=""
+  WARNINGS+=("low disk space (${FREE}% free): photo archive skipped — free space on the server")
+  echo "      skipped: only ${FREE}% free"
+elif [ -n "$LAST_MEDIA" ] && [ -f "$MEDIA_MANIFEST_FILE" ] && [ "$(cat "$MEDIA_MANIFEST_FILE")" = "$NEW_MANIFEST" ]; then
+  MEDIA_ARCHIVE=""
+  echo "      unchanged since $(basename "$LAST_MEDIA") — no new archive"
 else
   mkdir -p "$UPLOAD_DIR"
-  tar --force-local -czf "$MEDIA_ARCHIVE" -C "$UPLOAD_DIR" . || fail "could not archive $UPLOAD_DIR"
+  if container_running "$API_CONTAINER"; then
+    docker exec "$API_CONTAINER" tar -czf - -C /var/lib/luxe/uploads . > "$MEDIA_ARCHIVE" \
+      || fail "could not archive uploads from $API_CONTAINER"
+  else
+    tar --force-local -czf "$MEDIA_ARCHIVE" -C "$UPLOAD_DIR" . || fail "could not archive $UPLOAD_DIR"
+  fi
+  printf '%s' "$NEW_MANIFEST" > "$MEDIA_MANIFEST_FILE"
+  echo "      archived, size=$(du -h "$MEDIA_ARCHIVE" | cut -f1)"
 fi
 
 # ------------------------------------------- 3. CMS-restorable app snapshot --
@@ -123,26 +156,38 @@ if [ -n "$KEY" ] && [[ "$KEY" != \<CHANGE_ME* ]] && [[ "$KEY" != CHANGE_ME* ]] &
   openssl enc -aes-256-cbc -pbkdf2 -salt -pass env:BACKUP_ENCRYPTION_KEY -in "$DB_ARCHIVE" -out "${DB_ARCHIVE}.enc"
   rm -f "$DB_ARCHIVE"
   DB_ARCHIVE="${DB_ARCHIVE}.enc"
-  openssl enc -aes-256-cbc -pbkdf2 -salt -pass env:BACKUP_ENCRYPTION_KEY -in "$MEDIA_ARCHIVE" -out "${MEDIA_ARCHIVE}.enc"
-  rm -f "$MEDIA_ARCHIVE"
-  MEDIA_ARCHIVE="${MEDIA_ARCHIVE}.enc"
+  if [ -n "$MEDIA_ARCHIVE" ]; then
+    openssl enc -aes-256-cbc -pbkdf2 -salt -pass env:BACKUP_ENCRYPTION_KEY -in "$MEDIA_ARCHIVE" -out "${MEDIA_ARCHIVE}.enc"
+    rm -f "$MEDIA_ARCHIVE"
+    MEDIA_ARCHIVE="${MEDIA_ARCHIVE}.enc"
+  fi
 else
   echo "[4/5] WARNING: BACKUP_ENCRYPTION_KEY not set — archives are NOT encrypted."
   WARNINGS+=("archives not encrypted (BACKUP_ENCRYPTION_KEY missing)")
 fi
 
-FILES=("$(basename "$DB_ARCHIVE")" "$(basename "$MEDIA_ARCHIVE")")
+FILES=("$(basename "$DB_ARCHIVE")")
+[ -n "$MEDIA_ARCHIVE" ] && FILES+=("$(basename "$MEDIA_ARCHIVE")")
 [ -n "$APP_SNAPSHOT" ] && FILES+=("$APP_SNAPSHOT")
 (cd "$BACKUP_DIR" && sha256sum "${FILES[@]}" > "$(basename "$SHA_FILE")")
 
 # --------------------------------------------------------------- 5. prune --
-echo "[5/5] Removing archives older than ${RETENTION_DAYS} days..."
-find "$BACKUP_DIR" -maxdepth 1 -type f \( -name "luxe_db_*.sql.gz*" -o -name "luxe_media_*.tar.gz*" \
+echo "[5/5] Removing old archives (database ${RETENTION_DAYS} days, newest ${MEDIA_KEEP} photo archives)..."
+find "$BACKUP_DIR" -maxdepth 1 -type f \( -name "luxe_db_*.sql.gz*" \
   -o -name "luxe_backup_*.sha256" -o -name "luxe_app_*.json.gz*" \) -mtime "+${RETENTION_DAYS}" -delete 2>/dev/null || true
+ls -1t "$BACKUP_DIR"/luxe_media_*.tar.gz* 2>/dev/null | tail -n "+$((MEDIA_KEEP + 1))" | xargs -r rm -f
+FREE=$(free_pct)
+if [ "${FREE:-100}" -lt $((MIN_FREE_PCT / 2)) ]; then
+  # Emergency: keep the server running — older database dumps go first
+  # (copies stay on the owner's PC and off-site).
+  find "$BACKUP_DIR" -maxdepth 1 -type f \( -name "luxe_db_*.sql.gz*" -o -name "luxe_app_*.json.gz*" \) -mtime +7 -delete 2>/dev/null || true
+  WARNINGS+=("disk almost full (${FREE}% free): backups older than 7 days removed from the server")
+fi
 
 WARN_JSON=$(printf '%s\n' "${WARNINGS[@]+"${WARNINGS[@]}"}" | python3 -c 'import json,sys; print(json.dumps([l for l in sys.stdin.read().splitlines() if l]))' 2>/dev/null || echo '[]')
-printf '{"timestamp":"%s","ok":true,"mode":"%s","database":"%s","media":"%s","app_snapshot":"%s","warnings":%s}\n' \
-  "$TIMESTAMP" "$MODE" "$(basename "$DB_ARCHIVE")" "$(basename "$MEDIA_ARCHIVE")" "$APP_SNAPSHOT" "$WARN_JSON" > "$STATUS_FILE"
+MEDIA_NAME=$([ -n "$MEDIA_ARCHIVE" ] && basename "$MEDIA_ARCHIVE" || basename "${LAST_MEDIA:-}")
+printf '{"timestamp":"%s","ok":true,"mode":"%s","database":"%s","media":"%s","app_snapshot":"%s","disk_free_pct":%s,"warnings":%s}\n' \
+  "$TIMESTAMP" "$MODE" "$(basename "$DB_ARCHIVE")" "$MEDIA_NAME" "$APP_SNAPSHOT" "${FREE:-null}" "$WARN_JSON" > "$STATUS_FILE"
 
 for w in "${WARNINGS[@]+"${WARNINGS[@]}"}"; do echo "WARNING: $w"; done
 echo "Backup completed and verified: $SHA_FILE"

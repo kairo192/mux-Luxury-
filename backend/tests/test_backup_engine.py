@@ -66,6 +66,50 @@ class TestBackupEngine(unittest.TestCase):
         self.assertTrue(bk.verify_backup(meta["name"])["ok"])
         self.assertIn(meta["name"], [b["name"] for b in bk.list_backups()])
 
+    def test_01b_backup_is_streamed_not_held_in_memory(self):
+        """The API container has 256 MB on a 2 GB VPS: a backup must not hold
+        the whole database in memory."""
+        import json as _json
+        import tracemalloc
+        with db_session(commit=True) as conn:
+            cur = conn.cursor()
+            for i in range(8000):
+                cur.execute(
+                    "INSERT INTO audit_logs (admin_user_id, action, entity_type, entity_id, details_json) VALUES (?, ?, ?, ?, ?)",
+                    (None, "memory_probe", "product", str(i), _json.dumps({"note": "x" * 200})))
+        tracemalloc.start()
+        meta = bk.create_backup("manual")
+        _, peak = tracemalloc.get_traced_memory()
+        tracemalloc.stop()
+        self.assertGreater(meta["total_rows"], 8000)
+        self.assertLess(peak, 8 * 1024 * 1024, f"peak {peak / 1e6:.1f} MB")
+        self.assertTrue(bk.verify_backup(meta["name"])["ok"])
+
+    def test_01c_pc_copy_download_and_import_back(self):
+        """A copy kept on the owner's PC: encrypted, owner only, audited, and
+        restorable after being sent back."""
+        meta = bk.create_backup("manual")
+        r = self.client.get(f"/api/v1/admin/system/backups/{meta['name']}/download", headers=self.headers)
+        self.assertEqual(r.status_code, 200, r.text)
+        self.assertTrue(r.content.startswith(bk.MAGIC), "the PC copy stays encrypted")
+        self.assertIn("no-store", r.headers.get("cache-control", ""))
+        # sent back (e.g. after a server loss) -> listed and verifiable
+        up = self.client.post("/api/v1/admin/system/backups/import", headers=self.headers,
+                              files={"file": (meta["name"], r.content, "application/octet-stream")})
+        self.assertEqual(up.status_code, 201, up.text)
+        self.assertTrue(up.json()["name"].startswith("luxe_app_imported_"))
+        self.assertTrue(bk.verify_backup(up.json()["name"])["ok"])
+        # junk and other-key files are refused
+        junk = self.client.post("/api/v1/admin/system/backups/import", headers=self.headers,
+                                files={"file": ("x.json.gz.enc", b"not a backup", "application/octet-stream")})
+        self.assertEqual(junk.status_code, 409)
+        tampered = bytearray(r.content); tampered[-5] ^= 0xFF
+        bad = self.client.post("/api/v1/admin/system/backups/import", headers=self.headers,
+                               files={"file": (meta["name"], bytes(tampered), "application/octet-stream")})
+        self.assertEqual(bad.status_code, 409)
+        # path tricks refused
+        self.assertIn(self.client.get("/api/v1/admin/system/backups/..%2F..%2Fetc%2Fpasswd/download", headers=self.headers).status_code, (404, 409))
+
     def test_02_wrong_key_is_refused_with_clear_message(self):
         meta = bk.create_backup("manual")
         old = os.environ["BACKUP_ENCRYPTION_KEY"]
@@ -85,6 +129,10 @@ class TestBackupEngine(unittest.TestCase):
     def test_04_database_endpoints_are_owner_only(self):
         ed = self._editor_headers()
         self.assertEqual(self.client.get("/api/v1/admin/system/database", headers=ed).status_code, 403)
+        newest = bk.list_backups()[0]["name"] if bk.list_backups() else "luxe_app_manual_20260101_000000.json.gz.enc"
+        self.assertEqual(self.client.get(f"/api/v1/admin/system/backups/{newest}/download", headers=ed).status_code, 403)
+        self.assertEqual(self.client.post("/api/v1/admin/system/backups/import", headers=ed,
+                                          files={"file": ("x", b"x", "application/octet-stream")}).status_code, 403)
         self.assertEqual(self.client.post("/api/v1/admin/system/reset", headers=ed,
                                           json={"password": "x", "confirm": "EFFACER"}).status_code, 403)
         r = self.client.get("/api/v1/admin/system/database", headers=self.headers)
