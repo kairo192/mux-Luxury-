@@ -295,6 +295,8 @@ export const DesktopCmsApi = {
     adminFetch(`/admin/categories?include_archived=${includeArchived}`),
   // Database administration (owner only) — see backend/app/backup_engine.py
   getDatabaseStatus: () => adminFetch("/admin/system/database", {}, 30000),
+  // Owner only: which .env settings are set / missing (values never returned).
+  getServerConfiguration: () => adminFetch("/admin/system/configuration"),
   createDatabaseBackup: (includeMedia = false) =>
     adminFetch("/admin/system/backups", { method: "POST", body: JSON.stringify({ include_media: includeMedia }) }, 180000),
   restoreDatabaseBackup: (name: string, password: string, confirm: string) =>

@@ -1152,33 +1152,16 @@ class TestLuxeEcommercePlatform(unittest.TestCase):
         with open(env_example_path, "r", encoding="utf-8") as f:
             env_text = f.read()
 
-        required_env_keys = [
-            "SECRET_KEY=",
-            "CMS_HMAC_SIGNING_SECRET=",
-            "POSTGRES_HOST=",
-            "POSTGRES_PORT=",
-            "POSTGRES_DB=",
-            "POSTGRES_USER=",
-            "POSTGRES_PASSWORD=",
-            "DATABASE_URL=",
-            "LUXE_SQLITE_PATH=",
-            "ADMIN_INITIAL_EMAIL=",
-            "ADMIN_INITIAL_PASSWORD=",
-            "STORE_WHATSAPP_CONTACT_NUMBER=",
-            "YALIDINE_API_ID=",
-            "YALIDINE_API_TOKEN=",
-            "ZR_EXPRESS_API_KEY=",
-            "ZR_EXPRESS_TOKEN=",
-            "MAYSTRO_API_TOKEN=",
-            "CHARGILY_PUBLIC_KEY=",
-            "CHARGILY_SECRET_KEY=",
-            "S3_ACCESS_KEY_ID=",
-            "S3_SECRET_ACCESS_KEY=",
-            "VITE_API_BASE_URL=",
-            "VITE_CMS_API_URL=",
-        ]
-        for key in required_env_keys:
-            self.assertIn(key, env_text, f"Missing required environment variable {key} in .env.example")
+        # Every key production needs is offered; keys of features that are not
+        # built are not (app/settings.py is the single list of .env keys).
+        from app import settings as _settings
+        for s in _settings.SETTINGS:
+            if s.required_in_production:
+                self.assertIn(f"{s.name}=", env_text, f"Missing required environment variable {s.name} in .env.example")
+        for key in ("YALIDINE_API_TOKEN=", "CHARGILY_SECRET_KEY=", "SMTP_PASSWORD=", "STORE_WHATSAPP_CONTACT_NUMBER="):
+            self.assertNotIn(key, env_text, f"{key} belongs to a feature that is not built")
+        for key in ("S3_ACCESS_KEY_ID=", "S3_SECRET_ACCESS_KEY=", "ADMIN_INITIAL_EMAIL=", "ADMIN_INITIAL_PASSWORD="):
+            self.assertIn(key, env_text)
 
         # Verify .gitignore blocks .env, *.sqlite3, *.db, and backups from being committed
         res_ignore = subprocess.run(

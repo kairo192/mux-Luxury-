@@ -58,6 +58,7 @@ luxe-ecommerce/
 - [System Architecture](docs/architecture/SYSTEM_ARCHITECTURE.md)
 - [Desktop CMS / POS architecture](apps/desktop-cms/ARCHITECTURE.md) — folders, data flow, permissions, how to add a screen
 - [Operations guide for the owner](docs/OPERATIONS_GUIDE.md)
+- [Configuration (.env keys, checks)](docs/CONFIGURATION.md)
 - [Octenium VPS Deployment Guide](docs/deployment/VPS_DEPLOYMENT.md)
 - [CI/CD & GitHub Actions](docs/deployment/CI_CD.md)
 - [Security Hardening Standards](docs/security/SECURITY_HARDENING.md)

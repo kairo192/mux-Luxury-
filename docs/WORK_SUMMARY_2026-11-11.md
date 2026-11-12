@@ -603,6 +603,27 @@ if a customer holds the shop to them:
 All new texts in FR / AR / EN. The owner can of course make real promises later — as a decision, in the CMS.
 
 
+## 32. Configuration: one list of .env keys, checked everywhere
+
+Comparing the production `.env` with the code showed **45 keys nothing read**: settings under a different name
+(`CORS_ALLOWED_ORIGINS` and `MAX_LOGIN_ATTEMPTS_PER_MINUTE` were silently ignored), owner details never used
+(`ADMIN_INITIAL_EMAIL` / `_FULL_NAME`), and keys of integrations whose code does not exist (Yalidine, ZR Express,
+Maystro, Chargily, SMTP, pixels, Google Maps, WhatsApp sending) — filling them in did nothing.
+
+| Now | |
+|---|---|
+| `backend/app/settings.py` | The single list (41 keys offered + internal ones): purpose, required in production, secret, default, older names |
+| Older names | `CORS_ALLOWED_ORIGINS`, `MAX_LOGIN_ATTEMPTS_PER_MINUTE` now work (aliases) |
+| Owner details | A production owner account created at first start uses `ADMIN_INITIAL_EMAIL` / `ADMIN_INITIAL_FULL_NAME` |
+| Templates | The 4 `.env` templates are **generated** from the list — only keys the code reads; integrations not built are listed as such, not offered |
+| Generator | Builds from the list; empty (= off) instead of `<FILL_IN>` for providers; no longer prints secrets; fixed `--domain` parsing (`lstrip("https://")` cut letters off domains starting with h/t/p/s) |
+| Check | `python3 -m app.settings check <file>` (values never shown); run before every deploy (stops, nothing changed), logged at each start, shown to the owner in CMS → Sauvegardes & Sécurité |
+| CI | `test_settings_registry.py`: a key read by the code but not listed, a template key nobody reads, a hand-edited template, or a not-built feature offered → red |
+
+Your current `scratch/production.env` passes (every required key present); 39 leftover keys are reported as
+"do nothing" and can be deleted. Guide: `docs/CONFIGURATION.md`.
+
+
 ## Verification
 
 | Check | Result |

@@ -1,4 +1,6 @@
 from . import config
+from . import settings as app_settings
+import logging
 import csv
 import hmac
 import io
@@ -33,7 +35,7 @@ from .security import (
 )
 
 _DUMMY_PASSWORD_HASH = _hash_pw_init("luxe_constant_time_dummy_mitigation_2026!")
-_ENABLE_PUBLIC_DOCS = (not config.is_production()) or (os.getenv("ENABLE_API_DOCS", "").strip() == "1") 
+_ENABLE_PUBLIC_DOCS = (not config.is_production()) or app_settings.get("ENABLE_API_DOCS") == "1"
 
 app = FastAPI(
     title="Mus Luxury (LUXE) E-Commerce API",
@@ -55,7 +57,8 @@ _DEFAULT_CORS_ORIGINS = [
     "https://www.mus-luxury.com",
     "https://api.mus-luxury.com",
 ]
-_EXTRA_CORS = [o.strip() for o in os.getenv("CORS_ORIGINS", "").split(",") if o.strip()]
+# CORS_ORIGINS (older name CORS_ALLOWED_ORIGINS, used by earlier .env files).
+_EXTRA_CORS = [o.strip() for o in app_settings.get("CORS_ORIGINS").split(",") if o.strip()]
 ALLOWED_CORS_ORIGINS = list(dict.fromkeys(_DEFAULT_CORS_ORIGINS + _EXTRA_CORS))
 
 from starlette.middleware.gzip import GZipMiddleware, GZipResponder
@@ -225,6 +228,19 @@ async def public_catalog_cache(request: Request, call_next):
 @app.on_event("startup")
 def on_startup():
     seed_initial_data()
+    _log_configuration_report()
+
+
+def _log_configuration_report() -> None:
+    """Production: say at start what is missing in .env (values never logged)."""
+    if not config.is_production():
+        return
+    rep = app_settings.public_report()
+    log = logging.getLogger("luxe.config")
+    for problem in rep["problems"]:
+        log.warning("configuration: %s", problem)
+    for item in rep["not_built"]:
+        log.info("configuration: %s does nothing — %s", item["name"], item["note"])
 
 # Ensure DB is initialized even when TestClient is instantiated without startup events
 seed_initial_data()
@@ -1474,7 +1490,8 @@ def _int_env(name: str, default: int, low: int, high: int) -> int:
 # Default 5. The browser tests raise it (they log in many times from one
 # machine); it can never exceed 30, and in production nginx limits logins to
 # 5 per minute in front of the API anyway (zone auth_limit).
-_LOGIN_ATTEMPTS_PER_MINUTE = _int_env("LOGIN_ATTEMPTS_PER_MINUTE", 5, 1, 30)
+# LOGIN_ATTEMPTS_PER_MINUTE (older name MAX_LOGIN_ATTEMPTS_PER_MINUTE).
+_LOGIN_ATTEMPTS_PER_MINUTE = app_settings.get_int("LOGIN_ATTEMPTS_PER_MINUTE", 1, 30)
 
 
 @app.post("/api/v1/admin/auth/login")
@@ -9086,6 +9103,14 @@ def _bk_call(fn, *args, **kwargs):
         return fn(*args, **kwargs)
     except _bk.BackupError as exc:
         raise HTTPException(status_code=409, detail=str(exc))
+
+
+@app.get("/api/v1/admin/system/configuration")
+def admin_configuration_status(admin: dict = Depends(require_permission("backups:write"))):
+    """Owner only: which .env settings are set, missing or for features not
+    built — secret values are never returned (app/settings.py)."""
+    _require_owner(admin)
+    return app_settings.public_report()
 
 
 @app.get("/api/v1/admin/system/database")

@@ -481,7 +481,12 @@ def seed_initial_data() -> None:
             cur.execute(
                 """INSERT INTO admin_users (email, full_name, phone, emergency_phone, whatsapp_verified, totp_enabled, password_hash, role_id, is_active)
                    VALUES (?, ?, ?, ?, 1, 1, ?, ?, 1)""",
-                ("admin@mus-luxury.com", "Mustapha Harbit (Owner)", "+213550000001", "+213655534154", hash_password(admin_pw), role_ids["super_admin"])
+                (
+                    # Production: the owner's own details from .env; development: fixed test account.
+                    (os.getenv("ADMIN_INITIAL_EMAIL") or "").strip() or "admin@mus-luxury.com" if is_production() else "admin@mus-luxury.com",
+                    (os.getenv("ADMIN_INITIAL_FULL_NAME") or "").strip() or "Propriétaire" if is_production() else "Mustapha Harbit (Owner)",
+                    "+213550000001", "+213655534154", hash_password(admin_pw), role_ids["super_admin"],
+                ),
             )
             owner_id = cur.lastrowid
 

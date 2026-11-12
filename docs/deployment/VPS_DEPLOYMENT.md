@@ -154,6 +154,9 @@ Check at any time: `sudo luxe-certificates check` (exit 1 under 14 days left).
 
 ## 6b. Things the deploy script now takes care of
 
+- **Settings checked first.** Before anything changes, the deploy runs `python3 -m app.settings check` on
+  `shared/.env` and stops if a required key is missing (values never printed). Guide: `docs/CONFIGURATION.md`.
+
 - **One Docker project for every release.** `shared/.env` gets `COMPOSE_PROJECT_NAME` on the first deploy (the
   project of the database already running, else `luxe`). Never change it on a running shop: the database
   volume is `<name>_pgdata`. If the deploy stops with "database volume … does not exist, but these do: …", put the

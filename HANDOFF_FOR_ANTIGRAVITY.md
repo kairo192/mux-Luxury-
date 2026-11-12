@@ -7,7 +7,13 @@
 
 ---
 
-## 0m. CMS ARCHITECTURE — READ apps/desktop-cms/ARCHITECTURE.md FIRST (2026-11-12, latest)
+## 0n. CONFIGURATION — backend/app/settings.py IS THE LIST OF .env KEYS (2026-11-12, latest)
+- New key: add it to `SETTINGS` (with help/secret/required), read it with `app_settings.get(...)`, then
+  `python3 -m app.settings templates`. CI fails otherwise (`test_settings_registry.py`).
+- Do not add keys for features that are not built (they go in `NOT_BUILT` until the code exists).
+- `GET /api/v1/admin/system/configuration` (owner) and the deploy check never return values. Guide: docs/CONFIGURATION.md.
+
+## 0m. CMS ARCHITECTURE — READ apps/desktop-cms/ARCHITECTURE.md FIRST (2026-11-12)
 - App.tsx is the shell only (3047 → 1682 lines). Screens live in `pages/`: Dashboard, Products, Inventory,
   Orders and Contenu were moved out (`DashboardPage`, `ProductsPage`, `InventoryPage`, `OrdersPage`,
   `ContentSettingsPage`). New screens follow ARCHITECTURE.md §5. Keep the keep-alive containers in App.tsx.

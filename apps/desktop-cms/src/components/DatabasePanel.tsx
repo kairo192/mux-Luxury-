@@ -76,6 +76,14 @@ function formatDate(iso: string): string {
 
 type Danger = { mode: "reset" } | { mode: "restore"; backup: BackupMeta };
 
+/** GET /admin/system/configuration — names and states only, never values. */
+interface ServerConfig {
+  production: boolean;
+  ok: boolean;
+  problems: string[];
+  not_built: { name: string; note: string }[];
+}
+
 export function DatabasePanel({ active, isOwner }: { active: boolean; isOwner: boolean }) {
   const t = useT();
   const [status, setStatus] = useState<DbStatus | null>(null);
@@ -88,6 +96,7 @@ export function DatabasePanel({ active, isOwner }: { active: boolean; isOwner: b
   const [password, setPassword] = useState("");
   const [confirmWord, setConfirmWord] = useState("");
   const [pcCopies, setPcCopies] = useState<PcCopies | null>(null);
+  const [serverConfig, setServerConfig] = useState<ServerConfig | null>(null);
   const desktopApp = pcCopiesAvailable();
 
   const load = useCallback(async () => {
@@ -97,6 +106,7 @@ export function DatabasePanel({ active, isOwner }: { active: boolean; isOwner: b
     try {
       setStatus((await DesktopCmsApi.getDatabaseStatus()) as DbStatus);
       if (desktopApp) setPcCopies(await listPcCopies().catch(() => null));
+      setServerConfig((await DesktopCmsApi.getServerConfiguration().catch(() => null)) as ServerConfig | null);
     } catch (err: any) {
       const tr = notifyClientError(err, t("db.load_error"), false);
       setLoadError(tr.message);
@@ -280,6 +290,25 @@ export function DatabasePanel({ active, isOwner }: { active: boolean; isOwner: b
                   <span>{w}</span>
                 </p>
               ))}
+            </div>
+          )}
+
+          {/* Server configuration (.env) */}
+          {serverConfig && (
+            <div className={`rounded-2xl p-4 border space-y-1.5 ${serverConfig.ok ? "bg-white border-gray-200" : "bg-red-50 border-red-200"}`}>
+              <p className="font-bold text-[#063D2E]">
+                {t("db.config_title")} — {serverConfig.ok ? t("db.config_ok") : t("db.config_missing")}
+              </p>
+              {serverConfig.problems.map((p) => (
+                <p key={p} className="flex gap-2 text-amber-900">
+                  <AlertTriangle className="w-4 h-4 shrink-0 mt-px" />
+                  <span className="font-mono">{p}</span>
+                </p>
+              ))}
+              {serverConfig.not_built.length > 0 && (
+                <p className="text-gray-500">{t("db.config_unused").replace("{n}", String(serverConfig.not_built.length))}</p>
+              )}
+              <p className="text-gray-400">{t("db.config_hint")}</p>
             </div>
           )}
 

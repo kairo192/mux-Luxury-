@@ -106,6 +106,12 @@ log "== pre-migration backup =="
 # shellcheck source=env-file.sh
 source "$NEW_RELEASE/infrastructure/scripts/env-file.sh"
 luxe_load_env "$SHARED_DIR/.env" || fail "cannot read $SHARED_DIR/.env"
+# Every setting production needs must be there before anything changes
+# (backend/app/settings.py; values are never printed).
+if command -v python3 >/dev/null 2>&1; then
+  (cd "$NEW_RELEASE/backend" && python3 -m app.settings check "$SHARED_DIR/.env") \
+    || fail "required settings missing in $SHARED_DIR/.env (see above) — nothing was changed"
+fi
 # One Compose project for every release (else: second database container and
 # an empty database volume) — see compose-project.sh.
 # shellcheck source=compose-project.sh
