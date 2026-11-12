@@ -574,6 +574,35 @@ file in `pages/`:
 `apps/desktop-cms/ARCHITECTURE.md` (folders, data flow, permissions, `utils/` by theme, how to add a screen).
 
 
+## 31. Keys and invented text — audit
+
+**Keys and tokens.** No real secret anywhere in the repository (patterns for API keys, tokens, private keys;
+only `.example` files with placeholders; `scratch/production.env` is git-ignored; gitleaks runs in CI). The
+server has no fallback secret: production refuses to start without a strong `SECRET_KEY`. One gap closed: with
+`LUXE_SEED_DEMO_ACCOUNTS=1` (offered by the generator's comment) a production server would have created the
+owner and an editor account with the **development passwords published in this repository**. Now production
+creates such an account only with a strong configured password (12+ characters, not a placeholder, not a
+development one); otherwise it is not created and an error is logged (test `test_seed_accounts.py`).
+
+Still to fill in by the owner (left as placeholders on purpose — the features stay off until then): delivery
+companies (Yalidine, ZR Express, Maystro), Chargily online payment, off-site backup storage (S3), e-mail (SMTP).
+
+**Invented text.** The shop showed promises nobody had decided and the system does not support — a liability
+if a customer holds the shop to them:
+
+| Was | Now (what the shop really does) |
+|---|---|
+| « Produits authentiques & vérifiés », « Authenticité & Contrôle 100 % — pièces expertisées » | Échange sous 7 jours, dans l'emballage d'origine |
+| « Click & Collect sous 1 h » (no pick-up option exists in the checkout) | Confirmation par téléphone avant l'expédition |
+| « Écrin Signature Offert… ruban doré prestige » | Paiement à la livraison dans les 69 wilayas |
+| « Conseil & Stylisme Privé sur-mesure » | Commande sans compte (site ou WhatsApp) |
+| « Toujours à votre écoute 7j/7 » | Par téléphone et WhatsApp |
+| « Sélection certifiée », « Photographie certifiée », La Maison intro (« haute horlogerie, châles nobles… ») | Plain description of the shop |
+| Starter pages: « Sélection certifiée », fixed delivery times « 24h-48h / 48h-72h » | Factual text; delays depend on the wilaya. Existing shops upgraded only where the text is still the generated one (owner text never touched; test) |
+
+All new texts in FR / AR / EN. The owner can of course make real promises later — as a decision, in the CMS.
+
+
 ## Verification
 
 | Check | Result |

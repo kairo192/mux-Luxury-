@@ -213,6 +213,33 @@ _LEGACY_DEMO_COUPONS = [
 ]
 
 
+_DEV_ADMIN_PASSWORD = "MusLuxury2026!"
+_DEV_EDITOR_PASSWORD = "EditorLuxury2026!"
+
+
+def _seed_password(env_name: str, dev_default: str):
+    """Password for an account created at first start. Development / tests:
+    the configured one, else the known development password. PRODUCTION: only
+    a strong configured password — never the development defaults (this
+    repository is public) nor a placeholder; otherwise None and the account is
+    not created (the owner uses the first-time setup screen instead)."""
+    value = (os.getenv(env_name) or "").strip()
+    if not is_production():
+        return value or dev_default
+    weak = (
+        len(value) < 12
+        or value in (_DEV_ADMIN_PASSWORD, _DEV_EDITOR_PASSWORD)
+        or value.lower().startswith(("change", "replace", "<", "disabled", "your_"))
+    )
+    if weak:
+        import logging
+        logging.getLogger("luxe.seed").error(
+            "%s missing, weak or a placeholder: account NOT created in production "
+            "(use the first-time owner setup, or set a strong password of 12+ characters).", env_name)
+        return None
+    return value
+
+
 def _demo_mode() -> bool:
     return (
         os.getenv("APP_ENV", "").strip().lower() in {"test", "testing"}
@@ -300,6 +327,15 @@ def translate_untouched_starter_pages(cur) -> int:
     exact French starter text (anything the owner wrote is never touched).
     Runs at every start; does nothing once fixed. Returns the fields changed."""
     changed = 0
+    current = {p[0]: p for p in _INITIAL_STATIC_PAGES}
+    for slug, (old_fr, old_ar, old_en) in _PREVIOUS_STARTER_TEXTS.items():
+        _s, _a, _b, _c, new_fr, new_ar, new_en = current[slug]
+        for col, new, olds in (("content_fr", new_fr, (old_fr,)),
+                               ("content_ar", new_ar, (old_fr, old_ar)),
+                               ("content_en", new_en, (old_fr, old_en))):
+            for old in olds:
+                cur.execute(f"UPDATE static_pages SET {col} = ? WHERE slug = ? AND {col} = ?", (new, slug, old))
+                changed += max(cur.rowcount or 0, 0)
     for slug, _t_fr, _t_ar, _t_en, c_fr, c_ar, c_en in _INITIAL_STATIC_PAGES:
         for col, text in (("content_ar", c_ar), ("content_en", c_en)):
             cur.execute(
@@ -438,9 +474,10 @@ def seed_initial_data() -> None:
         # In production (APP_ENV=production), NEVER seed default admin credentials or hardcoded recovery codes!
         # Instead, leave admin_users empty so the First-Time Owner Setup Wizard (/api/v1/admin/auth/initialize-owner) runs and locks itself.
         owner_id = None
-        if (not is_production()) or os.getenv("LUXE_SEED_DEMO_ACCOUNTS") == "1" or os.getenv("SEED_DEFAULT_ADMIN") == "1":
-            admin_pw = os.getenv("ADMIN_INITIAL_PASSWORD") or "MusLuxury2026!"
-            editor_pw = os.getenv("EDITOR_INITIAL_PASSWORD") or "EditorLuxury2026!"
+        wants_seeded_accounts = (not is_production()) or os.getenv("LUXE_SEED_DEMO_ACCOUNTS") == "1" or os.getenv("SEED_DEFAULT_ADMIN") == "1"
+        admin_pw = _seed_password("ADMIN_INITIAL_PASSWORD", _DEV_ADMIN_PASSWORD) if wants_seeded_accounts else None
+        if admin_pw:
+            editor_pw = _seed_password("EDITOR_INITIAL_PASSWORD", _DEV_EDITOR_PASSWORD)
             cur.execute(
                 """INSERT INTO admin_users (email, full_name, phone, emergency_phone, whatsapp_verified, totp_enabled, password_hash, role_id, is_active)
                    VALUES (?, ?, ?, ?, 1, 1, ?, ?, 1)""",
@@ -448,11 +485,12 @@ def seed_initial_data() -> None:
             )
             owner_id = cur.lastrowid
 
-            cur.execute(
-                """INSERT INTO admin_users (email, full_name, phone, whatsapp_verified, totp_enabled, password_hash, role_id, is_active)
-                   VALUES (?, ?, ?, 1, 0, ?, ?, 1)""",
-                ("editor@mus-luxury.com", "Sarah (Product Manager)", "+213550000002", hash_password(editor_pw), role_ids["product_manager"])
-            )
+            if editor_pw:
+                cur.execute(
+                    """INSERT INTO admin_users (email, full_name, phone, whatsapp_verified, totp_enabled, password_hash, role_id, is_active)
+                       VALUES (?, ?, ?, 1, 0, ?, ?, 1)""",
+                    ("editor@mus-luxury.com", "Sarah (Product Manager)", "+213550000002", hash_password(editor_pw), role_ids["product_manager"])
+                )
 
             if not is_production():
                 emergency_hash = hashlib.sha256(b"LUXE-EMERGENCY-2026-RECOVERY").hexdigest()
@@ -858,15 +896,31 @@ def _seed_demo_catalog_content(cur, owner_id: int) -> None:
     return
 
 
+# Earlier generated starter texts (FR, AR, EN) with claims the shop never made
+# ("Sélection certifiée", fixed delivery times). Replaced at start by the
+# current texts — only where the page still holds them word for word.
+_PREVIOUS_STARTER_TEXTS = {
+    "about": (
+        "Boutique officielle Mus Luxury située à FVX6+GCJ Mus luxury, Ouled Yaïch (Blida 09). Sélection certifiée de maroquinerie, chaussures, châles, maquillage, lunettes et montres avec livraison 69 Wilayas et paiement à la livraison (0655 53 41 54).",
+        "المتجر الرسمي لموس لوكسوري في FVX6+GCJ Mus luxury، أولاد يعيش (البليدة 09). تشكيلة مختارة من الحقائب والأحذية والشالات ومستحضرات التجميل والنظارات والساعات، مع التوصيل إلى 69 ولاية والدفع عند الاستلام (0655 53 41 54).",
+        "The official Mus Luxury shop at FVX6+GCJ Mus luxury, Ouled Yaïch (Blida 09). A curated selection of bags, shoes, shawls, make-up, glasses and watches, delivered to all 69 wilayas with cash on delivery (0655 53 41 54).",
+    ),
+    "returns": (
+        "Livraison rapide dans les 69 Wilayas d'Algérie (24h-48h Alger/Blida/Grandes villes, 48h-72h autres wilayas). Échange ou retour garanti sous 7 jours dans l'emballage d'origine.",
+        "توصيل سريع إلى 69 ولاية في الجزائر (24 إلى 48 ساعة للجزائر العاصمة والبليدة والمدن الكبرى، و48 إلى 72 ساعة لباقي الولايات). الاستبدال أو الإرجاع مضمون خلال 7 أيام في التغليف الأصلي.",
+        "Fast delivery to all 69 wilayas of Algeria (24–48 h for Algiers, Blida and large cities, 48–72 h elsewhere). Exchange or return guaranteed within 7 days in the original packaging.",
+    ),
+}
+
 _INITIAL_STATIC_PAGES = [
             (
                 "about",
                 "La Maison Mus Luxury — Ouled Yaïch",
                 "دار موس لوكسوري — أولاد يعيش",
                 "House of Mus Luxury — Ouled Yaïch",
-                "Boutique officielle Mus Luxury située à FVX6+GCJ Mus luxury, Ouled Yaïch (Blida 09). Sélection certifiée de maroquinerie, chaussures, châles, maquillage, lunettes et montres avec livraison 69 Wilayas et paiement à la livraison (0655 53 41 54).",
-                "المتجر الرسمي لموس لوكسوري في FVX6+GCJ Mus luxury، أولاد يعيش (البليدة 09). تشكيلة مختارة من الحقائب والأحذية والشالات ومستحضرات التجميل والنظارات والساعات، مع التوصيل إلى 69 ولاية والدفع عند الاستلام (0655 53 41 54).",
-                "The official Mus Luxury shop at FVX6+GCJ Mus luxury, Ouled Yaïch (Blida 09). A curated selection of bags, shoes, shawls, make-up, glasses and watches, delivered to all 69 wilayas with cash on delivery (0655 53 41 54).",
+                "Boutique Mus Luxury à FVX6+GCJ Mus luxury, Ouled Yaïch (Blida 09) : sacs, chaussures, châles, maquillage, lunettes et montres. Livraison dans les 69 wilayas et paiement à la livraison (0655 53 41 54).",
+                "متجر موس لوكسوري في FVX6+GCJ Mus luxury، أولاد يعيش (البليدة 09): حقائب، أحذية، شالات، مستحضرات تجميل، نظارات وساعات. التوصيل إلى 69 ولاية والدفع عند الاستلام (0655 53 41 54).",
+                "Mus Luxury shop at FVX6+GCJ Mus luxury, Ouled Yaïch (Blida 09): bags, shoes, shawls, make-up, glasses and watches. Delivery to all 69 wilayas, cash on delivery (0655 53 41 54).",
             ),
             (
                 "faq",
@@ -882,9 +936,9 @@ _INITIAL_STATIC_PAGES = [
                 "Livraison 69 Wilayas & Retours sous 7 Jours",
                 "التوصيل إلى 69 ولاية والإرجاع خلال 7 أيام",
                 "69-Wilaya Delivery & 7-Day Returns",
-                "Livraison rapide dans les 69 Wilayas d'Algérie (24h-48h Alger/Blida/Grandes villes, 48h-72h autres wilayas). Échange ou retour garanti sous 7 jours dans l'emballage d'origine.",
-                "توصيل سريع إلى 69 ولاية في الجزائر (24 إلى 48 ساعة للجزائر العاصمة والبليدة والمدن الكبرى، و48 إلى 72 ساعة لباقي الولايات). الاستبدال أو الإرجاع مضمون خلال 7 أيام في التغليف الأصلي.",
-                "Fast delivery to all 69 wilayas of Algeria (24–48 h for Algiers, Blida and large cities, 48–72 h elsewhere). Exchange or return guaranteed within 7 days in the original packaging.",
+                "Livraison dans les 69 wilayas d'Algérie, à domicile ou en bureau Stop-Desk ; le délai dépend de la wilaya. Échange ou retour sous 7 jours dans l'emballage d'origine.",
+                "التوصيل إلى 69 ولاية في الجزائر، إلى المنزل أو إلى مكتب Stop-Desk؛ تختلف المدة حسب الولاية. الاستبدال أو الإرجاع خلال 7 أيام في التغليف الأصلي.",
+                "Delivery to all 69 wilayas of Algeria, at home or to a Stop-Desk office; the delay depends on the wilaya. Exchange or return within 7 days in the original packaging.",
             ),
             (
                 "terms",

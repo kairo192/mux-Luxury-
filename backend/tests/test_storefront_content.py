@@ -195,6 +195,29 @@ class TestStorefrontContent(unittest.TestCase):
         self.assertIn("Order directly", faq["content_en"])
         self.assertEqual(self.client.get("/api/v1/pages/returns").json()["content_ar"], "نص كتبه المالك")
 
+    def test_generated_claims_replaced_unless_owner_edited(self):
+        """Older starter pages promised things the shop never decided ("Sélection
+        certifiée", fixed delivery times): upgraded, but never over the owner's text."""
+        from app.database import db_session
+        from app.seed import _PREVIOUS_STARTER_TEXTS, translate_untouched_starter_pages
+        old_about, old_returns = _PREVIOUS_STARTER_TEXTS["about"][0], _PREVIOUS_STARTER_TEXTS["returns"][0]
+        with db_session(commit=True) as conn:
+            cur = conn.cursor()
+            # about: as an old shop left it (French everywhere); returns: edited by the owner
+            cur.execute("UPDATE static_pages SET content_fr = ?, content_ar = ?, content_en = ? WHERE slug = 'about'",
+                        (old_about, old_about, old_about))
+            cur.execute("UPDATE static_pages SET content_fr = ? WHERE slug = 'returns'", ("Texte du propriétaire.",))
+            translate_untouched_starter_pages(cur)
+        about = self.client.get("/api/v1/pages/about").json()
+        for lang in ("fr", "ar", "en"):
+            self.assertNotIn("certifi", about[f"content_{lang}"].lower())
+        self.assertIn("69 wilayas", about["content_fr"])
+        self.assertIn("حقائب", about["content_ar"])
+        self.assertIn("cash on delivery", about["content_en"])
+        returns = self.client.get("/api/v1/pages/returns").json()
+        self.assertEqual(returns["content_fr"], "Texte du propriétaire.")
+        self.assertNotEqual(old_returns, returns["content_fr"])
+
     def test_compression_large_answers_only(self):
         """Lists are gzip-compressed, tiny answers are not; both stay readable."""
         big = self.client.get("/api/v1/delivery-zones", headers={"Accept-Encoding": "gzip"})

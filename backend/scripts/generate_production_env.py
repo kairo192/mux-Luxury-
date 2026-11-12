@@ -128,7 +128,9 @@ DATABASE_URL=postgresql://luxe_app_user:{pg_password}@db:5432/luxe_ecommerce
 # ----------------------------------------------------------------------------
 # First-time owner bootstrap. In production, APP_ENV=production normally
 # blocks default-admin seeding (owner runs the setup wizard in the CMS).
-# If you prefer a pre-seeded admin, set LUXE_SEED_DEMO_ACCOUNTS=1 below.
+# If you prefer a pre-seeded admin, set LUXE_SEED_DEMO_ACCOUNTS=1 below AND a
+# strong ADMIN_INITIAL_PASSWORD (12+ characters): weak, placeholder or the
+# public development passwords are refused in production (no account created).
 # These values are what the wizard pre-fills if you choose to seed.
 # ----------------------------------------------------------------------------
 LUXE_SEED_DEMO_ACCOUNTS=0
