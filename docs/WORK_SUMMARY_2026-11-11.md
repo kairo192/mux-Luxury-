@@ -340,11 +340,37 @@ no French name) and accounting-export tests. **295 tests** pass on SQLite and Po
 
 ---
 
+## 18. The whole business connected — one day through every module
+
+Method: a scripted business day on a fresh database (now the permanent test
+`tests/test_business_flow.py`): supplier purchase → online order → delivery → till sale with discount →
+partial refund → unpaid expense → register close with a shortage → return after delivery → damaged item,
+return to supplier, stock count. After each step every connected figure is compared: stock and its
+movements, product cost, supplier debt, treasury (cash / bank), customer totals (list, search and customer
+page), stock alerts, register cash, dashboard, Analytique, reports and Comptabilité. Then every screen was
+opened in French, English and Arabic as owner and as cashier, looking for errors, refused calls, `NaN` /
+`undefined` / raw translation keys.
+
+| Problem found | Fix (`ef65ce3`, `d0696b1`, `3f7b096`) |
+|---|---|
+| Product cost ignored the purchase's shipping/tax (61 000 DA booked to stock, cost 5 000 instead of 5 083): margins overstated | Landed cost in the weighted average; a variant's own cost is updated too |
+| A till closed short or over left the treasury cash box wrong | The difference is recorded in Trésorerie ("Écart de caisse") |
+| Damaged / lost / gifted stock and count gaps never reached the accounts: profit overstated | "Pertes et écarts de stock" (at cost) in Comptabilité, Analytique and the CSV; a return to the supplier is not a loss; a unit found at a count reduces it |
+| Orders did not keep the promo code or the discount; cancelled orders used up limited codes | Code and discount stored on the order (new columns added at start), shown on the order and invoice; promo list shows orders kept and discount given; cancelling gives the use back |
+| Order invoices, receipts and the COD refusal message had the shop's address/phone/links as fixed text | Taken from the settings edited in the CMS |
+| ~100 server messages the owner can see were English, so the CMS showed a generic error | French messages (the shop still recognises a retried order) |
+| The till's offline catalogue crashed on databases where the VPS deploy had not run the migrations (shop PC, fresh install) | Pending migrations applied at every API start (idempotent, locked on PostgreSQL) |
+| "Clients" in the cashier's menu, but the list was refused; a cashier's CMS made 34 refused background calls | Customer list uses the till's permission; screens and data loading follow the role |
+
+All 298 tests pass on SQLite and PostgreSQL 16 (the 4 `@babel/core` ones with the substitute compiler).
+
+---
+
 ## Verification
 
 | Check | Result |
 |---|---|
-| Backend tests | 295 run on SQLite and on PostgreSQL 16 (26 new in round 17). Only 4 failures, all caused by `@babel/core` missing in the cloud container; those 4 pass with a substitute TypeScript compiler and pass in CI. |
+| Backend tests | 298 run on SQLite and on PostgreSQL 16 (incl. the end-to-end business day, round 18). Only 4 failures, all caused by `@babel/core` missing in the cloud container; those 4 pass with a substitute TypeScript compiler and pass in CI. |
 | CMS TypeScript + build | OK |
 | Rust (`cargo check`) | OK |
 | Browser tests (Playwright) | Notifications, message box queue, bell, update dialog, new-order alert, Arabic layout, category delete + reload, archived tab, database panel, backup, reset: all OK |

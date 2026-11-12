@@ -7,7 +7,19 @@
 
 ---
 
-## 0e. EVERY CMS SCREEN TESTED ONE BY ONE (2026-11-11, latest)
+## 0f. BUSINESS CONNECTED END TO END (2026-11-12, latest)
+Details: `docs/WORK_SUMMARY_2026-11-11.md` §18. Keep these true (guarded by `tests/test_business_flow.py`):
+- Receiving a purchase: landed unit cost (shipping+tax spread by line value) in the PMP of the product and
+  of a variant that has its own cost.
+- Register close: variance → `cash_movements` source `register_variance`.
+- P&L / Analytique: net = gross − all expenses − `_stock_losses_dzd()` (movements `writeoff_*` except
+  `writeoff_return_to_supplier`, and `physical_count_reconcile`, at cost).
+- `orders.coupon_code` / `orders.discount_dzd` (via `_ADDITIVE_COLUMNS`); cancel → coupon usage −1.
+- Documents use `_boutique_info_from_settings()` (fiscal settings, then store settings).
+- `seed_initial_data()` runs `migration_runner.run()` at every start.
+- Server messages shown to people are French. CMS screens/data loads are gated by `canOpenTab` / role perms.
+
+## 0e. EVERY CMS SCREEN TESTED ONE BY ONE (2026-11-11)
 Commits `a54a23f` → `e61c4a8`, details in `docs/WORK_SUMMARY_2026-11-11.md` §17. Rules now in force:
 - **Permissions**: `finance:read` (owner, Administrateur) guards every money endpoint; permissions,
   role and `is_active` are read from the DB on each request (`get_current_admin`), not from the token.

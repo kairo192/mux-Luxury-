@@ -309,6 +309,17 @@ Keep the owner password in a password manager.
 - **Products with history are never deleted.** A product that was sold or bought is archived, so past
   orders stay intact. "Réactiver" puts it back on the shop and at the till.
 
+- **Losses and corrections.** "Sortie de stock" (damaged, lost, gift…) counts as a loss in the accounts.
+  The quick −1 / +1 buttons are only corrections of a counting mistake (no money effect).
+- **Purchase cost includes shipping.** When goods are received, the shipping and tax of the purchase order
+  are spread over the items, so margins are real.
+- **Till difference.** Closing the till with more or less cash than expected records the difference in
+  *Trésorerie* ("Écart de caisse").
+- **Promo codes.** Each order shows the code used and the discount; the promo list shows how many orders
+  kept each code and the total discount given. Cancelling an order gives a limited code's use back.
+- **Shop contacts on documents.** Invoices and receipts print the name, address, phone and links set in the
+  CMS (*Paramètres fiscaux* first, then *Contenu*).
+
 ## 8. Keys and passwords — status
 
 ### 8.1 Generated automatically (nothing to do)
