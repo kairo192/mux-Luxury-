@@ -25,12 +25,12 @@ git fetch origin feat/pos-core-cash-register-18lsk6
 git checkout feat/pos-core-cash-register-18lsk6
 git pull origin feat/pos-core-cash-register-18lsk6
 ```
-Read, in this order: `docs/WORK_SUMMARY_2026-11-11.md` (sections 17–26), `HANDOFF_FOR_ANTIGRAVITY.md` (sections 0e–0l),
+Read, in this order: `docs/WORK_SUMMARY_2026-11-11.md` (sections 17–27), `HANDOFF_FOR_ANTIGRAVITY.md` (sections 0e–0l),
 `docs/OPERATIONS_GUIDE.md` (§5 backups, §7c), `docs/deployment/VPS_DEPLOYMENT.md`, `e2e/README.md`.
 
 ## 2. Verify on Windows
 1. Backend: `cd backend; pip install -r requirements.txt; python -m unittest discover -s tests`
-   → expect **308 tests, all passing** (the 4 `@babel/core` tests that fail in the cloud should pass here if Node + babel are installed; report otherwise).
+   → expect **309 tests, all passing** (the 4 `@babel/core` tests that fail in the cloud should pass here if Node + babel are installed; report otherwise).
 2. Lint: `npm run lint` (ruff + TypeScript with no unused code allowed).
 3. Browser tests: `npm install --prefix e2e; npx --prefix e2e playwright install chromium; npm run test:e2e`
    → expect **33 passed**. They start their own server on ports 18000/11420/15173 with an empty database; they never touch real data.

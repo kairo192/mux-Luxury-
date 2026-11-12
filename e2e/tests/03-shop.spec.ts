@@ -199,6 +199,8 @@ test.describe("shop in Arabic on a phone", () => {
     await page.evaluate(() => (window as any).openOrderTrackingModal());
     await expect(page.locator("#trk-title")).toHaveText("تتبع الطلب");
     await expect(page.locator("#trk-submit")).toContainText("البحث عن طلبي");
+    await expect(page.locator("footer")).toContainText("معلومات ومساعدة");
+    await expect(page.locator("footer")).not.toContainText("Questions fréquentes");
     w.expectClean();
   });
 });

@@ -514,6 +514,17 @@ the container had older packages than a fresh CI machine. Found from the CI logs
 | End-to-end (tests green, job red) | `setup-python` asked to cache pip while installs used `--no-cache-dir` → the cache folder never existed and saving it failed | `--no-cache-dir` removed in the three jobs that cache pip |
 
 
+## 27. Arabic shop: information pages and footer
+
+- **Information pages (À propos, FAQ, Livraison & retours, Conditions)**: the starter content copied the
+  *French* text into the Arabic and English fields — Arabic customers read French laid out right-to-left, and in
+  the CMS the Arabic field looked already translated. New shops now get real Arabic and English texts; existing
+  shops are repaired at the next start, **only where the field still holds that exact French starter text**
+  (anything the owner wrote is never touched). Test: repaired once, owner text kept.
+- **Footer** in Arabic and English (headings, links, slogan): page texts marked `data-t-ar` / `data-t-en` are
+  swapped by the language switch (French kept to switch back). The Arabic phone test checks it.
+
+
 ## Verification
 
 | Check | Result |

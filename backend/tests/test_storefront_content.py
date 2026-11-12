@@ -176,6 +176,25 @@ class TestStorefrontContent(unittest.TestCase):
                                          json={"is_active": True}).status_code, 404)
 
     # ---------------------------------------------------------- dashboard --
+    def test_starter_pages_arabic_is_arabic_owner_text_kept(self):
+        """Older shops had the French starter text copied into the Arabic and
+        English fields: it is translated at start, but never over the owner's own text."""
+        from app.database import db_session
+        from app.seed import _INITIAL_STATIC_PAGES, translate_untouched_starter_pages
+        faq_fr = next(p for p in _INITIAL_STATIC_PAGES if p[0] == "faq")[4]
+        with db_session(commit=True) as conn:
+            cur = conn.cursor()
+            # as an older version left them: faq untouched, returns edited by the owner
+            cur.execute("UPDATE static_pages SET content_ar = content_fr, content_en = content_fr WHERE slug IN ('faq', 'returns')")
+            cur.execute("UPDATE static_pages SET content_ar = ? WHERE slug = 'returns'", ("نص كتبه المالك",))
+            translate_untouched_starter_pages(cur)
+            self.assertEqual(translate_untouched_starter_pages(cur), 0, "runs once, then nothing to do")
+        faq = self.client.get("/api/v1/pages/faq").json()
+        self.assertNotEqual(faq["content_ar"], faq_fr)
+        self.assertIn("اطلبوا مباشرة", faq["content_ar"])
+        self.assertIn("Order directly", faq["content_en"])
+        self.assertEqual(self.client.get("/api/v1/pages/returns").json()["content_ar"], "نص كتبه المالك")
+
     def test_compression_large_answers_only(self):
         """Lists are gzip-compressed, tiny answers are not; both stay readable."""
         big = self.client.get("/api/v1/delivery-zones", headers={"Accept-Encoding": "gzip"})

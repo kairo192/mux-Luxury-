@@ -19,7 +19,7 @@ Details: WORK_SUMMARY §25.
 ## 0k. ARABIC SHOP ON A PHONE (2026-11-12)
 Details: WORK_SUMMARY §23. Storefront: `L(fr, ar, en)` for any visible text, `wilayaName(w)`, `ltr(text)` around
 anything left-to-right inside Arabic; `formatDZD()` already isolates prices in Arabic — never build "… DA" by hand.
-Left in French in Arabic: static pages (STATIC_PAGES_CONTENT), footer, tracking modal.
+Fixed texts in the page: add `data-t-ar` / `data-t-en` (swapped by setLanguage). Information pages come from the CMS per language (`translate_untouched_starter_pages` in seed.py repaired old French copies). Only the offline fallback STATIC_PAGES_CONTENT is still French.
 
 ## 0j. HTTPS RENEWAL + HEALTH CHECK (2026-11-12)
 Details: WORK_SUMMARY §22, VPS_DEPLOYMENT §6–7.

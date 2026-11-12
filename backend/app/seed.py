@@ -292,6 +292,24 @@ def remove_legacy_demo_content(cur, *, force: bool = False) -> dict:
 TREASURY_BACKFILL_MARKER = "system_treasury_backfill_v1"
 
 
+def translate_untouched_starter_pages(cur) -> int:
+    """Older versions copied the FRENCH starter text into the Arabic and English
+    fields of the information pages: Arabic customers read French (laid out
+    right-to-left) and the CMS showed the Arabic field as already filled.
+    Replaces it with the translation — only where the field still holds that
+    exact French starter text (anything the owner wrote is never touched).
+    Runs at every start; does nothing once fixed. Returns the fields changed."""
+    changed = 0
+    for slug, _t_fr, _t_ar, _t_en, c_fr, c_ar, c_en in _INITIAL_STATIC_PAGES:
+        for col, text in (("content_ar", c_ar), ("content_en", c_en)):
+            cur.execute(
+                f"UPDATE static_pages SET {col} = ? WHERE slug = ? AND {col} = ? AND content_fr = ?",
+                (text, slug, c_fr, c_fr),
+            )
+            changed += max(cur.rowcount or 0, 0)
+    return changed
+
+
 def backfill_treasury_from_sales(cur) -> dict:
     """One-time catch-up (first start after the update that made the
     treasury follow sales): till sales and refunds, and delivered
@@ -357,6 +375,7 @@ def seed_initial_data() -> None:
         cur = conn.cursor()
         ensure_operational_rbac(conn)
         remove_legacy_demo_content(cur)
+        translate_untouched_starter_pages(cur)
         backfill_treasury_from_sales(cur)
         cur.execute("SELECT COUNT(*) AS cnt FROM roles")
         if cur.fetchone()["cnt"] > 0:
@@ -534,11 +553,11 @@ def seed_initial_data() -> None:
 
         # Seed Official Mus Luxury Static Pages (about, faq, returns, terms)
         initial_pages = _INITIAL_STATIC_PAGES
-        for p_slug, t_fr, t_ar, t_en, c_fr in initial_pages:
+        for p_slug, t_fr, t_ar, t_en, c_fr, c_ar, c_en in initial_pages:
             cur.execute(
                 """INSERT OR IGNORE INTO static_pages (slug, title_fr, title_ar, title_en, content_fr, content_ar, content_en, is_published)
                    VALUES (?, ?, ?, ?, ?, ?, ?, 1)""",
-                (p_slug, t_fr, t_ar, t_en, c_fr, c_fr, c_fr),
+                (p_slug, t_fr, t_ar, t_en, c_fr, c_ar, c_en),
             )
 
 
@@ -846,6 +865,8 @@ _INITIAL_STATIC_PAGES = [
                 "دار موس لوكسوري — أولاد يعيش",
                 "House of Mus Luxury — Ouled Yaïch",
                 "Boutique officielle Mus Luxury située à FVX6+GCJ Mus luxury, Ouled Yaïch (Blida 09). Sélection certifiée de maroquinerie, chaussures, châles, maquillage, lunettes et montres avec livraison 69 Wilayas et paiement à la livraison (0655 53 41 54).",
+                "المتجر الرسمي لموس لوكسوري في FVX6+GCJ Mus luxury، أولاد يعيش (البليدة 09). تشكيلة مختارة من الحقائب والأحذية والشالات ومستحضرات التجميل والنظارات والساعات، مع التوصيل إلى 69 ولاية والدفع عند الاستلام (0655 53 41 54).",
+                "The official Mus Luxury shop at FVX6+GCJ Mus luxury, Ouled Yaïch (Blida 09). A curated selection of bags, shoes, shawls, make-up, glasses and watches, delivered to all 69 wilayas with cash on delivery (0655 53 41 54).",
             ),
             (
                 "faq",
@@ -853,6 +874,8 @@ _INITIAL_STATIC_PAGES = [
                 "الأسئلة الشائعة",
                 "Frequently Asked Questions (FAQ)",
                 "Commandez directement sans créer de compte. Sélectionnez votre Wilaya (01 à 69) et le mode À Domicile ou Stop-Desk : le tarif est calculé automatiquement et le paiement s'effectue à la réception.",
+                "اطلبوا مباشرة دون إنشاء حساب. اختاروا ولايتكم (من 01 إلى 69) والتوصيل إلى المنزل أو إلى المكتب (Stop-Desk): يُحسب سعر التوصيل تلقائيًا ويتم الدفع عند الاستلام.",
+                "Order directly, no account needed. Choose your wilaya (01 to 69) and home or Stop-Desk delivery: the delivery price is calculated automatically and you pay on delivery.",
             ),
             (
                 "returns",
@@ -860,6 +883,8 @@ _INITIAL_STATIC_PAGES = [
                 "التوصيل إلى 69 ولاية والإرجاع خلال 7 أيام",
                 "69-Wilaya Delivery & 7-Day Returns",
                 "Livraison rapide dans les 69 Wilayas d'Algérie (24h-48h Alger/Blida/Grandes villes, 48h-72h autres wilayas). Échange ou retour garanti sous 7 jours dans l'emballage d'origine.",
+                "توصيل سريع إلى 69 ولاية في الجزائر (24 إلى 48 ساعة للجزائر العاصمة والبليدة والمدن الكبرى، و48 إلى 72 ساعة لباقي الولايات). الاستبدال أو الإرجاع مضمون خلال 7 أيام في التغليف الأصلي.",
+                "Fast delivery to all 69 wilayas of Algeria (24–48 h for Algiers, Blida and large cities, 48–72 h elsewhere). Exchange or return guaranteed within 7 days in the original packaging.",
             ),
             (
                 "terms",
@@ -867,5 +892,7 @@ _INITIAL_STATIC_PAGES = [
                 "الشروط العامة والخصوصية",
                 "Terms & Privacy Policy",
                 "Tous les prix sont affichés en Dinar Algérien (DA). Vos coordonnées (nom, téléphone, adresse) sont utilisées exclusivement pour la confirmation téléphonique et l'expédition de votre colis.",
+                "جميع الأسعار معروضة بالدينار الجزائري (DA). تُستعمل معلوماتكم (الاسم، الهاتف، العنوان) فقط لتأكيد الطلب هاتفيًا وإرسال الطرد.",
+                "All prices are in Algerian dinars (DA). Your details (name, phone, address) are used only to confirm your order by phone and to ship your parcel.",
             ),
 ]
