@@ -68,7 +68,7 @@ def render(*, domain: str, admin_email: str, admin_name: str = "") -> str:
     secrets, the owner's domain / e-mail, defaults elsewhere. Integrations the
     owner has not signed up for stay EMPTY (= off), never placeholders."""
     sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-    from app.settings import GROUPS, NOT_BUILT, SETTINGS
+    from app.settings import GROUPS, SETTINGS
 
     pg_password = _password(36)
     values = {
@@ -102,8 +102,6 @@ def render(*, domain: str, admin_email: str, admin_name: str = "") -> str:
         for st in items:
             out.append(f"# {st.help}")
             out.append(f"{st.name}={values.get(st.name, st.example or st.default)}")
-    built = sorted({v.split(" — ")[0] for v in NOT_BUILT.values() if "not built" in v})
-    out += ["", "# Not built yet (no key to set): " + "; ".join(built) + "."]
     return "\n".join(out) + "\n"
 
 

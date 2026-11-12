@@ -12,10 +12,11 @@ accepted. Used for:
                               `python -m app.settings check [file]`;
   * `render_template()`       the four .env templates (root .env.example and
                               infrastructure/environments/*.env.example) are
-                              generated from this list — no key nobody reads.
+                              generated from this list — only keys the code reads.
 
 A CI test fails when the code reads a key missing here, or a template offers a
-key nothing reads.
+key nothing reads. Keys in an .env file that are not in this list are reported
+as "not used — can be deleted".
 """
 from __future__ import annotations
 
@@ -124,21 +125,8 @@ SETTINGS: List[Setting] = [
     Setting("OFFSITE_RETENTION_DAYS", "offsite", "Days off-site copies are kept.", default="90", example="90"),
     # -------------------------------------------------------------- whatsapp
     Setting("WHATSAPP_WEBHOOK_VERIFY_TOKEN", "whatsapp", "Webhook check (Meta app settings). Empty = webhook off. "
-            "Messages to customers work without it (wa.me links).", secret=True),
+            "Messages to customers need no key (staff send prepared wa.me messages).", secret=True),
     Setting("WHATSAPP_APP_SECRET", "whatsapp", "Meta app secret: checks webhook signatures.", secret=True),
-    # Read by app/whatsapp.py, kept out of the templates: automatic sending
-    # through the Cloud API is not built (staff send prepared wa.me messages).
-    Setting("WHATSAPP_CLOUD_API_TOKEN", "whatsapp", "Not used yet (automatic sending not built).", secret=True,
-            aliases=("WHATSAPP_ACCESS_TOKEN",), in_template=False),
-    Setting("WHATSAPP_PHONE_NUMBER_ID", "whatsapp", "Not used yet (automatic sending not built).", in_template=False),
-    Setting("WHATSAPP_BUSINESS_ACCOUNT_ID", "whatsapp", "Not used yet (automatic sending not built).", in_template=False),
-    Setting("WHATSAPP_API_VERSION", "whatsapp", "Not used yet (automatic sending not built).", default="v20.0",
-            in_template=False),
-    Setting("WHATSAPP_TEMPLATE_NAME", "whatsapp", "Not used yet (automatic sending not built).", in_template=False),
-    Setting("WHATSAPP_TEMPLATE_LANG", "whatsapp", "Not used yet (automatic sending not built).", default="fr",
-            in_template=False),
-    Setting("WHATSAPP_SANDBOX_MODE", "whatsapp", "Not used yet (automatic sending not built).", in_template=False),
-    Setting("WHATSAPP_TEST_CAPTURE", "internal", "Tests only.", in_template=False),
     # ------------------------------------------------------------------- pos
     Setting("POS_MIN_SUPPORTED_VERSION", "pos", "Oldest desktop CMS version allowed to connect.", default="1.0.0",
             example="1.0.0"),
@@ -154,35 +142,6 @@ SETTINGS: List[Setting] = [
 
 BY_NAME: Dict[str, Setting] = {s.name: s for s in SETTINGS}
 ALIASES: Dict[str, str] = {a: s.name for s in SETTINGS for a in s.aliases}
-
-# Integrations announced by older templates whose code does not exist yet.
-# Their keys do nothing; listed so the report names them instead of "unknown".
-NOT_BUILT: Dict[str, str] = {
-    **{k: "Yalidine (delivery company API) — not built: parcels are handled outside the system"
-       for k in ("YALIDINE_API_ID", "YALIDINE_API_TOKEN", "YALIDINE_API_BASE_URL")},
-    **{k: "ZR Express (delivery company API) — not built"
-       for k in ("ZR_EXPRESS_API_KEY", "ZR_EXPRESS_TOKEN", "ZR_EXPRESS_BASE_URL")},
-    **{k: "Maystro (delivery company API) — not built" for k in ("MAYSTRO_API_TOKEN", "MAYSTRO_STORE_ID")},
-    **{k: "Chargily (online card payment) — not built: payment is cash on delivery"
-       for k in ("CHARGILY_MODE", "CHARGILY_PUBLIC_KEY", "CHARGILY_SECRET_KEY", "CHARGILY_WEBHOOK_SECRET",
-                 "PAYMENT_DEFAULT_METHOD")},
-    **{k: "E-mail sending — not built" for k in ("SMTP_ENABLED", "SMTP_HOST", "SMTP_PORT", "SMTP_USER",
-                                                 "SMTP_PASSWORD", "SMTP_FROM_EMAIL")},
-    **{k: "Advertising pixels — not built" for k in ("META_PIXEL_ID", "TIKTOK_PIXEL_ID")},
-    "GOOGLE_MAPS_API_KEY": "Not needed: the shop uses plain Google Maps links",
-    "DELIVERY_DEFAULT_PROVIDER": "Delivery company APIs — not built",
-    "WHATSAPP_APP_ID": "Not used (automatic WhatsApp sending not built)",
-    **{k: "Not used: fixed by the code (French shop, DA, /api/v1, 15 MB photos)"
-       for k in ("APP_NAME", "DEFAULT_LOCALE", "SUPPORTED_LOCALES", "PRIMARY_CURRENCY", "API_V1_PREFIX",
-                 "MAX_UPLOAD_SIZE_MB", "ALLOWED_IMAGE_TYPES", "STORAGE_PROVIDER", "PUBLIC_API_URL",
-                 "SIGNATURE_MAX_SKEW_SECONDS")},
-    **{k: "Not used: shop phone / WhatsApp are set in CMS → Contenu"
-       for k in ("STORE_WHATSAPP_CONTACT_NUMBER", "ADMIN_SECONDARY_PHONE", "ADMIN_INITIAL_WHATSAPP_PHONE")},
-    "ADMIN_EMERGENCY_RECOVERY_CODE": "Removed (WhatsApp password recovery was removed; use app.admin_cli)",
-    **{k: "Not read by the server: the desktop CMS and the shop are built without it"
-       for k in ("VITE_API_BASE_URL", "VITE_CMS_API_URL", "VITE_STORE_WHATSAPP_NUMBER", "VITE_ENABLE_REQUEST_SIGNING")},
-}
-
 
 def _environ(env: Optional[Dict[str, str]]) -> Dict[str, str]:
     return os.environ if env is None else env  # type: ignore[return-value]
@@ -253,10 +212,6 @@ def configuration_report(env: Optional[Dict[str, str]] = None, production: Optio
             **({"via_old_name": used_alias} if used_alias else {}),
         })
     known = set(BY_NAME) | set(ALIASES)
-    not_built = sorted(k for k in e if k in NOT_BUILT and (e.get(k) or "").strip())
-    # Read by the code but no feature uses them yet (automatic WhatsApp sending).
-    reserved = sorted(n for s in SETTINGS if not s.in_template and s.help.startswith("Not used yet")
-                      for n in (s.name, *s.aliases) if (e.get(n) or "").strip())
     offsite_on = raw("S3_BACKUP_ENABLED", e).lower() in ("1", "true", "yes")
     if production and not offsite_on:
         problems.append("S3_BACKUP_ENABLED: backups stay on the VPS only (no off-site copy)")
@@ -270,9 +225,9 @@ def configuration_report(env: Optional[Dict[str, str]] = None, production: Optio
         "ok": not any("required in production" in p for p in problems),
         "problems": problems,
         "groups": groups,
-        "not_built": [{"name": k, "note": NOT_BUILT[k]} for k in not_built]
-                     + [{"name": k, "note": "Not used yet (automatic WhatsApp sending not built)"} for k in reserved],
-        "unknown": [],  # filled by check_file (environment variables of the system are not listed)
+        # Keys in an .env file that the code does not use (check_file only:
+        # the process environment holds many unrelated system variables).
+        "unused": [],
         "_known": known,
     }
 
@@ -298,7 +253,7 @@ def parse_env_file(path: str) -> Dict[str, str]:
 def check_file(path: str, production: bool = True) -> dict:
     env = parse_env_file(path)
     rep = configuration_report(env, production=production)
-    rep["unknown"] = sorted(k for k in env if k not in rep["_known"] and k not in NOT_BUILT)
+    rep["unused"] = sorted(k for k in env if k not in rep["_known"])
     return rep
 
 
@@ -361,8 +316,6 @@ def render_template(profile: str = "production") -> str:
             else:
                 value = s.example or s.default
             lines.append(f"{s.name}={value}")
-    built = sorted({v.split(" — ")[0] for v in NOT_BUILT.values() if "not built" in v})
-    lines += ["", "# Not built yet — no key to set: " + "; ".join(built) + "."]
     return "\n".join(lines) + "\n"
 
 
@@ -394,12 +347,9 @@ def _print_report(rep: dict) -> None:
                 mark = "!! "
             alias = f"  (old name {s['via_old_name']})" if s.get("via_old_name") else ""
             print(f"  {mark} {s['name']}{alias}")
-    if rep["not_built"]:
-        print("\nKeys for features not built (they do nothing):")
-        for n in rep["not_built"]:
-            print(f"   - {n['name']}: {n['note']}")
-    if rep.get("unknown"):
-        print("\nUnknown keys (typo?): " + ", ".join(rep["unknown"]))
+    if rep.get("unused"):
+        print("\nNot used by the code — can be deleted from this file (or a typo):")
+        print("   " + ", ".join(rep["unused"]))
     print("\nOK = set   def = default value   - = empty (feature off)   ? = placeholder, not filled in (feature off)"
           "   !! = REQUIRED and missing")
     print("\n" + ("OK — every required setting is present" if rep["ok"] else "MISSING REQUIRED SETTINGS"))

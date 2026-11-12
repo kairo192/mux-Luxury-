@@ -65,10 +65,18 @@ class TestSettingsRegistry(unittest.TestCase):
                 self.assertEqual((ROOT / rel).read_text(encoding="utf-8"), settings.render_template(profile),
                                  f"{rel} differs: run `python3 -m app.settings templates` in backend/")
 
-    def test_features_not_built_are_not_offered(self):
+    def test_templates_offer_only_registered_keys(self):
         for rel in settings.TEMPLATE_FILES:
             keys = set(re.findall(r"^([A-Z][A-Z0-9_]+)=", (ROOT / rel).read_text(encoding="utf-8"), re.M))
-            self.assertEqual(sorted(keys & set(settings.NOT_BUILT)), [], rel)
+            self.assertEqual(sorted(keys - set(settings.BY_NAME)), [], rel)
+
+    def test_keys_of_removed_features_are_reported_as_unused(self):
+        import tempfile as _tf
+        with _tf.NamedTemporaryFile("w", suffix=".env", delete=False) as f:
+            f.write("APP_ENV=production\nCHARGILY_SECRET_KEY=x\nYALIDINE_API_TOKEN=y\nSMTP_PASSWORD=z\n")
+        rep = settings.check_file(f.name)
+        os.unlink(f.name)
+        self.assertEqual(rep["unused"], ["CHARGILY_SECRET_KEY", "SMTP_PASSWORD", "YALIDINE_API_TOKEN"])
 
     def test_report_never_contains_secret_values(self):
         env = {s.name: f"value-of-{s.name}" for s in settings.SETTINGS}

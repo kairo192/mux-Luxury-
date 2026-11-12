@@ -615,23 +615,43 @@ Maystro, Chargily, SMTP, pixels, Google Maps, WhatsApp sending) — filling them
 | `backend/app/settings.py` | The single list (41 keys offered + internal ones): purpose, required in production, secret, default, older names |
 | Older names | `CORS_ALLOWED_ORIGINS`, `MAX_LOGIN_ATTEMPTS_PER_MINUTE` now work (aliases) |
 | Owner details | A production owner account created at first start uses `ADMIN_INITIAL_EMAIL` / `ADMIN_INITIAL_FULL_NAME` |
-| Templates | The 4 `.env` templates are **generated** from the list — only keys the code reads; integrations not built are listed as such, not offered |
+| Templates | The 4 `.env` templates are **generated** from the list — only keys the code reads; only keys of working features |
 | Generator | Builds from the list; empty (= off) instead of `<FILL_IN>` for providers; no longer prints secrets; fixed `--domain` parsing (`lstrip("https://")` cut letters off domains starting with h/t/p/s) |
 | Check | `python3 -m app.settings check <file>` (values never shown); run before every deploy (stops, nothing changed), logged at each start, shown to the owner in CMS → Sauvegardes & Sécurité |
-| CI | `test_settings_registry.py`: a key read by the code but not listed, a template key nobody reads, a hand-edited template, or a not-built feature offered → red |
+| CI | `test_settings_registry.py`: a key read by the code but not listed, a template key nobody reads, a hand-edited template, or a template key that is not in the list → red |
 
 Your current `scratch/production.env` passes (every required key present); 39 leftover keys are reported as
 "do nothing" and can be deleted. Guide: `docs/CONFIGURATION.md`.
+
+
+## 33. Only the working features are left
+
+The integrations that were never built (Chargily online payment, Yalidine / ZR Express / Maystro delivery APIs,
+SMTP e-mail, Meta / TikTok pixels, Google Maps, WhatsApp Cloud *sending*) are gone from everything that could
+suggest they work: the settings list, the 4 templates, the generator, the server start log, the CMS
+"Configuration du serveur" card, the tests and the guides. What the shop actually uses stays:
+
+| Kept | Why |
+|---|---|
+| Cash on delivery, manual delivery tracking in the CMS | How the shop sells today |
+| WhatsApp messages from the CMS (`wa.me`, no key) | Staff send prepared messages |
+| WhatsApp webhook (`WHATSAPP_WEBHOOK_VERIFY_TOKEN`, `WHATSAPP_APP_SECRET`) | Optional, signed delivery receipts |
+| Off-site backup copy (`S3_*`) | Off until the owner adds a storage account |
+
+An older `.env` with any of the removed keys still starts: `python3 -m app.settings check` lists those keys under
+*"Not used by the code — can be deleted"* (test: `test_keys_of_removed_features_are_reported_as_unused`).
+Your `scratch/production.env` was cleaned the same way (50 key lines + their section comments removed; the
+check passes). The previous file is kept, git-ignored, as `scratch/production.before-cleanup-2026-11-12.env`.
 
 
 ## Verification
 
 | Check | Result |
 |---|---|
-| Backend tests | 308 run on SQLite and on PostgreSQL 16 (incl. the end-to-end business day, round 18). Only 4 failures, all caused by `@babel/core` missing in the cloud container; those 4 pass with a substitute TypeScript compiler and pass in CI. |
+| Backend tests | 329 run on SQLite and on PostgreSQL 16 (incl. the end-to-end business day, round 18). Only 4 failures, all caused by `@babel/core` missing in the cloud container; those 4 pass with a substitute TypeScript compiler and pass in CI. |
 | CMS TypeScript + build | OK |
 | Rust (`cargo check`) | OK |
-| Browser tests (Playwright) | `e2e/`: 33 shop + CMS tests green on SQLite and PostgreSQL 16 (CI job). Earlier manual checks — notifications, message box queue, bell, update dialog, new-order alert, Arabic layout, category delete + reload, archived tab, database panel, backup, reset: all OK |
+| Browser tests (Playwright) | `e2e/`: 34 shop + CMS tests green on SQLite and PostgreSQL 16 (CI job). Earlier manual checks — notifications, message box queue, bell, update dialog, new-order alert, Arabic layout, category delete + reload, archived tab, database panel, backup, reset: all OK |
 | Backup engine | SQLite, PostgreSQL 16, and PC → server restore: OK |
 | VPS backup scripts | Backup, verify, native restore and snapshot restore, tested through a Docker stand-in against PostgreSQL 16: OK |
 

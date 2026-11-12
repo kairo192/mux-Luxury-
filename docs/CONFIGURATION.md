@@ -32,16 +32,13 @@ password manager: without it no backup can be restored.
 
 Messages to customers on WhatsApp need **no key**: staff send prepared `wa.me` messages from the CMS.
 
-## Not built (no key does anything)
+## Keys left over in older files
 
-Delivery-company APIs (Yalidine, ZR Express, Maystro), Chargily online payment, e-mail sending (SMTP),
-advertising pixels, automatic WhatsApp sending. Older `.env` files may still contain their keys: the check lists
-them as "do nothing" — they can be deleted. When one of these features is built, its keys are added to
-`settings.py` with the code (a CI test refuses a template key that no code reads, and a key read by the code that
-is not in the list).
+Older `.env` files may still hold keys of features that were never part of the shop (online card payment,
+delivery-company APIs, e-mail, advertising pixels…). They do nothing: the check lists them under *"Not used by
+the code — can be deleted"*.
 
 ## Older names still accepted
 
-`CORS_ALLOWED_ORIGINS` → `CORS_ORIGINS`; `MAX_LOGIN_ATTEMPTS_PER_MINUTE` → `LOGIN_ATTEMPTS_PER_MINUTE`;
-`WHATSAPP_ACCESS_TOKEN` → `WHATSAPP_CLOUD_API_TOKEN`. (Before this list existed, the first two were silently
-ignored.)
+`CORS_ALLOWED_ORIGINS` → `CORS_ORIGINS`; `MAX_LOGIN_ATTEMPTS_PER_MINUTE` → `LOGIN_ATTEMPTS_PER_MINUTE`.
+(Before this list existed, both were silently ignored.)

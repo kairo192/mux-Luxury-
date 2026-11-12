@@ -18,7 +18,7 @@ database, `.env`, or storage.
 2. **No shared secrets.** Each environment has its own `SECRET_KEY`,
    `CMS_HMAC_SIGNING_SECRET`, `BACKUP_ENCRYPTION_KEY`, DB password, and
    third-party tokens. Rotate independently.
-3. **Staging uses sandbox tokens** for WhatsApp, Chargily, SMS couriers.
+3. **Staging uses its own secrets** (never production ones) — see `docs/CONFIGURATION.md`.
    Point them at provider sandboxes — a mis-sent SMS from staging is
    embarrassing and bills real money.
 4. **The .env file never travels through git.** It lives at

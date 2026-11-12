@@ -22,10 +22,6 @@ if os.environ.get("LUXE_DB_ENGINE") != "postgres":
     os.environ["LUXE_SQLITE_PATH"] = TEST_DB_PATH
 os.environ.setdefault("SECRET_KEY", "test_only_ephemeral_secret_key_for_unit_test_suite_2026_0123456789")
 os.environ.setdefault("BACKUP_ENCRYPTION_KEY", "test_only_ephemeral_backup_encryption_key_2026_0123456789abcdef")
-os.environ.setdefault("WHATSAPP_CLOUD_API_TOKEN", "EAATest_Sandbox_Token_For_Automated_Suite")
-os.environ.setdefault("WHATSAPP_PHONE_NUMBER_ID", "109283746519283")
-os.environ.setdefault("WHATSAPP_SANDBOX_MODE", "true")
-os.environ.setdefault("WHATSAPP_TEST_CAPTURE", "1")
 os.environ.setdefault("WHATSAPP_WEBHOOK_VERIFY_TOKEN", "mus_luxury_wa_webhook_verify_2026_secret")
 os.environ.setdefault("WHATSAPP_APP_SECRET", "meta_app_secret_test_key_2026") 
 
@@ -1158,8 +1154,9 @@ class TestLuxeEcommercePlatform(unittest.TestCase):
         for s in _settings.SETTINGS:
             if s.required_in_production:
                 self.assertIn(f"{s.name}=", env_text, f"Missing required environment variable {s.name} in .env.example")
-        for key in ("YALIDINE_API_TOKEN=", "CHARGILY_SECRET_KEY=", "SMTP_PASSWORD=", "STORE_WHATSAPP_CONTACT_NUMBER="):
-            self.assertNotIn(key, env_text, f"{key} belongs to a feature that is not built")
+        import re as _re
+        offered = set(_re.findall(r"^([A-Z][A-Z0-9_]+)=", env_text, _re.M))
+        self.assertEqual(sorted(offered - set(_settings.BY_NAME)), [], "the template offers only keys the code reads")
         for key in ("S3_ACCESS_KEY_ID=", "S3_SECRET_ACCESS_KEY=", "ADMIN_INITIAL_EMAIL=", "ADMIN_INITIAL_PASSWORD="):
             self.assertIn(key, env_text)
 

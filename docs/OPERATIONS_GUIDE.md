@@ -357,18 +357,13 @@ GitHub CLI, and prints the one public line to give to the VPS. Then back up
 kept in a safe.
 
 ### 8.3 Only you can obtain these (accounts in your company's name)
-Left as `<FILL_IN_…>` in the production `.env`. **The shop works without
-them**: each feature simply stays off until you add its key.
+Left empty in the production `.env`. **The shop works without them**: the feature stays off until you add
+its keys. Full list of keys and the check command: `docs/CONFIGURATION.md`.
 
 | Value | Where to get it | Without it |
 |---|---|---|
-| `S3_*` (5 values) | Your storage provider (§5.4) | No off-site backup copy. **Recommended.** |
-| `YALIDINE_API_ID/TOKEN` | Yalidine merchant account → API | Shipments are booked by hand |
-| `ZR_EXPRESS_API_KEY/TOKEN` | ZR Express merchant account | Same |
-| `MAYSTRO_API_TOKEN/STORE_ID` | Maystro Delivery account | Same |
-| `CHARGILY_PUBLIC/SECRET/WEBHOOK` | Chargily Pay dashboard (CIB / Edahabia) | Customers pay cash on delivery only |
-| `SMTP_PASSWORD` | Your e-mail provider (app password) | No automatic e-mails |
-| `WHATSAPP_*` (Cloud API) | Meta Business → WhatsApp Cloud API | WhatsApp messages open as click-to-chat links (works today) |
+| `S3_*` (6 values) | Your storage provider (§5.4) | No off-site backup copy. **Strongly recommended.** |
+| `WHATSAPP_WEBHOOK_VERIFY_TOKEN`, `WHATSAPP_APP_SECRET` | Meta Business → your WhatsApp app | No delivery receipts. Messages to customers work anyway (prepared wa.me messages) |
 
 ---
 

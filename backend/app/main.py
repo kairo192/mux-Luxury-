@@ -239,8 +239,6 @@ def _log_configuration_report() -> None:
     log = logging.getLogger("luxe.config")
     for problem in rep["problems"]:
         log.warning("configuration: %s", problem)
-    for item in rep["not_built"]:
-        log.info("configuration: %s does nothing — %s", item["name"], item["note"])
 
 # Ensure DB is initialized even when TestClient is instantiated without startup events
 seed_initial_data()

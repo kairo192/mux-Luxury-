@@ -37,10 +37,10 @@ Mus Luxury strictly isolates secrets across four decoupled boundaries:
 | `POSTGRES_USER` | Database | Yes | PostgreSQL | `"luxe_app_user"` |
 | `POSTGRES_PASSWORD` | Database | Yes | PostgreSQL | `openssl rand -base64 32` |
 | `DATABASE_URL` | Database | Yes | API / Alembic | `postgresql://luxe_app_user:<PASS>@db:5432/luxe_ecommerce` |
-| `STORE_WHATSAPP_CONTACT_NUMBER`| Business | Yes | Customer Support / Concierge | Store phone: `+213655534154` |
-| `YALIDINE_API_TOKEN` | Logistics | Optional | Courier Integration| Yalidine App Dashboard |
-| `ZR_EXPRESS_TOKEN` | Logistics | Optional | Courier Integration| Procolis ZR Express Portal |
-| `CHARGILY_SECRET_KEY` | Payment | Optional | CIB / Edahabia | Chargily Pay V2 Dashboard |
+| `BACKUP_ENCRYPTION_KEY` | Backups | Yes | Encrypted backups | `openssl rand -hex 32` — keep a copy in a password manager |
+| `S3_ACCESS_KEY_ID` / `S3_SECRET_ACCESS_KEY` | Backups | Optional | Off-site copy | Storage provider dashboard |
+
+The complete, current list of keys is `backend/app/settings.py` (guide: `docs/CONFIGURATION.md`).
 
 ---
 

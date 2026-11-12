@@ -242,7 +242,7 @@ migration `003_product_variants_updated_at` (SQLite + Postgres):
   bitmap client-side (HTML5 canvas) and send it as a raster image (`GS v 0`).
   Receipts currently fall back to the French / Latin content; the Arabic
   version is skipped. Planned for a follow-up release.
-- **Scale integration**, **payment terminal integration** (SATIM / Chargily)
+- **Scale integration**, **card payment terminal integration**
   are not in scope here. They would be separate native modules.
 - **Printer status monitoring** — the current API is fire-and-forget. An
   "out of paper" slip never reports back. Epson's real-time status

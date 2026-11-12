@@ -7,10 +7,15 @@
 
 ---
 
-## 0n. CONFIGURATION — backend/app/settings.py IS THE LIST OF .env KEYS (2026-11-12, latest)
+## 0o. ONLY WORKING FEATURES (2026-11-12, latest)
+- Removed everywhere: Chargily, Yalidine / ZR / Maystro APIs, SMTP, pixels, Google Maps, WhatsApp Cloud sending keys.
+  Do not re-add them as "coming soon" keys: build the feature first, then register its keys.
+- Kept: COD + manual delivery, `wa.me` messages, WhatsApp webhook (2 optional keys), S3 off-site backup.
+
+## 0n. CONFIGURATION — backend/app/settings.py IS THE LIST OF .env KEYS (2026-11-12)
 - New key: add it to `SETTINGS` (with help/secret/required), read it with `app_settings.get(...)`, then
   `python3 -m app.settings templates`. CI fails otherwise (`test_settings_registry.py`).
-- Do not add keys for features that are not built (they go in `NOT_BUILT` until the code exists).
+- Only keys of working features. Old leftover keys are reported as "not used — can be deleted".
 - `GET /api/v1/admin/system/configuration` (owner) and the deploy check never return values. Guide: docs/CONFIGURATION.md.
 
 ## 0m. CMS ARCHITECTURE — READ apps/desktop-cms/ARCHITECTURE.md FIRST (2026-11-12)
@@ -297,7 +302,7 @@ Context: the owner explicitly asked to strip the WhatsApp admin password recover
 ### 2.5 Production `.env` generator (`backend/scripts/generate_production_env.py`)
 
 - **This is the piece the user explicitly asked for.** Produces a full `.env.production` with cryptographically strong values for `SECRET_KEY`, `CMS_HMAC_SIGNING_SECRET`, `BACKUP_ENCRYPTION_KEY`, `POSTGRES_PASSWORD`, `WHATSAPP_WEBHOOK_VERIFY_TOKEN`, `ADMIN_INITIAL_PASSWORD`, `ADMIN_EMERGENCY_RECOVERY_CODE`.
-- Third-party vendor fields the project can't fabricate (Meta WhatsApp, Chargily, Yalidine, S3, SMTP) are written as explicit `<FILL_IN_...>` tokens — a `grep "<FILL_IN"` on the file immediately shows what still needs the owner's input.
+- (Superseded 2026-11-12, see 0n/0o: the file is built from `backend/app/settings.py`; provider keys are left empty.)
 - Writes to `scratch/production.env` by default, chmod 0600 on POSIX. Prints the critical values on stdout one time so the user can file them in a password manager.
 - Usage (from the repo root):
 

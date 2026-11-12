@@ -81,7 +81,6 @@ interface ServerConfig {
   production: boolean;
   ok: boolean;
   problems: string[];
-  not_built: { name: string; note: string }[];
 }
 
 export function DatabasePanel({ active, isOwner }: { active: boolean; isOwner: boolean }) {
@@ -305,9 +304,6 @@ export function DatabasePanel({ active, isOwner }: { active: boolean; isOwner: b
                   <span className="font-mono">{p}</span>
                 </p>
               ))}
-              {serverConfig.not_built.length > 0 && (
-                <p className="text-gray-500">{t("db.config_unused").replace("{n}", String(serverConfig.not_built.length))}</p>
-              )}
               <p className="text-gray-400">{t("db.config_hint")}</p>
             </div>
           )}

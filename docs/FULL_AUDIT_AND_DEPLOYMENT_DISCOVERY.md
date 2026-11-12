@@ -465,8 +465,7 @@ To update installed Windows desktop instances safely without breaking compatibil
 The following items cannot be determined solely by inspecting the repository and require details from your hosting and third-party provider dashboards:
 1. **Octenium DNS Management Panel:** Access to configure A records for `mus-luxury.com`, `www.mus-luxury.com`, and `api.mus-luxury.com` pointing to the VPS public IP.
 2. **Existing DNS Zone Records:** Confirmation of any existing MX, SPF, DKIM, or DMARC records on `mus-luxury.com` so they are not overwritten during DNS setup.
-3. **Meta WhatsApp Business Cloud API Credentials (Optional):** Live production tokens for customer order notification messages (`WHATSAPP_CLOUD_API_TOKEN`, `WHATSAPP_PHONE_NUMBER_ID`, `WHATSAPP_APP_SECRET`). Owner password recovery has been decoupled and hardened to CLI-only.
-4. **Algerian Logistics / Yalidine API Keys:** Live API credentials if automated dispatch syncing is required immediately at launch.
+3. **Off-site backup storage (recommended):** an S3-compatible bucket and its keys (see `docs/CONFIGURATION.md`).
 
 ---
 

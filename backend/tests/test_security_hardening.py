@@ -23,8 +23,6 @@ os.environ.setdefault("APP_ENV", "test")
 os.environ.setdefault("LUXE_DB_ENGINE", "sqlite")
 os.environ.setdefault("SECRET_KEY", "test_only_ephemeral_secret_key_for_unit_test_suite_2026_0123456789")
 os.environ.setdefault("BACKUP_ENCRYPTION_KEY", "test_only_ephemeral_backup_encryption_key_2026_0123456789abcdef")
-os.environ.setdefault("WHATSAPP_CLOUD_API_TOKEN", "EAATest_Sandbox_Token_For_Automated_Suite")
-os.environ.setdefault("WHATSAPP_PHONE_NUMBER_ID", "109283746519283")
 
 from fastapi.testclient import TestClient
 from app import config
