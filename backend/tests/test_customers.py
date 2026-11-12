@@ -133,6 +133,33 @@ class TestCustomers(unittest.TestCase):
         self.assertFalse({c["id"] for c in d["items"]} & {c["id"] for c in nxt["items"]}, "pages do not overlap")
         self.assertEqual(self.client.get("/api/v1/admin/customers?limit=0", headers=self.headers).status_code, 422)
 
+    def test_orders_search_finds_old_orders(self):
+        """Commandes shows the newest 100; the search finds any order by number,
+        phone (spaces ignored) or name (any case), also with a status filter."""
+        from app.database import db_session
+        ref = "LUX-SRCH-" + self.phone[-6:]
+        with db_session(commit=True) as conn:
+            cur = conn.cursor()
+            cur.execute("SELECT id FROM customers ORDER BY id LIMIT 1")
+            cid = cur.fetchone()["id"]
+            cur.execute(
+                """INSERT INTO orders (order_reference, customer_id, customer_name, customer_phone, wilaya_code, wilaya_name,
+                       commune, delivery_address, delivery_method, payment_method, subtotal_dzd, delivery_fee_dzd, total_dzd, status)
+                   VALUES (?, ?, 'Yasmine Benali', ?, '16', 'Alger', 'Hydra', '1 rue', 'home', 'cod', 5000, 400, 5400, 'delivered')""",
+                (ref, cid, self.phone),
+            )
+        def found(**params):
+            r = self.client.get("/api/v1/admin/orders", headers=self.headers, params=params)
+            self.assertEqual(r.status_code, 200, r.text)
+            return [o["order_reference"] for o in r.json()["items"]]
+        self.assertIn(ref, found(q=ref.lower()))
+        spaced = " ".join([self.phone[:4], self.phone[4:6], self.phone[6:8], self.phone[8:]])
+        self.assertIn(ref, found(q=spaced))
+        self.assertIn(ref, found(q="yasmine BENALI"))
+        self.assertIn(ref, found(q="Benali", status="delivered"))
+        self.assertNotIn(ref, found(q="Benali", status="new"))
+        self.assertEqual(found(q="zzz-nothing-zzz"), [])
+
 
 if __name__ == "__main__":
     unittest.main()

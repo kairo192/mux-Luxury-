@@ -356,6 +356,9 @@ export default function App() {
 
   // Order Filter State
   const [orderStatusFilter, setOrderStatusFilter] = useState("");
+  // Search typed in Commandes (number, phone, name); applied on Enter.
+  const [orderSearchInput, setOrderSearchInput] = useState("");
+  const [orderSearch, setOrderSearch] = useState("");
 
   // Store Settings, Coupon & Static Page State (Tab 7)
   const [storePhoneInput, setStorePhoneInput] = useState("");
@@ -423,7 +426,7 @@ export default function App() {
         may("products:write", "categories:write") ? DesktopCmsApi.listBrands().catch(() => ({ items: [] })) : emptyList,
         may("products:write", "categories:write") ? DesktopCmsApi.listCategories().catch(() => ({ items: [] })) : emptyList,
         may("products:write") ? DesktopCmsApi.listAdminProducts({ include_archived: true }).catch(() => ({ items: [] })) : emptyList,
-        may("orders:write") ? DesktopCmsApi.listOrders(orderStatusFilter || undefined).catch(() => ({ items: [] })) : emptyList,
+        may("orders:write") ? DesktopCmsApi.listOrders(orderStatusFilter || undefined, orderSearchRef.current).catch(() => ({ items: [] })) : emptyList,
         may("products:write") ? DesktopCmsApi.listInventoryMovements().catch(() => ({ items: [] })) : emptyList,
         DesktopCmsApi.getStoreLayout().catch(() => ({ homepage_sections: [] })),
         may("content:write") ? DesktopCmsApi.listStaticPages().catch(() => ({ items: [] })) : emptyList,
@@ -514,11 +517,11 @@ export default function App() {
 
   useEffect(() => {
     if (user && keychainReady && canOpenTab("orders", (user as any)?.permissions)) {
-      DesktopCmsApi.listOrders(orderStatusFilter || undefined)
+      DesktopCmsApi.listOrders(orderStatusFilter || undefined, orderSearch)
         .then((ordData) => setOrders(ordData.items || []))
         .catch(() => {});
     }
-  }, [orderStatusFilter, keychainReady]);
+  }, [orderStatusFilter, orderSearch, keychainReady]);
 
   // Owner on the desktop app: keep the newest server backup on this PC
   // (the VPS has a small disk). Silent unless a new copy was written.
@@ -547,6 +550,8 @@ export default function App() {
   // "Voir" button plus a Windows notification when the CMS is in background.
   const orderStatusFilterRef = useRef(orderStatusFilter);
   orderStatusFilterRef.current = orderStatusFilter;
+  const orderSearchRef = useRef(orderSearch);
+  orderSearchRef.current = orderSearch;
   useEffect(() => {
     // Only roles that handle online orders are alerted about new ones.
     if (!user || !keychainReady || !canOpenTab("orders", (user as any)?.permissions)) return;
@@ -602,7 +607,8 @@ export default function App() {
         }
         // Keep the Orders list + sidebar badge current without a manual refresh.
         const filter = orderStatusFilterRef.current;
-        if (!filter || filter === "new") {
+        // Not while a search is shown: the refresh would replace its results.
+        if ((!filter || filter === "new") && !orderSearchRef.current) {
           DesktopCmsApi.listOrders(filter || undefined)
             .then((ordData) => !stopped && setOrders(ordData.items || []))
             .catch(() => {});
@@ -2464,6 +2470,19 @@ export default function App() {
             <div className="flex flex-wrap items-center justify-between gap-3">
               <h3 className="text-base font-serif font-bold text-[#063D2E]">{t("sidebar.orders")} ({orders.length})</h3>
               <div className="flex items-center gap-2">
+                <form
+                  onSubmit={(e) => { e.preventDefault(); setOrderSearch(orderSearchInput.trim()); }}
+                  className="flex items-center gap-1"
+                >
+                  <input
+                    type="search"
+                    aria-label={t("orders.search_placeholder")}
+                    value={orderSearchInput}
+                    onChange={(e) => { setOrderSearchInput(e.target.value); if (!e.target.value) setOrderSearch(""); }}
+                    placeholder={t("orders.search_placeholder")}
+                    className="w-56 px-3 py-1.5 border rounded-xl bg-[#F8F6F0]"
+                  />
+                </form>
                 <select
                   value={orderStatusFilter}
                   onChange={(e) => setOrderStatusFilter(e.target.value)}

@@ -54,6 +54,27 @@ test.describe("CMS operations", () => {
     w.expectClean();
   });
 
+  test("orders search finds an order by phone typed with spaces", async ({ page }) => {
+    const w = watch(page);
+    const phone = "0773" + String(Date.now()).slice(-6);
+    const r = await (await fetch(`${process.env.E2E_API_URL}/api/v1/orders`, {
+      method: "POST", headers: { "Content-Type": "application/json", "Idempotency-Key": `srch-${phone}` },
+      body: JSON.stringify({ full_name: "Nadia Recherche", phone, wilaya_code: "16", commune: "Alger Centre",
+        delivery_address: "3 rue de la Recherche, Alger", delivery_method: "home", items: [{ variant_id: bag.variantId, quantity: 1 }] }),
+    })).json();
+    await cmsLogin(page);
+    await cmsOpen(page, "Commandes");
+    const search = page.locator("main input[type=search]");
+    await search.fill(`${phone.slice(0, 4)} ${phone.slice(4, 6)} ${phone.slice(6, 8)} ${phone.slice(8)}`);
+    await search.press("Enter");
+    const cards = page.locator("main [data-order-ref]");
+    await expect(cards).toHaveCount(1);
+    await expect(cards.first()).toHaveAttribute("data-order-ref", r.order_reference);
+    await search.fill("");
+    await expect.poll(() => cards.count()).toBeGreaterThan(1);
+    w.expectClean();
+  });
+
   test("till: sale with change, refund, close with the counted cash", async ({ page }) => {
     const w = watch(page);
     const t0 = await treasury();

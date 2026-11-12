@@ -2385,14 +2385,25 @@ def admin_delete_attribute_option(
 def list_admin_orders(
     status_filter: Optional[str] = Query(None, alias="status"),
     limit: int = Query(100, ge=1, le=500),
+    q: Optional[str] = Query(None, max_length=120),
     admin: dict = Depends(require_permission("orders:write"))
 ):
+    """Newest orders first. `q` finds any order, however old: order number,
+    phone (spaces ignored) or customer name (a customer calling about an order
+    from months ago is not in the newest 100)."""
+    where, params = [], []
+    if status_filter:
+        where.append("status = ?")
+        params.append(status_filter)
+    text = (q or "").strip()
+    if text:
+        digits = re.sub(r"[\s.\-]", "", text)
+        where.append("(UPPER(order_reference) LIKE ? OR customer_phone LIKE ? OR LOWER(customer_name) LIKE ?)")
+        params += [f"%{text.upper()}%", f"%{digits}%", f"%{text.lower()}%"]
+    sql = "SELECT * FROM orders" + (" WHERE " + " AND ".join(where) if where else "") + " ORDER BY id DESC LIMIT ?"
     with db_session() as conn:
         cur = conn.cursor()
-        if status_filter:
-            cur.execute("SELECT * FROM orders WHERE status = ? ORDER BY id DESC LIMIT ?", (status_filter, limit))
-        else:
-            cur.execute("SELECT * FROM orders ORDER BY id DESC LIMIT ?", (limit,))
+        cur.execute(sql, (*params, limit))
         raw_orders = cur.fetchall()
         orders = [dict(r) for r in raw_orders]
         if orders:

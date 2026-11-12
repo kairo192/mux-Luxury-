@@ -462,8 +462,13 @@ export const DesktopCmsApi = {
     }),
 
   // Order Management, Invoices & CSV Export
-  listOrders: (status?: string) =>
-    adminFetch(`/admin/orders${status ? `?status=${status}` : ""}`),
+  listOrders: (status?: string, q?: string) => {
+    const qs = new URLSearchParams();
+    if (status) qs.set("status", status);
+    if (q && q.trim()) qs.set("q", q.trim());
+    const s = qs.toString();
+    return adminFetch(`/admin/orders${s ? `?${s}` : ""}`);
+  },
   updateOrderStatus: (orderId: number, status: string, internal_notes?: string) =>
     adminFetch(`/admin/orders/${orderId}`, {
       method: "PATCH",

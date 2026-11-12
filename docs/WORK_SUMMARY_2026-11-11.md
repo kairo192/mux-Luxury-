@@ -535,7 +535,8 @@ treasury movements and 80 000 stock movements; every daily screen timed through 
 | **Clients** | **never loaded** (over 2 minutes): total spent / order count re-read all orders for each customer, and `orders.customer_id` / `pos_sales.customer_id` had no index | **45 ms**: indexes (migration 005, both engines), totals computed once per table, list in pages of 200 (best customers first, *Afficher plus*; search still finds anyone) |
 | Client search | (same cause) | 30–140 ms |
 | Trésorerie — mouvements | 470 ms, every movement since opening loaded into the 256 MB API to compute running balances | 105 ms: running balances computed by the database (window function), only the rows shown are read — checked identical to the old figures on 60 000 movements, cash and bank |
-| Dashboard, Analytique, Commandes, Journal d'audit, Comptabilité, stock screens | — | 5–150 ms (no change needed) |
+| Dashboard, Analytique, Commandes, Journal d'audit, Comptabilité, stock screens, all reports over a full year | — | 5–150 ms (no change needed) |
+| **Commandes — finding an older order** | impossible: the screen shows the newest 100 (per status) and had no search | Search box (Entrée): order number, phone (spaces ignored) or name (any case), with or without the status filter; 90–180 ms over 60 000 orders. The automatic refresh no longer replaces search results. Tests: backend + browser |
 
 
 ## Verification

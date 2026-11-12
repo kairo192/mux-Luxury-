@@ -30,10 +30,10 @@ Read, in this order: `docs/WORK_SUMMARY_2026-11-11.md` (sections 17–28), `HAND
 
 ## 2. Verify on Windows
 1. Backend: `cd backend; pip install -r requirements.txt; python -m unittest discover -s tests`
-   → expect **310 tests, all passing** (the 4 `@babel/core` tests that fail in the cloud should pass here if Node + babel are installed; report otherwise).
+   → expect **311 tests, all passing** (the 4 `@babel/core` tests that fail in the cloud should pass here if Node + babel are installed; report otherwise).
 2. Lint: `npm run lint` (ruff + TypeScript with no unused code allowed).
 3. Browser tests: `npm install --prefix e2e; npx --prefix e2e playwright install chromium; npm run test:e2e`
-   → expect **33 passed**. They start their own server on ports 18000/11420/15173 with an empty database; they never touch real data.
+   → expect **34 passed**. They start their own server on ports 18000/11420/15173 with an empty database; they never touch real data.
 4. Desktop app: `cd apps\desktop-cms; npm install; npm run build; npm run tauri build`
    (needs Rust + Visual C++ build tools; `scripts\windows\install_visual_cpp_build_tools.bat` helps).
    The new Rust module `src-tauri/src/backup_copies.rs` was only `cargo check`-ed in the cloud: make sure it builds and
