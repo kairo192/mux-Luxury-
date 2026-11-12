@@ -741,7 +741,8 @@
                 <h2 class="font-luxury text-lg font-bold text-emerald-deep">Horaires d'Ouverture</h2>
               </div>
 
-              <div class="space-y-2 text-xs">
+              <!-- Replaced by the hours set in CMS → Paramètres boutique (applyOpeningHours). -->
+              <div id="store-hours-list" class="space-y-2 text-xs">
                 <div class="flex items-center justify-between py-1.5 border-b border-gray-100/70">
                   <span class="font-semibold text-charcoal">Samedi</span>
                   <span class="font-mono font-bold text-emerald-deep bg-emerald-50 px-2.5 py-0.5 rounded-lg border border-emerald-200">10h00 – 20h00</span>
@@ -1466,76 +1467,78 @@
       }
     };
 
+    // Geography only: delivery prices come from the server (CMS → Livraison &
+    // Wilayas). Until they arrive no price is shown — never an invented one.
     const WILAYAS = [
-      { code: "01", name_fr: "Adrar", name_ar: "أدرار", communes: ["Adrar", "Reggane", "Aoulef"], home_fee: 900, desk_fee: 600 },
-      { code: "02", name_fr: "Chlef", name_ar: "الشلف", communes: ["Chlef", "Ténès", "Oued Fodda"], home_fee: 600, desk_fee: 400 },
-      { code: "03", name_fr: "Laghouat", name_ar: "الأغواط", communes: ["Laghouat", "Ksar El Hirane", "Hassi R'Mel"], home_fee: 750, desk_fee: 500 },
-      { code: "04", name_fr: "Oum El Bouaghi", name_ar: "أم البواقي", communes: ["Oum El Bouaghi", "Aïn Beïda", "Aïn M'lila"], home_fee: 650, desk_fee: 450 },
-      { code: "05", name_fr: "Batna", name_ar: "باتنة", communes: ["Batna", "Aïn Touta", "Arris"], home_fee: 650, desk_fee: 450 },
-      { code: "06", name_fr: "Béjaïa", name_ar: "بجاية", communes: ["Béjaïa", "Akbou", "El Kseur", "Tichy"], home_fee: 650, desk_fee: 450 },
-      { code: "07", name_fr: "Biskra", name_ar: "بسكرة", communes: ["Biskra", "Tolga", "Sidi Okba"], home_fee: 700, desk_fee: 450 },
-      { code: "08", name_fr: "Béchar", name_ar: "بشار", communes: ["Béchar", "Kenadsa", "Abadla"], home_fee: 850, desk_fee: 550 },
-      { code: "09", name_fr: "Blida", name_ar: "البليدة", communes: ["Ouled Yaïch", "Blida", "Boufarik", "Beni Mered"], home_fee: 500, desk_fee: 350 },
-      { code: "10", name_fr: "Bouira", name_ar: "البويرة", communes: ["Bouira", "Lakhdaria", "Sour El Ghozlane"], home_fee: 600, desk_fee: 400 },
-      { code: "11", name_fr: "Tamanrasset", name_ar: "تمنراست", communes: ["Tamanrasset", "Abalessa"], home_fee: 1100, desk_fee: 750 },
-      { code: "12", name_fr: "Tébessa", name_ar: "تبسة", communes: ["Tébessa", "Cheria", "Ouenza"], home_fee: 700, desk_fee: 450 },
-      { code: "13", name_fr: "Tlemcen", name_ar: "تلمسان", communes: ["Tlemcen", "Maghnia", "Mansourah", "Remchi"], home_fee: 700, desk_fee: 450 },
-      { code: "14", name_fr: "Tiaret", name_ar: "تيارت", communes: ["Tiaret", "Frenda", "Sougueur"], home_fee: 650, desk_fee: 450 },
-      { code: "15", name_fr: "Tizi Ouzou", name_ar: "تيزي وزو", communes: ["Tizi Ouzou", "Azazga", "Draâ Ben Khedda"], home_fee: 600, desk_fee: 400 },
-      { code: "16", name_fr: "Alger", name_ar: "الجزائر", communes: ["Alger Centre", "Hydra", "Bab Ezzouar", "Chéraga", "Kouba", "Dély Ibrahim"], home_fee: 400, desk_fee: 300 },
-      { code: "17", name_fr: "Djelfa", name_ar: "الجلفة", communes: ["Djelfa", "Hassi Bahbah", "Charef"], home_fee: 700, desk_fee: 450 },
-      { code: "18", name_fr: "Jijel", name_ar: "جيجل", communes: ["Jijel", "Taher", "El Milia"], home_fee: 650, desk_fee: 450 },
-      { code: "19", name_fr: "Sétif", name_ar: "سطيف", communes: ["Sétif", "El Eulma", "Aïn Oulmene"], home_fee: 600, desk_fee: 400 },
-      { code: "20", name_fr: "Saïda", name_ar: "سعيدة", communes: ["Saïda", "Aïn El Hadjar"], home_fee: 700, desk_fee: 450 },
-      { code: "21", name_fr: "Skikda", name_ar: "سكيكدة", communes: ["Skikda", "Azzaba", "Collo"], home_fee: 650, desk_fee: 450 },
-      { code: "22", name_fr: "Sidi Bel Abbès", name_ar: "سيدي بلعباس", communes: ["Sidi Bel Abbès", "Telagh", "Sfisef"], home_fee: 650, desk_fee: 450 },
-      { code: "23", name_fr: "Annaba", name_ar: "عنابة", communes: ["Annaba", "El Bouni", "Sidi Amar"], home_fee: 650, desk_fee: 450 },
-      { code: "24", name_fr: "Guelma", name_ar: "قالمة", communes: ["Guelma", "Oued Zenati", "Bouchegouf"], home_fee: 650, desk_fee: 450 },
-      { code: "25", name_fr: "Constantine", name_ar: "قسنطينة", communes: ["Constantine", "El Khroub", "Ali Mendjeli", "Hamma Bouziane"], home_fee: 600, desk_fee: 400 },
-      { code: "26", name_fr: "Médéa", name_ar: "المدية", communes: ["Médéa", "Berrouaghia", "Beni Slimane"], home_fee: 550, desk_fee: 350 },
-      { code: "27", name_fr: "Mostaganem", name_ar: "مستغانم", communes: ["Mostaganem", "Sidi Ali", "Mazagran"], home_fee: 650, desk_fee: 450 },
-      { code: "28", name_fr: "M'Sila", name_ar: "المسيلة", communes: ["M'Sila", "Sidi Aïssa", "Magra"], home_fee: 650, desk_fee: 450 },
-      { code: "29", name_fr: "Mascara", name_ar: "معسكر", communes: ["Mascara", "Sig", "Mohammadia"], home_fee: 650, desk_fee: 450 },
-      { code: "30", name_fr: "Ouargla", name_ar: "ورقلة", communes: ["Ouargla", "Hassi Messaoud"], home_fee: 900, desk_fee: 600 },
-      { code: "31", name_fr: "Oran", name_ar: "وهران", communes: ["Oran Centre", "Bir El Djir", "Es Senia", "Arzew"], home_fee: 600, desk_fee: 400 },
-      { code: "32", name_fr: "El Bayadh", name_ar: "البيض", communes: ["El Bayadh", "Bougtob"], home_fee: 800, desk_fee: 550 },
-      { code: "33", name_fr: "Illizi", name_ar: "إليزي", communes: ["Illizi", "In Amenas"], home_fee: 1100, desk_fee: 750 },
-      { code: "34", name_fr: "Bordj Bou Arréridj", name_ar: "برج بوعريريج", communes: ["Bordj Bou Arréridj", "Ras El Oued"], home_fee: 600, desk_fee: 400 },
-      { code: "35", name_fr: "Boumerdès", name_ar: "بومرداس", communes: ["Boumerdès", "Boudouaou", "Bordj Menaïel"], home_fee: 500, desk_fee: 350 },
-      { code: "36", name_fr: "El Tarf", name_ar: "الطارف", communes: ["El Tarf", "El Kala", "Dréan"], home_fee: 700, desk_fee: 450 },
-      { code: "37", name_fr: "Tindouf", name_ar: "تندوف", communes: ["Tindouf", "Oum El Assel"], home_fee: 1100, desk_fee: 750 },
-      { code: "38", name_fr: "Tissemsilt", name_ar: "تيسمسيلت", communes: ["Tissemsilt", "Theniet El Had"], home_fee: 650, desk_fee: 450 },
-      { code: "39", name_fr: "El Oued", name_ar: "الوادي", communes: ["El Oued", "Guemar", "Robbah"], home_fee: 800, desk_fee: 550 },
-      { code: "40", name_fr: "Khenchela", name_ar: "خنشلة", communes: ["Khenchela", "Kais", "Chechar"], home_fee: 700, desk_fee: 450 },
-      { code: "41", name_fr: "Souk Ahras", name_ar: "سوق أهراس", communes: ["Souk Ahras", "Sedrata"], home_fee: 700, desk_fee: 450 },
-      { code: "42", name_fr: "Tipaza", name_ar: "تيبازة", communes: ["Tipaza", "Koléa", "Cherchell", "Hadjout"], home_fee: 500, desk_fee: 350 },
-      { code: "43", name_fr: "Mila", name_ar: "ميلة", communes: ["Mila", "Chelghoum Laïd", "Ferdjioua"], home_fee: 650, desk_fee: 450 },
-      { code: "44", name_fr: "Aïn Defla", name_ar: "عين الدفلى", communes: ["Aïn Defla", "Khemis Miliana", "El Attaf"], home_fee: 600, desk_fee: 400 },
-      { code: "45", name_fr: "Naâma", name_ar: "النعامة", communes: ["Naâma", "Mécheria", "Aïn Sefra"], home_fee: 800, desk_fee: 550 },
-      { code: "46", name_fr: "Aïn Témouchent", name_ar: "عين تموشنت", communes: ["Aïn Témouchent", "Beni Saf", "Hammam Bou Hadjar"], home_fee: 650, desk_fee: 450 },
-      { code: "47", name_fr: "Ghardaïa", name_ar: "غرداية", communes: ["Ghardaïa", "Metlili", "El Guerrara"], home_fee: 800, desk_fee: 550 },
-      { code: "48", name_fr: "Relizane", name_ar: "غليزان", communes: ["Relizane", "Oued Rhiou", "Mazouna"], home_fee: 650, desk_fee: 450 },
-      { code: "49", name_fr: "Timimoun", name_ar: "تيميمون", communes: ["Timimoun", "Aougrout"], home_fee: 950, desk_fee: 650 },
-      { code: "50", name_fr: "Bordj Badji Mokhtar", name_ar: "برج باجي مختار", communes: ["Bordj Badji Mokhtar"], home_fee: 1150, desk_fee: 800 },
-      { code: "51", name_fr: "Ouled Djellal", name_ar: "أولاد جلال", communes: ["Ouled Djellal", "Sidi Khaled"], home_fee: 750, desk_fee: 500 },
-      { code: "52", name_fr: "Béni Abbès", name_ar: "بني عباس", communes: ["Béni Abbès", "Kerzaz"], home_fee: 950, desk_fee: 650 },
-      { code: "53", name_fr: "In Salah", name_ar: "عين صالح", communes: ["In Salah", "Foggaret Ezzaouia"], home_fee: 1050, desk_fee: 700 },
-      { code: "54", name_fr: "In Guezzam", name_ar: "عين قزام", communes: ["In Guezzam"], home_fee: 1150, desk_fee: 800 },
-      { code: "55", name_fr: "Touggourt", name_ar: "تقرت", communes: ["Touggourt", "Témacine", "Megarine"], home_fee: 850, desk_fee: 550 },
-      { code: "56", name_fr: "Djanet", name_ar: "جانت", communes: ["Djanet", "Bordj El Haouas"], home_fee: 1150, desk_fee: 800 },
-      { code: "57", name_fr: "El M'Ghair", name_ar: "المغير", communes: ["El M'Ghair", "Djamaa"], home_fee: 800, desk_fee: 550 },
-      { code: "58", name_fr: "El Meniaa", name_ar: "المنيعة", communes: ["El Meniaa", "Hassi Gara"], home_fee: 850, desk_fee: 550 },
-      { code: "59", name_fr: "Aflou", name_ar: "آفلو", communes: ["Aflou", "Sidi Bouzid", "Sebgag"], home_fee: 750, desk_fee: 500 },
-      { code: "60", name_fr: "Barika", name_ar: "بريكة", communes: ["Barika", "M'Doukal", "Bitam"], home_fee: 650, desk_fee: 450 },
-      { code: "61", name_fr: "El Kantara", name_ar: "القنطرة", communes: ["El Kantara", "Aïn Zaatout"], home_fee: 700, desk_fee: 450 },
-      { code: "62", name_fr: "Bir El Ater", name_ar: "بئر العاتر", communes: ["Bir El Ater", "El Ogla El Malha"], home_fee: 700, desk_fee: 450 },
-      { code: "63", name_fr: "El Aricha", name_ar: "العريشة", communes: ["El Aricha", "El Gor"], home_fee: 750, desk_fee: 500 },
-      { code: "64", name_fr: "Ksar Chellala", name_ar: "قصر الشلالة", communes: ["Ksar Chellala", "Serghine"], home_fee: 650, desk_fee: 450 },
-      { code: "65", name_fr: "Aïn Oussera", name_ar: "عين وسارة", communes: ["Aïn Oussera", "Guernini"], home_fee: 600, desk_fee: 400 },
-      { code: "66", name_fr: "Messaad", name_ar: "مسعد", communes: ["Messaad", "Deldoul", "Selmana"], home_fee: 700, desk_fee: 450 },
-      { code: "67", name_fr: "Ksar El Boukhari", name_ar: "قصر البخاري", communes: ["Ksar El Boukhari", "Meftaha", "Saneg"], home_fee: 550, desk_fee: 350 },
-      { code: "68", name_fr: "Bou Saâda", name_ar: "بوسعادة", communes: ["Bou Saâda", "El Hamel", "Oultem"], home_fee: 650, desk_fee: 450 },
-      { code: "69", name_fr: "El Abiodh Sidi Cheikh", name_ar: "الأبيض سيدي الشيخ", communes: ["El Abiodh Sidi Cheikh", "El Bnoud"], home_fee: 850, desk_fee: 550 }
+      { code: "01", name_fr: "Adrar", name_ar: "أدرار", communes: ["Adrar", "Reggane", "Aoulef"] },
+      { code: "02", name_fr: "Chlef", name_ar: "الشلف", communes: ["Chlef", "Ténès", "Oued Fodda"] },
+      { code: "03", name_fr: "Laghouat", name_ar: "الأغواط", communes: ["Laghouat", "Ksar El Hirane", "Hassi R'Mel"] },
+      { code: "04", name_fr: "Oum El Bouaghi", name_ar: "أم البواقي", communes: ["Oum El Bouaghi", "Aïn Beïda", "Aïn M'lila"] },
+      { code: "05", name_fr: "Batna", name_ar: "باتنة", communes: ["Batna", "Aïn Touta", "Arris"] },
+      { code: "06", name_fr: "Béjaïa", name_ar: "بجاية", communes: ["Béjaïa", "Akbou", "El Kseur", "Tichy"] },
+      { code: "07", name_fr: "Biskra", name_ar: "بسكرة", communes: ["Biskra", "Tolga", "Sidi Okba"] },
+      { code: "08", name_fr: "Béchar", name_ar: "بشار", communes: ["Béchar", "Kenadsa", "Abadla"] },
+      { code: "09", name_fr: "Blida", name_ar: "البليدة", communes: ["Ouled Yaïch", "Blida", "Boufarik", "Beni Mered"] },
+      { code: "10", name_fr: "Bouira", name_ar: "البويرة", communes: ["Bouira", "Lakhdaria", "Sour El Ghozlane"] },
+      { code: "11", name_fr: "Tamanrasset", name_ar: "تمنراست", communes: ["Tamanrasset", "Abalessa"] },
+      { code: "12", name_fr: "Tébessa", name_ar: "تبسة", communes: ["Tébessa", "Cheria", "Ouenza"] },
+      { code: "13", name_fr: "Tlemcen", name_ar: "تلمسان", communes: ["Tlemcen", "Maghnia", "Mansourah", "Remchi"] },
+      { code: "14", name_fr: "Tiaret", name_ar: "تيارت", communes: ["Tiaret", "Frenda", "Sougueur"] },
+      { code: "15", name_fr: "Tizi Ouzou", name_ar: "تيزي وزو", communes: ["Tizi Ouzou", "Azazga", "Draâ Ben Khedda"] },
+      { code: "16", name_fr: "Alger", name_ar: "الجزائر", communes: ["Alger Centre", "Hydra", "Bab Ezzouar", "Chéraga", "Kouba", "Dély Ibrahim"] },
+      { code: "17", name_fr: "Djelfa", name_ar: "الجلفة", communes: ["Djelfa", "Hassi Bahbah", "Charef"] },
+      { code: "18", name_fr: "Jijel", name_ar: "جيجل", communes: ["Jijel", "Taher", "El Milia"] },
+      { code: "19", name_fr: "Sétif", name_ar: "سطيف", communes: ["Sétif", "El Eulma", "Aïn Oulmene"] },
+      { code: "20", name_fr: "Saïda", name_ar: "سعيدة", communes: ["Saïda", "Aïn El Hadjar"] },
+      { code: "21", name_fr: "Skikda", name_ar: "سكيكدة", communes: ["Skikda", "Azzaba", "Collo"] },
+      { code: "22", name_fr: "Sidi Bel Abbès", name_ar: "سيدي بلعباس", communes: ["Sidi Bel Abbès", "Telagh", "Sfisef"] },
+      { code: "23", name_fr: "Annaba", name_ar: "عنابة", communes: ["Annaba", "El Bouni", "Sidi Amar"] },
+      { code: "24", name_fr: "Guelma", name_ar: "قالمة", communes: ["Guelma", "Oued Zenati", "Bouchegouf"] },
+      { code: "25", name_fr: "Constantine", name_ar: "قسنطينة", communes: ["Constantine", "El Khroub", "Ali Mendjeli", "Hamma Bouziane"] },
+      { code: "26", name_fr: "Médéa", name_ar: "المدية", communes: ["Médéa", "Berrouaghia", "Beni Slimane"] },
+      { code: "27", name_fr: "Mostaganem", name_ar: "مستغانم", communes: ["Mostaganem", "Sidi Ali", "Mazagran"] },
+      { code: "28", name_fr: "M'Sila", name_ar: "المسيلة", communes: ["M'Sila", "Sidi Aïssa", "Magra"] },
+      { code: "29", name_fr: "Mascara", name_ar: "معسكر", communes: ["Mascara", "Sig", "Mohammadia"] },
+      { code: "30", name_fr: "Ouargla", name_ar: "ورقلة", communes: ["Ouargla", "Hassi Messaoud"] },
+      { code: "31", name_fr: "Oran", name_ar: "وهران", communes: ["Oran Centre", "Bir El Djir", "Es Senia", "Arzew"] },
+      { code: "32", name_fr: "El Bayadh", name_ar: "البيض", communes: ["El Bayadh", "Bougtob"] },
+      { code: "33", name_fr: "Illizi", name_ar: "إليزي", communes: ["Illizi", "In Amenas"] },
+      { code: "34", name_fr: "Bordj Bou Arréridj", name_ar: "برج بوعريريج", communes: ["Bordj Bou Arréridj", "Ras El Oued"] },
+      { code: "35", name_fr: "Boumerdès", name_ar: "بومرداس", communes: ["Boumerdès", "Boudouaou", "Bordj Menaïel"] },
+      { code: "36", name_fr: "El Tarf", name_ar: "الطارف", communes: ["El Tarf", "El Kala", "Dréan"] },
+      { code: "37", name_fr: "Tindouf", name_ar: "تندوف", communes: ["Tindouf", "Oum El Assel"] },
+      { code: "38", name_fr: "Tissemsilt", name_ar: "تيسمسيلت", communes: ["Tissemsilt", "Theniet El Had"] },
+      { code: "39", name_fr: "El Oued", name_ar: "الوادي", communes: ["El Oued", "Guemar", "Robbah"] },
+      { code: "40", name_fr: "Khenchela", name_ar: "خنشلة", communes: ["Khenchela", "Kais", "Chechar"] },
+      { code: "41", name_fr: "Souk Ahras", name_ar: "سوق أهراس", communes: ["Souk Ahras", "Sedrata"] },
+      { code: "42", name_fr: "Tipaza", name_ar: "تيبازة", communes: ["Tipaza", "Koléa", "Cherchell", "Hadjout"] },
+      { code: "43", name_fr: "Mila", name_ar: "ميلة", communes: ["Mila", "Chelghoum Laïd", "Ferdjioua"] },
+      { code: "44", name_fr: "Aïn Defla", name_ar: "عين الدفلى", communes: ["Aïn Defla", "Khemis Miliana", "El Attaf"] },
+      { code: "45", name_fr: "Naâma", name_ar: "النعامة", communes: ["Naâma", "Mécheria", "Aïn Sefra"] },
+      { code: "46", name_fr: "Aïn Témouchent", name_ar: "عين تموشنت", communes: ["Aïn Témouchent", "Beni Saf", "Hammam Bou Hadjar"] },
+      { code: "47", name_fr: "Ghardaïa", name_ar: "غرداية", communes: ["Ghardaïa", "Metlili", "El Guerrara"] },
+      { code: "48", name_fr: "Relizane", name_ar: "غليزان", communes: ["Relizane", "Oued Rhiou", "Mazouna"] },
+      { code: "49", name_fr: "Timimoun", name_ar: "تيميمون", communes: ["Timimoun", "Aougrout"] },
+      { code: "50", name_fr: "Bordj Badji Mokhtar", name_ar: "برج باجي مختار", communes: ["Bordj Badji Mokhtar"] },
+      { code: "51", name_fr: "Ouled Djellal", name_ar: "أولاد جلال", communes: ["Ouled Djellal", "Sidi Khaled"] },
+      { code: "52", name_fr: "Béni Abbès", name_ar: "بني عباس", communes: ["Béni Abbès", "Kerzaz"] },
+      { code: "53", name_fr: "In Salah", name_ar: "عين صالح", communes: ["In Salah", "Foggaret Ezzaouia"] },
+      { code: "54", name_fr: "In Guezzam", name_ar: "عين قزام", communes: ["In Guezzam"] },
+      { code: "55", name_fr: "Touggourt", name_ar: "تقرت", communes: ["Touggourt", "Témacine", "Megarine"] },
+      { code: "56", name_fr: "Djanet", name_ar: "جانت", communes: ["Djanet", "Bordj El Haouas"] },
+      { code: "57", name_fr: "El M'Ghair", name_ar: "المغير", communes: ["El M'Ghair", "Djamaa"] },
+      { code: "58", name_fr: "El Meniaa", name_ar: "المنيعة", communes: ["El Meniaa", "Hassi Gara"] },
+      { code: "59", name_fr: "Aflou", name_ar: "آفلو", communes: ["Aflou", "Sidi Bouzid", "Sebgag"] },
+      { code: "60", name_fr: "Barika", name_ar: "بريكة", communes: ["Barika", "M'Doukal", "Bitam"] },
+      { code: "61", name_fr: "El Kantara", name_ar: "القنطرة", communes: ["El Kantara", "Aïn Zaatout"] },
+      { code: "62", name_fr: "Bir El Ater", name_ar: "بئر العاتر", communes: ["Bir El Ater", "El Ogla El Malha"] },
+      { code: "63", name_fr: "El Aricha", name_ar: "العريشة", communes: ["El Aricha", "El Gor"] },
+      { code: "64", name_fr: "Ksar Chellala", name_ar: "قصر الشلالة", communes: ["Ksar Chellala", "Serghine"] },
+      { code: "65", name_fr: "Aïn Oussera", name_ar: "عين وسارة", communes: ["Aïn Oussera", "Guernini"] },
+      { code: "66", name_fr: "Messaad", name_ar: "مسعد", communes: ["Messaad", "Deldoul", "Selmana"] },
+      { code: "67", name_fr: "Ksar El Boukhari", name_ar: "قصر البخاري", communes: ["Ksar El Boukhari", "Meftaha", "Saneg"] },
+      { code: "68", name_fr: "Bou Saâda", name_ar: "بوسعادة", communes: ["Bou Saâda", "El Hamel", "Oultem"] },
+      { code: "69", name_fr: "El Abiodh Sidi Cheikh", name_ar: "الأبيض سيدي الشيخ", communes: ["El Abiodh Sidi Cheikh", "El Bnoud"] }
     ];
 
     const COUPONS = [
@@ -1796,11 +1799,53 @@
       return ok !== false; // undefined until the server's list has loaded
     }
 
+    // True once the server's prices for this wilaya are known.
+    function feesKnown(wObj) {
+      return Boolean(wObj) && wObj.home_ok !== undefined;
+    }
+
+    // 0 while the prices are unknown: the server computes the real fee when
+    // the order is created and the confirmation shows the server's totals.
     function deliveryFeeFor(wObj, method, subtotal) {
-      if (!wObj) return 0;
-      const base = method === "stop_desk" ? wObj.desk_fee : wObj.home_fee;
+      if (!feesKnown(wObj)) return 0;
+      const base = Number(method === "stop_desk" ? wObj.desk_fee : wObj.home_fee) || 0;
       const threshold = freeDeliveryThreshold();
       return threshold && subtotal >= threshold ? 0 : base;
+    }
+
+    // Price label for one delivery method: the price, "Indisponible", or
+    // "Tarif en cours…" while the server's list has not loaded yet.
+    function deliveryFeeText(wObj, method, subtotal = 0, prefix = "") {
+      if (!feesKnown(wObj)) return "Tarif en cours…";
+      if (!methodAvailable(wObj, method)) return "Indisponible";
+      const fee = deliveryFeeFor(wObj, method, subtotal);
+      return fee === 0 ? "Offerte" : prefix + formatDZD(fee);
+    }
+
+    // "Jour (note) : horaires", one line per day (CMS → Paramètres boutique).
+    // Without the setting the hours written in the page stay.
+    function applyOpeningHours() {
+      const box = document.getElementById("store-hours-list");
+      const lines = setting("opening_hours").split("\n").map((l) => l.trim()).filter((l) => l.includes(":"));
+      if (!box || !lines.length) return;
+      box.innerHTML = lines.map((line) => {
+        const cut = line.indexOf(":");
+        const head = line.slice(0, cut).trim();
+        const hours = line.slice(cut + 1).trim();
+        const m = head.match(/^([^(]*)\((.*)\)\s*$/);
+        const day = m ? m[1].trim() : head;
+        const note = m ? m[2].trim() : "";
+        const special = Boolean(note) || /ferm/i.test(hours);
+        return special
+          ? `<div class="flex items-center justify-between py-1.5 bg-amber-50/60 px-2 rounded-lg border border-amber-200/60">
+              <div class="flex items-center gap-1.5"><span class="font-bold text-amber-900">${escapeHtml(day)}</span>${note ? `<span class="text-[10px] text-amber-700 font-medium">(${escapeHtml(note)})</span>` : ""}</div>
+              <span class="font-mono font-bold text-amber-900 bg-amber-100 px-2.5 py-0.5 rounded-lg border border-amber-300">${escapeHtml(hours)}</span>
+            </div>`
+          : `<div class="flex items-center justify-between py-1.5 border-b border-gray-100/70">
+              <span class="font-semibold text-charcoal">${escapeHtml(day)}</span>
+              <span class="font-mono font-bold text-emerald-deep bg-emerald-50 px-2.5 py-0.5 rounded-lg border border-emerald-200">${escapeHtml(hours)}</span>
+            </div>`;
+      }).join("");
     }
 
     let shownPhone = DEFAULT_CONTACT.phone;
@@ -1815,6 +1860,10 @@
       document.querySelectorAll('a[href^="tel:"]').forEach((a) => a.setAttribute("href", "tel:" + phone.replace(/\s/g, "")));
       if (ig) document.querySelectorAll('a[href*="instagram.com/"]').forEach((a) => a.setAttribute("href", ig));
       if (tk) document.querySelectorAll('a[href*="tiktok.com/"]').forEach((a) => a.setAttribute("href", tk));
+      const maps = safeHttpUrl(setting("store_maps_url"));
+      // Marked on first pass: a short link (maps.app.goo.gl) no longer contains "google.com/maps".
+      document.querySelectorAll('a[href*="google.com/maps"]').forEach((a) => a.setAttribute("data-maps-link", ""));
+      if (maps) document.querySelectorAll("a[data-maps-link]").forEach((a) => a.setAttribute("href", maps));
       if (phone !== shownPhone) {
         const walker = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT);
         const nodes = [];
@@ -2037,7 +2086,9 @@
         "Bonjour Mus Luxury (Ouled Yaïch), je souhaite commander :",
         ...lines,
         `Wilaya : ${wObj.code} - ${wObj.name_fr} (${state.checkoutMethod === "stop_desk" ? "Stop-Desk" : "Livraison à Domicile"})`,
-        `Total avec livraison : ${formatDZD(total)} (Paiement à la livraison)`,
+        feesKnown(wObj)
+          ? `Total avec livraison : ${formatDZD(total)} (Paiement à la livraison)`
+          : `Total articles : ${formatDZD(total)} + livraison (Paiement à la livraison)`,
       ].join("\n");
       window.open(`https://wa.me/${waNumber()}?text=${encodeURIComponent(decodeHtml(text))}`, "_blank", "noopener,noreferrer");
     }
@@ -2403,11 +2454,12 @@
     }
 
     function copyStoreAddress() {
-      const addr = "FVX6+GCJ Mus luxury, Ouled Yaïch, Blida (Wilaya 09), Algérie";
+      // The address set in CMS → Paramètres boutique, else the shop's own.
+      const addr = decodeHtml(setting("store_location")) || "FVX6+GCJ Mus luxury, Ouled Yaïch, Blida (Wilaya 09), Algérie";
       navigator.clipboard?.writeText(addr).then(() => {
         showToast("✓ Adresse GPS copiée dans le presse-papier !");
       }).catch(() => {
-        showToast("Adresse : FVX6+GCJ Mus luxury, Ouled Yaïch");
+        showToast("Adresse : " + addr);
       });
     }
 
@@ -3422,7 +3474,7 @@
                     <div class="font-bold text-[11px]">À Domicile</div>
                     <div class="text-[10px] ${state.activePdpDeliveryMethod === "home" ? "text-gold-light/85" : "text-gray-500"}">Livraison chez vous</div>
                   </div>
-                  <span class="font-extrabold text-xs ${state.activePdpDeliveryMethod === "home" ? "text-gold-reflective" : "text-emerald-deep"}">${methodAvailable(selWilaya, "home") ? formatDZD(selWilaya.home_fee) : "Indisponible"}</span>
+                  <span class="font-extrabold text-xs ${state.activePdpDeliveryMethod === "home" ? "text-gold-reflective" : "text-emerald-deep"}">${deliveryFeeText(selWilaya, "home", effectivePrice * state.activePdpQty)}</span>
                 </button>
                 <button
                   type="button"
@@ -3437,12 +3489,12 @@
                     <div class="font-bold text-[11px]">Stop-Desk</div>
                     <div class="text-[10px] ${state.activePdpDeliveryMethod === "stop_desk" ? "text-gold-light/85" : "text-gray-500"}">Bureau relais</div>
                   </div>
-                  <span class="font-extrabold text-xs ${state.activePdpDeliveryMethod === "stop_desk" ? "text-gold-reflective" : "text-emerald-deep"}">${methodAvailable(selWilaya, "stop_desk") ? formatDZD(selWilaya.desk_fee) : "Indisponible"}</span>
+                  <span class="font-extrabold text-xs ${state.activePdpDeliveryMethod === "stop_desk" ? "text-gold-reflective" : "text-emerald-deep"}">${deliveryFeeText(selWilaya, "stop_desk", effectivePrice * state.activePdpQty)}</span>
                 </button>
               </div>
               <div class="flex items-center justify-between pt-1.5 border-t border-emerald-deep/15 text-[11px]">
                 <span class="text-charcoal/80">Total estimé (${state.activePdpQty} article${state.activePdpQty > 1 ? "s" : ""} + ${state.activePdpDeliveryMethod === "stop_desk" ? "Stop-Desk" : "Domicile"}) :</span>
-                <strong class="text-sm font-extrabold text-emerald-deep">${formatDZD(effectivePrice * state.activePdpQty + deliveryFeeFor(selWilaya, state.activePdpDeliveryMethod, effectivePrice * state.activePdpQty))}</strong>
+                <strong class="text-sm font-extrabold text-emerald-deep">${formatDZD(effectivePrice * state.activePdpQty + deliveryFeeFor(selWilaya, state.activePdpDeliveryMethod, effectivePrice * state.activePdpQty))}${feesKnown(selWilaya) ? "" : " + livraison"}</strong>
               </div>
             </div>
 
@@ -3663,8 +3715,9 @@
       }
       const homeOk = methodAvailable(wObj, "home");
       const deskOk = methodAvailable(wObj, "stop_desk");
-      if (homeFeeBadge) homeFeeBadge.textContent = homeOk ? `+ ${formatDZD(wObj.home_fee)}` : "Indisponible";
-      if (deskFeeBadge) deskFeeBadge.textContent = deskOk ? `+ ${formatDZD(wObj.desk_fee)}` : "Indisponible";
+      const cartSubtotal = computeCartSubtotal();
+      if (homeFeeBadge) homeFeeBadge.textContent = deliveryFeeText(wObj, "home", cartSubtotal, "+ ");
+      if (deskFeeBadge) deskFeeBadge.textContent = deliveryFeeText(wObj, "stop_desk", cartSubtotal, "+ ");
       if (homeWilayaSub) homeWilayaSub.textContent = `À votre adresse (${wObj.code} - ${wObj.name_fr})`;
       if (deskWilayaSub) deskWilayaSub.textContent = `Bureau relais (${wObj.code} - ${wObj.name_fr})`;
 
@@ -3702,9 +3755,9 @@
       if (feeLabelEl) {
         feeLabelEl.textContent = `Livraison (${wObj.code} - ${wObj.name_fr} • ${state.checkoutMethod === "stop_desk" ? "Stop-Desk" : "À domicile"}) :`;
       }
-      if (feeEl) feeEl.textContent = `+ ${formatDZD(fee)}`;
+      if (feeEl) feeEl.textContent = feesKnown(wObj) ? `+ ${formatDZD(fee)}` : "Tarif en cours…";
       if (discEl) discEl.textContent = discount > 0 ? `- ${formatDZD(discount)}` : "0 DA";
-      if (totEl) totEl.textContent = formatDZD(total);
+      if (totEl) totEl.textContent = formatDZD(total) + (feesKnown(wObj) ? "" : " + livraison");
     }
 
     async function submitGuestCheckoutOrder() {
@@ -3895,7 +3948,8 @@
       const discount = computeCouponDiscount(subtotal);
       const defaultWilaya = WILAYAS.find((w) => w.code === state.checkoutWilaya) || WILAYAS[15] || WILAYAS[0];
       const activeMethod = state.checkoutMethod === "stop_desk" ? "stop_desk" : "home";
-      const defaultFee = activeMethod === "stop_desk" ? defaultWilaya.desk_fee : defaultWilaya.home_fee;
+      const defaultFee = deliveryFeeFor(defaultWilaya, activeMethod, subtotal);
+      const defaultFeeKnown = feesKnown(defaultWilaya);
 
       const itemsHtml = state.cart
         .map((item) => {
@@ -3976,7 +4030,7 @@
                   <button type="button" onclick="openWilayaTariffsModal()" class="text-[10px] font-bold text-emerald-deep underline hover:text-gold-dark">Voir grille tarifs</button>
                 </div>
                 <select id="chk-wilaya" onchange="updateCheckoutCalculation()" class="w-full px-3 py-2.5 rounded-xl border border-gray-300 bg-white font-semibold focus:outline-none focus:border-emerald-deep">
-                  ${WILAYAS.map((w) => `<option value="${w.code}" ${w.code === defaultWilaya.code ? "selected" : ""}>${w.code} - ${w.name_fr} (Dom: ${w.home_fee} DA | Desk: ${w.desk_fee} DA)</option>`).join("")}
+                  ${WILAYAS.map((w) => `<option value="${w.code}" ${w.code === defaultWilaya.code ? "selected" : ""}>${w.code} - ${w.name_fr} ${feesKnown(w) ? ` (Dom: ${deliveryFeeText(w, "home", subtotal)} | Desk: ${deliveryFeeText(w, "stop_desk", subtotal)})` : ""}</option>`).join("")}
                 </select>
               </div>
               <div>
@@ -4007,7 +4061,7 @@
                     </div>
                     <div id="chk-card-home-sub" class="text-[10px] ${activeMethod === "home" ? "text-gold-light/85" : "text-gray-500"} truncate">À votre adresse (${defaultWilaya.code} - ${defaultWilaya.name_fr})</div>
                   </div>
-                  <span id="chk-card-home-fee" class="font-extrabold text-xs ${activeMethod === "home" ? "text-gold-reflective" : "text-emerald-deep"} whitespace-nowrap">+ ${formatDZD(defaultWilaya.home_fee)}</span>
+                  <span id="chk-card-home-fee" class="font-extrabold text-xs ${activeMethod === "home" ? "text-gold-reflective" : "text-emerald-deep"} whitespace-nowrap">${deliveryFeeText(defaultWilaya, "home", subtotal, "+ ")}</span>
                 </button>
 
                 <button
@@ -4027,7 +4081,7 @@
                     </div>
                     <div id="chk-card-desk-sub" class="text-[10px] ${activeMethod === "stop_desk" ? "text-gold-light/85" : "text-gray-500"} truncate">Bureau relais (${defaultWilaya.code} - ${defaultWilaya.name_fr})</div>
                   </div>
-                  <span id="chk-card-desk-fee" class="font-extrabold text-xs ${activeMethod === "stop_desk" ? "text-gold-reflective" : "text-emerald-deep"} whitespace-nowrap">+ ${formatDZD(defaultWilaya.desk_fee)}</span>
+                  <span id="chk-card-desk-fee" class="font-extrabold text-xs ${activeMethod === "stop_desk" ? "text-gold-reflective" : "text-emerald-deep"} whitespace-nowrap">${deliveryFeeText(defaultWilaya, "stop_desk", subtotal, "+ ")}</span>
                 </button>
               </div>
             </div>
@@ -4055,11 +4109,11 @@
             </div>
             <div class="flex justify-between">
               <span id="chk-summary-fee-label" class="text-gray-600">Livraison (${defaultWilaya.code} - ${defaultWilaya.name_fr} • ${activeMethod === "stop_desk" ? "Stop-Desk" : "À domicile"}) :</span>
-              <span id="chk-summary-fee" class="font-bold text-emerald-deep">+ ${formatDZD(defaultFee)}</span>
+              <span id="chk-summary-fee" class="font-bold text-emerald-deep">${defaultFeeKnown ? `+ ${formatDZD(defaultFee)}` : "Tarif en cours…"}</span>
             </div>
             <div class="flex justify-between text-sm font-extrabold text-emerald-deep pt-2 border-t border-gold-reflective/30">
               <span>Total (Paiement à la livraison) :</span>
-              <span id="chk-summary-total">${formatDZD(subtotal - discount + defaultFee)}</span>
+              <span id="chk-summary-total">${formatDZD(subtotal - discount + defaultFee)}${defaultFeeKnown ? "" : " + livraison"}</span>
             </div>
           </div>
 
@@ -4266,8 +4320,7 @@
       } else {
         const w = WILAYAS.find((x) => x.code === wilayaCode);
         if (w) {
-          const fee = state.checkoutMethod === "stop_desk" ? w.desk_fee : w.home_fee;
-          showToast(`Wilaya ${w.code} - ${w.name_fr} sélectionnée (${state.checkoutMethod === "stop_desk" ? "Stop-Desk" : "À domicile"} : ${formatDZD(fee)})`);
+          showToast(`Wilaya ${w.code} - ${w.name_fr} sélectionnée (${state.checkoutMethod === "stop_desk" ? "Stop-Desk" : "À domicile"} : ${deliveryFeeText(w, state.checkoutMethod)})`);
         }
       }
     }
@@ -4292,12 +4345,12 @@
             <td class="py-2 px-3 font-bold text-charcoal">${escapeHtml(w.name_fr)} <span class="text-gray-400 font-normal text-[11px] ml-1">${escapeHtml(w.name_ar || "")}</span></td>
             <td class="py-2 px-3">
               <span class="inline-flex items-center gap-1 bg-emerald-50 border border-emerald-200 rounded-lg px-2.5 py-1 font-extrabold text-emerald-900 text-xs">
-                ${formatDZD(w.home_fee)}
+                ${deliveryFeeText(w, "home")}
               </span>
             </td>
             <td class="py-2 px-3">
               <span class="inline-flex items-center gap-1 bg-amber-50 border border-amber-200 rounded-lg px-2.5 py-1 font-extrabold text-amber-900 text-xs">
-                ${formatDZD(w.desk_fee)}
+                ${deliveryFeeText(w, "stop_desk")}
               </span>
             </td>
             <td class="py-2 px-3 text-right whitespace-nowrap space-x-1">
@@ -4482,6 +4535,7 @@
               if (el) el.textContent = settings.store_location;
             }
             applyStoreContacts();
+            applyOpeningHours();
           }
         }
         if (dataChanged || !state.isCatalogLoaded) {

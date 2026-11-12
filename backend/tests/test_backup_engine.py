@@ -93,6 +93,7 @@ class TestBackupEngine(unittest.TestCase):
         self.assertEqual(r.status_code, 200, r.text)
         self.assertTrue(r.content.startswith(bk.MAGIC), "the PC copy stays encrypted")
         self.assertIn("no-store", r.headers.get("cache-control", ""))
+        self.assertNotIn("content-encoding", r.headers, "encrypted copies are not re-compressed (1 vCPU)")
         # sent back (e.g. after a server loss) -> listed and verifiable
         up = self.client.post("/api/v1/admin/system/backups/import", headers=self.headers,
                               files={"file": (meta["name"], r.content, "application/octet-stream")})

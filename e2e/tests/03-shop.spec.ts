@@ -1,5 +1,5 @@
 import { test, expect, type Page } from "@playwright/test";
-import { SHOP, api, publicApi, createProduct, ensureCategory, watch, uid } from "../support/helpers";
+import { SHOP, api, publicApi, createProduct, ensureCategory, watch, uid, cmsLogin, cmsOpen, lastNotice } from "../support/helpers";
 
 // The customer's side: browse, languages, cart, promo code, checkout,
 // validation, order tracking, sold-out items.
@@ -52,6 +52,51 @@ test.describe("shop", () => {
     await addBagToCart(page);
     await expect(page.locator("#product-detail-modal")).toContainText("En stock (4)");
     await expect(page.locator("#cart-count-badge")).toHaveText("1");
+    w.expectClean();
+  });
+
+  test("delivery prices come from the server, never invented", async ({ page }) => {
+    const zones = (await publicApi<any>("/delivery-zones")).body.items as any[];
+    const alger = zones.find((z) => z.wilaya_code === "16");
+    const homeFee = Number(alger.rates.home.fee_dzd);
+    const fmt = (n: number) => new RegExp(String(n).replace(/\B(?=(\d{3})+(?!\d))/g, "\\s") + "\\sDA");
+    await addBagToCart(page);
+    await page.evaluate(() => (window as any).openCartDrawer());
+    await page.locator("#chk-wilaya").selectOption("16");
+    await expect(page.locator("#chk-card-home-fee")).toHaveText(fmt(homeFee));
+    await expect(page.locator('#chk-wilaya option[value="16"]')).toContainText("Dom:");
+
+    // Price list unreachable: names stay, prices say "loading", no made-up figure.
+    const blocked = await page.context().newPage();
+    await blocked.route("**/api/v1/delivery-zones*", (r) => r.abort());
+    await blocked.goto(`${SHOP}/produit/${bag.slug}`);
+    const modal = blocked.locator("#product-detail-modal");
+    await expect(modal).toContainText("Tarif en cours…");
+    await modal.getByRole("button", { name: /Ajouter au panier/ }).first().click();
+    await blocked.evaluate(() => (window as any).openCartDrawer());
+    await expect(blocked.locator('#chk-wilaya option[value="16"]')).not.toContainText("Dom:");
+    await expect(blocked.locator("#chk-summary-fee")).toHaveText("Tarif en cours…");
+    await expect(blocked.locator("#chk-summary-total")).toContainText("+ livraison");
+    await blocked.close();
+  });
+
+  test("opening hours and the Maps link set in the CMS show on the shop", async ({ page }) => {
+    const w = watch(page);
+    await cmsLogin(page);
+    await cmsOpen(page, "Contenu & Bannières");
+    const main = page.locator("main");
+    await main.locator("#store-opening-hours").fill("Samedi : 09h00 – 19h00\nVendredi : Fermé");
+    await main.getByPlaceholder("https://www.google.com/maps/…").fill("https://maps.app.goo.gl/e2eBoutique");
+    await main.getByRole("button", { name: "Enregistrer les coordonnées" }).click();
+    await expect.poll(async () => (await lastNotice(page)).includes("enregistrés")).toBe(true);
+    expect((await publicApi<any>("/store/settings")).body.opening_hours).toBe("Samedi : 09h00 – 19h00\nVendredi : Fermé");
+
+    await page.goto(SHOP);
+    const hours = page.locator("#store-hours-list");
+    await expect(hours).toContainText("09h00 – 19h00");
+    await expect(hours).toContainText("Fermé");
+    await expect(hours).not.toContainText("Dimanche");
+    await expect(page.locator("a[data-maps-link]").first()).toHaveAttribute("href", "https://maps.app.goo.gl/e2eBoutique");
     w.expectClean();
   });
 

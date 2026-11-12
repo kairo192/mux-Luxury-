@@ -127,6 +127,14 @@ type CmsTab =
   | "treasury_report"
   | "backups";
 
+
+// The shop's hours as they were written in the page, shown until the owner
+// saves their own (CMS → Paramètres boutique).
+const DEFAULT_OPENING_HOURS = [
+  "Samedi : 10h00 – 20h00", "Dimanche : 10h00 – 20h00", "Lundi : 10h00 – 20h00", "Mardi : 10h00 – 20h00",
+  "Mercredi : 10h00 – 20h00", "Jeudi : 10h00 – 20h00", "Vendredi (prière du vendredi) : 15h00 – 21h00",
+].join("\n");
+
 export default function App() {
   const t = useT();
   const [checkingSetup, setCheckingSetup] = useState(true);
@@ -353,6 +361,8 @@ export default function App() {
   const [storePhoneInput, setStorePhoneInput] = useState("");
   const [storeWhatsappInput, setStoreWhatsappInput] = useState("");
   const [storeLocationInput, setStoreLocationInput] = useState("");
+  const [mapsUrlInput, setMapsUrlInput] = useState("");
+  const [openingHoursInput, setOpeningHoursInput] = useState(DEFAULT_OPENING_HOURS);
   const [freeThresholdInput, setFreeThresholdInput] = useState("");
   const [instagramInput, setInstagramInput] = useState("");
   const [tiktokInput, setTiktokInput] = useState("");
@@ -441,6 +451,8 @@ export default function App() {
         setStorePhoneInput(String(s.store_phone || s.contact_phone || ""));
         setStoreWhatsappInput(String(s.whatsapp_contact_number || s.whatsapp_phone || ""));
         setStoreLocationInput(String(s.store_location || ""));
+        setMapsUrlInput(String(s.store_maps_url || ""));
+        setOpeningHoursInput(String(s.opening_hours || "").trim() || DEFAULT_OPENING_HOURS);
         setFreeThresholdInput(String(s.free_delivery_threshold_dzd ?? s.free_shipping_threshold_dzd ?? ""));
         setInstagramInput(String(s.instagram_url || ""));
         setTiktokInput(String(s.tiktok_url || ""));
@@ -879,6 +891,11 @@ export default function App() {
       notifyClientWarning("Paramètres incomplets", "Veuillez renseigner le téléphone et l'adresse officielle de la boutique Mus Luxury.");
       return;
     }
+    const hourLines = openingHoursInput.split("\n").map((l) => l.trim()).filter(Boolean);
+    if (hourLines.length > 14 || hourLines.some((l) => l.length > 80 || !l.includes(":"))) {
+      notifyClientWarning("Horaires invalides", "Une ligne par jour, sous la forme « Samedi : 10h00 – 20h00 » (14 lignes au plus).");
+      return;
+    }
     const threshold = freeThresholdInput.replace(/\s/g, "");
     if (threshold && !/^\d+$/.test(threshold)) {
       notifyClientWarning("Seuil invalide", "Le seuil de livraison gratuite est un montant en DA (chiffres seulement), ou 0 pour le désactiver.");
@@ -889,7 +906,7 @@ export default function App() {
       notifyClientWarning("Numéro WhatsApp invalide", "Exemple : +213 655 53 41 54");
       return;
     }
-    for (const [label, url] of [["Instagram", instagramInput], ["TikTok", tiktokInput]]) {
+    for (const [label, url] of [["Instagram", instagramInput], ["TikTok", tiktokInput], ["Google Maps", mapsUrlInput]]) {
       if (url.trim() && !/^https:\/\/[^\s]+$/.test(url.trim())) {
         notifyClientWarning(`Lien ${label} invalide`, "Collez l'adresse complète de la page, commençant par https://");
         return;
@@ -900,6 +917,8 @@ export default function App() {
         store_phone: storePhoneInput.trim(),
         whatsapp_contact_number: storeWhatsappInput.trim(),
         store_location: storeLocationInput.trim(),
+        opening_hours: hourLines.join("\n"),
+        store_maps_url: mapsUrlInput.trim(),
         free_delivery_threshold_dzd: threshold || "0",
         instagram_url: instagramInput.trim(),
         tiktok_url: tiktokInput.trim(),
@@ -2788,6 +2807,10 @@ export default function App() {
                   <input value={storeLocationInput} onChange={(e) => setStoreLocationInput(e.target.value)} className="w-full px-3 py-2 border rounded-xl" />
                 </div>
                 <div>
+                  <label className="block font-bold mb-1">Lien Google Maps de la boutique</label>
+                  <input value={mapsUrlInput} onChange={(e) => setMapsUrlInput(e.target.value)} placeholder="https://www.google.com/maps/…" className="w-full px-3 py-2 border rounded-xl font-mono" />
+                </div>
+                <div>
                   <label className="block font-bold mb-1">Page Instagram (lien)</label>
                   <input value={instagramInput} onChange={(e) => setInstagramInput(e.target.value)} placeholder="https://www.instagram.com/…" className="w-full px-3 py-2 border rounded-xl font-mono" />
                 </div>
@@ -2804,6 +2827,11 @@ export default function App() {
                       : "Désactivée : la livraison est toujours payante."}
                   </p>
                 </div>
+              </div>
+              <div>
+                <label htmlFor="store-opening-hours" className="block font-bold mb-1">Horaires d'ouverture</label>
+                <textarea id="store-opening-hours" rows={7} value={openingHoursInput} onChange={(e) => setOpeningHoursInput(e.target.value)} className="w-full md:w-2/3 px-3 py-2 border rounded-xl font-mono text-xs" />
+                <p className="text-[11px] text-gray-500 mt-1">Une ligne par jour : « Jour : horaires » (ex. « Vendredi : Fermé »). Affichés sur la page Contact de la boutique.</p>
               </div>
               <button type="submit" className="px-5 py-2.5 rounded-xl bg-[#D4AF62] text-[#02291F] font-extrabold">
                 Enregistrer les coordonnées

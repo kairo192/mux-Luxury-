@@ -58,10 +58,37 @@ _DEFAULT_CORS_ORIGINS = [
 _EXTRA_CORS = [o.strip() for o in os.getenv("CORS_ORIGINS", "").split(",") if o.strip()]
 ALLOWED_CORS_ORIGINS = list(dict.fromkeys(_DEFAULT_CORS_ORIGINS + _EXTRA_CORS))
 
-from starlette.middleware.gzip import GZipMiddleware
+from starlette.middleware.gzip import GZipMiddleware, GZipResponder
+from starlette.datastructures import Headers as _Headers
 
-# High-Performance HTTP Response Compression (brotli/gzip for JSON payloads > 1000 bytes)
-app.add_middleware(GZipMiddleware, minimum_size=1000)
+
+class _LightGZipMiddleware(GZipMiddleware):
+    """gzip for JSON/HTML answers over 1000 bytes, sized for a 1-vCPU server.
+
+    - level 6 (as nginx): level 9 costs far more CPU for ~1 % smaller answers;
+    - the compressor is always closed (Starlette 0.25 leaves it open for small
+      answers: "I/O operation on closed file" in the logs, memory kept longer);
+    - file downloads (encrypted backups, up to 100 MB) are sent as they are:
+      they cannot be compressed and would only burn the single CPU.
+    """
+
+    async def __call__(self, scope, receive, send) -> None:
+        if (
+            scope["type"] == "http"
+            and "gzip" in _Headers(scope=scope).get("Accept-Encoding", "")
+            and not scope.get("path", "").endswith("/download")
+        ):
+            responder = GZipResponder(self.app, self.minimum_size, compresslevel=self.compresslevel)
+            try:
+                await responder(scope, receive, send)
+            finally:
+                responder.gzip_file.close()
+            return
+        await self.app(scope, receive, send)
+
+
+# Compression of API answers over 1000 bytes (catalog, lists, reports).
+app.add_middleware(_LightGZipMiddleware, minimum_size=1000, compresslevel=6)
 
 app.add_middleware(
     CORSMiddleware,
@@ -828,7 +855,7 @@ def _free_delivery_threshold(cur) -> int:
 def _ensure_safe_url_or_text(val: str, field_name: str = "value") -> str:
     s = str(val or "").strip()
     if re.search(r"(<\s*/?\s*(script|iframe|svg|object|embed)|javascript\s*:|vbscript\s*:|data\s*:\s*text/html|on\w+\s*=)", s, re.IGNORECASE):
-        raise HTTPException(status_code=422, detail=f"Dangerous script or URI scheme blocked in {field_name}")
+        raise HTTPException(status_code=422, detail=f"Contenu refusé dans « {field_name} » : code ou lien dangereux (script, javascript:, …)")
     return s
 
 @app.get("/api/v1/store/settings")

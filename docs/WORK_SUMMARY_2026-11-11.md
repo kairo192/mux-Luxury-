@@ -425,14 +425,26 @@ pre-fills an invented 2 500 DA.
 
 ---
 
+## 21. No invented delivery prices, hours and Maps link from the CMS, lighter compression
+
+| Before | Now |
+|---|---|
+| The shop page carried a built-in price list for the 69 wilayas (invented amounts). Before the server's prices arrived — or if that call failed — the product page, the tariff table, the checkout cards and the wilaya list showed those amounts | The built-in list keeps only geography (codes, names, communes). Until the real prices (CMS → Livraison & Wilayas) arrive, the shop shows « Tarif en cours… » and totals « … + livraison »; a method switched off shows « Indisponible », a free delivery « Offerte ». The server always computes the fee of the order, and the confirmation shows the server's totals (browser test: prices from the server; price list blocked → no figure) |
+| Opening hours written in the page | CMS → Contenu → *Horaires d'ouverture* (one line per day, « Vendredi : Fermé » highlighted); without a saved value the page keeps its current hours (browser test) |
+| Google Maps links fixed in the page; `store_maps_url` stored but unused | CMS field *Lien Google Maps de la boutique*; every Maps link of the shop follows it (short `maps.app.goo.gl` links work) |
+| « Copier l'adresse GPS » copied a fixed text | Copies the address set in the CMS |
+| API compression: level 9 on the single CPU, compressor never closed for small answers (« I/O operation on closed file » in the logs), 100 MB encrypted backup downloads compressed for nothing | Level 6 (as nginx), compressor always closed, downloads sent as they are (tests; no warning left in the e2e server log) |
+| Refused script/link in a setting answered in English | French message |
+
+
 ## Verification
 
 | Check | Result |
 |---|---|
-| Backend tests | 300 run on SQLite and on PostgreSQL 16 (incl. the end-to-end business day, round 18). Only 4 failures, all caused by `@babel/core` missing in the cloud container; those 4 pass with a substitute TypeScript compiler and pass in CI. |
+| Backend tests | 308 run on SQLite and on PostgreSQL 16 (incl. the end-to-end business day, round 18). Only 4 failures, all caused by `@babel/core` missing in the cloud container; those 4 pass with a substitute TypeScript compiler and pass in CI. |
 | CMS TypeScript + build | OK |
 | Rust (`cargo check`) | OK |
-| Browser tests (Playwright) | `e2e/`: 28 shop + CMS tests green on SQLite and PostgreSQL 16 (CI job). Earlier manual checks — notifications, message box queue, bell, update dialog, new-order alert, Arabic layout, category delete + reload, archived tab, database panel, backup, reset: all OK |
+| Browser tests (Playwright) | `e2e/`: 32 shop + CMS tests green on SQLite and PostgreSQL 16 (CI job). Earlier manual checks — notifications, message box queue, bell, update dialog, new-order alert, Arabic layout, category delete + reload, archived tab, database panel, backup, reset: all OK |
 | Backup engine | SQLite, PostgreSQL 16, and PC → server restore: OK |
 | VPS backup scripts | Backup, verify, native restore and snapshot restore, tested through a Docker stand-in against PostgreSQL 16: OK |
 

@@ -176,6 +176,16 @@ class TestStorefrontContent(unittest.TestCase):
                                          json={"is_active": True}).status_code, 404)
 
     # ---------------------------------------------------------- dashboard --
+    def test_compression_large_answers_only(self):
+        """Lists are gzip-compressed, tiny answers are not; both stay readable."""
+        big = self.client.get("/api/v1/delivery-zones", headers={"Accept-Encoding": "gzip"})
+        self.assertEqual(big.status_code, 200)
+        self.assertEqual(big.headers.get("content-encoding"), "gzip")
+        self.assertGreater(len(big.json()["items"]), 40)
+        small = self.client.get("/api/v1/health", headers={"Accept-Encoding": "gzip"})
+        self.assertEqual(small.status_code, 200)
+        self.assertNotIn("content-encoding", small.headers)
+
     def test_dashboard_chart_uses_real_daily_revenue(self):
         before = self.client.get("/api/v1/admin/dashboard", headers=self.headers).json()
         self.assertEqual(len(before["revenue_by_day"]), 30)

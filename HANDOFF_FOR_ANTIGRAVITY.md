@@ -7,7 +7,16 @@
 
 ---
 
-## 0h. REAL SERVER SIZE + BACKUPS ON THE OWNER'S PC (2026-11-12, latest)
+## 0i. NO INVENTED DELIVERY PRICES, HOURS FROM THE CMS (2026-11-12, latest)
+Details: WORK_SUMMARY §21.
+- Storefront `WILAYAS` fallback = geography only. Use `feesKnown()`, `deliveryFeeFor()` (0 while unknown) and
+  `deliveryFeeText()` for any price shown; never read `home_fee`/`desk_fee` directly in templates.
+- Settings `opening_hours` (lines « Jour (note) : horaires », rendered by `applyOpeningHours()` into
+  `#store-hours-list`) and `store_maps_url` (links marked `data-maps-link`); CMS fields in Contenu & Bannières.
+- `_LightGZipMiddleware` in main.py replaces Starlette's GZipMiddleware (level 6, closes the compressor, skips
+  `/download`).
+
+## 0h. REAL SERVER SIZE + BACKUPS ON THE OWNER'S PC (2026-11-12)
 VPS = 1 vCPU, 2 GB RAM, **40 GB** disk (confirmed by the owner). Details: WORK_SUMMARY §20, VPS_DEPLOYMENT.md.
 - Backup script: photos only when changed (`.media_manifest`), `BACKUP_MEDIA_KEEP=3`, `BACKUP_MIN_FREE_PCT=15`.
 - `backup_engine.write_snapshot()` writes format `luxe-backup/2` (JSON Lines, restore order) and `restore_backup()` streams it after `_scan_v2()` validation; v1 files still load. Never go back to whole-file JSON in memory.

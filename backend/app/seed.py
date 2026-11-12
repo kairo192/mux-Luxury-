@@ -472,6 +472,10 @@ def seed_initial_data() -> None:
             "whatsapp_contact_number": "+213655534154",
             "store_phone": "0655534154",
             "store_location": "FVX6+GCJ Mus luxury, Ouled Yaïch",
+            # One line per day, "Jour : horaires" (CMS → Paramètres boutique).
+            "opening_hours": "Samedi : 10h00 – 20h00\nDimanche : 10h00 – 20h00\nLundi : 10h00 – 20h00\n"
+                             "Mardi : 10h00 – 20h00\nMercredi : 10h00 – 20h00\nJeudi : 10h00 – 20h00\n"
+                             "Vendredi (prière du vendredi) : 15h00 – 21h00",
             "store_maps_url": "https://www.google.com/maps/search/?api=1&query=FVX6%2BGCJ+Mus+luxury%2C+Ouled+Ya%C3%AFch",
             "instagram_url": "https://www.instagram.com/musluxury09?rpxt=emk3bjBhdjV5d2Ux",
             "tiktok_url": "https://www.tiktok.com/@musluxury.092?_r=1&_t=ZS-9B2mO0gpA7V",
