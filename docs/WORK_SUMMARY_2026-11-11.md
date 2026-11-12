@@ -467,6 +467,16 @@ New browser test: *shop in Arabic on a phone* (prices in reading order, Arabic f
 sideways scrolling). Still French in the Arabic shop: information pages (FAQ, returns…), footer, order tracking.
 
 
+## 24. Stock under simultaneous sales
+
+Customer orders, POS sales and stock-outs already change the stock with one conditional update ("subtract only
+if enough is left"): two customers can never both buy the last bag. Two places still read the stock and then
+wrote a total — a sale committed in between would have been undone (one bag too many shown, then oversold):
+**supplier receipt** (now adds the quantity in place) and **applying an inventory count** (now locks the row before
+reading). Checked on PostgreSQL with 20 orders and 5 receipts fired at the same time on one product: all accepted,
+final stock exactly 100 − 20 + 50 = 130, no error or deadlock in the server log.
+
+
 ## Verification
 
 | Check | Result |

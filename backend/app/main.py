@@ -5231,9 +5231,15 @@ def admin_receive_purchase_order(
                 v_row = cur.fetchone()
 
             if v_row:
-                old_stock = int(v_row["stock_qty"])
-                new_stock = old_stock + it["quantity_ordered"]
-                cur.execute("UPDATE product_variants SET stock_qty = ? WHERE id = ?", (new_stock, v_row["id"]))
+                # Added in place (not "read, then write the total"): a sale
+                # made at the same moment is never undone by the receipt.
+                cur.execute(
+                    "UPDATE product_variants SET stock_qty = stock_qty + ? WHERE id = ?",
+                    (it["quantity_ordered"], v_row["id"]),
+                )
+                cur.execute("SELECT stock_qty FROM product_variants WHERE id = ?", (v_row["id"],))
+                new_stock = int(cur.fetchone()["stock_qty"])
+                old_stock = new_stock - int(it["quantity_ordered"])
                 cur.execute(
                     """INSERT INTO inventory_movements (variant_id, admin_user_id, change_qty, previous_qty, new_qty, reason)
                        VALUES (?, ?, ?, ?, ?, ?)""",
@@ -8133,6 +8139,9 @@ def admin_apply_count(count_id: int, admin: dict = Depends(require_permission("i
             # receptions made between counting and applying are therefore kept:
             # counted 5 of 5, then 1 sold → stays 4 (setting it to 5 would
             # "un-sell" the item).
+            # Lock the row first (PostgreSQL row lock / SQLite write lock): no
+            # sale can slip in between reading the stock and writing it.
+            cur.execute("UPDATE product_variants SET stock_qty = stock_qty WHERE id = ?", (line["variant_id"],))
             cur.execute("SELECT stock_qty FROM product_variants WHERE id = ?", (line["variant_id"],))
             v = cur.fetchone()
             if not v:
