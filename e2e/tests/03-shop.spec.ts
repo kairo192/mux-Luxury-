@@ -165,3 +165,37 @@ test.describe("shop", () => {
     await expect(modal.getByRole("button", { name: /Ajouter au panier|Rupture|Épuisé/ }).first()).toBeDisabled();
   });
 });
+
+// An Arabic-speaking customer on a phone: right-to-left page, prices still read
+// "9 500 DA" (not "DA 500 9"), the form and the confirmation in Arabic.
+test.describe("shop in Arabic on a phone", () => {
+  test.use({ viewport: { width: 390, height: 664 }, isMobile: true, hasTouch: true, locale: "ar-DZ" });
+
+  test("order from start to finish, no sideways scrolling", async ({ page }) => {
+    const w = watch(page);
+    const p = await createProduct({ name: "Sac Arabe", price: 9500, stock: 2, categoryId: cat.id, attrKey: cat.attrKey, value: cat.value });
+    await page.goto(SHOP);
+    await page.evaluate(() => localStorage.setItem("luxe_store_lang", "ar"));
+    await page.goto(`${SHOP}/produit/${p.slug}`);
+    await expect(page.locator("html")).toHaveAttribute("dir", "rtl");
+    const modal = page.locator("#product-detail-modal");
+    // the price is one left-to-right block (Unicode isolate marks around it)
+    expect(await modal.innerText()).toContain("⁦9 500 DA⁩");
+    const noSideScroll = () => page.evaluate(() => document.documentElement.scrollWidth <= document.documentElement.clientWidth);
+    expect(await noSideScroll()).toBe(true);
+
+    await modal.locator("button", { hasText: /أضف|Ajouter/ }).first().click();
+    await page.evaluate(() => (window as any).openCartDrawer());
+    const drawer = page.locator("#cart-checkout-modal");
+    await expect(drawer).toContainText("معلومات التوصيل");
+    expect(await noSideScroll()).toBe(true);
+    await page.locator("#chk-name").fill("أمينة بن علي");
+    await page.locator("#chk-phone").fill("0771" + String(Date.now()).slice(-6));
+    await page.locator("#chk-wilaya").selectOption("09");
+    await page.locator("#chk-address").fill("حي 100 مسكن، أولاد يعيش");
+    await drawer.locator("button", { hasText: "تأكيد الطلب" }).click();
+    await expect(drawer).toContainText("تم تأكيد طلبك");
+    await expect(drawer).toContainText("أمينة بن علي");
+    w.expectClean();
+  });
+});

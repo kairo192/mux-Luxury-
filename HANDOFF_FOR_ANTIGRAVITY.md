@@ -7,7 +7,12 @@
 
 ---
 
-## 0j. HTTPS RENEWAL + HEALTH CHECK (2026-11-12, latest)
+## 0k. ARABIC SHOP ON A PHONE (2026-11-12, latest)
+Details: WORK_SUMMARY §23. Storefront: `L(fr, ar, en)` for any visible text, `wilayaName(w)`, `ltr(text)` around
+anything left-to-right inside Arabic; `formatDZD()` already isolates prices in Arabic — never build "… DA" by hand.
+Left in French in Arabic: static pages (STATIC_PAGES_CONTENT), footer, tracking modal.
+
+## 0j. HTTPS RENEWAL + HEALTH CHECK (2026-11-12)
 Details: WORK_SUMMARY §22, VPS_DEPLOYMENT §6–7.
 - `infrastructure/scripts/certificates.sh setup|deploy-hook|check`; nginx port-80 server serves
   `/.well-known/acme-challenge/` from `/var/www/certbot` (compose mount `ACME_WEBROOT`). Do not remove.

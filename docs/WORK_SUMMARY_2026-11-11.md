@@ -450,6 +450,23 @@ customer cannot fake their address to dodge the login limit), Docker log rotatio
 container memory limits (~610 MB in total on the 2 GB server).
 
 
+## 23. Tested as a customer on a phone, in French and Arabic
+
+Phone screen (390 px), full journey home → product → cart → order: no sideways scrolling, buttons reachable,
+order placed, no console error — in both languages. Found and fixed:
+
+| Found (Arabic) | Fixed |
+|---|---|
+| **Prices read backwards**: "9 500 DA" displayed as "DA 500 9" (right-to-left text reorders the groups) — on the product page, cart, totals, delivery prices | Prices in Arabic are one left-to-right block (invisible Unicode isolate marks + no-break spaces, so "10 000 DA" never splits across lines); same for "+ 500 DA", "- 1 200 DA", the order number and the phone |
+| The whole order path was French in the Arabic shop: cart, delivery form, delivery choice, totals, confirmation, error messages, product-page delivery box and tabs | Translated (Arabic + English) with a small `L(fr, ar, en)` helper; wilaya names in Arabic; French unchanged word for word |
+| Promo field suggested "ex: BIENVENUE10" — a demo code that no longer exists | "Code promo (facultatif)" |
+| Customer's name / commune inserted unescaped in the confirmation | Escaped |
+| Form fields without linked labels or phone keyboard hints | Labels linked, `autocomplete` and phone keypad on mobile |
+
+New browser test: *shop in Arabic on a phone* (prices in reading order, Arabic form and confirmation, no
+sideways scrolling). Still French in the Arabic shop: information pages (FAQ, returns…), footer, order tracking.
+
+
 ## Verification
 
 | Check | Result |
@@ -457,7 +474,7 @@ container memory limits (~610 MB in total on the 2 GB server).
 | Backend tests | 308 run on SQLite and on PostgreSQL 16 (incl. the end-to-end business day, round 18). Only 4 failures, all caused by `@babel/core` missing in the cloud container; those 4 pass with a substitute TypeScript compiler and pass in CI. |
 | CMS TypeScript + build | OK |
 | Rust (`cargo check`) | OK |
-| Browser tests (Playwright) | `e2e/`: 32 shop + CMS tests green on SQLite and PostgreSQL 16 (CI job). Earlier manual checks — notifications, message box queue, bell, update dialog, new-order alert, Arabic layout, category delete + reload, archived tab, database panel, backup, reset: all OK |
+| Browser tests (Playwright) | `e2e/`: 33 shop + CMS tests green on SQLite and PostgreSQL 16 (CI job). Earlier manual checks — notifications, message box queue, bell, update dialog, new-order alert, Arabic layout, category delete + reload, archived tab, database panel, backup, reset: all OK |
 | Backup engine | SQLite, PostgreSQL 16, and PC → server restore: OK |
 | VPS backup scripts | Backup, verify, native restore and snapshot restore, tested through a Docker stand-in against PostgreSQL 16: OK |
 
