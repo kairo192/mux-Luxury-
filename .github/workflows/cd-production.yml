@@ -194,7 +194,7 @@ jobs:
         env:
           HEALTH_URL: ${{ vars.PRODUCTION_HEALTH_URL }}
         run: |
-          for i in $(seq 1 30); do
+          for _ in $(seq 1 30); do
             if curl -fsS --max-time 10 "$HEALTH_URL" >/dev/null; then
               echo "production healthy"; exit 0
             fi

@@ -153,7 +153,7 @@ jobs:
         env:
           HEALTH_URL: ${{ vars.STAGING_HEALTH_URL }}
         run: |
-          for i in $(seq 1 20); do
+          for _ in $(seq 1 20); do
             if curl -fsS --max-time 10 "$HEALTH_URL" >/dev/null; then
               echo "staging healthy"; exit 0
             fi

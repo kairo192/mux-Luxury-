@@ -2761,6 +2761,14 @@ flushOfflineMutationQueue(async () => true).then((res) => {
             env["BACKUP_DIR"] = tmpdir
             env["UPLOAD_DIR"] = str(repo_root / "backend" / "uploads")
             env.pop("DATABASE_URL", None)
+            # The script's database, made here: never depend on a local dev file
+            # (backend/luxe_store.sqlite3) that a fresh CI machine does not have.
+            import sqlite3
+            db_file = Path(tmpdir) / "shop.sqlite3"
+            with sqlite3.connect(db_file) as db:
+                db.execute("CREATE TABLE products (id INTEGER PRIMARY KEY, name TEXT)")
+                db.execute("INSERT INTO products (name) VALUES ('Sac test')")
+            env["LUXE_SQLITE_PATH"] = str(db_file)
             res = subprocess.run(["bash", str(bkp_script)], cwd=str(repo_root), env=env, capture_output=True, text=True)
             self.assertEqual(res.returncode, 0, res.stderr)
             sha_files = list(Path(tmpdir).glob("*.sha256"))
