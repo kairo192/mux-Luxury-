@@ -5,7 +5,8 @@ import { defineConfig } from "vite";
 // like in production (see infrastructure/nginx/nginx.conf), so link previews
 // and schema.org tags can be checked locally. Start the API with
 // STOREFRONT_INTERNAL_URL=http://localhost:5173 so it can read this page.
-const API = "http://localhost:8000";
+// LUXE_API_URL lets the end-to-end tests point the shop at their own server.
+const API = process.env.LUXE_API_URL || "http://localhost:8000";
 
 export default defineConfig({
   server: {

@@ -13,7 +13,7 @@
 // Everything here is read by the shop from GET /api/v1/store/layout.
 // ============================================================================
 
-import React, { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { ArrowDown, ArrowUp, Eye, EyeOff, ImagePlus, Loader2, Megaphone, Pencil, Plus, Trash2, X } from "lucide-react";
 import { DesktopCmsApi, mediaUrl, PLACEHOLDER_IMG } from "../api/adminClient";
 import { confirmClientAction, notifyClientError, notifyClientSuccess, notifyClientWarning } from "../utils/clientNotifier";

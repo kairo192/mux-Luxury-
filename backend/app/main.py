@@ -1,12 +1,9 @@
 from . import config
 import csv
-import gzip
 import hmac
 import io
 import os
 import hashlib
-import sqlite3
-import tempfile
 import itertools
 import json
 import re
@@ -1248,7 +1245,7 @@ def create_guest_order(
                 )
                 order_id = cur.lastrowid
                 break
-            except Exception as exc:
+            except Exception:
                 if _attempt == 2:
                     raise
 
@@ -1338,10 +1335,23 @@ def create_guest_order(
 # ADMINISTRATIVE ENDPOINTS (/api/v1/admin/*)
 # ============================================================================
 
+def _int_env(name: str, default: int, low: int, high: int) -> int:
+    try:
+        return max(low, min(high, int(os.getenv(name, default))))
+    except ValueError:
+        return default
+
+
+# Login attempts allowed per minute and per IP address (brute-force guard).
+# Keep the default in production; the automated browser tests raise it
+# because they log in dozens of times from one machine.
+_LOGIN_ATTEMPTS_PER_MINUTE = _int_env("LOGIN_ATTEMPTS_PER_MINUTE", 5, 1, 1000)
+
+
 @app.post("/api/v1/admin/auth/login")
 def admin_login(payload: LoginRequest, request: Request):
     client_ip = get_real_client_ip(request)
-    check_rate_limit(f"login:{client_ip}", max_requests=5, window_seconds=60)
+    check_rate_limit(f"login:{client_ip}", max_requests=_LOGIN_ATTEMPTS_PER_MINUTE, window_seconds=60)
 
     with db_session(commit=True) as conn:
         cur = conn.cursor()
@@ -2660,7 +2670,7 @@ def admin_list_homepage_sections(admin: dict = Depends(require_permission("conte
         cur.execute("SELECT * FROM homepage_sections")
         saved = {r["section_key"]: dict(r) for r in cur.fetchall()}
     items = []
-    for key, (t_fr, t_ar, t_en, order) in STANDARD_HOMEPAGE_SECTIONS.items():
+    for key, (t_fr, _t_ar, _t_en, order) in STANDARD_HOMEPAGE_SECTIONS.items():
         row = saved.get(key)
         items.append({
             "section_key": key,
@@ -2745,7 +2755,7 @@ def admin_update_store_settings(
 # SECTION 6: WEBHOOKS & STORE INTEGRATIONS
 # ============================================================================
 
-from .security import hash_password, REVOKED_TOKENS, revoke_all_user_sessions
+from .security import hash_password, revoke_all_user_sessions
 
 class ProductConcurrencyUpdate(BaseModel):
     name_fr: str
@@ -3242,7 +3252,7 @@ def initialize_primary_owner(payload: OwnerInitializeInput, request: Request):
         }
 
 
-from .security import sign_api_request, verify_signed_request
+from .security import verify_signed_request
 
 @app.post("/api/v1/admin/secure-action")
 async def execute_cryptographically_signed_action(

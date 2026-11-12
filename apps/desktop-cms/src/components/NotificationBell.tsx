@@ -3,7 +3,7 @@
 // clear, and the "Windows notifications" on/off switch.
 // ============================================================================
 
-import React, { useEffect, useReducer, useRef, useState } from "react";
+import { useEffect, useReducer, useRef, useState } from "react";
 import { AlertTriangle, Bell, CheckCircle2, Info, ShieldAlert, ShoppingBag, Download, RefreshCw, CheckCheck, Trash2 } from "lucide-react";
 import { useT } from "../i18n";
 import {

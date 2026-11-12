@@ -459,7 +459,6 @@ export const DesktopCmsApi = {
     adminFetch("/admin/customers", { method: "POST", body: JSON.stringify(payload) }),
   updateCustomer: (customerId: number, payload: unknown) =>
     adminFetch(`/admin/customers/${customerId}`, { method: "PUT", body: JSON.stringify(payload) }),
-  getReports: () => adminFetch("/admin/reports"),
   accountingCsvUrl: (part: "pnl" | "products" | "ledger") =>
     `${getApiBaseUrl()}/admin/accounting/export.csv?part=${part}`,
   getSalesReport: (from: string, to: string) =>
@@ -545,7 +544,6 @@ export const DesktopCmsApi = {
     }),
 
   // Product Image Gallery Management & Static Pages
-  checkHealth: () => adminFetch("/health"),
   uploadMediaFile: (file: File) => {
     const fd = new FormData();
     fd.append("file", file);

@@ -1,5 +1,5 @@
 import React, { useState } from "react";
-import { TrendingUp, ShoppingBag, DollarSign, ArrowUpRight, ArrowDownRight, Layers, PieChart as PieIcon, BarChart3 } from "lucide-react";
+import {  ArrowUpRight, Layers, PieChart as PieIcon, BarChart3 } from "lucide-react";
 
 // ============================================================================
 // 1. REVENUE & ORDERS INTERACTIVE AREA / BAR CHART

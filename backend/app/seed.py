@@ -653,21 +653,21 @@ def _seed_demo_catalog_content(cur, owner_id: int) -> None:
     ])
     mq_vol_attr = add_attr("maquillage", "volume", "Volume / Poids", "الحجم / الوزن", "Volume / Weight", "measurement", req=1, filt=0, var=0, order=4, unit="g")
 
-    mt_dial_attr = add_attr("les-montres", "dial_color", "Couleur du cadran", "لون الميناء", "Dial Color", "color", req=1, filt=1, var=1, order=1, options=[
+    add_attr("les-montres", "dial_color", "Couleur du cadran", "لون الميناء", "Dial Color", "color", req=1, filt=1, var=1, order=1, options=[
         ("Noir & Or", "Noir & Or", "أسود وذهبي", "Black & Gold", "#1A2421"),
         ("Vert Émeraude & Or", "Vert Émeraude & Or", "أخضر زمردي وذهبي", "Emerald & Gold", "#063D2E"),
     ])
-    mt_mov_attr = add_attr("les-montres", "movement", "Mouvement", "حركة الساعة", "Movement", "single_select", req=1, filt=1, var=0, order=2, options=[
+    add_attr("les-montres", "movement", "Mouvement", "حركة الساعة", "Movement", "single_select", req=1, filt=1, var=0, order=2, options=[
         ("Chronographe Quartz Précision", "Chronographe Quartz Précision", "كرونوغراف كوارتز", "Precision Quartz Chronograph", None),
         ("Automatique", "Automatique", "أوتوماتيك", "Automatic", None),
     ])
-    mt_water_attr = add_attr("les-montres", "water_resistance", "Étanchéité", "مقاومة الماء", "Water Resistance", "short_text", req=1, filt=0, var=0, order=3)
+    add_attr("les-montres", "water_resistance", "Étanchéité", "مقاومة الماء", "Water Resistance", "short_text", req=1, filt=0, var=0, order=3)
 
-    ln_frame_attr = add_attr("les-lunettes", "frame_color", "Couleur de monture", "لون الإطار", "Frame Color", "color", req=1, filt=1, var=1, order=1, options=[
+    add_attr("les-lunettes", "frame_color", "Couleur de monture", "لون الإطار", "Frame Color", "color", req=1, filt=1, var=1, order=1, options=[
         ("Écaille & Or", "Écaille & Or", "بني مذهب", "Tortoise & Gold", "#4A2E1B"),
         ("Noir Intense", "Noir Intense", "أسود داكن", "Deep Black", "#141414"),
     ])
-    ln_uv_attr = add_attr("les-lunettes", "uv_protection", "Protection UV", "حماية الأشعة", "UV Protection", "short_text", req=1, filt=1, var=0, order=2)
+    add_attr("les-lunettes", "uv_protection", "Protection UV", "حماية الأشعة", "UV Protection", "short_text", req=1, filt=1, var=0, order=2)
 
     # 8. Seed Initial Products & Variants
     cur.execute(

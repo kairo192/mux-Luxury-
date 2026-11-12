@@ -1,5 +1,5 @@
 import { readDraft, writeDraft } from "../utils/draftStorage";
-import React, { useEffect, useState } from "react";
+import { useEffect, useState } from "react";
 import { DesktopCmsApi } from "../api/adminClient";
 import { notifyClientError, notifyClientSuccess, notifyClientWarning } from "../utils/clientNotifier";
 import { useT } from "../i18n";

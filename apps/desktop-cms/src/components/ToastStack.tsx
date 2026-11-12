@@ -8,7 +8,7 @@
 // Items that open a modal message box are NOT duplicated as toasts.
 // ============================================================================
 
-import React, { useEffect, useState } from "react";
+import { useEffect, useState } from "react";
 import { AlertTriangle, CheckCircle2, Info, ShieldAlert, ShoppingBag, Download, RefreshCw, X } from "lucide-react";
 import { useT } from "../i18n";
 import { subscribeClientNotifications, type ClientNotificationItem } from "../utils/clientNotifier";

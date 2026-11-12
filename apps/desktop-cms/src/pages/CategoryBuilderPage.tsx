@@ -28,13 +28,10 @@ import {
   SlidersHorizontal,
   RefreshCw,
   AlertTriangle,
-  ArrowUpDown,
-  Filter,
   Shirt,
   ChevronUp,
   ChevronDown,
   Palette,
-  Ruler,
 } from "lucide-react";
 
 const ATTRIBUTE_TYPES = [
@@ -622,7 +619,6 @@ export function CategoryBuilderPage({ onCategoryChanged }: { onCategoryChanged?:
   const [slug, setSlug] = useState(() => readDraft("luxe_cat_draft_slug", ""));
   const [descriptionFr, setDescriptionFr] = useState(() => readDraft("luxe_cat_draft_desc", ""));
   const [displayOrder, setDisplayOrder] = useState(() => readDraft("luxe_cat_draft_order", 10));
-  const [chosenIconKey, setChosenIconKey] = useState("bag");
   const [imageUrl, setImageUrl] = useState(() => readDraft("luxe_cat_draft_img", ""));
   const [bannerUrl, setBannerUrl] = useState(() => readDraft("luxe_cat_draft_banner", ""));
 
@@ -832,7 +828,6 @@ export function CategoryBuilderPage({ onCategoryChanged }: { onCategoryChanged?:
     setDescriptionFr(preset.description_fr);
     setImageUrl(preset.image_url);
     setBannerUrl(preset.banner_url);
-    setChosenIconKey(preset.iconName);
     setAttributes(JSON.parse(JSON.stringify(preset.attributes)));
     notifyClientSuccess(
       "Modèle appliqué",
@@ -1010,7 +1005,7 @@ export function CategoryBuilderPage({ onCategoryChanged }: { onCategoryChanged?:
         attributes: formattedAttrs,
       };
 
-      const created = await DesktopCmsApi.createCategory(payload);
+      await DesktopCmsApi.createCategory(payload);
 
       const okMsg = `Catégorie "${nameFr}" créée avec succès (${formattedAttrs.length} attributs et ses déclinaisons).`;
       setStatusMsg(okMsg);

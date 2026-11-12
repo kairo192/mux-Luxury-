@@ -54,4 +54,4 @@
 
 ## E. Final Release Decision
 **ACCEPTED FOR PRODUCTION RELEASE.**  
-The platform satisfies all architecture, security, performance, hardware, and localization requirements outlined in `claude code.md`. All automated test suites and compiler checks are 100% green.
+The platform satisfies all architecture, security, performance, hardware, and localization requirements outlined in `docs/specs/claude code.md`. All automated test suites and compiler checks are 100% green.

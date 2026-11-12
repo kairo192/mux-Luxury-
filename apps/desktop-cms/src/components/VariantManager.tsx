@@ -341,7 +341,7 @@ export function VariantManager({
 
   async function saveRowEdits() {
     if (isCreateMode) {
-      const merged = variants.map((v, idx) => {
+      const merged = variants.map((v) => {
         const edit = v.id ? rowEdits[v.id] : undefined;
         return edit ? { ...v, ...edit } : v;
       });
@@ -534,6 +534,7 @@ export function VariantManager({
                   <button
                     key={opt.value}
                     type="button"
+                    aria-pressed={active}
                     onClick={() => toggleValue(axis.attr_key, opt.value)}
                     className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg border font-semibold transition ${
                       active

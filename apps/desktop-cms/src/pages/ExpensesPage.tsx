@@ -12,9 +12,6 @@ import {
   Search,
   Trash2,
   X,
-  CreditCard,
-  Building2,
-  Receipt,
 } from "lucide-react";
 
 interface ExpenseItem {

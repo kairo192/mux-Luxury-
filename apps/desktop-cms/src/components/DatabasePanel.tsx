@@ -8,7 +8,7 @@
 // Backup files never leave the server (no download over the internet).
 // ============================================================================
 
-import React, { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import {
   AlertTriangle,
   Archive,

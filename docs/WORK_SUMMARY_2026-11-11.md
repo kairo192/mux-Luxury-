@@ -370,6 +370,36 @@ All 300 tests pass on SQLite and PostgreSQL 16 (the 4 `@babel/core` ones with th
 
 ---
 
+## 19. Full browser test suite and clean code
+
+**End-to-end suite** (`e2e/`, Playwright, `npm run test:e2e`): starts its own fresh production-mode API
+(random secrets, empty SQLite or PostgreSQL database), the CMS and the shop on separate ports, then drives
+both in a real browser. 28 tests, ~1.5 min, green on SQLite **and** PostgreSQL 16, and a required CI job:
+
+| Spec | What it proves |
+|---|---|
+| first installation | setup wizard creates the owner, cannot run twice, empty shop, wrong password refused, owner creates a cashier |
+| catalogue | product created in the CMS editor (price, variant, stock, photo) is on sale in the shop; archive removes it at once |
+| shop | home, AR/EN, product, cart, phone validation, promo checkout = server order, stock reserved, tracking, sold out |
+| CMS operations | order statuses (cash on delivery, cancel restores stock), till sale with change / refund / close short, damaged-stock loss, unpaid expense then paid |
+| CMS finance | supplier purchase (landed cost, debt, bank), every report CSV, Comptabilité = Analytique + its 3 CSV, cashier refused |
+| all screens | every CMS screen × FR/EN/AR × owner/cashier: no crash, console error, refused call or broken text |
+
+Every test fails on a page crash, a console error or an unexpected failed API call.
+
+Found while building it: product-editor and login labels were not linked to their fields, the category picker
+and variant buttons had no accessible name / pressed state (fixed: screen readers and tests can use them).
+
+**Clean code:** backend lint clean (incl. unused imports / variables); CMS now compiles with
+`noUnusedLocals` + `noUnusedParameters` (56 unused imports, states and handlers removed — including three
+lists fetched at every login and never shown); no debug output, no TODO/FIXME; stale comments fixed; the
+login brute-force limit is a setting (`LOGIN_ATTEMPTS_PER_MINUTE`, default 5); original specification notes
+moved to `docs/specs/`, Windows helpers to `scripts/windows/`; the Windows-only Chrome script replaced by
+the suite; README updated. Not removed: 12 photos in `apps/storefront/public/assets` that nothing
+references (~16 MB, e.g. `store_photo_01…04.jpg`, `01…05.jpg`) — they look like the owner's real shop photos.
+
+---
+
 ## Verification
 
 | Check | Result |
@@ -377,7 +407,7 @@ All 300 tests pass on SQLite and PostgreSQL 16 (the 4 `@babel/core` ones with th
 | Backend tests | 300 run on SQLite and on PostgreSQL 16 (incl. the end-to-end business day, round 18). Only 4 failures, all caused by `@babel/core` missing in the cloud container; those 4 pass with a substitute TypeScript compiler and pass in CI. |
 | CMS TypeScript + build | OK |
 | Rust (`cargo check`) | OK |
-| Browser tests (Playwright) | Notifications, message box queue, bell, update dialog, new-order alert, Arabic layout, category delete + reload, archived tab, database panel, backup, reset: all OK |
+| Browser tests (Playwright) | `e2e/`: 28 shop + CMS tests green on SQLite and PostgreSQL 16 (CI job). Earlier manual checks — notifications, message box queue, bell, update dialog, new-order alert, Arabic layout, category delete + reload, archived tab, database panel, backup, reset: all OK |
 | Backup engine | SQLite, PostgreSQL 16, and PC → server restore: OK |
 | VPS backup scripts | Backup, verify, native restore and snapshot restore, tested through a Docker stand-in against PostgreSQL 16: OK |
 

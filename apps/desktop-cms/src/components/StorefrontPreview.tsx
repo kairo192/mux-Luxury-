@@ -13,7 +13,7 @@
 //   no ratings / reviews are shown (the shop has none)
 // ============================================================================
 
-import React, { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { AlertTriangle, CheckCircle2, Circle, Heart, LayoutGrid, Link2, ShoppingCart, SquareStack } from "lucide-react";
 import { useT } from "../i18n";
 import { mediaUrl, PLACEHOLDER_IMG } from "../api/adminClient";

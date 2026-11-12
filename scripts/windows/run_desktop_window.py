@@ -34,7 +34,7 @@ def serve_dist(dist_dir, port=1420):
         httpd.serve_forever()
 
 def main():
-    repo_root = os.path.dirname(os.path.abspath(__file__))
+    repo_root = os.path.abspath(os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", ".."))
     dist_dir = os.path.join(repo_root, "apps", "desktop-cms", "dist")
 
     if not is_port_in_use(1420):

@@ -5,7 +5,7 @@
 // it warns if offline POS sales are still waiting to sync.
 // ============================================================================
 
-import React, { useEffect, useState } from "react";
+import { useEffect, useState } from "react";
 import { CheckCircle2, Download, Loader2, RefreshCw, ShieldAlert, Sparkles, X } from "lucide-react";
 import { useT } from "../i18n";
 import {

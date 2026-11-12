@@ -672,12 +672,14 @@ export function ProductEditor({ open, product, categories, brands, onClose, onSa
                   <label className="block font-bold mb-1">{t("product_editor.category_label")}</label>
                   <div className="flex items-center gap-2">
                     <input
+                      aria-label={t("product_editor.category_filter")}
                       value={categorySearch}
                       onChange={(e) => setCategorySearch(e.target.value)}
                       placeholder={t("product_editor.category_filter")}
                       className="w-40 px-2 py-1.5 border rounded-lg bg-[#F8F6F0]"
                     />
                     <select
+                      aria-label={t("product_editor.category_label")}
                       value={draft.category_id}
                       onChange={(e) => patch({ category_id: e.target.value === "" ? "" : Number(e.target.value), dynamic_attributes: {} })}
                       className="flex-1 px-3 py-2 border rounded-xl bg-white font-semibold focus:border-[#063D2E] outline-none"

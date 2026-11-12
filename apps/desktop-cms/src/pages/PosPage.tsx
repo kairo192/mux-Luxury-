@@ -474,11 +474,6 @@ export const PosPage: React.FC<{ onInventoryUpdated?: () => void }> = ({ onInven
 
   const removeLine = (variantId: number) => setCart((prev) => prev.filter((l) => l.variant_id !== variantId));
 
-  const setLineDiscount = (variantId: number, value: string) => {
-    const d = Math.max(0, parseInt(value || "0", 10) || 0);
-    setCart((prev) => prev.map((l) => (l.variant_id === variantId ? { ...l, line_discount_dzd: d } : l)));
-  };
-
   const subtotal = cart.reduce((s, l) => s + l.unit_price_dzd * l.quantity, 0);
   const lineDiscounts = cart.reduce((s, l) => s + Math.min(l.line_discount_dzd, l.unit_price_dzd * l.quantity), 0);
   const orderDisc = Math.min(parseInt(orderDiscount || "0", 10) || 0, subtotal - lineDiscounts);

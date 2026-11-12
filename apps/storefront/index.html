@@ -1582,8 +1582,8 @@
     // dozen places, which meant (1) a blipping 502 at a flaky moment showed
     // customers a raw backend detail, (2) a 422 validation payload (array of
     // dicts) rendered as "[object Object]" in the toast, (3) a slow server
-    // hung the UI indefinitely. The sibling React client (`src/api/client.ts`)
-    // already had the right shape; this helper ports it onto the vanilla page.
+    // hung the UI indefinitely. This helper gives every call a timeout,
+    // retries and a clear French message.
     //
     // Behaviour:
     //   - Timeout per attempt (default 15s) via AbortController.
@@ -1641,7 +1641,7 @@
     }
 
     function formatStorefrontError(data, status) {
-      // Keep this in sync with apps/storefront/src/api/client.ts.
+      // Turns a server answer into a message a customer understands.
       if (status === 422 || Array.isArray(data && data.detail)) {
         return "Veuillez vérifier les informations saisies (nom, numéro de téléphone 05/06/07, Wilaya et adresse).";
       }

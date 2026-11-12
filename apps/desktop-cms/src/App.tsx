@@ -1,4 +1,4 @@
-import { readDraft, writeDraft, clearDraft } from "./utils/draftStorage";
+import { readDraft, writeDraft} from "./utils/draftStorage";
 import { serverDate, formatServerDateTime } from "./utils/serverDate";
 import { useT, LanguageToggle } from "./i18n";
 import { CmsSidebar } from "./components/CmsSidebar";
@@ -33,18 +33,13 @@ import {
   subscribeNetworkTelemetry,
 } from "./utils/networkQueue";
 import React, { useEffect, useRef, useState } from "react";
-import {
-  LayoutDashboard,
+import { 
   ShoppingBag,
   Tags,
-  PackageCheck,
   Boxes,
-  FileText,
-  Receipt,
   Landmark,
   TrendingUp,
   Truck,
-  Palette,
   ShieldCheck,
   Plus,
   RefreshCw,
@@ -61,27 +56,14 @@ import {
   Archive,
   RotateCcw,
   Search,
-  SlidersHorizontal,
-  Calculator,
-  Wand2,
-  Eye,
-  EyeOff,
   CheckSquare,
-  Square,
   PackagePlus,
   MessageCircle,
   Ban,
   Radio,
   ShieldAlert,
-  UploadCloud,
   X,
-  Layers,
-  Tag,
-  Check,
-  Filter,
   ScanLine,
-  HardDrive,
-  Users,
 } from "lucide-react";
 import { HomepageContentPanel } from "./components/HomepageContentPanel";
 import { movementReasonLabel } from "./utils/movementReasons";
@@ -280,12 +262,10 @@ export default function App() {
 
   // Workspace Data States
   const [dashboard, setDashboard] = useState<any | null>(null);
-  const [reports, setReports] = useState<any | null>(null);
   const [brands, setBrands] = useState<any[]>([]);
   const [categories, setCategories] = useState<any[]>([]);
   const [products, setProducts] = useState<any[]>([]);
   const [orders, setOrders] = useState<any[]>([]);
-  const [customers, setCustomers] = useState<any[]>([]);
   const [movements, setMovements] = useState<any[]>([]);
   const [coupons, setCoupons] = useState<any[]>([]);
   const [staticPages, setStaticPages] = useState<any[]>([]);
@@ -293,7 +273,6 @@ export default function App() {
   const [auditLogs, setAuditLogs] = useState<any[]>([]);
   const [readinessStatus, setReadinessStatus] = useState<any | null>(null);
   // recoveryStatus state removed with the WhatsApp password-recovery flow.
-  const [healthStatus, setHealthStatus] = useState<any | null>(null);
   // restoreReport state removed with the admin-facing backup page.
   const [selectedInvoice, setSelectedInvoice] = useState<any | null>(null);
   const closeInvoice = React.useCallback(() => setSelectedInvoice(null), []);
@@ -330,8 +309,6 @@ export default function App() {
   useEscapeToClose(closeInvoice, Boolean(selectedInvoice));
   const [loadingWorkspace, setLoadingWorkspace] = useState(false);
   const [selectedProductIds, setSelectedProductIds] = useState<number[]>([]);
-  const [newBrandName, setNewBrandName] = useState("");
-  const [orderSearch, setOrderSearch] = useState("");
   const [codBlacklist, setCodBlacklist] = useState<any[]>([]);
   const [codCheckPhone, setCodCheckPhone] = useState("");
   const [codBlacklistReason, setCodBlacklistReason] = useState("Retour abusif / Non-récupération COD");
@@ -430,18 +407,15 @@ export default function App() {
       const perms: string[] = (user as any)?.permissions || [];
       const may = (...need: string[]) => need.some((p) => perms.includes(p));
       const emptyList = Promise.resolve({ items: [] as any[] });
-      const [dashData, repData, brdData, catData, prodData, ordData, custData, movData, layData, pgData, hltData, blData, kcStatus, outboxData, auditData, readyData, cpnData] = await Promise.all([
+      const [dashData, brdData, catData, prodData, ordData, movData, layData, pgData, blData, kcStatus, outboxData, auditData, readyData, cpnData] = await Promise.all([
         DesktopCmsApi.getDashboard(),
-        may("finance:read") ? DesktopCmsApi.getReports().catch(() => null) : Promise.resolve(null),
         may("products:write", "categories:write") ? DesktopCmsApi.listBrands().catch(() => ({ items: [] })) : emptyList,
         may("products:write", "categories:write") ? DesktopCmsApi.listCategories().catch(() => ({ items: [] })) : emptyList,
         may("products:write") ? DesktopCmsApi.listAdminProducts({ include_archived: true }).catch(() => ({ items: [] })) : emptyList,
         may("orders:write") ? DesktopCmsApi.listOrders(orderStatusFilter || undefined).catch(() => ({ items: [] })) : emptyList,
-        may("orders:write", "pos:sell") ? DesktopCmsApi.listCustomers().catch(() => ({ items: [] })) : emptyList,
         may("products:write") ? DesktopCmsApi.listInventoryMovements().catch(() => ({ items: [] })) : emptyList,
         DesktopCmsApi.getStoreLayout().catch(() => ({ homepage_sections: [] })),
         may("content:write") ? DesktopCmsApi.listStaticPages().catch(() => ({ items: [] })) : emptyList,
-        DesktopCmsApi.checkHealth().catch(() => ({ status: "ok" })),
         may("orders:write") ? DesktopCmsApi.listCodBlacklist().catch(() => ({ items: [] })) : emptyList,
         DesktopCmsApi.getKeychainStatus().catch(() => null),
         may("orders:write") ? DesktopCmsApi.listCommunicationsOutbox().catch(() => ({ items: [] })) : emptyList,
@@ -456,12 +430,10 @@ export default function App() {
       setReadinessStatus(readyData);
       setCoupons(cpnData.items || []);
       setDashboard(dashData);
-      setReports(repData);
       setBrands(brdData.items || []);
       setCategories(catData.items || []);
       setProducts(prodData.items || []);
       setOrders(ordData.items || []);
-      setCustomers(custData.items || []);
       setMovements(movData.items || []);
       if (layData.settings && !settingsDirtyRef.current) {
         const s = layData.settings;
@@ -477,7 +449,6 @@ export default function App() {
       if (!pageDirtyRef.current) {
         setPageDraft(pageDraftFrom(loadedPages.find((p: any) => p.slug === pageSlug)));
       }
-      setHealthStatus(hltData);
       if (catData.items?.length && !prodCategoryId) {
         setProdCategoryId(catData.items[0].id);
       }
@@ -964,20 +935,6 @@ export default function App() {
     }
   }
 
-  async function handleDeleteBanner(bannerId: number) {
-    setError("");
-    try {
-      await DesktopCmsApi.deleteBanner(bannerId);
-      const okMsg = `Bannière #${bannerId} supprimée.`;
-      setSuccessMsg(okMsg);
-      notifyClientSuccess("Bannière supprimée", okMsg);
-      await loadAllWorkspaceData();
-    } catch (err: any) {
-      const tr = notifyClientError(err, "Suppression de la bannière impossible");
-      setError(tr.message);
-    }
-  }
-
   async function handleSaveStaticPage(e: React.FormEvent) {
     e.preventDefault();
     setError("");
@@ -1025,28 +982,6 @@ export default function App() {
       notifyClientSuccess("Synchronisation serveur terminée", okMsg);
     } catch (err: any) {
       const tr = notifyClientError(err, "Synchronisation Delta interrompue");
-      setError(tr.message);
-    }
-  }
-
-  async function handleCreateBrand(e: React.FormEvent) {
-    e.preventDefault();
-    if (!newBrandName.trim()) {
-      notifyClientWarning("Nom de marque requis", "Veuillez saisir le nom de la marque avant de l'ajouter.");
-      return;
-    }
-    setError("");
-    try {
-      const slug = newBrandName.trim().toLowerCase().replace(/[^a-z0-9]+/g, "-");
-      await DesktopCmsApi.createBrand({ name: newBrandName.trim(), slug, logo_url: "/assets/mus_luxury_logo.png" });
-      const createdName = newBrandName.trim();
-      setNewBrandName("");
-      const okMsg = `Marque "${createdName}" créée et ajoutée au catalogue.`;
-      setSuccessMsg(okMsg);
-      notifyClientSuccess("Marque ajoutée", okMsg);
-      await loadAllWorkspaceData();
-    } catch (err: any) {
-      const tr = notifyClientError(err, "Création de la marque impossible");
       setError(tr.message);
     }
   }
@@ -1397,28 +1332,28 @@ export default function App() {
           {error && <div className="p-3 rounded bg-red-900/90 text-xs text-red-100">{error}</div>}
           <div className="grid grid-cols-2 gap-3 text-xs">
             <div>
-              <label className="block font-bold mb-1">Nom Complet</label>
-              <input value={ownerName} onChange={(e) => setOwnerName(e.target.value)} required placeholder="Nom et Prénom" className="w-full px-3 py-2 rounded bg-[#02291F] border border-[#D4AF62]/40" />
+              <label htmlFor="owner-name" className="block font-bold mb-1">Nom Complet</label>
+              <input id="owner-name" value={ownerName} onChange={(e) => setOwnerName(e.target.value)} required placeholder="Nom et Prénom" className="w-full px-3 py-2 rounded bg-[#02291F] border border-[#D4AF62]/40" />
             </div>
             <div>
-              <label className="block font-bold mb-1">Email / Identifiant</label>
-              <input type="email" value={ownerEmail} onChange={(e) => setOwnerEmail(e.target.value)} required placeholder="administrateur@domaine.dz" className="w-full px-3 py-2 rounded bg-[#02291F] border border-[#D4AF62]/40" />
+              <label htmlFor="owner-email" className="block font-bold mb-1">Email / Identifiant</label>
+              <input id="owner-email" type="email" value={ownerEmail} onChange={(e) => setOwnerEmail(e.target.value)} required placeholder="administrateur@domaine.dz" className="w-full px-3 py-2 rounded bg-[#02291F] border border-[#D4AF62]/40" />
             </div>
           </div>
           <div className="grid grid-cols-2 gap-3 text-xs">
             <div>
-              <label className="block font-bold mb-1">Mot de passe (≥ 10 car.)</label>
-              <input type="password" value={ownerPassword} onChange={(e) => setOwnerPassword(e.target.value)} required className="w-full px-3 py-2 rounded bg-[#02291F] border border-[#D4AF62]/40" />
+              <label htmlFor="owner-password" className="block font-bold mb-1">Mot de passe (≥ 10 car.)</label>
+              <input id="owner-password" type="password" value={ownerPassword} onChange={(e) => setOwnerPassword(e.target.value)} required className="w-full px-3 py-2 rounded bg-[#02291F] border border-[#D4AF62]/40" />
             </div>
             <div>
-              <label className="block font-bold mb-1">Confirmer mot de passe</label>
-              <input type="password" value={ownerConfirm} onChange={(e) => setOwnerConfirm(e.target.value)} required className="w-full px-3 py-2 rounded bg-[#02291F] border border-[#D4AF62]/40" />
+              <label htmlFor="owner-confirm" className="block font-bold mb-1">Confirmer mot de passe</label>
+              <input id="owner-confirm" type="password" value={ownerConfirm} onChange={(e) => setOwnerConfirm(e.target.value)} required className="w-full px-3 py-2 rounded bg-[#02291F] border border-[#D4AF62]/40" />
             </div>
           </div>
           <div className="p-3 rounded-xl bg-[#02291F]/80 border border-[#D4AF62]/30 space-y-1 text-xs">
             <p className="font-bold text-[#D4AF62]">Numéro de contact :</p>
-            <label className="block text-[11px] mb-0.5">Téléphone propriétaire</label>
-            <input value={emergencyPhone} onChange={(e) => setEmergencyPhone(e.target.value)} required placeholder="+213 5XX XX XX XX" className="w-full px-2.5 py-1.5 rounded bg-[#063D2E] border border-[#D4AF62]/40 font-mono text-xs" />
+            <label htmlFor="owner-phone" className="block text-[11px] mb-0.5">Téléphone propriétaire</label>
+            <input id="owner-phone" value={emergencyPhone} onChange={(e) => setEmergencyPhone(e.target.value)} required placeholder="+213 5XX XX XX XX" className="w-full px-2.5 py-1.5 rounded bg-[#063D2E] border border-[#D4AF62]/40 font-mono text-xs" />
             <p className="text-[10px] text-white/50 pt-1">
               Mot de passe oublié ? Réinitialisation via la console serveur par l'administrateur système.
             </p>
@@ -1448,12 +1383,12 @@ export default function App() {
             {successMsg && <div className="p-3 rounded bg-emerald-800 text-xs text-white">{successMsg}</div>}
             {error && <div className="p-3 rounded bg-red-900/90 text-xs text-red-100">{error}</div>}
             <div>
-              <label className="block text-xs font-bold mb-1">Email / Identifiant</label>
-              <input type="email" value={loginEmail} onChange={(e) => setLoginEmail(e.target.value)} required placeholder="administrateur@mus-luxury.com" className="w-full px-3 py-2 rounded bg-[#02291F] border border-[#D4AF62]/40 text-sm" />
+              <label htmlFor="login-email" className="block text-xs font-bold mb-1">Email / Identifiant</label>
+              <input id="login-email" type="email" value={loginEmail} onChange={(e) => setLoginEmail(e.target.value)} required placeholder="administrateur@mus-luxury.com" className="w-full px-3 py-2 rounded bg-[#02291F] border border-[#D4AF62]/40 text-sm" />
             </div>
             <div>
-              <label className="block text-xs font-bold mb-1">Mot de passe</label>
-              <input type="password" value={loginPassword} onChange={(e) => setLoginPassword(e.target.value)} required className="w-full px-3 py-2 rounded bg-[#02291F] border border-[#D4AF62]/40 text-sm" />
+              <label htmlFor="login-password" className="block text-xs font-bold mb-1">Mot de passe</label>
+              <input id="login-password" type="password" value={loginPassword} onChange={(e) => setLoginPassword(e.target.value)} required className="w-full px-3 py-2 rounded bg-[#02291F] border border-[#D4AF62]/40 text-sm" />
             </div>
             <button type="submit" className="w-full py-3 rounded-xl bg-[#D4AF62] text-[#02291F] font-extrabold text-sm hover:brightness-105 transition shadow">
               Se connecter au CMS Desktop
@@ -1519,7 +1454,6 @@ export default function App() {
     );
   }
 
-  const activeCategoryObj = categories.find((c) => c.id === Number(prodCategoryId)) || categories[0];
   const productCounts = {
     all: products.length,
     published: products.filter((p) => p.status === "published").length,

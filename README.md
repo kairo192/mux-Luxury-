@@ -37,12 +37,14 @@ luxe-ecommerce/
 │   ├── migrations/
 │   │   ├── 001_initial_schema.sql          # SQLite schema (41 relational tables)
 │   │   └── 001_initial_schema_postgres.sql # PostgreSQL 16 schema (100% parity)
-│   └── tests/                    # 242 automated backend tests (100% passing)
+│   └── tests/                    # 300 automated backend tests (SQLite + PostgreSQL 16)
 ├── apps/
-│   ├── storefront/               # High-performance boutique: React 18 + Vite (Guest COD across 69 Wilayas)
+│   ├── storefront/               # Online shop: one index.html (vanilla JS, FR/AR/EN) + Vite/Tailwind (guest COD, 69 wilayas)
 │   └── desktop-cms/              # Tauri 2.0 + Rust Windows Desktop CMS & POS (wincred token storage)
+├── e2e/                          # Browser tests of the shop + CMS together (Playwright), see e2e/README.md
 ├── infrastructure/               # Nginx reverse proxy, automated backup & deploy scripts
-└── docs/                         # Production documentation & runbooks
+├── scripts/windows/              # Windows helpers (VC++ build tools, local CMS window)
+└── docs/                         # Production documentation & runbooks (docs/specs: original specifications)
     ├── architecture/             # SYSTEM_ARCHITECTURE.md (Topology & 41 tables)
     ├── deployment/               # VPS_DEPLOYMENT.md (Octenium setup) & CI_CD.md
     ├── security/                 # SECURITY_HARDENING.md & SECRETS_MANAGEMENT.md
@@ -76,12 +78,14 @@ Because you are managing the project from a smartphone:
      git remote add origin https://github.com/<your-username>/luxe-ecommerce.git
      git push -u origin main
      ```
-3. **Run Backend & Automated Tests in the Cloud**:
+3. **Run the tests** (all run in CI on every push, see `.github/workflows/ci.yml`):
    ```bash
-   cd backend
-   python3 -m unittest discover -s tests -v
-   uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
+   npm run lint          # ruff (backend) + TypeScript (CMS, no unused code allowed)
+   npm run test:backend  # 300 backend tests (SQLite; CI also runs them on PostgreSQL 16)
+   npm run test:e2e      # 28 browser tests: shop + CMS together on a fresh production-mode API
    ```
+   Local development: `cd backend && uvicorn app.main:app --reload --port 8000`,
+   then `npm run dev:cms` and `npm run dev:storefront`.
 4. **Deploy to an Algerian VPS (e.g., Icosnet, Djaweb, or Cloud VPS)**:
    ```bash
    cp .env.example .env

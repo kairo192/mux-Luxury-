@@ -1,20 +1,15 @@
 import React, { useEffect, useState } from "react";
 import { DesktopCmsApi } from "../api/adminClient";
 import { notifyClientError, notifyClientSuccess, notifyClientWarning, confirmClientAction } from "../utils/clientNotifier";
-import {
-  PackageCheck,
+import { 
   Building2,
-  Plus,
-  RefreshCw,
   Clock,
   CheckCircle2,
   AlertTriangle,
   Download,
   CreditCard,
-  Trash2,
   X,
   Sparkles,
-  Tag,
 } from "lucide-react";
 import {
   isLabelPrinterConfigured,
@@ -30,9 +25,7 @@ export function PurchasesPage({ onInventoryUpdated }: { onInventoryUpdated?: () 
   const [suppliers, setSuppliers] = useState<any[]>([]);
   const [purchases, setPurchases] = useState<any[]>([]);
   const [products, setProducts] = useState<any[]>([]);
-  const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
-  const [successMsg, setSuccessMsg] = useState("");
 
   // New Supplier Form State
   const [supName, setSupName] = useState("");
@@ -73,7 +66,6 @@ export function PurchasesPage({ onInventoryUpdated }: { onInventoryUpdated?: () 
   const [lineCost, setLineCost] = useState(0);
 
   async function loadData() {
-    setLoading(true);
     setError("");
     try {
       const [supRes, poRes, prodRes] = await Promise.all([
@@ -95,7 +87,6 @@ export function PurchasesPage({ onInventoryUpdated }: { onInventoryUpdated?: () 
       const tr = notifyClientError(err, "Erreur chargement des achats");
       setError(tr.message);
     } finally {
-      setLoading(false);
     }
   }
 
@@ -385,7 +376,6 @@ export function PurchasesPage({ onInventoryUpdated }: { onInventoryUpdated?: () 
       </div>
 
       {error && <div className="p-3 rounded-xl bg-red-100 text-red-900 font-bold">{error}</div>}
-      {successMsg && <div className="p-3 rounded-xl bg-emerald-100 text-emerald-900 font-bold">{successMsg}</div>}
 
       {/* Grid: Create Purchase Order & Register Supplier */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">

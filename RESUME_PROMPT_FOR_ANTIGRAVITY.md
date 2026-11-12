@@ -23,7 +23,7 @@ Windows machine while a cloud Claude session has been pushing to
    stacked in order.
 
 3. Read `docs/cicd/I18N_AUDIT.md`. This is the new audit + recipe for the
-   bilingual translation work the owner requested in lang.md. §3 is the
+   bilingual translation work the owner requested in docs/specs/lang.md. §3 is the
    step-by-step recipe. §7 is the priority queue of pages to translate.
    Follow that recipe verbatim — do not re-architect the i18n system; the
    cloud session already built it.

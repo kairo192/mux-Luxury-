@@ -7,7 +7,15 @@
 
 ---
 
-## 0f. BUSINESS CONNECTED END TO END (2026-11-12, latest)
+## 0g. BROWSER TEST SUITE + CLEAN CODE (2026-11-12, latest)
+- `e2e/` (Playwright 1.63): `npm run test:e2e` (or `npm --prefix e2e test`). Own stack on ports
+  18000/11420/15173, fresh production-mode DB (`E2E_DATABASE_URL` for PostgreSQL). Must stay green; CI job `e2e`.
+  When you change a screen, run it; when you add a screen, `06-cms-all-screens` covers it automatically.
+- CMS `tsconfig`: `noUnusedLocals` / `noUnusedParameters` are ON — `npm run build` fails on dead code.
+- `npm run lint` = ruff + tsc. Server setting `LOGIN_ATTEMPTS_PER_MINUTE` (default 5, tests use 500).
+- Specs moved to `docs/specs/` (e.g. `docs/specs/claude code.md`); Windows helpers in `scripts/windows/`.
+
+## 0f. BUSINESS CONNECTED END TO END (2026-11-12)
 Details: `docs/WORK_SUMMARY_2026-11-11.md` §18. Keep these true (guarded by `tests/test_business_flow.py`):
 - Receiving a purchase: landed unit cost (shipping+tax spread by line value) in the PMP of the product and
   of a variant that has its own cost.
@@ -177,7 +185,7 @@ Pushed on `feat/pos-core-cash-register-18lsk6`. Pull it before touching any of t
 ## 1. Read this first
 
 - The user asked me to produce a production `.env` and continue cleanup. That's what the diff on this branch does. **I did not push this work yet**; the next commit (`§5 below`) is yours to amend or extend before you push.
-- You are mirroring sections of the full spec (`claude code.md`). I've been working on the operational cleanup lane (CSP, fetch hardening, `window.prompt` removal, offline SQLite catalog mirror, test pruning, `.env` generator). You are the owner of the feature lane.
+- You are mirroring sections of the full spec (`docs/specs/claude code.md`). I've been working on the operational cleanup lane (CSP, fetch hardening, `window.prompt` removal, offline SQLite catalog mirror, test pruning, `.env` generator). You are the owner of the feature lane.
 - My cloud branch is `feat/pos-core-cash-register-18lsk6`; your desktop branch is `feat/pos-core-cash-register`. **Do not merge them automatically** — we're both committing and the user wants manual control over which branch becomes the PR.
 
 ---
@@ -289,7 +297,7 @@ I'll commit + push this as one atomic change before this session ends. If the se
    - For every page, add RTL polish per the recipe's §5 (test with the
      language toggle — no reload needed; the provider updates
      `document.documentElement.{lang,dir}` live).
-2. **Keep working on the `claude code.md` modules.** The handoff you left me (`HANDOFF_FOR_CLAUDE.md`) listed the roadmap; it's still accurate except that the backup admin UI and WhatsApp recovery UI are now intentionally gone from the CMS. Do not re-add them.
+2. **Keep working on the `docs/specs/claude code.md` modules.** The handoff you left me (`HANDOFF_FOR_CLAUDE.md`) listed the roadmap; it's still accurate except that the backup admin UI and WhatsApp recovery UI are now intentionally gone from the CMS. Do not re-add them.
 3. **Keep writing to `HANDOFF_FOR_CLAUDE.md`.** The user wants a continuously-updated handoff doc that documents the current state so the next Claude session can resume without context loss. You own that file.
 4. **Three blockers from your own earlier audit (BLOCKER-01/02/03) are untouched.** I deliberately did not change them because they need the owner's input (domain confirmation, Dockerfile build stage, Tauri signing keypair). Confirm with the user before changing.
 5. **Do NOT regenerate the production `.env`** — the user already has the values from my run. If they need fresh entropy, re-run `backend/scripts/generate_production_env.py --force` and have them re-copy to the VPS.
@@ -325,7 +333,7 @@ Followed by the standard `Co-Authored-By: Claude Opus 4.7 <noreply@anthropic.com
 
 ## 7. When your limits are near
 
-Mirror what I did here: write `HANDOFF_FOR_CLAUDE.md` with the shape above. Include **what you just committed**, **what's uncommitted**, **what tests pass**, and **what section of `claude code.md` to pick up next**. Leave the backend running if you had it running — I'll probe `/api/v1/health` to know.
+Mirror what I did here: write `HANDOFF_FOR_CLAUDE.md` with the shape above. Include **what you just committed**, **what's uncommitted**, **what tests pass**, and **what section of `docs/specs/claude code.md` to pick up next**. Leave the backend running if you had it running — I'll probe `/api/v1/health` to know.
 
 Good luck. The user is watching the shop open in Blida — every decision has to work in the real boutique.
 

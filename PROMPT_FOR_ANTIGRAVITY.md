@@ -60,6 +60,7 @@ cd ..\..\..
    **all passing** on this PC (the 4 `@babel/core` failures only happen in the cloud container). Report
    any failure with its output; do not skip or delete tests.
 2. **CMS build:** `cd apps\desktop-cms; npm run build` then `npm run tauri dev`.
+   **Browser tests:** `npm install --prefix e2e; npx --prefix e2e playwright install chromium; npm run test:e2e` (28 tests, expected all green).
 3. Check by hand in the running app, and report what you see:
    - Bottom-corner toasts; a message box queue ("1 sur 2"); the bell with history.
    - **Windows notification:** put the CMS in the background, create a test online order (or run the

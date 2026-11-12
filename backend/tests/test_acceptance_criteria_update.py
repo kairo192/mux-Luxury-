@@ -20,7 +20,7 @@ from app.security import reset_rate_limits
 
 class TestUpdateMdAcceptanceCriteria(unittest.TestCase):
     """
-    Automated verification of the 18 Acceptance Criteria defined in update.md:
+    Automated verification of the 18 Acceptance Criteria defined in docs/specs/update.md:
     1. Create a category with custom attributes.
     2. Create a product with multiple colors and sizes.
     3. Generate valid variants and assign different stock quantities.
