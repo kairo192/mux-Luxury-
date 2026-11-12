@@ -80,6 +80,11 @@ jobs:
           find backend/scripts -type f -name '*.sh' -print0 2>/dev/null \
             | xargs -0 -r -n1 bash -n
 
+      - name: Shell scripts lint (shellcheck, warnings and errors)
+        # Preinstalled on GitHub's Ubuntu runners; deploy, backup and
+        # certificate scripts run as root on the VPS.
+        run: find infrastructure -type f -name '*.sh' -print0 | xargs -0 shellcheck -S warning
+
       - name: Lint GitHub workflows (actionlint)
         uses: raven-actions/actionlint@3a24062651993d40fed1019b58ac6fbdfbf276cc  # v2.0.0
         with:

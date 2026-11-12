@@ -7,7 +7,14 @@
 
 ---
 
-## 0i. NO INVENTED DELIVERY PRICES, HOURS FROM THE CMS (2026-11-12, latest)
+## 0j. HTTPS RENEWAL + HEALTH CHECK (2026-11-12, latest)
+Details: WORK_SUMMARY §22, VPS_DEPLOYMENT §6–7.
+- `infrastructure/scripts/certificates.sh setup|deploy-hook|check`; nginx port-80 server serves
+  `/.well-known/acme-challenge/` from `/var/www/certbot` (compose mount `ACME_WEBROOT`). Do not remove.
+- `health-check.sh` = HTTPS through local nginx (`--resolve`, `--noproxy`); `CURL_CA` only for tests.
+- CI runs shellcheck on `infrastructure/**/*.sh`.
+
+## 0i. NO INVENTED DELIVERY PRICES, HOURS FROM THE CMS (2026-11-12)
 Details: WORK_SUMMARY §21.
 - Storefront `WILAYAS` fallback = geography only. Use `feesKnown()`, `deliveryFeeFor()` (0 while unknown) and
   `deliveryFeeText()` for any price shown; never read `home_fee`/`desk_fee` directly in templates.

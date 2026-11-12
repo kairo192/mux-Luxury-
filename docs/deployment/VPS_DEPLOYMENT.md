@@ -126,3 +126,35 @@ Prior to requesting production Let's Encrypt certificates, verify DNS records po
 > [!CAUTION]
 > Preserve existing DNS MX, SPF, DKIM, and DMARC records for corporate email delivery. Do not alter MX records during deployment.
 
+
+---
+
+## 6. HTTPS certificate that renews by itself
+
+Let's Encrypt certificates last **90 days**. Without automatic renewal the shop shows a browser security error
+on day 91. `infrastructure/scripts/certificates.sh` handles everything:
+
+```bash
+# Release layout (/opt/luxe, CD deploys):
+sudo CERTBOT_EMAIL=<owner e-mail> bash infrastructure/scripts/certificates.sh setup
+# One-command layout (§4, /var/www/luxe-ecommerce): tell it where nginx reads the certificate
+sudo SSL_DIR=/var/www/luxe-ecommerce/infrastructure/nginx/ssl CERTBOT_EMAIL=<owner e-mail> \
+     bash infrastructure/scripts/certificates.sh setup
+```
+
+1. **First run, before the shop is up:** gets the first certificate (certbot answers on port 80 itself; if nginx
+   is already running it is stopped for about a minute) and copies it where nginx reads it.
+2. **Run `sudo luxe-certificates setup` once more after the shop is up:** renewals switch to the *webroot*
+   method — nginx answers Let's Encrypt from `/var/www/certbot` (`/.well-known/acme-challenge/`, port 80), so
+   **renewals never stop the shop**. A renewal test (dry run) is made.
+3. From then on certbot's own timer renews about 30 days before expiry; after each renewal the hook copies the
+   files and **reloads** nginx (no restart, no lost visit).
+
+Check at any time: `sudo luxe-certificates check` (exit 1 under 14 days left).
+
+## 7. Health check
+
+`bash infrastructure/scripts/health-check.sh` (on the VPS) tests what customers get, through the local nginx
+over HTTPS: API, readiness (database, wilayas, photo folder), product list, shop page, HTTP→HTTPS redirect,
+certificate days left (fails under 14) and disk use (fails at 85 %). Exit 0 = all green — usable as an Uptime
+Kuma *push* monitor or a cron job.

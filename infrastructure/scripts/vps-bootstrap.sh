@@ -15,7 +15,8 @@
 #   - systemd timer for `vps-metrics.sh`
 #
 # What this script does NOT do:
-#   - Install certificates. Run `certbot --nginx -d mus-luxury.com ...` after this.
+#   - Install certificates. Run `infrastructure/scripts/certificates.sh setup` after this
+#     (first certificate + renewals without downtime).
 #   - Create the first release. That's `release-deploy.sh`'s job, invoked by CD.
 # =============================================================================
 set -euo pipefail
@@ -171,11 +172,11 @@ cat <<NEXT
 
 Next steps (as the deploy user):
   1. Put the production \`.env\` at  $INSTALL_ROOT/shared/.env  (chmod 0600, owner $DEPLOY_USER)
-  2. Install Let's Encrypt:
-       apt-get install -y certbot python3-certbot-nginx
-       certbot certonly --standalone -d $DOMAIN -d www.$DOMAIN -d api.$DOMAIN
-       cp /etc/letsencrypt/live/$DOMAIN/fullchain.pem $INSTALL_ROOT/shared/nginx-ssl/
-       cp /etc/letsencrypt/live/$DOMAIN/privkey.pem   $INSTALL_ROOT/shared/nginx-ssl/
+  2. HTTPS certificate (DNS of $DOMAIN, www and api must point to this server):
+       sudo DOMAIN=$DOMAIN INSTALL_ROOT=$INSTALL_ROOT CERTBOT_EMAIL=<owner e-mail> \
+            bash infrastructure/scripts/certificates.sh setup
+     Run it again once after the first deploy: renewals then happen by themselves,
+     without stopping the shop (check: sudo luxe-certificates check).
   3. Add the GitHub Actions deploy public key to  /home/$DEPLOY_USER/.ssh/authorized_keys  (if not already)
   4. Trigger the first deploy from GitHub Actions (cd-staging.yml / cd-production.yml)
 

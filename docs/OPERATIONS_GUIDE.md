@@ -98,7 +98,8 @@ Everything the customer sees on the home page is set here; nothing is fixed in t
   card only *announces* a promotion: to really lower prices, change the product's price / old price
   (Produits) or create a **Code promo** (same tab).
 - Eye icon = hide without deleting; arrows = order.
-- **Coordonnées de la boutique**: phone, WhatsApp, address, Instagram, TikTok, and **Livraison
+- **Coordonnées de la boutique**: phone, WhatsApp, address, **Google Maps link**, Instagram, TikTok,
+  **opening hours** (one line per day, e.g. `Vendredi : Fermé`), and **Livraison
   gratuite à partir de (DA)**. The threshold is applied by the server on every order; `0` = no free
   delivery (the shop then stops announcing it).
 - **Pages d'information**: À propos, FAQ, Livraison & retours, Conditions, in FR / AR / EN.
@@ -378,6 +379,10 @@ and the bell shows no unread error.
 
 **Every week:** CMS → Sauvegardes & Sécurité: "Dernière sauvegarde" is from
 last night, with no yellow warning except the off-site one (until §5.4 is done).
+
+**Every month (technician, 1 min):** `bash infrastructure/scripts/health-check.sh` on the VPS → "all checks
+passed". It also shows how many days the HTTPS certificate has left; it renews by itself
+(deployment guide §6), so the number should always be above 30.
 
 **Once after the first deploy, then every 3 months — restore drill (15 min):**
 1. **Sauvegarder maintenant**.

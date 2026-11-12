@@ -437,6 +437,19 @@ pre-fills an invented 2 500 DA.
 | Refused script/link in a setting answered in English | French message |
 
 
+## 22. Operations check: HTTPS renewal and a health check that tells the truth
+
+| Found | Fixed |
+|---|---|
+| The HTTPS certificate was copied into nginx **once**; renewal used certbot *standalone*, which cannot work while nginx holds port 80, and nothing copied a renewed certificate or reloaded nginx → browser security error on day 91 | `infrastructure/scripts/certificates.sh setup`: first certificate, then renewals by *webroot* through the running nginx (`/.well-known/acme-challenge/` on port 80, `/var/www/certbot` mounted read-only), hook copies the files and **reloads** nginx; stable copy `/usr/local/sbin/luxe-certificates` (release folders are pruned); `check` warns under 14 days. Tested locally with the real nginx.conf: challenge served, missing → 404, `../` cannot escape, everything else → HTTPS |
+| `health-check.sh` called plain HTTP: port 80 only redirects, so on a healthy server it reported 2 failures (shop page and a product route that does not exist) | Goes through the local nginx over HTTPS with the real domain (`--resolve`, never through a proxy): API, readiness (database), products, shop page, HTTP→HTTPS, certificate days, disk use. Tested: healthy stack → 7/7 OK; API stopped → 3 failures, exit 1 |
+| Shell scripts only syntax-checked in CI | `shellcheck` (warnings + errors) on every infrastructure script in CI; all clean today |
+
+Checked and fine: client IP behind nginx (every route that is rate-limited gets `X-Real-IP` from nginx, so a
+customer cannot fake their address to dodge the login limit), Docker log rotation (10 MB × 3 per container),
+container memory limits (~610 MB in total on the 2 GB server).
+
+
 ## Verification
 
 | Check | Result |
