@@ -1646,22 +1646,22 @@
     function formatStorefrontError(data, status) {
       // Turns a server answer into a message a customer understands.
       if (status === 422 || Array.isArray(data && data.detail)) {
-        return "Veuillez vérifier les informations saisies (nom, numéro de téléphone 05/06/07, Wilaya et adresse).";
+        return L("Veuillez vérifier les informations saisies (nom, numéro de téléphone 05/06/07, Wilaya et adresse).", "يرجى التحقق من المعلومات المدخلة (الاسم، رقم الهاتف 05/06/07، الولاية والعنوان).", "Please check the details you entered (name, 05/06/07 phone number, wilaya and address).");
       }
       const raw = (data && typeof data.detail === "string") ? data.detail : "";
       if (status === 403 && raw && raw.indexOf("Anti-Retour") !== -1) return raw;
       if (status === 409) {
         if (raw && raw.toLowerCase().indexOf("stock") !== -1) {
-          return "La quantité demandée dépasse le stock actuellement disponible pour cet article.";
+          return L("La quantité demandée dépasse le stock actuellement disponible pour cet article.", "الكمية المطلوبة تتجاوز المخزون المتوفر حاليًا لهذا المنتج.", "The quantity requested is more than the stock available for this item.");
         }
         const ref = (raw.match(/(?:existing reference:|référence)\s*([A-Za-z0-9-]+)/) || [])[1];
         if (ref) return `Cette commande est déjà enregistrée (référence ${ref}).`;
         return "Cette commande vient déjà d'être enregistrée. Vérifiez son statut dans le suivi de commande.";
       }
-      if (status === 429) return "Trop de tentatives rapprochées. Veuillez patienter quelques secondes avant de réessayer.";
-      if (status === 404) return "Aucun résultat trouvé pour cette référence ou cet article.";
+      if (status === 429) return L("Trop de tentatives rapprochées. Veuillez patienter quelques secondes avant de réessayer.", "محاولات كثيرة متتالية. يرجى الانتظار بضع ثوانٍ ثم إعادة المحاولة.", "Too many attempts. Please wait a few seconds and try again.");
+      if (status === 404) return L("Aucun résultat trouvé pour cette référence ou cet article.", "لا توجد نتيجة لهذا الرقم أو لهذا المنتج.", "Nothing found for this reference or item.");
       if (status >= 500 || !raw || /sqlite|postgres|traceback|internal|exception/i.test(raw)) {
-        return "Le service est momentanément indisponible. Veuillez réessayer dans un instant ou commander via WhatsApp au " + storePhoneDisplay() + ".";
+        return L("Le service est momentanément indisponible. Veuillez réessayer dans un instant ou commander via WhatsApp au ", "الخدمة غير متاحة مؤقتًا. يرجى إعادة المحاولة بعد قليل أو الطلب عبر واتساب على الرقم ", "The service is briefly unavailable. Please try again in a moment or order on WhatsApp at ") + ltr(storePhoneDisplay()) + ".";
       }
       return raw;
     }

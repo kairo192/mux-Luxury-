@@ -90,6 +90,57 @@ class _LightGZipMiddleware(GZipMiddleware):
 # Compression of API answers over 1000 bytes (catalog, lists, reports).
 app.add_middleware(_LightGZipMiddleware, minimum_size=1000, compresslevel=6)
 
+
+class _RejectNulCharacters:
+    """A NUL character (\\u0000) in an address, a query string or a JSON body
+    crashed PostgreSQL ("cannot contain NUL"), giving a 500 on public routes —
+    e.g. /api/v1/products?category=%00 or an order with "\\u0000" in the name.
+    Refused up front with a 422 in French. JSON bodies are small; uploads
+    (photos, backups) are never read here."""
+
+    _MESSAGE = b'{"detail":"Caract\xc3\xa8re invalide dans la requ\xc3\xaate."}'
+
+    def __init__(self, app):
+        self.app = app
+
+    async def _refuse(self, send):
+        await send({"type": "http.response.start", "status": 422,
+                    "headers": [(b"content-type", b"application/json"),
+                                (b"content-length", str(len(self._MESSAGE)).encode())]})
+        await send({"type": "http.response.body", "body": self._MESSAGE})
+
+    async def __call__(self, scope, receive, send):
+        if scope["type"] != "http":
+            return await self.app(scope, receive, send)
+        qs = scope.get("query_string") or b""
+        if "\x00" in scope.get("path", "") or b"%00" in qs or b"\x00" in qs:
+            return await self._refuse(send)
+        ctype = dict(scope.get("headers") or []).get(b"content-type", b"")
+        if scope.get("method") in ("POST", "PUT", "PATCH") and ctype.startswith(b"application/json"):
+            chunks, more = [], True
+            while more:
+                message = await receive()
+                if message["type"] != "http.request":
+                    return await self.app(scope, receive, send)
+                chunks.append(message.get("body", b""))
+                more = message.get("more_body", False)
+            body = b"".join(chunks)
+            if b"\x00" in body or b"\\u0000" in body:
+                return await self._refuse(send)
+            sent = False
+
+            async def replay():
+                nonlocal sent
+                if not sent:
+                    sent = True
+                    return {"type": "http.request", "body": body, "more_body": False}
+                return await receive()
+            return await self.app(scope, replay, send)
+        return await self.app(scope, receive, send)
+
+
+app.add_middleware(_RejectNulCharacters)
+
 app.add_middleware(
     CORSMiddleware,
     allow_origins=ALLOWED_CORS_ORIGINS,
@@ -439,18 +490,20 @@ class GuestOrderCreate(BaseModel):
     def validate_algerian_phone(cls, v):
         cleaned = re.sub(r"[\s\-\.]", "", v)
         if not re.match(r"^(\+213|0)(5|6|7)[0-9]{8}$", cleaned):
-            raise ValueError("Invalid Algerian mobile phone number (must start with 05, 06, 07 or +213)")
+            raise ValueError("Numéro de mobile algérien invalide (il doit commencer par 05, 06, 07 ou +213)")
         return cleaned
 
     @validator("full_name", "commune", "delivery_address", "customer_notes", pre=True, always=True)
     def reject_xss_and_html_tags(cls, v):
         if v is None:
             return ""
-        s = str(v).strip()
+        # Invisible control and text-direction override characters (U+202E…)
+        # can disguise a name in the CMS and on receipts: removed.
+        s = re.sub(r"[\u0000-\u0008\u000b-\u001f\u007f\u200e\u200f\u202a-\u202e\u2066-\u2069]", "", str(v)).strip()
         if re.search(r"(<\s*/?\s*(script|iframe|svg|img|object|embed|link|style|meta)|javascript\s*:|on\w+\s*=)", s, re.IGNORECASE):
-            raise ValueError("HTML or script injection characters are not permitted")
+            raise ValueError("Code HTML ou script refusé dans les coordonnées")
         if "<" in s or ">" in s:
-            raise ValueError("Angle brackets (< >) are not permitted in order contact fields")
+            raise ValueError("Les caractères < et > ne sont pas acceptés dans les coordonnées")
         return s
 
 class OrderStatusUpdate(BaseModel):
@@ -3268,7 +3321,7 @@ class OwnerInitializeInput(BaseModel):
             return None
         cleaned = re.sub(r"[\s\-\.]", "", v)
         if not re.match(r"^(\+213|0)(5|6|7)[0-9]{8}$", cleaned):
-            raise ValueError("Invalid Algerian mobile phone number (must start with 05, 06, 07 or +213)")
+            raise ValueError("Numéro de mobile algérien invalide (il doit commencer par 05, 06, 07 ou +213)")
         return cleaned
 
 @app.get("/api/v1/admin/auth/setup-status")

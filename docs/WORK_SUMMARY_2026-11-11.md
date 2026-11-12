@@ -539,6 +539,22 @@ treasury movements and 80 000 stock movements; every daily screen timed through 
 | **Commandes — finding an older order** | impossible: the screen shows the newest 100 (per status) and had no search | Search box (Entrée): order number, phone (spaces ignored) or name (any case), with or without the status filter; 90–180 ms over 60 000 orders. The automatic refresh no longer replaces search results. Tests: backend + browser |
 
 
+## 29. Public routes under hostile input (fuzzing)
+
+About 40 odd or hostile requests to the routes anyone can call (products, categories, delivery calculator,
+order tracking, pages, order form: wrong types, huge values, 1 000 lines, 100 000-character address, HTML,
+SQL-looking text, NUL and invisible characters), on SQLite and PostgreSQL. All got clean 4xx answers except:
+
+| Found | Fixed |
+|---|---|
+| A NUL character (`%00` in the address, `\u0000` in the order form) → **500** on PostgreSQL ("cannot contain NUL") | Refused before any route with a 422 in French (address, query string, JSON body; uploads never read). 0 server errors after the fix |
+| Invisible text-direction override characters (U+202E…) accepted in names — can disguise a name in the CMS and on receipts | Removed from name, commune, address and notes |
+| Three order-form validation messages in English | French |
+| The shop's error messages (wrong details, stock, too many tries, not found, service down) only in French | In the customer's language (FR/AR/EN) |
+
+Test file `test_input_hygiene.py` (NUL, override characters, French message, uploads unaffected).
+
+
 ## Verification
 
 | Check | Result |
