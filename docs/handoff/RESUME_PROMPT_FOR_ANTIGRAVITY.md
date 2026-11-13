@@ -17,7 +17,7 @@ Windows machine while a cloud Claude session has been pushing to
      - 0e44047  feat(cleanup): strip WhatsApp recovery + backup UI; blank-slate seed; production .env
      - 11eaccc  fix(storefront+cms): CSP-safe Tailwind, hardened fetch, touch-friendly prompts
 
-2. Read `HANDOFF_FOR_ANTIGRAVITY.md` at the repo root (the cloud session
+2. Read `docs/handoff/HANDOFF_FOR_ANTIGRAVITY.md` at the repo root (the cloud session
    maintains it between sessions). It lists exactly what landed, what is
    dirty vs committed, which blockers are mine, and the four priorities
    stacked in order.
@@ -40,7 +40,7 @@ Windows machine while a cloud Claude session has been pushing to
      - Apply the RTL polish from I18N_AUDIT.md §3 point 5.
      - Run `npx tsc --noEmit` and `npm run build` in apps/desktop-cms/.
      - Commit one page per commit with the trailer from
-       HANDOFF_FOR_ANTIGRAVITY.md §6.
+       docs/handoff/HANDOFF_FOR_ANTIGRAVITY.md §6.
 
 5. Ground rules the cloud session agreed on:
    - You own branch `feat/pos-core-cash-register` (local).
@@ -51,11 +51,11 @@ Windows machine while a cloud Claude session has been pushing to
    - DO NOT regenerate the production .env. The owner already has the
      values; re-run backend/scripts/generate_production_env.py --force
      only if explicitly asked.
-   - Three blockers (BLOCKER-01/02/03 in the earlier HANDOFF_FOR_CLAUDE.md)
+   - Three blockers (BLOCKER-01/02/03 in the earlier docs/handoff/HANDOFF_FOR_CLAUDE.md)
      still need the owner's confirmation — do not guess them.
 
 6. If you hit your own usage limit, write a fresh handoff for the next
-   Claude session at HANDOFF_FOR_CLAUDE.md at the repo root. Document
+   Claude session at docs/handoff/HANDOFF_FOR_CLAUDE.md at the repo root. Document
    what you committed, what is dirty, what tests pass, and which page you
    are mid-translation on so the next session resumes cleanly.
 
@@ -83,7 +83,7 @@ Latest commit on remote: `f59ac77`
 - `apps/desktop-cms/src/App.tsx` — imported `useT` + `LanguageToggle`; translated topbar (status chip, Refresh, Logout) + sidebar's 14 nav labels; added `<LanguageToggle />` next to the online chip.
 - `apps/desktop-cms/src/pages/PosPage.tsx` — translated loading state, Matériel / Historique / Clôturer buttons, scan-input label, Encaisser CTA.
 - `docs/cicd/I18N_AUDIT.md` — new, per-page string counts + recipe + priority queue + RTL-sensitive spots.
-- `HANDOFF_FOR_ANTIGRAVITY.md` — updated §4 to put the i18n translation pass at priority #1.
+- `docs/handoff/HANDOFF_FOR_ANTIGRAVITY.md` — updated §4 to put the i18n translation pass at priority #1.
 
 ## Related artefacts already in the repo
 
@@ -91,4 +91,4 @@ Latest commit on remote: `f59ac77`
   `--domain mus-luxury.com --admin-email … --admin-whatsapp +213…` to
   produce `scratch/production.env` (git-ignored by the `*.env` catch-all).
 - `scratch/README.md` — explains the gitignore policy for the scratch dir.
-- `HANDOFF_FOR_ANTIGRAVITY.md` — the complete living handoff.
+- `docs/handoff/HANDOFF_FOR_ANTIGRAVITY.md` — the complete living handoff.

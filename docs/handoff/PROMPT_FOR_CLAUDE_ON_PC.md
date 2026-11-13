@@ -25,7 +25,7 @@ git fetch origin feat/pos-core-cash-register-18lsk6
 git checkout feat/pos-core-cash-register-18lsk6
 git pull origin feat/pos-core-cash-register-18lsk6
 ```
-Read, in this order: `docs/WORK_SUMMARY_2026-11-11.md` (sections 17–32), `HANDOFF_FOR_ANTIGRAVITY.md` (sections 0e–0n),
+Read, in this order: `docs/WORK_SUMMARY_2026-11-11.md` (sections 17–32), `docs/handoff/HANDOFF_FOR_ANTIGRAVITY.md` (sections 0e–0n),
 `docs/OPERATIONS_GUIDE.md` (§5 backups, §7c), `docs/deployment/VPS_DEPLOYMENT.md`, `e2e/README.md`.
 
 ## 2. Verify on Windows
@@ -69,6 +69,6 @@ Report what you see for each, with screenshots if something is wrong:
 ## 5. Then keep improving
 Fix anything found in steps 2–4 first. Then, if time remains: keep `npm run test:e2e` green while working; add an e2e
 test for any screen you change; keep French messages; update `docs/WORK_SUMMARY_2026-11-11.md` (new section) and
-`HANDOFF_FOR_ANTIGRAVITY.md` (new 0-section) at the end, then commit and push.
+`docs/handoff/HANDOFF_FOR_ANTIGRAVITY.md` (new 0-section) at the end, then commit and push.
 
 Finish with a short report: what passed, what failed (with output), what you fixed, what still needs the owner.

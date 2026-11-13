@@ -22,7 +22,7 @@ import sqlite3
 import sys
 import time
 
-REPO_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+REPO_ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))  # backend/
 sys.path.insert(0, REPO_ROOT)
 
 if "APP_ENV" not in os.environ:
