@@ -97,16 +97,13 @@ still matter:
 
 ## Monitoring integration
 
-`nightly_backup.sh` prints `[nightly-backup] OK — backup, off-site copy and
-verification done` only when **all three** steps succeeded (a failed upload
-stops the chain). Monitor that, not the verify line alone:
+`nightly_backup.sh` calls `BACKUP_HEARTBEAT_URL` only when **all three**
+steps succeeded (a failed upload stops the chain). Create a Kuma *Push*
+monitor (heartbeat interval 25 h) and put its URL in `BACKUP_HEARTBEAT_URL`
+in `/opt/luxe/shared/.env`: Kuma alerts when a night is missed or fails.
 
-- **Push monitor (recommended)**: create a Kuma *Push* monitor (heartbeat
-  interval 25 h) and put its URL in `BACKUP_HEARTBEAT_URL` in
-  `/opt/luxe/shared/.env`. The chain calls it only after a fully successful
-  night; Kuma alerts when a night is missed or fails.
-- **Keyword monitor**: on `/opt/luxe/logs/backup.log`, keyword
-  `[nightly-backup] OK`, checked daily after the backup hour.
+(Do not use a keyword monitor on `backup.log`: the log is appended to, so an
+old success line would keep matching after later nights fail.)
 
 ## Restore procedure (for the operator, DR)
 
@@ -128,6 +125,17 @@ new server: same `S3_*` values in `/opt/luxe/shared/.env`, `rclone` installed):
 
    Files land in `BACKUP_DIR` (`/var/lib/luxe/backups`). For a restore from
    the CMS instead, download the `luxe_app_….json.gz.enc` of the same night.
+
+   **Photos are separate.** Neither the nightly database dump nor the nightly
+   CMS snapshot contains them. Download the newest `<host>/media/luxe_media_….tar.gz.enc`
+   too and put the photos back (the API container must be running):
+
+   ```bash
+   cd /var/lib/luxe/backups
+   sudo bash -c 'source /opt/luxe/current/infrastructure/scripts/env-file.sh && luxe_load_env /opt/luxe/shared/.env &&
+     openssl enc -d -aes-256-cbc -pbkdf2 -pass env:BACKUP_ENCRYPTION_KEY -in luxe_media_<ts>.tar.gz.enc |
+     docker exec -i luxe_api tar -xzf - -C /var/lib/luxe/uploads'
+   ```
 
 2. Follow `docs/cicd/ROLLBACK.md` — it has the full restore-DB-and-flip
    procedure wired for the symlink release layout.

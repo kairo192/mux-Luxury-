@@ -335,19 +335,22 @@ fn default_printer_name() -> Option<String> {
 fn default_printer_name() -> Option<String> { None }
 
 // -------------------------------------------------- Tauri commands --------
+// All printer commands are `async`: Tauri then runs them on a worker thread
+// instead of the window's main thread, so a printer that does not answer
+// (network timeout, busy spooler) never freezes the CMS.
 
-#[tauri::command]
+#[tauri::command(async)]
 pub fn pos_list_printers() -> Vec<PrinterInfo> {
     list_printers_impl()
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 pub fn pos_print_receipt(opts: ReceiptOptions, lines: Vec<ReceiptLine>) -> Result<(), String> {
     let bytes = build_receipt_bytes(&opts, &lines);
     send_bytes(&opts.target, &bytes)
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 pub fn pos_open_cash_drawer(opts: PrinterTarget) -> Result<(), String> {
     let mut printer = EscPos::new();
     printer.init();
@@ -472,7 +475,7 @@ fn render_labels_escpos_text(labels: &[LabelPayload], width_chars: u8) -> Vec<u8
     p.into_bytes()
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 pub fn pos_print_labels(opts: LabelPrinterTarget, labels: Vec<LabelPayload>) -> Result<(), String> {
     if labels.is_empty() {
         return Err("Aucune étiquette à imprimer".into());
@@ -491,7 +494,7 @@ pub fn pos_print_labels(opts: LabelPrinterTarget, labels: Vec<LabelPayload>) -> 
     send_bytes(&opts.as_printer_target(), &bytes)
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 pub fn pos_test_print_label(opts: LabelPrinterTarget) -> Result<(), String> {
     let sample = vec![LabelPayload {
         header: "Mus Luxury".into(),
@@ -506,7 +509,7 @@ pub fn pos_test_print_label(opts: LabelPrinterTarget) -> Result<(), String> {
     pos_print_labels(opts, sample)
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 pub fn pos_test_print(opts: PrinterTarget) -> Result<(), String> {
     let receipt_opts = ReceiptOptions {
         target: opts.clone(),

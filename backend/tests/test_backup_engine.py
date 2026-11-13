@@ -152,6 +152,26 @@ class TestBackupEngine(unittest.TestCase):
             with self.assertRaises(bk.BackupError):
                 bk.restore_backup(meta["name"])
 
+    def test_01g_restoring_an_old_backup_keeps_it_and_its_photos(self):
+        """The safety backup taken before a restore prunes old backups: the one
+        being restored (and its photo archive) must survive it."""
+        import functools
+        from pathlib import Path
+        from unittest import mock
+        uploads = Path(tempfile.mkdtemp(prefix="luxe_up_old_"))
+        (uploads / "p.jpg").write_bytes(b"old-photo")
+        with mock.patch.dict(os.environ, {"UPLOAD_DIR": str(uploads)}):
+            meta = bk.create_backup("manual", include_media=True)
+            (uploads / "p.jpg").unlink()
+            orig = bk.prune_backups
+            # Everything counts as old and nothing is kept by number.
+            with mock.patch.object(bk, "retention_days", return_value=-1), \
+                 mock.patch.object(bk, "prune_backups", functools.partial(orig, keep_min=0)):
+                out = bk.restore_backup(meta["name"])
+            self.assertEqual(out["media_files"], 1)
+            self.assertEqual((uploads / "p.jpg").read_bytes(), b"old-photo")
+            self.assertTrue((Path(bk.backup_dir()) / meta["name"]).exists())
+
     def test_01c_pc_copy_download_and_import_back(self):
         """A copy kept on the owner's PC: encrypted, owner only, audited, and
         restorable after being sent back."""

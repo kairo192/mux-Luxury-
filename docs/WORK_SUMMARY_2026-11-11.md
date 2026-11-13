@@ -681,7 +681,7 @@ Each finding was checked against the code first; all 26 were real. Fixed, with a
 
 | Check | Result |
 |---|---|
-| Backend tests | 344 run on SQLite and on PostgreSQL 16 (incl. the end-to-end business day, round 18). Only 4 failures, all caused by `@babel/core` missing in the cloud container; those 4 pass with a substitute TypeScript compiler and pass in CI. |
+| Backend tests | 345 run on SQLite and on PostgreSQL 16 (incl. the end-to-end business day, round 18). Only 4 failures, all caused by `@babel/core` missing in the cloud container; those 4 pass with a substitute TypeScript compiler and pass in CI. |
 | CMS TypeScript + build | OK |
 | Rust (`cargo check`) | OK |
 | Browser tests (Playwright) | `e2e/`: 34 shop + CMS tests green on SQLite and PostgreSQL 16 (CI job). Earlier manual checks — notifications, message box queue, bell, update dialog, new-order alert, Arabic layout, category delete + reload, archived tab, database panel, backup, reset: all OK |

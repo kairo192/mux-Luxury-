@@ -388,7 +388,8 @@ def _record_backup(filename: str, backup_type: str, size: int, sha: str, status:
         pass
 
 
-def create_backup(kind: str = "manual", actor_id: Optional[int] = None, include_media: bool = False) -> Dict[str, Any]:
+def create_backup(kind: str = "manual", actor_id: Optional[int] = None, include_media: bool = False,
+                  protect: Iterable[str] = ()) -> Dict[str, Any]:
     if not re.fullmatch(r"[a-z\-]{2,20}", kind):
         raise BackupError("Type de sauvegarde invalide.")
     stamp = _dt.datetime.now().strftime("%Y%m%d_%H%M%S") + "_" + secrets.token_hex(2)
@@ -443,7 +444,7 @@ def create_backup(kind: str = "manual", actor_id: Optional[int] = None, include_
     }
     _write_atomic(backup_dir() / (name + ".meta.json"), json.dumps(meta, ensure_ascii=False, indent=1).encode("utf-8"))
     _record_backup(name, "full" if media else "database", meta["size"], sha, "verified", actor_id)
-    prune_backups()
+    prune_backups(protect=protect)
     return meta
 
 
@@ -476,12 +477,16 @@ def list_backups() -> List[Dict[str, Any]]:
     return items
 
 
-def prune_backups(keep_min: int = 10) -> int:
+def prune_backups(keep_min: int = 10, protect: Iterable[str] = ()) -> int:
     """Deletes app backups older than BACKUP_RETENTION_DAYS but always keeps
-    the newest `keep_min`, whatever their age."""
+    the newest `keep_min`, whatever their age, and those in `protect` (the
+    backup being restored: its photo archive is still needed)."""
+    protected = set(protect)
     cutoff = _dt.datetime.now(_dt.timezone.utc) - _dt.timedelta(days=retention_days())
     removed = 0
     for meta in list_backups()[keep_min:]:
+        if meta.get("name") in protected:
+            continue
         try:
             created = _dt.datetime.fromisoformat(meta["created_at"])
         except Exception:
@@ -892,7 +897,8 @@ def restore_backup(name: str, actor_id: Optional[int] = None) -> Dict[str, Any]:
         else:
             snap = _parse_v1(raw)
         media_archive = _media_for_restore(name)
-        safety = create_backup("pre-restore", actor_id)
+        # The safety backup prunes old ones: never the one being restored.
+        safety = create_backup("pre-restore", actor_id, protect=(name,))
         with db_session() as conn:
             _begin_bulk(conn)
             try:
