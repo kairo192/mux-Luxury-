@@ -6,7 +6,8 @@
 #
 #   cat compose-project.sh downloads-dir.sh | ssh host bash -s -- <install root>
 #
-# Prints the folder nginx serves at https://mus-luxury.com/downloads/
+# Prints the folder of the desktop CMS update files (the API serves it to
+# logged-in CMS apps only)
 # (LUXE_DOWNLOADS_DIR from <root>/shared/.env, else <root>/shared/downloads),
 # creating it and recording it in the .env when missing.
 # =============================================================================

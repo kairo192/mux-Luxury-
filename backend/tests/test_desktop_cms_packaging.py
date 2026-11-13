@@ -47,29 +47,48 @@ class TestDesktopCmsPackaging(unittest.TestCase):
 
     def test_automatic_updates_come_from_the_shop_server_and_are_verified(self):
         """The repository is private: installed apps cannot download GitHub
-        release files, so updates are served by mus-luxury.com/downloads/cms."""
-        manifest = "https://mus-luxury.com/downloads/cms/latest.json"
+        release files, so the API serves updates — to logged-in staff only."""
+        base = "https://api.mus-luxury.com/api/v1/admin/updates/cms"
+        manifest = f"{base}/latest.json"
         conf = json.loads((CMS / "src-tauri" / "tauri.conf.json").read_text(encoding="utf-8"))
         self.assertEqual(conf["plugins"]["updater"]["endpoints"], [manifest])
         self.assertIn(f'"{manifest}"', (CMS / "src-tauri" / "src" / "app_services.rs").read_text(encoding="utf-8"))
-        self.assertIn(f'"update_manifest": "{manifest}"', (ROOT / "backend" / "app" / "main.py").read_text(encoding="utf-8"))
+        main = (ROOT / "backend" / "app" / "main.py").read_text(encoding="utf-8")
+        self.assertIn(f'CMS_UPDATE_BASE_URL = "{base}"', main)
+        # HTTPS only: the updater must never be allowed plain HTTP.
+        self.assertNotIn("dangerousInsecureTransportProtocol", json.dumps(conf))
         # Public key committed and baked into every build; private key only in CI secrets.
         pub = (CMS / "src-tauri" / "updater-key.pub").read_text(encoding="utf-8").strip()
         self.assertRegex(pub, r"^[A-Za-z0-9+/=]{40,}$")
         workflow = (ROOT / ".github" / "workflows" / "build-desktop-cms.yml").read_text(encoding="utf-8")
         self.assertIn("src-tauri/updater-key.pub", workflow)
-        self.assertIn('--base-url "https://mus-luxury.com/downloads/cms"', workflow)
+        self.assertIn(f'--base-url "{base}"', workflow)
         self.assertIn("publish-to-server:", workflow)
         # Only the updater's files go on the server: no fixed public "download the CMS" link.
         for m in re.finditer(r"MusLuxuryCMS-setup\.exe", workflow):
             self.assertTrue(workflow[:m.start()].endswith("rm -f "),
                             "a fixed MusLuxuryCMS-setup.exe may only appear to be deleted")
         self.assertNotIn("release/*.msi", workflow)
-        # The server serves that folder.
+        # Not on the public website: nginx does not serve the folder, only the API
+        # container reads it (and it checks the login, tests/test_cms_updates_access.py).
         nginx = (ROOT / "infrastructure" / "nginx" / "nginx.conf").read_text(encoding="utf-8")
-        self.assertIn("location /downloads/", nginx)
+        self.assertNotIn("/downloads/", nginx)
         compose = (ROOT / "docker-compose.yml").read_text(encoding="utf-8")
-        self.assertIn("/var/lib/luxe/downloads:ro", compose)
+        api_block = compose[compose.index("\n  api:"):compose.index("\n  nginx:")]
+        self.assertIn("${LUXE_DOWNLOADS_DIR:-./downloads}:/var/lib/luxe/updates:ro", api_block)
+        self.assertIn("LUXE_UPDATES_DIR: /var/lib/luxe/updates", api_block)
+        self.assertEqual(compose.count("LUXE_DOWNLOADS_DIR"), 1)
+        # The app sends the staff login with the check AND the download.
+        rs = (CMS / "src-tauri" / "src" / "app_services.rs").read_text(encoding="utf-8")
+        self.assertIn('.header("Authorization", format!("Bearer {token}"))', rs)
+        self.assertEqual(rs.count("logged_in_updater(&app, &token)?"), 2)
+        self.assertNotIn("app.updater()", rs)
+        # ...and never to another host: the download address is checked before any
+        # request (unit test installer_downloads_only_from_the_shop_update_address).
+        self.assertIn("ensure_trusted_download(u)?;", rs)
+        self.assertIn("ensure_trusted_download(&update)?;", rs)
+        self.assertIn('const UPDATE_FILES_HOST: &str = "api.mus-luxury.com";', rs)
+        self.assertIn("client.redirect(reqwest::redirect::Policy::none())", rs)   # no redirect followed
         # No private key material is ever committed.
         self.assertNotIn("PRIVATE KEY", pub)
         self.assertFalse((CMS / "src-tauri" / "updater-key").exists())

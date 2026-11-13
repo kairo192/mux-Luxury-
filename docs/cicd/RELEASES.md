@@ -26,8 +26,9 @@ Pushing the tag:
    approval gate — approve it from the Actions UI from a device with
    `environment: production` reviewer rights.
 2. Fires `build-desktop-cms.yml`. Builds the signed Windows installer,
-   publishes `latest.json` + the signed installer to the matching GitHub
-   release.
+   archives it on the matching GitHub release, and copies `latest.json` + the
+   signed installer to the VPS, where the API serves them to logged-in CMS
+   apps only.
 3. After production deploy succeeds, `cd-production.yml` creates the GitHub
    release with auto-generated notes (`generate_release_notes: true`).
 

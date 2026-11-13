@@ -2108,6 +2108,7 @@ version = "1.0.0"
 dependencies = [
  "keyring",
  "printers",
+ "reqwest",
  "rusqlite",
  "serde",
  "serde_json",

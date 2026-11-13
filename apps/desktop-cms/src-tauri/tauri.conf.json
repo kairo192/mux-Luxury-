@@ -60,7 +60,7 @@
   "plugins": {
     "updater": {
       "endpoints": [
-        "https://mus-luxury.com/downloads/cms/latest.json"
+        "https://api.mus-luxury.com/api/v1/admin/updates/cms/latest.json"
       ],
       "pubkey": "",
       "windows": {

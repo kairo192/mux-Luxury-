@@ -12,6 +12,7 @@ import re
 import secrets
 import time
 from datetime import datetime, timedelta, timezone
+from pathlib import Path
 from typing import Any, Dict, Iterable, List, Optional
 from fastapi import Depends, FastAPI, File, Header, HTTPException, Query, Request, Response, UploadFile, status
 from fastapi.responses import FileResponse
@@ -528,31 +529,60 @@ class OrderStatusUpdate(BaseModel):
 # HELPER FUNCTIONS
 # ============================================================================
 
-def serialize_category(conn, row: dict) -> dict:
-    cur = conn.cursor()
-    cur.execute(
-        "SELECT * FROM category_attributes WHERE category_id = ? ORDER BY display_order ASC, id ASC",
-        (row["id"],)
-    )
-    attrs = []
-    for a in cur.fetchall():
-        ad = dict(a)
+def _id_chunks(ids: List[int], size: int = 500):
+    """Splits an id list for `IN (...)` queries (keeps every query well under the
+    bound-parameter limits of SQLite and PostgreSQL)."""
+    for i in range(0, len(ids), size):
+        yield ids[i:i + size]
+
+
+def _children_by_parent(cur, table: str, parent_col: str, parent_ids: List[int], columns: str = "*",
+                        order_by: str = "id ASC") -> Dict[int, List[dict]]:
+    """Loads the child rows of many parents in one query per 500 parents (instead
+    of one query per parent: no N+1), grouped by parent id."""
+    out: Dict[int, List[dict]] = {pid: [] for pid in parent_ids}
+    for chunk in _id_chunks(list(dict.fromkeys(parent_ids))):
+        marks = ",".join("?" for _ in chunk)
         cur.execute(
-            "SELECT id, value, label_fr, label_ar, label_en, color_hex, display_order FROM category_attribute_options WHERE attribute_id = ? ORDER BY display_order ASC",
-            (ad["id"],)
+            f"SELECT {columns} FROM {table} WHERE {parent_col} IN ({marks}) ORDER BY {parent_col}, {order_by}",
+            chunk,
         )
-        ad["options"] = [dict(o) for o in cur.fetchall()]
-        ad["is_required"] = bool(ad["is_required"])
-        ad["allow_multiple"] = bool(ad["allow_multiple"])
-        ad["is_visible_on_storefront"] = bool(ad["is_visible_on_storefront"])
-        ad["is_filterable"] = bool(ad["is_filterable"])
-        ad["is_variant_axis"] = bool(ad["is_variant_axis"])
-        attrs.append(ad)
-    cat = dict(row)
-    cat["is_active"] = bool(cat["is_active"])
-    cat["show_on_homepage"] = bool(cat["show_on_homepage"])
-    cat["attributes"] = attrs
-    return cat
+        for r in cur.fetchall():
+            d = dict(r)
+            out.setdefault(d[parent_col], []).append(d)
+    return out
+
+
+def serialize_categories_batch(conn, rows) -> List[dict]:
+    """Categories with their attributes and options: 2 queries for the whole list
+    (attributes of all categories, then options of all those attributes)."""
+    cats = [dict(r) for r in rows]
+    if not cats:
+        return []
+    cur = conn.cursor()
+    attrs_by_cat = _children_by_parent(cur, "category_attributes", "category_id", [c["id"] for c in cats],
+                                       order_by="display_order ASC, id ASC")
+    attr_ids = [a["id"] for attrs in attrs_by_cat.values() for a in attrs]
+    opts_by_attr = _children_by_parent(
+        cur, "category_attribute_options", "attribute_id", attr_ids,
+        columns="id, attribute_id, value, label_fr, label_ar, label_en, color_hex, display_order",
+        order_by="display_order ASC, id ASC",
+    ) if attr_ids else {}
+    for cat in cats:
+        attrs = []
+        for ad in attrs_by_cat.get(cat["id"], []):
+            ad["options"] = [{k: v for k, v in o.items() if k != "attribute_id"} for o in opts_by_attr.get(ad["id"], [])]
+            for flag in ("is_required", "allow_multiple", "is_visible_on_storefront", "is_filterable", "is_variant_axis"):
+                ad[flag] = bool(ad[flag])
+            attrs.append(ad)
+        cat["is_active"] = bool(cat["is_active"])
+        cat["show_on_homepage"] = bool(cat["show_on_homepage"])
+        cat["attributes"] = attrs
+    return cats
+
+
+def serialize_category(conn, row: dict) -> dict:
+    return serialize_categories_batch(conn, [row])[0]
 
 def serialize_products_batch(conn, product_rows: List[dict], include_private: bool = False) -> List[dict]:
     """
@@ -955,7 +985,7 @@ def list_public_categories(response: Response, request: Request):
         cur.execute(
             "SELECT * FROM categories WHERE is_active = 1 AND deleted_at IS NULL ORDER BY display_order ASC, id ASC"
         )
-        cats = [serialize_category(conn, dict(r)) for r in cur.fetchall()]
+        cats = serialize_categories_batch(conn, cur.fetchall())
         payload = {"items": cats}
         etag = f'"{hashlib.md5(json.dumps(payload, sort_keys=True).encode()).hexdigest()}"'
         response.headers["ETag"] = etag
@@ -1576,12 +1606,10 @@ def admin_dashboard(admin: dict = Depends(require_permission("dashboard:read")))
             orders_by_status[r["status"]] = r["cnt"]
 
         cur.execute("SELECT * FROM orders ORDER BY id DESC LIMIT 10")
-        recent_orders = []
-        for r in cur.fetchall():
-            od = dict(r)
-            cur.execute("SELECT * FROM order_items WHERE order_id = ?", (od["id"],))
-            od["items"] = [dict(it) for it in cur.fetchall()]
-            recent_orders.append(od)
+        recent_orders = [dict(r) for r in cur.fetchall()]
+        items_by_order = _children_by_parent(cur, "order_items", "order_id", [o["id"] for o in recent_orders])
+        for od in recent_orders:
+            od["items"] = items_by_order.get(od["id"], [])
 
         cur.execute("SELECT * FROM audit_logs ORDER BY id DESC LIMIT 10")
         recent_activity = [dict(r) for r in cur.fetchall()]
@@ -2262,7 +2290,7 @@ def admin_list_categories(
             cur.execute("SELECT * FROM categories ORDER BY display_order ASC, id ASC")
         else:
             cur.execute("SELECT * FROM categories WHERE deleted_at IS NULL ORDER BY display_order ASC, id ASC")
-        return {"items": [serialize_category(conn, dict(r)) for r in cur.fetchall()]}
+        return {"items": serialize_categories_batch(conn, cur.fetchall())}
 
 @app.put("/api/v1/admin/categories-reorder")
 def admin_reorder_categories(
@@ -2760,7 +2788,7 @@ def get_public_storefront_layout():
         banners = [dict(b) for b in cur.fetchall()]
 
         cur.execute("SELECT * FROM categories WHERE is_active = 1 AND deleted_at IS NULL ORDER BY display_order ASC")
-        categories = [serialize_category(conn, dict(c)) for c in cur.fetchall()]
+        categories = serialize_categories_batch(conn, cur.fetchall())
 
         return {
             "settings": settings,
@@ -3289,12 +3317,10 @@ def admin_delta_sync(
     with db_session() as conn:
         cur = conn.cursor()
         cur.execute("SELECT * FROM orders WHERE id > ? ORDER BY id DESC", (since_order_id,))
-        new_orders = []
-        for r in cur.fetchall():
-            od = dict(r)
-            cur.execute("SELECT * FROM order_items WHERE order_id = ?", (od["id"],))
-            od["items"] = [dict(it) for it in cur.fetchall()]
-            new_orders.append(od)
+        new_orders = [dict(r) for r in cur.fetchall()]
+        items_by_order = _children_by_parent(cur, "order_items", "order_id", [o["id"] for o in new_orders])
+        for od in new_orders:
+            od["items"] = items_by_order.get(od["id"], [])
 
         cur.execute("SELECT * FROM inventory_movements WHERE id > ? ORDER BY id DESC", (since_movement_id,))
         new_movements = [dict(m) for m in cur.fetchall()]
@@ -4361,9 +4387,51 @@ def pos_compat(client_version: Optional[str] = None):
         "client_version": client_version,
         "supported": supported,
         "deprecated": deprecated,
-        "update_channel": "github-releases",
-        "update_manifest": "https://mus-luxury.com/downloads/cms/latest.json",
+        "update_channel": "shop-server (staff login required)",
+        "update_manifest": CMS_UPDATE_MANIFEST_URL,
     }
+
+
+# ----------------------------------------------------------------------------
+# Desktop CMS updates — for logged-in staff only.
+# The repository is private, so installed apps cannot download from GitHub.
+# The release workflow copies the signed installer, its .sig and latest.json
+# to LUXE_DOWNLOADS_DIR/cms on the server; docker-compose mounts that folder
+# read-only at LUXE_UPDATES_DIR in this container. Nothing is on the public
+# website: every file here needs a valid CMS login (same check as every
+# admin route), travels over HTTPS only, and the app installs it only if its
+# signature matches the public key built into the app.
+# ----------------------------------------------------------------------------
+CMS_UPDATE_BASE_URL = "https://api.mus-luxury.com/api/v1/admin/updates/cms"
+CMS_UPDATE_MANIFEST_URL = f"{CMS_UPDATE_BASE_URL}/latest.json"
+_CMS_UPDATE_FILE = re.compile(r"MusLuxuryCMS_[0-9A-Za-z][0-9A-Za-z._-]*-setup\.exe(?:\.sig)?")
+_NO_STORE = {"Cache-Control": "no-store", "X-Content-Type-Options": "nosniff"}
+
+
+def _cms_updates_dir() -> Path:
+    return Path(os.getenv("LUXE_UPDATES_DIR", "/var/lib/luxe/updates")) / "cms"
+
+
+@app.get("/api/v1/admin/updates/cms/latest.json")
+def cms_update_manifest(admin: dict = Depends(get_current_admin)):
+    """What the installed CMS asks every few hours. 204 = nothing published yet
+    (the updater reads it as "no update")."""
+    path = _cms_updates_dir() / "latest.json"
+    if not path.is_file():
+        return Response(status_code=204, headers=_NO_STORE)
+    return FileResponse(path, media_type="application/json", headers=_NO_STORE)
+
+
+@app.get("/api/v1/admin/updates/cms/{filename}")
+def cms_update_file(filename: str, admin: dict = Depends(get_current_admin)):
+    """A versioned installer or its signature. Only those two kinds of name are
+    served, so nothing else in the folder (or outside it) can be reached."""
+    if not _CMS_UPDATE_FILE.fullmatch(filename):
+        raise HTTPException(status_code=404, detail="Fichier introuvable.")
+    path = _cms_updates_dir() / filename
+    if not path.is_file():
+        raise HTTPException(status_code=404, detail="Fichier introuvable.")
+    return FileResponse(path, media_type="application/octet-stream", filename=filename, headers=_NO_STORE)
 
 @app.post("/api/v1/admin/products/{product_id}/images", status_code=201)
 def admin_add_product_image(
@@ -5103,12 +5171,10 @@ def admin_list_purchases(admin: dict = Depends(require_permission("finance:read"
                JOIN suppliers s ON s.id = po.supplier_id
                ORDER BY po.id DESC"""
         )
-        pos = []
-        for r in cur.fetchall():
-            d = dict(r)
-            cur.execute("SELECT * FROM purchase_order_items WHERE purchase_order_id = ?", (d["id"],))
-            d["items"] = [dict(it) for it in cur.fetchall()]
-            pos.append(d)
+        pos = [dict(r) for r in cur.fetchall()]
+        items_by_po = _children_by_parent(cur, "purchase_order_items", "purchase_order_id", [d["id"] for d in pos])
+        for d in pos:
+            d["items"] = items_by_po.get(d["id"], [])
         return {"items": pos}
 
 @app.post("/api/v1/admin/purchases", status_code=201)
@@ -7757,13 +7823,15 @@ def admin_list_roles(admin: dict = Depends(require_permission("settings:write"))
         cur = conn.cursor()
         cur.execute("SELECT id, name, description FROM roles ORDER BY id")
         roles = [dict(r) for r in cur.fetchall()]
+        cur.execute(
+            """SELECT rp.role_id, p.code FROM role_permissions rp JOIN permissions p ON p.id = rp.permission_id
+               ORDER BY rp.role_id, p.code"""
+        )
+        codes_by_role: Dict[int, List[str]] = {}
+        for r in cur.fetchall():
+            codes_by_role.setdefault(r["role_id"], []).append(r["code"])
         for role in roles:
-            cur.execute(
-                """SELECT p.code FROM permissions p JOIN role_permissions rp ON rp.permission_id = p.id
-                   WHERE rp.role_id = ? ORDER BY p.code""",
-                (role["id"],),
-            )
-            role["permissions"] = [r["code"] for r in cur.fetchall()]
+            role["permissions"] = codes_by_role.get(role["id"], [])
         return {"items": roles}
 
 
@@ -8663,25 +8731,35 @@ def admin_low_stock_report(
             (limit,),
         )
         rows = [dict(r) for r in cur.fetchall()]
-        for row in rows:
-            # 30-day velocity = units sold across both channels in last 30 days
+        # 30-day velocity = units sold across both channels in the last 30 days
+        # (web orders not cancelled/returned + till sales - till refunds), for all
+        # listed variants in two grouped queries instead of one query per variant.
+        sold: Dict[int, int] = {}
+        for chunk in _id_chunks([r["variant_id"] for r in rows]):
+            marks = ",".join("?" for _ in chunk)
             cur.execute(
-                """SELECT (
-                      SELECT COALESCE(SUM(oi.quantity), 0)
-                      FROM order_items oi JOIN orders o ON o.id = oi.order_id
-                      WHERE oi.variant_id = ? AND o.status NOT IN ('cancelled', 'returned') AND o.created_at >= ?
-                   ) + (
-                      SELECT COALESCE(SUM(psi.quantity), 0)
-                      FROM pos_sale_items psi JOIN pos_sales ps ON ps.id = psi.sale_id
-                      WHERE psi.variant_id = ? AND ps.sale_type = 'sale' AND ps.created_at >= ?
-                   ) - (
-                      SELECT COALESCE(SUM(psi.quantity), 0)
-                      FROM pos_sale_items psi JOIN pos_sales ps ON ps.id = psi.sale_id
-                      WHERE psi.variant_id = ? AND ps.sale_type = 'refund' AND ps.created_at >= ?
-                   ) AS v""",
-                (row["variant_id"], thirty_days_ago, row["variant_id"], thirty_days_ago, row["variant_id"], thirty_days_ago),
+                f"""SELECT oi.variant_id AS vid, COALESCE(SUM(oi.quantity), 0) AS q
+                    FROM order_items oi JOIN orders o ON o.id = oi.order_id
+                    WHERE oi.variant_id IN ({marks}) AND o.status NOT IN ('cancelled', 'returned')
+                      AND o.created_at >= ?
+                    GROUP BY oi.variant_id""",
+                (*chunk, thirty_days_ago),
             )
-            row["velocity_30d"] = int(cur.fetchone()["v"])
+            for r in cur.fetchall():
+                sold[r["vid"]] = sold.get(r["vid"], 0) + int(r["q"])
+            cur.execute(
+                f"""SELECT psi.variant_id AS vid,
+                           COALESCE(SUM(CASE ps.sale_type WHEN 'sale' THEN psi.quantity
+                                                          WHEN 'refund' THEN -psi.quantity ELSE 0 END), 0) AS q
+                    FROM pos_sale_items psi JOIN pos_sales ps ON ps.id = psi.sale_id
+                    WHERE psi.variant_id IN ({marks}) AND ps.created_at >= ?
+                    GROUP BY psi.variant_id""",
+                (*chunk, thirty_days_ago),
+            )
+            for r in cur.fetchall():
+                sold[r["vid"]] = sold.get(r["vid"], 0) + int(r["q"])
+        for row in rows:
+            row["velocity_30d"] = sold.get(row["variant_id"], 0)
             # Suggested reorder = roughly 2 months of velocity, minus current + on_order, at least target threshold + 1
             target = max(int(row["low_stock_threshold"]) + 1, row["velocity_30d"] * 2)
             row["suggested_reorder_qty"] = max(0, target - int(row["stock_qty"]) - int(row["on_order_qty"]))
