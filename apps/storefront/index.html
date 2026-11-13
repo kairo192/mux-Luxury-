@@ -1655,8 +1655,8 @@
           return L("La quantité demandée dépasse le stock actuellement disponible pour cet article.", "الكمية المطلوبة تتجاوز المخزون المتوفر حاليًا لهذا المنتج.", "The quantity requested is more than the stock available for this item.");
         }
         const ref = (raw.match(/(?:existing reference:|référence)\s*([A-Za-z0-9-]+)/) || [])[1];
-        if (ref) return `Cette commande est déjà enregistrée (référence ${ref}).`;
-        return "Cette commande vient déjà d'être enregistrée. Vérifiez son statut dans le suivi de commande.";
+        if (ref) return L(`Cette commande est déjà enregistrée (référence ${ltr(ref)}).`, `هذا الطلب مسجّل من قبل (المرجع ${ltr(ref)}).`, `This order is already recorded (reference ${ltr(ref)}).`);
+        return L("Cette commande vient déjà d'être enregistrée. Vérifiez son statut dans le suivi de commande.", "تم تسجيل هذا الطلب للتو. تحقّق من حالته في تتبّع الطلب.", "This order has just been recorded. Check its status in order tracking.");
       }
       if (status === 429) return L("Trop de tentatives rapprochées. Veuillez patienter quelques secondes avant de réessayer.", "محاولات كثيرة متتالية. يرجى الانتظار بضع ثوانٍ ثم إعادة المحاولة.", "Too many attempts. Please wait a few seconds and try again.");
       if (status === 404) return L("Aucun résultat trouvé pour cette référence ou cet article.", "لا توجد نتيجة لهذا الرقم أو لهذا المنتج.", "Nothing found for this reference or item.");

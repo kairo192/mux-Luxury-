@@ -39,9 +39,8 @@ Replace `<TOKEN>` with the push URL Kuma generates per monitor.
 
 Configure in Kuma → Settings → Notifications. Suggested channels:
 
-- **Telegram bot** — fastest, free, phone-friendly.
-- **WhatsApp via n8n** — reuses the existing Meta WhatsApp Cloud API token.
-- **Email SMTP** — fallback.
+- **Telegram bot** — fastest, free, phone-friendly (built into Kuma: bot token + chat id).
+- **Email** — fallback; the mail account is entered in Kuma itself, the shop has no e-mail settings.
 
 Keep alert thresholds conservative on a single-VPS stack: a 2-minute outage is
 rarely worth waking someone up for; a 10-minute one definitely is.

@@ -8,7 +8,7 @@
 ---
 
 ## 0o. ONLY WORKING FEATURES (2026-11-12, latest)
-- Removed everywhere: Chargily, Yalidine / ZR / Maystro APIs, SMTP, pixels, Google Maps, WhatsApp Cloud sending keys.
+- Removed everywhere: Chargily, Yalidine / ZR / Maystro APIs, SMTP, pixels, Google Maps API key (the Maps *link* in shop details stays), WhatsApp Cloud sending keys.
   Do not re-add them as "coming soon" keys: build the feature first, then register its keys.
 - Kept: COD + manual delivery, `wa.me` messages, WhatsApp webhook (2 optional keys), S3 off-site backup.
 

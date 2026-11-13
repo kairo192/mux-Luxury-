@@ -11,10 +11,10 @@
 # Configure monitors from the UI:
 #   - HTTP(S) monitor: https://mus-luxury.com/                       (storefront)
 #   - HTTP(S) monitor: https://api.mus-luxury.com/api/v1/health       (API)
-#   - Push monitor:    "VPS metrics heartbeat" — vps-metrics.sh posts to it
+#   - Push monitor:    "VPS metrics heartbeat" — add the push line to vps-metrics.sh (README)
 #   - Keyword monitor: /api/v1/pos/compat        keyword: "supported"
 #
-# Alert channels: Telegram, email (SMTP) or WhatsApp (via n8n webhook).
+# Alert channels (set up in Kuma's own settings): Telegram or e-mail.
 # -----------------------------------------------------------------------------
 services:
   uptime-kuma:
