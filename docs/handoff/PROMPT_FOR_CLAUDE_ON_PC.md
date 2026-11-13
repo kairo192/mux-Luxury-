@@ -60,8 +60,9 @@ to the VPS themselves (`scp`), as `/opt/luxe/shared/.env`, `chmod 600`.
 
 1. **Prepare the VPS** (1 vCPU, 2 GB RAM, 40 GB disk): `infrastructure/scripts/vps-bootstrap.sh` (Docker, rclone,
    sqlite3, firewall, deploy user), then the `.env` above. Guide: `docs/deployment/VPS_DEPLOYMENT.md`.
-   Check the file on the PC **before** copying it (values are never printed; Push/Pop-Location keeps the
-   shell in the repository folder): `Push-Location backend; python -m app.settings check <path to production.env>; Pop-Location`.
+   Check the file on the PC **before** copying it (values are never printed). Step 2 left the shell in
+   `apps\desktop-cms`, so go back to the repository folder first; Push/Pop-Location then keeps it there:
+   `Set-Location (git rev-parse --show-toplevel); Push-Location backend; python -m app.settings check <path to production.env>; Pop-Location`.
 2. **GitHub secrets for the deploy**: run `infrastructure/scripts/setup-github-secrets.ps1` (needs `gh auth login`).
    It creates the deploy SSH key and stores `PRODUCTION_SSH_HOST/USER/PRIVATE_KEY`, `PRODUCTION_URL`,
    `PRODUCTION_HEALTH_URL`. The app-update signing key ALREADY EXISTS (its public half is committed): the owner
