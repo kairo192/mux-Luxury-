@@ -77,8 +77,9 @@ Rotating the Tauri signing key invalidates every installed POS — the
 updater refuses manifests signed by the new key. Plan:
 
 1. Generate a new keypair: `npx tauri signer generate -w ~/.tauri/mux_luxury.key`.
-2. Update `apps/desktop-cms/src-tauri/tauri.conf.json` `plugins.updater.pubkey`
-   with the new public key, bump the Desktop CMS major version, tag.
+2. Replace the `TAURI_SIGNING_PRIVATE_KEY(_PASSWORD)` secrets and the
+   `TAURI_UPDATER_PUBKEY` Actions variable (the public key is baked in at
+   compile time via `LUXE_UPDATER_PUBKEY`), then push a new major tag.
 3. Tell boutiques to download the new installer manually from the GitHub
    release (not from their old POS's updater).
 4. Starting from this version, updates work normally again.

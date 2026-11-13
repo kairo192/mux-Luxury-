@@ -157,13 +157,14 @@ _OPERATIONAL_PERMISSIONS = [
     ("register:manage", "Open, close and reconcile cash register sessions"),
     ("devices:read", "View registered store devices and their status"),
     ("devices:write", "Register, configure, test and remove store devices"),
+    ("finance:read", "View money: accounting, treasury, margins, financial reports, expenses, suppliers & purchase costs"),
 ]
 _OPERATIONAL_ROLES = [
     ("cashier", "Cashier — Operate the POS, sell, and manage the cash register"),
 ]
 _OPERATIONAL_GRANTS = {
-    "super_admin": ["pos:sell", "pos:refund", "pos:read", "register:manage", "devices:read", "devices:write"],
-    "admin": ["pos:sell", "pos:refund", "pos:read", "register:manage", "devices:read", "devices:write"],
+    "super_admin": ["pos:sell", "pos:refund", "pos:read", "register:manage", "devices:read", "devices:write", "finance:read"],
+    "admin": ["pos:sell", "pos:refund", "pos:read", "register:manage", "devices:read", "devices:write", "finance:read"],
     "cashier": ["dashboard:read", "pos:sell", "pos:read", "register:manage", "devices:read"],
 }
 
@@ -200,12 +201,231 @@ def ensure_operational_rbac(conn) -> None:
             )
 
 
+# Example content that older versions put in every new database. Matched on
+# ALL its original values, so anything the owner created or edited is kept.
+# Exactly as older versions inserted them (every field the CMS can edit):
+# a row differing in any of them was edited by the owner and is left alone.
+_LEGACY_DEMO_BANNERS = [
+    {"position": "hero", "title_fr": "Votre style, notre passion", "title_ar": "أسلوبك، شغفنا الدائم",
+     "title_en": "Your style, our passion",
+     "subtitle_fr": "Découvrez les meilleures marques et les plus beaux accessoires en Algérie.",
+     "cta_text_fr": "Voir la boutique", "cta_link": "/categories/sacs", "image_url": "/assets/hero_bag_clean.jpg"},
+    {"position": "promo_grid", "title_fr": "CHAUSSURES — Jusqu'à -20%", "title_ar": "أحذية — تخفيض حتى 20%",
+     "title_en": "SHOES — Up to 20% Off", "subtitle_fr": "Baskets & créations urbaines",
+     "cta_text_fr": "Voir la collection", "cta_link": "/categories/chaussures",
+     "image_url": "/assets/prod_baskets_elegantes.jpg"},
+]
+_LEGACY_DEMO_COUPONS = [
+    {"code": "BIENVENUE10", "discount_type": "percentage", "discount_value": 10, "min_order_dzd": 4000,
+     "max_discount_dzd": 2500},
+    {"code": "ALGERIE500", "discount_type": "fixed_dzd", "discount_value": 500, "min_order_dzd": 5000,
+     "max_discount_dzd": 500},
+]
+
+
+_DEV_ADMIN_PASSWORD = "MusLuxury2026!"
+_DEV_EDITOR_PASSWORD = "EditorLuxury2026!"
+
+
+def _seed_password(env_name: str, dev_default: str):
+    """Password for an account created at first start. Development / tests:
+    the configured one, else the known development password. PRODUCTION: only
+    a strong configured password — never the development defaults (this
+    repository is public) nor a placeholder; otherwise None and the account is
+    not created (the owner uses the first-time setup screen instead)."""
+    value = (os.getenv(env_name) or "").strip()
+    if not is_production():
+        return value or dev_default
+    weak = (
+        len(value) < 12
+        or value in (_DEV_ADMIN_PASSWORD, _DEV_EDITOR_PASSWORD)
+        or value.lower().startswith(("change", "replace", "<", "disabled", "your_"))
+    )
+    if weak:
+        import logging
+        logging.getLogger("luxe.seed").error(
+            "%s missing, weak or a placeholder: account NOT created in production "
+            "(use the first-time owner setup, or set a strong password of 12+ characters).", env_name)
+        return None
+    return value
+
+
+def _demo_mode() -> bool:
+    return (
+        os.getenv("APP_ENV", "").strip().lower() in {"test", "testing"}
+        or os.getenv("LUXE_SEED_DEMO_PRODUCTS") == "1"
+    )
+
+
+# Stored (protected "system_" key, never sent to the shop) once the one-time
+# cleanup has run on a database, so it never runs twice.
+LEGACY_CLEANUP_MARKER = "system_legacy_demo_cleanup_v1"
+
+
+def find_legacy_demo_content(cur) -> dict:
+    """Example rows still present, matched on ALL their original values."""
+    banners = []
+    for b in _LEGACY_DEMO_BANNERS:
+        cols = list(b)
+        cur.execute(
+            "SELECT id, title_fr FROM banners WHERE " + " AND ".join(f"{c} = ?" for c in cols)
+            + " AND COALESCE(subtitle_ar, '') = '' AND COALESCE(subtitle_en, '') = ''",
+            tuple(b[c] for c in cols),
+        )
+        banners += [{"id": r["id"], "title_fr": r["title_fr"]} for r in cur.fetchall()]
+    coupons = []
+    for c in _LEGACY_DEMO_COUPONS:
+        cols = list(c)
+        cur.execute(
+            "SELECT id, code FROM coupons WHERE " + " AND ".join(f"{k} = ?" for k in cols)
+            + """ AND starts_at IS NULL AND ends_at IS NULL AND usage_limit IS NULL
+                  AND COALESCE(usage_count, 0) = 0 AND is_active = 1""",
+            tuple(c[k] for k in cols),
+        )
+        coupons += [{"id": r["id"], "code": r["code"]} for r in cur.fetchall()]
+    return {"banners": banners, "coupons": coupons}
+
+
+def remove_legacy_demo_content(cur, *, force: bool = False) -> dict:
+    """One-time cleanup of the example content that older versions put in
+    every new database: 2 example banners are deleted and 2 example promo
+    codes (which were ACTIVE: real discounts) are switched off.
+
+    Production path: runs inside the API start that follows a deploy (the
+    deploy script takes a database backup first). Runs once per database
+    (marker in store_settings), never on test/demo databases, and writes what
+    it changed to the audit log (CMS → Journal d'audit). Banners the owner
+    edited and codes customers already used are never touched.
+    ``force=True`` is for the operator command ``python -m app.cleanup_demo``.
+    """
+    if not force:
+        if _demo_mode():
+            return {"banners": [], "coupons": []}
+        cur.execute("SELECT 1 AS done FROM store_settings WHERE setting_key = ?", (LEGACY_CLEANUP_MARKER,))
+        if cur.fetchone():
+            return {"banners": [], "coupons": []}
+
+    found = find_legacy_demo_content(cur)
+    for b in found["banners"]:
+        cur.execute("DELETE FROM banners WHERE id = ?", (b["id"],))
+    for c in found["coupons"]:
+        cur.execute("UPDATE coupons SET is_active = 0 WHERE id = ?", (c["id"],))
+    if found["banners"] or found["coupons"]:
+        cur.execute(
+            "INSERT INTO audit_logs (admin_user_id, action, entity_type, entity_id, details_json) VALUES (?, ?, ?, ?, ?)",
+            (None, "remove_legacy_demo_content", "store", "system", json.dumps({
+                "deleted_banners": [b["title_fr"] for b in found["banners"]],
+                "deactivated_promo_codes": [c["code"] for c in found["coupons"]],
+            }, ensure_ascii=False)),
+        )
+    cur.execute(
+        """INSERT INTO store_settings (setting_key, setting_value, updated_at)
+           VALUES (?, ?, CURRENT_TIMESTAMP)
+           ON CONFLICT(setting_key) DO NOTHING""",
+        (LEGACY_CLEANUP_MARKER, json.dumps({
+            "banners": len(found["banners"]), "coupons": len(found["coupons"]),
+        })),
+    )
+    return found
+
+
+TREASURY_BACKFILL_MARKER = "system_treasury_backfill_v1"
+
+
+def translate_untouched_starter_pages(cur) -> int:
+    """Older versions copied the FRENCH starter text into the Arabic and English
+    fields of the information pages: Arabic customers read French (laid out
+    right-to-left) and the CMS showed the Arabic field as already filled.
+    Replaces it with the translation — only where the field still holds that
+    exact French starter text (anything the owner wrote is never touched).
+    Runs at every start; does nothing once fixed. Returns the fields changed."""
+    changed = 0
+    current = {p[0]: p for p in _INITIAL_STATIC_PAGES}
+    for slug, (old_fr, old_ar, old_en) in _PREVIOUS_STARTER_TEXTS.items():
+        _s, _a, _b, _c, new_fr, new_ar, new_en = current[slug]
+        for col, new, olds in (("content_fr", new_fr, (old_fr,)),
+                               ("content_ar", new_ar, (old_fr, old_ar)),
+                               ("content_en", new_en, (old_fr, old_en))):
+            for old in olds:
+                cur.execute(f"UPDATE static_pages SET {col} = ? WHERE slug = ? AND {col} = ?", (new, slug, old))
+                changed += max(cur.rowcount or 0, 0)
+    for slug, _t_fr, _t_ar, _t_en, c_fr, c_ar, c_en in _INITIAL_STATIC_PAGES:
+        for col, text in (("content_ar", c_ar), ("content_en", c_en)):
+            cur.execute(
+                f"UPDATE static_pages SET {col} = ? WHERE slug = ? AND {col} = ? AND content_fr = ?",
+                (text, slug, c_fr, c_fr),
+            )
+            changed += max(cur.rowcount or 0, 0)
+    return changed
+
+
+def backfill_treasury_from_sales(cur) -> dict:
+    """One-time catch-up (first start after the update that made the
+    treasury follow sales): till sales and refunds, and delivered
+    cash-on-delivery orders made BEFORE that update are added to the
+    treasury once. Anything already there (same reference) is skipped, so it
+    can never double-count; entries are marked "(rattrapage)"."""
+    cur.execute("SELECT 1 AS done FROM store_settings WHERE setting_key = ?", (TREASURY_BACKFILL_MARKER,))
+    if cur.fetchone():
+        return {"added": 0}
+    cur.execute("SELECT DISTINCT source_reference FROM cash_movements WHERE source_reference IS NOT NULL")
+    already = {r["source_reference"] for r in cur.fetchall()}
+    added = 0
+
+    def put(account, movement, amount, source, ref, desc, created_at):
+        nonlocal added
+        if not amount or int(amount) <= 0 or ref in already:
+            return
+        cur.execute(
+            """INSERT INTO cash_movements (account_type, movement_type, amount_dzd, source_type, source_reference, description, recorded_by, created_at)
+               VALUES (?, ?, ?, ?, ?, ?, NULL, ?)""",
+            (account, movement, int(amount), source, ref, desc[:255], created_at),
+        )
+        added += 1
+
+    cur.execute(
+        """SELECT s.sale_reference, s.sale_type, s.created_at, p.method, p.amount_dzd
+           FROM pos_sales s JOIN pos_payments p ON p.sale_id = s.id ORDER BY s.id"""
+    )
+    for r in cur.fetchall():
+        account = "cash_box" if (r["method"] or "cash") == "cash" else "bank_account"
+        if r["sale_type"] == "refund":
+            put(account, "outflow", r["amount_dzd"], "pos_refund", r["sale_reference"], f"Remboursement {r['sale_reference']} (rattrapage)", r["created_at"])
+        else:
+            put(account, "inflow", r["amount_dzd"], "pos_sale", r["sale_reference"], f"Vente magasin {r['sale_reference']} (rattrapage)", r["created_at"])
+    cur.execute("SELECT order_reference, total_dzd, updated_at FROM orders WHERE status = 'delivered' ORDER BY id")
+    for r in cur.fetchall():
+        put("cash_box", "inflow", r["total_dzd"], "cod_collection", r["order_reference"],
+            f"Commande livrée {r['order_reference']} (rattrapage)", r["updated_at"])
+
+    cur.execute(
+        """INSERT INTO store_settings (setting_key, setting_value, updated_at)
+           VALUES (?, ?, CURRENT_TIMESTAMP) ON CONFLICT(setting_key) DO NOTHING""",
+        (TREASURY_BACKFILL_MARKER, json.dumps({"added": added})),
+    )
+    if added:
+        cur.execute(
+            "INSERT INTO audit_logs (admin_user_id, action, entity_type, entity_id, details_json) VALUES (?, ?, ?, ?, ?)",
+            (None, "treasury_backfill", "treasury", "system", json.dumps({"entries_added": added})),
+        )
+    return {"added": added}
+
+
 def seed_initial_data() -> None:
     init_db()
+    # Apply pending versioned migrations on EVERY database at start — the VPS
+    # deploy runs them too, but a shop PC (local SQLite) or a fresh install
+    # never did, and the till's offline catalogue needs them. Already-applied
+    # files are skipped (schema_migrations); PostgreSQL is serialised by a lock.
+    from .migration_runner import run as _apply_pending_migrations
+    _apply_pending_migrations()
     sync_wilaya_communes()
     with db_session(commit=True) as conn:
         cur = conn.cursor()
         ensure_operational_rbac(conn)
+        remove_legacy_demo_content(cur)
+        translate_untouched_starter_pages(cur)
+        backfill_treasury_from_sales(cur)
         cur.execute("SELECT COUNT(*) AS cnt FROM roles")
         if cur.fetchone()["cnt"] > 0:
             return
@@ -240,6 +460,7 @@ def seed_initial_data() -> None:
             ("register:manage", "Open, close and reconcile cash register sessions"),
             ("devices:read", "View registered store devices and their status"),
             ("devices:write", "Register, configure, test and remove store devices"),
+            ("finance:read", "View money: accounting, treasury, margins, financial reports, expenses, suppliers & purchase costs"),
         ]
         perm_ids = {}
         for code, desc in perms:
@@ -248,7 +469,7 @@ def seed_initial_data() -> None:
 
         role_perm_map = {
             "super_admin": list(perm_ids.keys()),
-            "admin": ["dashboard:read", "products:write", "categories:write", "inventory:write", "orders:write", "content:write", "pos:sell", "pos:refund", "pos:read", "register:manage", "devices:read", "devices:write"],
+            "admin": ["dashboard:read", "finance:read", "products:write", "categories:write", "inventory:write", "orders:write", "content:write", "pos:sell", "pos:refund", "pos:read", "register:manage", "devices:read", "devices:write"],
             "product_manager": ["dashboard:read", "products:write"],
             "order_manager": ["dashboard:read", "orders:write"],
             "inventory_manager": ["dashboard:read", "inventory:write", "products:write"],
@@ -266,21 +487,28 @@ def seed_initial_data() -> None:
         # In production (APP_ENV=production), NEVER seed default admin credentials or hardcoded recovery codes!
         # Instead, leave admin_users empty so the First-Time Owner Setup Wizard (/api/v1/admin/auth/initialize-owner) runs and locks itself.
         owner_id = None
-        if (not is_production()) or os.getenv("LUXE_SEED_DEMO_ACCOUNTS") == "1" or os.getenv("SEED_DEFAULT_ADMIN") == "1":
-            admin_pw = os.getenv("ADMIN_INITIAL_PASSWORD") or "MusLuxury2026!"
-            editor_pw = os.getenv("EDITOR_INITIAL_PASSWORD") or "EditorLuxury2026!"
+        wants_seeded_accounts = (not is_production()) or os.getenv("LUXE_SEED_DEMO_ACCOUNTS") == "1" or os.getenv("SEED_DEFAULT_ADMIN") == "1"
+        admin_pw = _seed_password("ADMIN_INITIAL_PASSWORD", _DEV_ADMIN_PASSWORD) if wants_seeded_accounts else None
+        if admin_pw:
+            editor_pw = _seed_password("EDITOR_INITIAL_PASSWORD", _DEV_EDITOR_PASSWORD)
             cur.execute(
                 """INSERT INTO admin_users (email, full_name, phone, emergency_phone, whatsapp_verified, totp_enabled, password_hash, role_id, is_active)
                    VALUES (?, ?, ?, ?, 1, 1, ?, ?, 1)""",
-                ("admin@mus-luxury.com", "Mustapha Harbit (Owner)", "+213550000001", "+213655534154", hash_password(admin_pw), role_ids["super_admin"])
+                (
+                    # Production: the owner's own details from .env; development: fixed test account.
+                    (os.getenv("ADMIN_INITIAL_EMAIL") or "").strip() or "admin@mus-luxury.com" if is_production() else "admin@mus-luxury.com",
+                    (os.getenv("ADMIN_INITIAL_FULL_NAME") or "").strip() or "Propriétaire" if is_production() else "Mustapha Harbit (Owner)",
+                    "+213550000001", "+213655534154", hash_password(admin_pw), role_ids["super_admin"],
+                ),
             )
             owner_id = cur.lastrowid
 
-            cur.execute(
-                """INSERT INTO admin_users (email, full_name, phone, whatsapp_verified, totp_enabled, password_hash, role_id, is_active)
-                   VALUES (?, ?, ?, 1, 0, ?, ?, 1)""",
-                ("editor@mus-luxury.com", "Sarah (Product Manager)", "+213550000002", hash_password(editor_pw), role_ids["product_manager"])
-            )
+            if editor_pw:
+                cur.execute(
+                    """INSERT INTO admin_users (email, full_name, phone, whatsapp_verified, totp_enabled, password_hash, role_id, is_active)
+                       VALUES (?, ?, ?, 1, 0, ?, ?, 1)""",
+                    ("editor@mus-luxury.com", "Sarah (Product Manager)", "+213550000002", hash_password(editor_pw), role_ids["product_manager"])
+                )
 
             if not is_production():
                 emergency_hash = hashlib.sha256(b"LUXE-EMERGENCY-2026-RECOVERY").hexdigest()
@@ -319,6 +547,10 @@ def seed_initial_data() -> None:
             "whatsapp_contact_number": "+213655534154",
             "store_phone": "0655534154",
             "store_location": "FVX6+GCJ Mus luxury, Ouled Yaïch",
+            # One line per day, "Jour : horaires" (CMS → Paramètres boutique).
+            "opening_hours": "Samedi : 10h00 – 20h00\nDimanche : 10h00 – 20h00\nLundi : 10h00 – 20h00\n"
+                             "Mardi : 10h00 – 20h00\nMercredi : 10h00 – 20h00\nJeudi : 10h00 – 20h00\n"
+                             "Vendredi (prière du vendredi) : 15h00 – 21h00",
             "store_maps_url": "https://www.google.com/maps/search/?api=1&query=FVX6%2BGCJ+Mus+luxury%2C+Ouled+Ya%C3%AFch",
             "instagram_url": "https://www.instagram.com/musluxury09?rpxt=emk3bjBhdjV5d2Ux",
             "tiktok_url": "https://www.tiktok.com/@musluxury.092?_r=1&_t=ZS-9B2mO0gpA7V",
@@ -354,9 +586,13 @@ def seed_initial_data() -> None:
         # starts from a blank catalog — roles, permissions, admin user,
         # store settings, wilayas and the static legal pages are still
         # seeded because they're infrastructure.
-        # Opt in with LUXE_SEED_DEMO_PRODUCTS=1.
+        # Opt in with LUXE_SEED_DEMO_PRODUCTS=1 (automatic in APP_ENV=test).
         # ------------------------------------------------------------------
-        seed_demo_catalog = (not is_production()) or os.getenv("LUXE_SEED_DEMO_PRODUCTS") == "1"
+        # Demo catalog only for the automated test suite or on explicit
+        # request. A PC in development mode starts EMPTY like production, so a
+        # shop that was emptied never gets the 9 demo categories back when its
+        # database file is recreated.
+        seed_demo_catalog = _demo_mode()
 
         if seed_demo_catalog:
             # 4. Seed Promotional Coupons (Section 4.9)
@@ -373,11 +609,11 @@ def seed_initial_data() -> None:
 
         # Seed Official Mus Luxury Static Pages (about, faq, returns, terms)
         initial_pages = _INITIAL_STATIC_PAGES
-        for p_slug, t_fr, t_ar, t_en, c_fr in initial_pages:
+        for p_slug, t_fr, t_ar, t_en, c_fr, c_ar, c_en in initial_pages:
             cur.execute(
                 """INSERT OR IGNORE INTO static_pages (slug, title_fr, title_ar, title_en, content_fr, content_ar, content_en, is_published)
                    VALUES (?, ?, ?, ?, ?, ?, ?, 1)""",
-                (p_slug, t_fr, t_ar, t_en, c_fr, c_fr, c_fr),
+                (p_slug, t_fr, t_ar, t_en, c_fr, c_ar, c_en),
             )
 
 
@@ -496,21 +732,21 @@ def _seed_demo_catalog_content(cur, owner_id: int) -> None:
     ])
     mq_vol_attr = add_attr("maquillage", "volume", "Volume / Poids", "الحجم / الوزن", "Volume / Weight", "measurement", req=1, filt=0, var=0, order=4, unit="g")
 
-    mt_dial_attr = add_attr("les-montres", "dial_color", "Couleur du cadran", "لون الميناء", "Dial Color", "color", req=1, filt=1, var=1, order=1, options=[
+    add_attr("les-montres", "dial_color", "Couleur du cadran", "لون الميناء", "Dial Color", "color", req=1, filt=1, var=1, order=1, options=[
         ("Noir & Or", "Noir & Or", "أسود وذهبي", "Black & Gold", "#1A2421"),
         ("Vert Émeraude & Or", "Vert Émeraude & Or", "أخضر زمردي وذهبي", "Emerald & Gold", "#063D2E"),
     ])
-    mt_mov_attr = add_attr("les-montres", "movement", "Mouvement", "حركة الساعة", "Movement", "single_select", req=1, filt=1, var=0, order=2, options=[
+    add_attr("les-montres", "movement", "Mouvement", "حركة الساعة", "Movement", "single_select", req=1, filt=1, var=0, order=2, options=[
         ("Chronographe Quartz Précision", "Chronographe Quartz Précision", "كرونوغراف كوارتز", "Precision Quartz Chronograph", None),
         ("Automatique", "Automatique", "أوتوماتيك", "Automatic", None),
     ])
-    mt_water_attr = add_attr("les-montres", "water_resistance", "Étanchéité", "مقاومة الماء", "Water Resistance", "short_text", req=1, filt=0, var=0, order=3)
+    add_attr("les-montres", "water_resistance", "Étanchéité", "مقاومة الماء", "Water Resistance", "short_text", req=1, filt=0, var=0, order=3)
 
-    ln_frame_attr = add_attr("les-lunettes", "frame_color", "Couleur de monture", "لون الإطار", "Frame Color", "color", req=1, filt=1, var=1, order=1, options=[
+    add_attr("les-lunettes", "frame_color", "Couleur de monture", "لون الإطار", "Frame Color", "color", req=1, filt=1, var=1, order=1, options=[
         ("Écaille & Or", "Écaille & Or", "بني مذهب", "Tortoise & Gold", "#4A2E1B"),
         ("Noir Intense", "Noir Intense", "أسود داكن", "Deep Black", "#141414"),
     ])
-    ln_uv_attr = add_attr("les-lunettes", "uv_protection", "Protection UV", "حماية الأشعة", "UV Protection", "short_text", req=1, filt=1, var=0, order=2)
+    add_attr("les-lunettes", "uv_protection", "Protection UV", "حماية الأشعة", "UV Protection", "short_text", req=1, filt=1, var=0, order=2)
 
     # 8. Seed Initial Products & Variants
     cur.execute(
@@ -678,13 +914,31 @@ def _seed_demo_catalog_content(cur, owner_id: int) -> None:
     return
 
 
+# Earlier generated starter texts (FR, AR, EN) with claims the shop never made
+# ("Sélection certifiée", fixed delivery times). Replaced at start by the
+# current texts — only where the page still holds them word for word.
+_PREVIOUS_STARTER_TEXTS = {
+    "about": (
+        "Boutique officielle Mus Luxury située à FVX6+GCJ Mus luxury, Ouled Yaïch (Blida 09). Sélection certifiée de maroquinerie, chaussures, châles, maquillage, lunettes et montres avec livraison 69 Wilayas et paiement à la livraison (0655 53 41 54).",
+        "المتجر الرسمي لموس لوكسوري في FVX6+GCJ Mus luxury، أولاد يعيش (البليدة 09). تشكيلة مختارة من الحقائب والأحذية والشالات ومستحضرات التجميل والنظارات والساعات، مع التوصيل إلى 69 ولاية والدفع عند الاستلام (0655 53 41 54).",
+        "The official Mus Luxury shop at FVX6+GCJ Mus luxury, Ouled Yaïch (Blida 09). A curated selection of bags, shoes, shawls, make-up, glasses and watches, delivered to all 69 wilayas with cash on delivery (0655 53 41 54).",
+    ),
+    "returns": (
+        "Livraison rapide dans les 69 Wilayas d'Algérie (24h-48h Alger/Blida/Grandes villes, 48h-72h autres wilayas). Échange ou retour garanti sous 7 jours dans l'emballage d'origine.",
+        "توصيل سريع إلى 69 ولاية في الجزائر (24 إلى 48 ساعة للجزائر العاصمة والبليدة والمدن الكبرى، و48 إلى 72 ساعة لباقي الولايات). الاستبدال أو الإرجاع مضمون خلال 7 أيام في التغليف الأصلي.",
+        "Fast delivery to all 69 wilayas of Algeria (24–48 h for Algiers, Blida and large cities, 48–72 h elsewhere). Exchange or return guaranteed within 7 days in the original packaging.",
+    ),
+}
+
 _INITIAL_STATIC_PAGES = [
             (
                 "about",
                 "La Maison Mus Luxury — Ouled Yaïch",
                 "دار موس لوكسوري — أولاد يعيش",
                 "House of Mus Luxury — Ouled Yaïch",
-                "Boutique officielle Mus Luxury située à FVX6+GCJ Mus luxury, Ouled Yaïch (Blida 09). Sélection certifiée de maroquinerie, chaussures, châles, maquillage, lunettes et montres avec livraison 69 Wilayas et paiement à la livraison (0655 53 41 54).",
+                "Boutique Mus Luxury à FVX6+GCJ Mus luxury, Ouled Yaïch (Blida 09) : sacs, chaussures, châles, maquillage, lunettes et montres. Livraison dans les 69 wilayas et paiement à la livraison (0655 53 41 54).",
+                "متجر موس لوكسوري في FVX6+GCJ Mus luxury، أولاد يعيش (البليدة 09): حقائب، أحذية، شالات، مستحضرات تجميل، نظارات وساعات. التوصيل إلى 69 ولاية والدفع عند الاستلام (0655 53 41 54).",
+                "Mus Luxury shop at FVX6+GCJ Mus luxury, Ouled Yaïch (Blida 09): bags, shoes, shawls, make-up, glasses and watches. Delivery to all 69 wilayas, cash on delivery (0655 53 41 54).",
             ),
             (
                 "faq",
@@ -692,13 +946,17 @@ _INITIAL_STATIC_PAGES = [
                 "الأسئلة الشائعة",
                 "Frequently Asked Questions (FAQ)",
                 "Commandez directement sans créer de compte. Sélectionnez votre Wilaya (01 à 69) et le mode À Domicile ou Stop-Desk : le tarif est calculé automatiquement et le paiement s'effectue à la réception.",
+                "اطلبوا مباشرة دون إنشاء حساب. اختاروا ولايتكم (من 01 إلى 69) والتوصيل إلى المنزل أو إلى المكتب (Stop-Desk): يُحسب سعر التوصيل تلقائيًا ويتم الدفع عند الاستلام.",
+                "Order directly, no account needed. Choose your wilaya (01 to 69) and home or Stop-Desk delivery: the delivery price is calculated automatically and you pay on delivery.",
             ),
             (
                 "returns",
                 "Livraison 69 Wilayas & Retours sous 7 Jours",
                 "التوصيل إلى 69 ولاية والإرجاع خلال 7 أيام",
                 "69-Wilaya Delivery & 7-Day Returns",
-                "Livraison rapide dans les 69 Wilayas d'Algérie (24h-48h Alger/Blida/Grandes villes, 48h-72h autres wilayas). Échange ou retour garanti sous 7 jours dans l'emballage d'origine.",
+                "Livraison dans les 69 wilayas d'Algérie, à domicile ou en bureau Stop-Desk ; le délai dépend de la wilaya. Échange ou retour sous 7 jours dans l'emballage d'origine.",
+                "التوصيل إلى 69 ولاية في الجزائر، إلى المنزل أو إلى مكتب Stop-Desk؛ تختلف المدة حسب الولاية. الاستبدال أو الإرجاع خلال 7 أيام في التغليف الأصلي.",
+                "Delivery to all 69 wilayas of Algeria, at home or to a Stop-Desk office; the delay depends on the wilaya. Exchange or return within 7 days in the original packaging.",
             ),
             (
                 "terms",
@@ -706,5 +964,7 @@ _INITIAL_STATIC_PAGES = [
                 "الشروط العامة والخصوصية",
                 "Terms & Privacy Policy",
                 "Tous les prix sont affichés en Dinar Algérien (DA). Vos coordonnées (nom, téléphone, adresse) sont utilisées exclusivement pour la confirmation téléphonique et l'expédition de votre colis.",
+                "جميع الأسعار معروضة بالدينار الجزائري (DA). تُستعمل معلوماتكم (الاسم، الهاتف، العنوان) فقط لتأكيد الطلب هاتفيًا وإرسال الطرد.",
+                "All prices are in Algerian dinars (DA). Your details (name, phone, address) are used only to confirm your order by phone and to ship your parcel.",
             ),
 ]

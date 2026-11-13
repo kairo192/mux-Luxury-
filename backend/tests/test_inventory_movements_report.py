@@ -15,7 +15,7 @@ os.environ.setdefault("SECRET_KEY", "test_only_ephemeral_secret_key_for_unit_tes
 
 from fastapi.testclient import TestClient
 
-from app.main import app
+from app.main import app, _shop_today
 from app.seed import seed_initial_data
 from app.security import reset_rate_limits
 
@@ -34,7 +34,7 @@ class TestInventoryMovementsReport(unittest.TestCase):
     def setUp(self):
         reset_rate_limits()
         self.suffix = uuid.uuid4().hex[:6]
-        self.today = date.today().isoformat()
+        self.today = _shop_today()
         cid = self.client.post("/api/v1/admin/categories", headers=self.headers, json={
             "slug": f"imr-{self.suffix}", "name_fr": f"IMR {self.suffix}", "name_ar": "x", "name_en": "IMR",
             "display_order": 99, "is_active": True, "show_on_homepage": False}).json()["id"]
@@ -79,7 +79,7 @@ class TestInventoryMovementsReport(unittest.TestCase):
         self.assertEqual(r.status_code, 200)
         self.assertIn("text/csv", r.headers["content-type"])
         body = r.text
-        self.assertTrue(body.splitlines()[0].startswith("date,sku,product_name"))
+        self.assertTrue(body.lstrip("\ufeff").splitlines()[0].startswith("Date;SKU;Produit"))
         self.assertIn("TOTAL", body)
 
     def test_05_invalid_dates(self):

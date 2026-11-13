@@ -18,7 +18,19 @@ export interface ClientNotificationItem {
   message: string;
   timestamp: string;
   showModalBox?: boolean;
+  /** epoch ms — used for ordering, dedupe and the notification history. */
+  createdAt?: number;
+  /** Groups entries in the notification history (order, update, sync, system). */
+  category?: ClientNotificationCategory;
+  /** Also raise a native OS (Windows) notification when the CMS is in the background. */
+  os?: boolean;
+  /** Optional call-to-action rendered on the toast (e.g. "Voir la commande"). */
+  action?: { label: string; onClick: () => void };
+  /** Override the auto-dismiss delay of the toast (ms). 0 = stays until closed. */
+  durationMs?: number;
 }
+
+export type ClientNotificationCategory = "order" | "update" | "sync" | "system";
 
 type NotificationListener = (item: ClientNotificationItem) => void;
 const listeners: Set<NotificationListener> = new Set();
@@ -196,6 +208,23 @@ export function sanitizeAndTranslateError(
     };
   }
 
+  // 4b. The server already explained the problem in French, for people
+  // (e.g. "« Couleur » sert à distinguer 2 variante(s)…"): show it as is.
+  // English or technical messages keep going through the safe wording below.
+  const humanFrench =
+    status >= 400 && status < 500 &&
+    rawText.length > 0 && rawText.length <= 400 &&
+    /[éèàùçêâîôû«»]/i.test(rawText) &&
+    !/(traceback|psycopg|sqlite|exception|select |insert into|delete from|update \w+ set|[{}<>]|file ")/i.test(rawText);
+  if (humanFrench) {
+    const titles: Record<number, string> = {
+      400: "Opération impossible",
+      404: "Élément introuvable",
+      409: "Action bloquée pour protéger vos données",
+    };
+    return { title: titles[status] || fallbackTitle, message: rawText, code: `HTTP_${status}`, status };
+  }
+
   // 5. Not Found (404)
   if (status === 404 || lower.includes("not found") || lower.includes("introuvable")) {
     return {
@@ -243,8 +272,8 @@ export function sanitizeAndTranslateError(
   // 7. File Size Too Large (413)
   if (status === 413 || lower.includes("exceeds maximum allowed size")) {
     return {
-      title: "Image trop volumineuse (Max 5 Mo)",
-      message: "Le fichier sélectionné dépasse la limite de 5 Mo. Veuillez compresser l'image ou choisir un format JPEG, PNG ou WEBP.",
+      title: "Image trop volumineuse (max. 15 Mo)",
+      message: "Le fichier sélectionné dépasse 15 Mo. Choisissez une photo JPEG, PNG ou WEBP plus légère.",
       code: "PAYLOAD_TOO_LARGE",
       status: 413,
     };
@@ -331,6 +360,10 @@ export function notifyClient(opts: {
   title: string;
   message: string;
   showModalBox?: boolean;
+  category?: ClientNotificationCategory;
+  os?: boolean;
+  action?: { label: string; onClick: () => void };
+  durationMs?: number;
 }): ClientNotificationItem {
   const now = new Date();
   const hh = String(now.getHours()).padStart(2, "0");
@@ -343,6 +376,11 @@ export function notifyClient(opts: {
     message: opts.message,
     timestamp: `${hh}:${mm}:${ss}`,
     showModalBox: opts.showModalBox ?? (opts.type === "error" || opts.type === "warning"),
+    createdAt: now.getTime(),
+    category: opts.category ?? "system",
+    os: opts.os ?? false,
+    action: opts.action,
+    durationMs: opts.durationMs,
   };
   listeners.forEach((fn) => fn(item));
   return item;

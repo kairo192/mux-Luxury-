@@ -1,6 +1,6 @@
 # VPS preparation
 
-Target host: 1 vCore, 2 GB RAM, 150 GB disk Ubuntu 22.04 or 24.04 LTS, root SSH.
+Target host: 1 vCore, 2 GB RAM, 40 GB disk Ubuntu 22.04 or 24.04 LTS, root SSH.
 
 ## 0. Before you log in
 

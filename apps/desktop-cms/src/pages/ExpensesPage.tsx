@@ -1,6 +1,9 @@
 import React, { useState, useEffect } from "react";
 import { DesktopCmsApi } from "../api/adminClient";
 import { useT } from "../i18n";
+import { codeLabel } from "../utils/codeLabels";
+import { confirmClientAction, notifyClientError, notifyClientSuccess } from "../utils/clientNotifier";
+import { localDateIso } from "../utils/serverDate";
 import {
   RefreshCw,
   Plus,
@@ -9,9 +12,6 @@ import {
   Search,
   Trash2,
   X,
-  CreditCard,
-  Building2,
-  Receipt,
 } from "lucide-react";
 
 interface ExpenseItem {
@@ -58,12 +58,39 @@ export const ExpensesPage: React.FC = () => {
   const [formDesc, setFormDesc] = useState<string>("");
   const [formCategory, setFormCategory] = useState<string>("loyer");
   const [formAmount, setFormAmount] = useState<string>("");
-  const [formDate, setFormDate] = useState<string>(new Date().toISOString().slice(0, 10));
+  const [formDate, setFormDate] = useState<string>(localDateIso());
   const [formMethod, setFormMethod] = useState<string>("cash");
   const [formBeneficiary, setFormBeneficiary] = useState<string>("");
   const [formReceiptRef, setFormReceiptRef] = useState<string>("");
   const [formNotes, setFormNotes] = useState<string>("");
   const [formStatus, setFormStatus] = useState<string>("paid");
+
+  // An expense recorded "à régler" is paid now (cash box or bank).
+  const payPending = async (exp: ExpenseItem) => {
+    const amount = `${Number(exp.amount_dzd || 0).toLocaleString()} DA`;
+    // 1. How it was paid (two answers: cash box or bank)…
+    const cash = await confirmClientAction({
+      title: "Payer la dépense",
+      message: `${exp.description} — ${amount}. Payée en espèces (caisse) ? Choisissez « Banque » pour un virement ou un chèque.`,
+      confirmLabel: "Espèces (caisse)",
+      cancelLabel: "Banque",
+    });
+    // 2. …then a real yes/no: closing or « Annuler » records nothing.
+    const go = await confirmClientAction({
+      title: "Confirmer le paiement",
+      message: `Enregistrer le paiement de ${amount} pour « ${exp.description} » ${cash ? "en espèces (sortie de caisse)" : "par la banque"} ?`,
+      confirmLabel: "Enregistrer le paiement",
+      cancelLabel: "Annuler",
+    });
+    if (!go) return;
+    try {
+      await DesktopCmsApi.payExpense(exp.id, cash ? "cash" : "bank_transfer");
+      notifyClientSuccess("Dépense payée", `${exp.description} : ${Number(exp.amount_dzd || 0).toLocaleString()} DA (${cash ? "caisse" : "banque"}).`);
+      await loadExpenses();
+    } catch (err) {
+      notifyClientError(err, "Paiement de la dépense impossible");
+    }
+  };
 
   const loadExpenses = async () => {
     setLoading(true);
@@ -198,7 +225,7 @@ export const ExpensesPage: React.FC = () => {
             <AlertTriangle className="w-4 h-4 text-red-600 shrink-0" />
             <span>{error}</span>
           </span>
-          <button onClick={() => setError(null)} className="text-red-500 font-bold hover:opacity-75 transition">
+          <button aria-label="Masquer le message" onClick={() => setError(null)} className="text-red-500 font-bold hover:opacity-75 transition">
             <X className="w-4 h-4" />
           </button>
         </div>
@@ -209,7 +236,7 @@ export const ExpensesPage: React.FC = () => {
             <CheckCircle2 className="w-4 h-4 text-emerald-700 shrink-0" />
             <span>{success}</span>
           </span>
-          <button onClick={() => setSuccess(null)} className="text-emerald-600 font-bold hover:opacity-75 transition">
+          <button aria-label="Masquer le message" onClick={() => setSuccess(null)} className="text-emerald-600 font-bold hover:opacity-75 transition">
             <X className="w-4 h-4" />
           </button>
         </div>
@@ -301,7 +328,7 @@ export const ExpensesPage: React.FC = () => {
               <tbody className="divide-y divide-gray-100">
                 {filteredExpenses.map((exp) => {
                   const catLabel =
-                    EXPENSE_CATEGORIES.find((c) => c.value === exp.category)?.label || exp.category;
+                    EXPENSE_CATEGORIES.find((c) => c.value === exp.category)?.label || codeLabel(exp.category);
                   return (
                     <tr key={exp.id} className="hover:bg-gray-50/80 transition-colors">
                       <td className="py-3 px-4 font-mono text-gray-600 whitespace-nowrap">
@@ -325,11 +352,11 @@ export const ExpensesPage: React.FC = () => {
                       <td className="py-3 px-4 text-gray-600 capitalize">
                         {exp.payment_method === "cash"
                           ? t("expenses.method_cash")
-                          : exp.payment_method === "bank"
+                          : exp.payment_method === "bank" || exp.payment_method === "bank_transfer"
                             ? t("expenses.method_bank")
                             : exp.payment_method === "check"
                               ? t("expenses.method_check")
-                              : exp.payment_method}
+                              : codeLabel(exp.payment_method)}
                       </td>
                       <td className="py-3 px-4 text-right font-mono font-bold text-red-600 whitespace-nowrap">
                         -{Number(exp.amount_dzd || 0).toLocaleString()} DZD
@@ -343,6 +370,15 @@ export const ExpensesPage: React.FC = () => {
                         >
                           {exp.payment_status === "paid" ? t("expenses.status_paid") : t("expenses.status_pending")}
                         </span>
+                        {exp.payment_status !== "paid" && (
+                          <button
+                            type="button"
+                            onClick={() => payPending(exp)}
+                            className="ms-2 px-2 py-0.5 rounded-lg bg-[#063D2E] text-[#D4AF62] text-[11px] font-bold"
+                          >
+                            Payer
+                          </button>
+                        )}
                       </td>
                       <td className="py-3 px-4 text-right">
                         <button
@@ -453,7 +489,7 @@ export const ExpensesPage: React.FC = () => {
                     className="w-full text-xs p-2 border border-gray-300 rounded focus:border-[#063D2E] outline-none"
                   >
                     <option value="cash">{t("expenses.modal_method_cash")}</option>
-                    <option value="bank">{t("expenses.modal_method_bank")}</option>
+                    <option value="bank_transfer">{t("expenses.modal_method_bank")}</option>
                     <option value="check">{t("expenses.modal_method_check")}</option>
                     <option value="other">{t("expenses.modal_method_other")}</option>
                   </select>
@@ -565,7 +601,7 @@ export const ExpensesPage: React.FC = () => {
                   <p className="text-[11px] text-[#E8D4A5]/80">{t("expenses.modal_del_subtitle")}</p>
                 </div>
               </div>
-              <button
+              <button aria-label="Fermer"
                 type="button"
                 onClick={() => setExpenseToDelete(null)}
                 className="w-8 h-8 rounded-full bg-white/10 hover:bg-white/20 text-[#E8D4A5] flex items-center justify-center transition"
@@ -585,7 +621,7 @@ export const ExpensesPage: React.FC = () => {
                 </div>
                 <div className="flex justify-between text-gray-500">
                   <span>Catégorie :</span>
-                  <span>{expenseToDelete.category}</span>
+                  <span>{codeLabel(expenseToDelete.category)}</span>
                 </div>
               </div>
               <p className="text-[11px] text-amber-800 bg-amber-50 p-2.5 rounded-xl border border-amber-200 flex items-center gap-1.5">

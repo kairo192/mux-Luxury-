@@ -15,7 +15,8 @@
 #   - systemd timer for `vps-metrics.sh`
 #
 # What this script does NOT do:
-#   - Install certificates. Run `certbot --nginx -d mus-luxury.com ...` after this.
+#   - Install certificates. Run `infrastructure/scripts/certificates.sh setup` after this
+#     (first certificate + renewals without downtime).
 #   - Create the first release. That's `release-deploy.sh`'s job, invoked by CD.
 # =============================================================================
 set -euo pipefail
@@ -38,7 +39,7 @@ export DEBIAN_FRONTEND=noninteractive
 apt-get update -y
 apt-get install -y --no-install-recommends \
   ca-certificates curl gnupg openssl unzip jq ufw \
-  unattended-upgrades fail2ban logrotate tzdata rsync \
+  unattended-upgrades fail2ban logrotate tzdata rsync rclone sqlite3 \
   python3 python3-venv python3-pip
 dpkg-reconfigure --frontend=noninteractive unattended-upgrades || true
 
@@ -93,19 +94,22 @@ install -d -o "$DEPLOY_USER" -g "$DEPLOY_USER" "$INSTALL_ROOT/shared/nginx-ssl"
 install -d -o "$DEPLOY_USER" -g "$DEPLOY_USER" "$INSTALL_ROOT/logs"
 
 # /var/lib/luxe holds the actual data that must survive a reinstall
-install -d -m 0750 /var/lib/luxe
-install -d -m 0750 /var/lib/luxe/uploads
-install -d -m 0750 /var/lib/luxe/backups
+install -d -m 0750 -o "$DEPLOY_USER" -g "$DEPLOY_USER" /var/lib/luxe
+install -d -m 0750 -o "$DEPLOY_USER" -g "$DEPLOY_USER" /var/lib/luxe/uploads
+# The nightly cron runs as $DEPLOY_USER: it must be able to write here.
+install -d -m 0700 -o "$DEPLOY_USER" -g "$DEPLOY_USER" /var/lib/luxe/backups
 # docker volumes bind-mount to these via docker-compose override
 
 # -------------------------------------------------- 6. Backup cron
+# Same line as infrastructure/backups/install_backup_cron.sh: nightly_backup.sh
+# reads the production .env safely (encryption key, off-site target), dumps
+# PostgreSQL THROUGH DOCKER, copies off-site, verifies, and logs everything.
 log "Installing nightly encrypted backup cron (03:30)"
 cat > /etc/cron.d/luxe-backup <<CRON
 SHELL=/bin/bash
 PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
 MAILTO=""
-30 3 * * * $DEPLOY_USER cd $INSTALL_ROOT/current && /usr/bin/env BACKUP_DIR=/var/lib/luxe/backups UPLOAD_DIR=/var/lib/luxe/uploads \\
-    bash infrastructure/backups/backup_postgres_and_media.sh >> $INSTALL_ROOT/logs/backup.log 2>&1
+30 3 * * * $DEPLOY_USER INSTALL_ROOT=$INSTALL_ROOT bash $INSTALL_ROOT/current/infrastructure/backups/nightly_backup.sh >> $INSTALL_ROOT/logs/backup.log 2>&1
 CRON
 chmod 0644 /etc/cron.d/luxe-backup
 
@@ -168,11 +172,11 @@ cat <<NEXT
 
 Next steps (as the deploy user):
   1. Put the production \`.env\` at  $INSTALL_ROOT/shared/.env  (chmod 0600, owner $DEPLOY_USER)
-  2. Install Let's Encrypt:
-       apt-get install -y certbot python3-certbot-nginx
-       certbot certonly --standalone -d $DOMAIN -d www.$DOMAIN -d api.$DOMAIN
-       cp /etc/letsencrypt/live/$DOMAIN/fullchain.pem $INSTALL_ROOT/shared/nginx-ssl/
-       cp /etc/letsencrypt/live/$DOMAIN/privkey.pem   $INSTALL_ROOT/shared/nginx-ssl/
+  2. HTTPS certificate (DNS of $DOMAIN, www and api must point to this server):
+       sudo DOMAIN=$DOMAIN INSTALL_ROOT=$INSTALL_ROOT CERTBOT_EMAIL=<owner e-mail> \
+            bash infrastructure/scripts/certificates.sh setup
+     Run it again once after the first deploy: renewals then happen by themselves,
+     without stopping the shop (check: sudo luxe-certificates check).
   3. Add the GitHub Actions deploy public key to  /home/$DEPLOY_USER/.ssh/authorized_keys  (if not already)
   4. Trigger the first deploy from GitHub Actions (cd-staging.yml / cd-production.yml)
 

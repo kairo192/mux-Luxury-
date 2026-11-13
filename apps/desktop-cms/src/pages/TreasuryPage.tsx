@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from "react";
+import { formatServerDateTime } from "../utils/serverDate";
 import {
   Building2,
   Zap,
@@ -14,6 +15,7 @@ import {
 } from "lucide-react";
 import { DesktopCmsApi } from "../api/adminClient";
 import { useT } from "../i18n";
+import { codeLabel } from "../utils/codeLabels";
 
 interface TreasurySummary {
   cash_balance_dzd: number;
@@ -55,6 +57,7 @@ export const TreasuryPage: React.FC = () => {
   // New Movement Form State
   const [movType, setMovType] = useState<"inflow" | "outflow">("inflow");
   const [movCategory, setMovCategory] = useState<string>("cash_in");
+  const [movAccount, setMovAccount] = useState<"cash_box" | "bank_account">("cash_box");
   const [movAmount, setMovAmount] = useState<string>("");
   const [movNotes, setMovNotes] = useState<string>("");
 
@@ -92,6 +95,7 @@ export const TreasuryPage: React.FC = () => {
     try {
       await DesktopCmsApi.recordCashMovement({
         movement_type: movType,
+        account_type: movAccount,
         category: movCategory,
         amount_dzd: parsedAmount,
         notes: movNotes.trim() || undefined,
@@ -150,7 +154,7 @@ export const TreasuryPage: React.FC = () => {
             <AlertTriangle className="w-4 h-4 text-red-600 shrink-0" />
             <span>{error}</span>
           </span>
-          <button onClick={() => setError(null)} className="text-red-500 font-bold hover:opacity-75 transition">
+          <button aria-label="Masquer le message" onClick={() => setError(null)} className="text-red-500 font-bold hover:opacity-75 transition">
             <X className="w-4 h-4" />
           </button>
         </div>
@@ -161,7 +165,7 @@ export const TreasuryPage: React.FC = () => {
             <CheckCircle2 className="w-4 h-4 text-emerald-700 shrink-0" />
             <span>{success}</span>
           </span>
-          <button onClick={() => setSuccess(null)} className="text-emerald-600 font-bold hover:opacity-75 transition">
+          <button aria-label="Masquer le message" onClick={() => setSuccess(null)} className="text-emerald-600 font-bold hover:opacity-75 transition">
             <X className="w-4 h-4" />
           </button>
         </div>
@@ -237,7 +241,7 @@ export const TreasuryPage: React.FC = () => {
             <span className="text-sm font-sans font-normal text-[#D4AF62]">DZD</span>
           </div>
           <div className="text-[11px] text-gray-500 mt-2">
-            Colis expédiés livrés / en cours de reversement
+            Commandes confirmées, en préparation ou expédiées : à encaisser à la livraison
           </div>
         </div>
 
@@ -299,18 +303,18 @@ export const TreasuryPage: React.FC = () => {
                   <th className="py-3 px-4">{t("treasury.th_type")} / {t("treasury.th_category")}</th>
                   <th className="py-3 px-4">{t("expense_report.th_desc")}</th>
                   <th className="py-3 px-4 text-right">{t("treasury.th_amount")}</th>
-                  <th className="py-3 px-4 text-right">Solde Caisse Après</th>
+                  <th className="py-3 px-4 text-right">Solde du compte après</th>
                   <th className="py-3 px-4 text-right">Opérateur</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-100">
                 {movements.map((m) => {
-                  const isInflow = m.movement_type === "inflow";
+                  const isInflow = m.movement_type === "inflow" || (m.movement_type as string) === "deposit";
                   return (
                     <tr key={m.id} className="hover:bg-gray-50/80 transition-colors">
                       <td className="py-3 px-4 font-mono text-gray-400">#{m.id}</td>
                       <td className="py-3 px-4 font-mono text-gray-600 whitespace-nowrap">
-                        {m.created_at ? m.created_at.replace("T", " ").slice(0, 19) : "—"}
+                        {formatServerDateTime(m.created_at)}
                       </td>
                       <td className="py-3 px-4">
                         <span
@@ -320,14 +324,14 @@ export const TreasuryPage: React.FC = () => {
                               : "bg-red-100 text-red-800"
                           }`}
                         >
-                          {isInflow ? `↗ ${t("treasury.inflow")}` : `↘ ${t("treasury.outflow")}`} • {m.category || m.source_type || (m.account_type === "cash_box" ? "Caisse" : "Banque")}
+                          {isInflow ? `↗ ${t("treasury.inflow")}` : `↘ ${t("treasury.outflow")}`} • {codeLabel(m.category || m.source_type || "")} · {codeLabel(m.account_type || "cash_box")}
                         </span>
                       </td>
                       <td className="py-3 px-4 text-gray-700">
                         <div>{m.notes || m.description || "—"}</div>
                         {(m.reference_id || m.source_reference) && (
                           <div className="text-[11px] font-mono text-gray-400">
-                            {m.reference_type || m.source_type || "Réf"}: #{m.reference_id || m.source_reference}
+                            Réf. {m.reference_id || m.source_reference}
                           </div>
                         )}
                       </td>
@@ -340,11 +344,11 @@ export const TreasuryPage: React.FC = () => {
                       </td>
                       <td className="py-3 px-4 text-right font-mono text-gray-700 whitespace-nowrap">
                         {m.balance_after_dzd !== undefined && m.balance_after_dzd !== null
-                          ? `${Number(m.balance_after_dzd).toLocaleString()} DZD`
+                          ? `${codeLabel(m.account_type || "cash_box")} : ${Number(m.balance_after_dzd).toLocaleString()} DZD`
                           : "—"}
                       </td>
                       <td className="py-3 px-4 text-right font-mono text-gray-500">
-                        {m.created_by || (m.recorded_by ? `Admin #${m.recorded_by}` : "—")}
+                        {m.created_by || "—"}
                       </td>
                     </tr>
                   );
@@ -419,23 +423,41 @@ export const TreasuryPage: React.FC = () => {
                 >
                   {movType === "inflow" ? (
                     <>
-                      <option value="cash_in">Alimentation / Fond de Caisse Initial</option>
-                      <option value="bank_withdrawal">Retrait Bancaire vers Caisse</option>
-                      <option value="cod_collection">Encaissement Livreur COD</option>
-                      <option value="capital_contribution">Apport en Compte Courant</option>
-                      <option value="other_inflow">Autre Entrée Diverse</option>
+                      <option value="cash_in">Fond de caisse / alimentation (caisse)</option>
+                      <option value="bank_withdrawal">Retrait à la banque vers la caisse (transfert)</option>
+                      <option value="capital_contribution">Apport du propriétaire</option>
+                      <option value="other_inflow">Autre entrée</option>
                     </>
                   ) : (
                     <>
-                      <option value="cash_out">Retrait Espèces Propriétaire</option>
-                      <option value="bank_deposit">Dépôt Espèces vers Banque</option>
-                      <option value="minor_expense">Menue Dépense Boutique Imprévue</option>
-                      <option value="cash_adjustment">Régularisation Écart de Caisse</option>
-                      <option value="other_outflow">Autre Sortie Diverse</option>
+                      <option value="cash_out">Retrait du propriétaire</option>
+                      <option value="bank_deposit">Dépôt d'espèces à la banque (transfert)</option>
+                      <option value="courier_remittance">Versement du livreur sur le compte (transfert)</option>
+                      <option value="minor_expense">Petite dépense boutique (caisse)</option>
+                      <option value="cash_adjustment">Régularisation d'écart de caisse</option>
+                      <option value="other_outflow">Autre sortie</option>
                     </>
                   )}
                 </select>
+                <p className="text-[11px] text-gray-500 mt-1">
+                  Les ventes en magasin, les commandes livrées et les dépenses sont enregistrées automatiquement :
+                  utilisez ce formulaire seulement pour les autres mouvements.
+                </p>
               </div>
+
+              {["capital_contribution", "other_inflow", "cash_out", "other_outflow"].includes(movCategory) && (
+                <div>
+                  <label className="block text-xs font-semibold text-gray-700 mb-1">Compte</label>
+                  <select
+                    value={movAccount}
+                    onChange={(e) => setMovAccount(e.target.value as "cash_box" | "bank_account")}
+                    className="w-full text-xs p-2 border border-gray-300 rounded focus:border-[#063D2E] outline-none"
+                  >
+                    <option value="cash_box">Caisse (espèces)</option>
+                    <option value="bank_account">Banque / CCP</option>
+                  </select>
+                </div>
+              )}
 
               <div>
                 <label className="block text-xs font-semibold text-gray-700 mb-1">

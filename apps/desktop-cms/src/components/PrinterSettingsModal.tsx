@@ -18,6 +18,7 @@ import { mirrorStatus, mirrorClear, type MirrorStatus } from "../utils/posMirror
 import { syncCatalog } from "../utils/posMirrorSync";
 import { confirmClientAction } from "../utils/clientNotifier";
 import { useT } from "../i18n";
+import { useEscapeToClose } from "../utils/useEscapeToClose";
 
 // ---------------------------------------------------------------------------
 // PrinterSettingsModal — configure the thermal receipt printer, cash drawer
@@ -32,6 +33,7 @@ interface Props {
 }
 
 export const PrinterSettingsModal: React.FC<Props> = ({ open, onClose, onFlash }) => {
+  useEscapeToClose(onClose, open);
   const t = useT();
   const [printers, setPrinters] = useState<PrinterInfo[]>([]);
   const [settings, setSettings] = useState<PrinterTarget>(() => loadHardwareSettings());
@@ -162,7 +164,7 @@ export const PrinterSettingsModal: React.FC<Props> = ({ open, onClose, onFlash }
           <div className="flex items-center gap-2 font-bold text-lg">
             <Printer className="w-6 h-6" /> {t("printer_settings.title")}
           </div>
-          <button type="button" onClick={onClose} className="h-10 w-10 flex items-center justify-center rounded-full hover:bg-white/10 active:scale-95">
+          <button aria-label="Fermer" type="button" onClick={onClose} className="h-10 w-10 flex items-center justify-center rounded-full hover:bg-white/10 active:scale-95">
             <X className="w-5 h-5" />
           </button>
         </div>
@@ -418,7 +420,7 @@ export const PrinterSettingsModal: React.FC<Props> = ({ open, onClose, onFlash }
 
               <div className="text-xs text-gray-500 font-mono break-all">
                 {mirror?.last_synced_at
-                  ? t("printer_settings.last_sync", { date: new Date(mirror.last_synced_at).toLocaleString("fr-DZ") })
+                  ? t("printer_settings.last_sync", { date: new Date(mirror.last_synced_at).toLocaleString("fr-FR") })
                   : t("printer_settings.never_synced")}
               </div>
 

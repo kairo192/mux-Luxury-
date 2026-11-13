@@ -16,10 +16,10 @@ import {
   UploadCloud,
   X,
 } from "lucide-react";
-import { DesktopCmsApi } from "../api/adminClient";
+import { DesktopCmsApi, mediaUrl, storefrontBaseUrl } from "../api/adminClient";
 import { notifyClientError, notifyClientSuccess, notifyClientWarning } from "../utils/clientNotifier";
 import { VariantManager, EditorVariant, VariantAxis } from "./VariantManager";
-import { LiveProductCardPreview } from "./LiveProductCardPreview";
+import { StorefrontPreview, type PreviewCheck } from "./StorefrontPreview";
 import { useT } from "../i18n";
 
 // ============================================================================
@@ -149,6 +149,7 @@ function draftFromProduct(product: any): Draft {
       low_stock_threshold: Number(v.low_stock_threshold ?? 3),
       is_active: v.is_active !== false,
       effective_price_dzd: v.effective_price_dzd,
+      image_url: v.image_url || null,
       attributes: { ...(v.attributes || {}) },
     })),
   };
@@ -181,6 +182,8 @@ export function ProductEditor({ open, product, categories, brands, onClose, onSa
   const [saving, setSaving] = useState(false);
   const [uploading, setUploading] = useState(false);
   const [slugTouched, setSlugTouched] = useState(false);
+  const [skuTouched, setSkuTouched] = useState(false);
+  const [skuSuffix] = useState(() => String(Math.floor(100 + Math.random() * 900)));
   const [confirmClose, setConfirmClose] = useState(false);
   const [conflict, setConflict] = useState("");
   const [pendingImages, setPendingImages] = useState<string[]>([]);
@@ -233,6 +236,7 @@ export function ProductEditor({ open, product, categories, brands, onClose, onSa
     setConflict("");
     setPendingImages([]);
     setSlugTouched(Boolean(product));
+    setSkuTouched(Boolean(product));
     setCategorySearch("");
   }, [open, product?.id]);
 
@@ -256,11 +260,25 @@ export function ProductEditor({ open, product, categories, brands, onClose, onSa
     setDraft((prev) => ({ ...prev, ...partial }));
   }
 
+  // e.g. "Sac Émeraude Prestige" in "Sacs" → SAC-SEP-482 (editable).
+  function suggestSku(name: string): string {
+    const catCode = (slugify(category?.slug || category?.name_fr || "LUX").replace(/-/g, "").slice(0, 3) || "LUX").toUpperCase();
+    const initials = slugify(name)
+      .split("-")
+      .filter(Boolean)
+      .map((w) => w[0])
+      .join("")
+      .slice(0, 4)
+      .toUpperCase();
+    return initials ? `${catCode}-${initials}-${skuSuffix}` : "";
+  }
+
   function handleNameChange(value: string) {
     setDraft((prev) => ({
       ...prev,
       name_fr: value,
       slug: slugTouched ? prev.slug : slugify(value),
+      sku: skuTouched ? prev.sku : suggestSku(value),
     }));
   }
 
@@ -283,8 +301,8 @@ export function ProductEditor({ open, product, categories, brands, onClose, onSa
       notifyClientWarning("Format non supporté", "Formats acceptés : JPEG, PNG ou WEBP.");
       return;
     }
-    if (file.size > 5 * 1024 * 1024) {
-      notifyClientWarning("Image trop volumineuse", "La taille maximale est de 5 Mo.");
+    if (file.size > 15 * 1024 * 1024) {
+      notifyClientWarning("Image trop volumineuse", "La taille maximale est de 15 Mo (la photo est ensuite réduite automatiquement).");
       return;
     }
     setUploading(true);
@@ -442,14 +460,15 @@ export function ProductEditor({ open, product, categories, brands, onClose, onSa
           price_override_dzd: v.price_override_dzd === null || v.price_override_dzd === undefined ? null : Number(v.price_override_dzd),
           stock_qty: Number(v.stock_qty) || 0,
           low_stock_threshold: Number(v.low_stock_threshold ?? 3),
+          image_url: v.image_url || null,
           attributes: v.attributes,
         }));
         const created = await DesktopCmsApi.createProduct(payload);
         const newId = created?.id;
         if (newId) {
-          for (const url of pendingImages) {
+          for (const [idx, url] of pendingImages.entries()) {
             try {
-              await DesktopCmsApi.addProductImage(newId, { image_url: url, alt_text: draft.name_fr, display_order: 1 });
+              await DesktopCmsApi.addProductImage(newId, { image_url: url, alt_text: draft.name_fr, display_order: idx + 1 });
             } catch {
               /* gallery image failures must not roll back a created product */
             }
@@ -457,7 +476,9 @@ export function ProductEditor({ open, product, categories, brands, onClose, onSa
         }
         notifyClientSuccess(
           "Produit créé",
-          `« ${draft.name_fr} » et ses ${draft.variants.length} déclinaison(s) sont en ligne.`
+          draft.status === "published"
+            ? `« ${draft.name_fr} » et ses ${draft.variants.length} déclinaison(s) sont en ligne sur la boutique.`
+            : `« ${draft.name_fr} » est enregistré en brouillon : il n'apparaît pas encore sur la boutique.`
         );
       } else {
         payload.expected_version = Number(draft.version || 1);
@@ -503,6 +524,24 @@ export function ProductEditor({ open, product, categories, brands, onClose, onSa
 
   if (!open) return null;
 
+  const productImages: string[] = Array.from(
+    new Set(
+      [draft.main_image_url, ...((product?.gallery_images || []) as any[]).map((g: any) => g.image_url), ...pendingImages].filter(
+        (u): u is string => Boolean(u && String(u).trim())
+      )
+    )
+  );
+  const totalVariantStock = draft.variants.reduce((sum, v) => sum + (Number(v.stock_qty) || 0), 0);
+  const readinessChecks: PreviewCheck[] = [
+    { ok: Boolean(draft.name_fr.trim()), label: t("preview.check_name") },
+    { ok: Boolean(draft.main_image_url.trim()), label: t("preview.check_photo") },
+    { ok: Number(draft.selling_price_dzd) > 0, label: t("preview.check_price") },
+    { ok: draft.variants.length > 0 && totalVariantStock > 0, label: t("preview.check_stock") },
+    { ok: Boolean(draft.description_fr.trim()), label: t("preview.check_description") },
+    { ok: Boolean(draft.name_ar.trim() && draft.name_en.trim()), label: t("preview.check_translations"), optional: true },
+    { ok: productImages.length > 1, label: t("preview.check_gallery"), optional: true },
+    { ok: draft.status === "published", label: t("preview.check_published") },
+  ];
   const margin = Number(draft.selling_price_dzd) - Number(draft.purchase_cost_dzd);
   const marginPct = Number(draft.selling_price_dzd) > 0 ? (margin / Number(draft.selling_price_dzd)) * 100 : 0;
   const gallery = (product?.gallery_images || []) as any[];
@@ -551,7 +590,7 @@ export function ProductEditor({ open, product, categories, brands, onClose, onSa
             >
               <span>{showLivePreview ? t("product_editor.btn_preview_active") : t("product_editor.btn_preview_show")}</span>
             </button>
-            <button
+            <button aria-label="Fermer"
               type="button"
               onClick={requestClose}
               className="p-2 rounded-xl bg-white/10 hover:bg-white/20 transition"
@@ -633,12 +672,14 @@ export function ProductEditor({ open, product, categories, brands, onClose, onSa
                   <label className="block font-bold mb-1">{t("product_editor.category_label")}</label>
                   <div className="flex items-center gap-2">
                     <input
+                      aria-label={t("product_editor.category_filter")}
                       value={categorySearch}
                       onChange={(e) => setCategorySearch(e.target.value)}
                       placeholder={t("product_editor.category_filter")}
                       className="w-40 px-2 py-1.5 border rounded-lg bg-[#F8F6F0]"
                     />
                     <select
+                      aria-label={t("product_editor.category_label")}
                       value={draft.category_id}
                       onChange={(e) => patch({ category_id: e.target.value === "" ? "" : Number(e.target.value), dynamic_attributes: {} })}
                       className="flex-1 px-3 py-2 border rounded-xl bg-white font-semibold focus:border-[#063D2E] outline-none"
@@ -776,7 +817,10 @@ export function ProductEditor({ open, product, categories, brands, onClose, onSa
                   <label className="block font-bold mb-1">{t("product_editor.sku_label")}</label>
                   <input
                     value={draft.sku}
-                    onChange={(e) => patch({ sku: e.target.value })}
+                    onChange={(e) => {
+                      setSkuTouched(true);
+                      patch({ sku: e.target.value.toUpperCase() });
+                    }}
                     placeholder="LUX-BAG-001"
                     className="w-full px-3 py-2 border rounded-xl font-mono uppercase bg-white"
                   />
@@ -975,6 +1019,7 @@ export function ProductEditor({ open, product, categories, brands, onClose, onSa
               variants={draft.variants}
               onChange={(next) => patch({ variants: next })}
               onRefresh={onSaved}
+              availableImages={productImages}
             />
           )}
 
@@ -988,7 +1033,7 @@ export function ProductEditor({ open, product, categories, brands, onClose, onSa
                 <div className="flex flex-col md:flex-row gap-4">
                   <div className="w-40 h-40 rounded-xl bg-white border border-gray-200 flex items-center justify-center overflow-hidden shrink-0">
                     {draft.main_image_url ? (
-                      <img src={draft.main_image_url} alt="Aperçu" className="w-full h-full object-cover" />
+                      <img src={mediaUrl(draft.main_image_url)} alt="Aperçu" className="w-full h-full object-cover" />
                     ) : (
                       <span className="text-gray-400 text-[11px] px-3 text-center">{t("product_editor.no_image_selected")}</span>
                     )}
@@ -1055,7 +1100,7 @@ export function ProductEditor({ open, product, categories, brands, onClose, onSa
                     {gallery.map((img: any) => (
                       <div key={img.id} className="rounded-xl border border-gray-200 overflow-hidden bg-white group">
                         <div className="h-28 bg-gray-50 flex items-center justify-center overflow-hidden">
-                          <img src={img.image_url} alt={img.alt_text || ""} className="w-full h-full object-cover" />
+                          <img src={mediaUrl(img.image_url)} alt={img.alt_text || ""} className="w-full h-full object-cover" />
                         </div>
                         <div className="p-2 space-y-1">
                           <p className="text-[10px] font-mono text-gray-500 truncate" title={img.image_url}>
@@ -1084,7 +1129,7 @@ export function ProductEditor({ open, product, categories, brands, onClose, onSa
                     {pendingImages.map((url) => (
                       <div key={url} className="rounded-xl border border-dashed border-amber-300 overflow-hidden bg-amber-50/40">
                         <div className="h-28 bg-white flex items-center justify-center overflow-hidden">
-                          <img src={url} alt="" className="w-full h-full object-cover" />
+                          <img src={mediaUrl(url)} alt="" className="w-full h-full object-cover" />
                         </div>
                         <div className="p-2 space-y-1">
                           <p className="text-[10px] font-bold text-amber-800">{t("product_editor.pending_image_note")}</p>
@@ -1224,17 +1269,24 @@ export function ProductEditor({ open, product, categories, brands, onClose, onSa
             {/* Live Storefront Preview Column */}
             {showLivePreview && (
               <div className="lg:col-span-4 sticky top-0 space-y-3 min-w-[280px] w-full">
-                <LiveProductCardPreview
-                  name={draft.name_fr}
+                <StorefrontPreview
+                  names={{ fr: draft.name_fr, ar: draft.name_ar, en: draft.name_en }}
+                  descriptions={{ fr: draft.description_fr, ar: draft.description_ar, en: draft.description_en }}
                   brandName={localBrands.find((b) => b.id === Number(draft.brand_id))?.name}
-                  categoryName={category?.name_fr}
                   mainImageUrl={draft.main_image_url}
-                  sellingPriceDzd={draft.selling_price_dzd}
+                  galleryUrls={productImages.filter((u) => u !== draft.main_image_url)}
+                  sellingPriceDzd={Number(draft.selling_price_dzd) || 0}
                   previousPriceDzd={draft.previous_price_dzd}
-                  discountPercent={draft.discount_percent}
+                  discountPercent={Number(draft.discount_percent) || 0}
                   isFeatured={draft.is_featured}
                   isNewArrival={draft.is_new_arrival}
+                  status={draft.status}
                   variants={draft.variants}
+                  axes={axes}
+                  dataAttributes={dataAttributes}
+                  attributeValues={draft.dynamic_attributes}
+                  checks={readinessChecks}
+                  shopLink={!isCreate && draft.status === "published" && draft.slug ? `${storefrontBaseUrl()}/produit/${draft.slug}` : undefined}
                 />
                 <div className="p-3 rounded-2xl bg-[#063D2E]/5 border border-[#D4AF62]/30 text-[11px] text-[#063D2E] space-y-1">
                   <div className="flex justify-between font-bold">

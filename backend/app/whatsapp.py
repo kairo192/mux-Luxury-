@@ -63,62 +63,24 @@ def normalize_algerian_phone(raw_phone: str) -> Tuple[str, str, str]:
 
 def get_whatsapp_config() -> dict:
     """
-    Reads Meta WhatsApp Business Cloud API configuration from environment variables.
-    C-2 & C-3.4 Hardening:
-    - Never defaults WHATSAPP_WEBHOOK_VERIFY_TOKEN; rejects compromised SHA-256 digests in production.
-    - In production (`config.is_production()`), sandbox mode and placeholder tokens (`EAATest_`, `test_`)
-      are strictly disabled (`is_configured = False`, `sandbox_mode = False`) so simulated delivery
-      can never silently replace real WhatsApp delivery or expose `test_otp`.
+    The Meta WhatsApp Cloud API webhook settings (delivery receipts). Messages
+    to customers need no key: staff send prepared wa.me messages.
+    Hardening: placeholder values count as empty; in production a value from
+    the published-secret denylist is refused (the webhook then answers 503).
     """
     from .security import COMPROMISED_SECRET_SHA256_DENYLIST
 
-    token = os.getenv("WHATSAPP_CLOUD_API_TOKEN", "").strip()
-    if not token and "WHATSAPP_CLOUD_API_TOKEN" not in os.environ:
-        token = os.getenv("WHATSAPP_ACCESS_TOKEN", "").strip()
-    phone_number_id = os.getenv("WHATSAPP_PHONE_NUMBER_ID", "").strip()
-    business_account_id = os.getenv("WHATSAPP_BUSINESS_ACCOUNT_ID", "").strip()
-
-    app_secret = os.getenv("WHATSAPP_APP_SECRET", "").strip()
-    if app_secret.lower().startswith(("replace", "change", "<change", "<replace")):
-        app_secret = ""
-    elif config.is_production() and hashlib.sha256(app_secret.encode("utf-8")).hexdigest() in COMPROMISED_SECRET_SHA256_DENYLIST:
-        app_secret = ""
-
-    webhook_verify_token = os.getenv("WHATSAPP_WEBHOOK_VERIFY_TOKEN", "").strip()
-    if webhook_verify_token.lower().startswith(("replace", "change", "<change", "<replace")):
-        webhook_verify_token = ""
-    elif config.is_production() and hashlib.sha256(webhook_verify_token.encode("utf-8")).hexdigest() in COMPROMISED_SECRET_SHA256_DENYLIST:
-        webhook_verify_token = ""
-
-    api_version = os.getenv("WHATSAPP_API_VERSION", "v20.0").strip() or "v20.0"
-    template_name = os.getenv("WHATSAPP_TEMPLATE_NAME", "luxe_admin_password_reset").strip()
-    template_lang = os.getenv("WHATSAPP_TEMPLATE_LANG", "fr").strip() or "fr"
-    sandbox_raw = os.getenv("WHATSAPP_SANDBOX_MODE", "").strip().lower()
-    in_prod = config.is_production()
-
-    # C-2: test_capture and sandbox_mode are strictly disabled in production
-    test_capture = (not in_prod) and (os.getenv("WHATSAPP_TEST_CAPTURE", "").strip() == "1")
-    is_placeholder_token = token.startswith(("EAATest_", "test_", "<CHANGE_ME", "replace_")) or phone_number_id.startswith("<CHANGE_ME")
-
-    if in_prod:
-        sandbox_mode = False
-        is_configured = bool(token and phone_number_id and not is_placeholder_token and sandbox_raw not in ("1", "true", "yes"))
-    else:
-        sandbox_mode = sandbox_raw in ("1", "true", "yes") or (bool(token) and is_placeholder_token)
-        is_configured = bool(token and phone_number_id and not token.startswith("<CHANGE_ME"))
+    def _clean(raw: str) -> str:
+        value = (raw or "").strip()
+        if value.lower().startswith(("replace", "change", "<change", "<replace")):
+            return ""
+        if config.is_production() and hashlib.sha256(value.encode("utf-8")).hexdigest() in COMPROMISED_SECRET_SHA256_DENYLIST:
+            return ""
+        return value
 
     return {
-        "token": token,
-        "phone_number_id": phone_number_id,
-        "business_account_id": business_account_id,
-        "app_secret": app_secret,
-        "webhook_verify_token": webhook_verify_token,
-        "api_version": api_version,
-        "template_name": template_name,
-        "template_lang": template_lang,
-        "sandbox_mode": sandbox_mode,
-        "test_capture": test_capture,
-        "is_configured": is_configured,
+        "app_secret": _clean(os.getenv("WHATSAPP_APP_SECRET", "")),
+        "webhook_verify_token": _clean(os.getenv("WHATSAPP_WEBHOOK_VERIFY_TOKEN", "")),
     }
 
 
@@ -220,8 +182,11 @@ def dispatch_customer_whatsapp_order_update(
     both the API receipt and the 1-click wa.me deep link.
     """
     msg_info = build_customer_order_whatsapp_message(order_dict, template_type, custom_message)
-    cfg = get_whatsapp_config()
-    msg_id = f"wamid.ORDER_{template_type.upper()}_{int(time.time())}_{hashlib.sha256(msg_info['recipient_e164'].encode()).hexdigest()[:8]}"
+    # Nothing is sent from the server: no WhatsApp Business API call exists in
+    # this system. The back office opens WhatsApp on the PC with the message
+    # already written (wa.me link) and the staff member presses "Send". The
+    # result therefore says "prepared", never "delivered".
+    log_id = f"wa_{template_type}_{int(time.time())}_{hashlib.sha256(msg_info['recipient_e164'].encode()).hexdigest()[:8]}"
 
     outbox_dir = _resolve_outbox_dir()
     outbox_file = os.path.join(outbox_dir, "whatsapp_outbox.jsonl")
@@ -229,7 +194,8 @@ def dispatch_customer_whatsapp_order_update(
     log_entry = {
         "timestamp": int(time.time()),
         "channel": "whatsapp_order_notification",
-        "mode": "sandbox" if (cfg["sandbox_mode"] or not cfg["is_configured"]) else "live",
+        "mode": "manual_link",
+        "status": "prepared",
         "order_id": order_dict.get("id"),
         "order_reference": order_dict.get("order_reference"),
         "template_type": template_type,
@@ -237,16 +203,16 @@ def dispatch_customer_whatsapp_order_update(
         "recipient_local": msg_info["recipient_local"],
         "message_text": msg_info["message_text"],
         "wa_me_customer_url": msg_info["wa_me_customer_url"],
-        "message_id": msg_id,
+        "message_id": log_id,
     }
     with open(outbox_file, "a", encoding="utf-8") as f:
         f.write(json.dumps(log_entry, ensure_ascii=False) + "\n")
 
     return {
-        "delivered": True,
-        "mode": log_entry["mode"],
-        "provider": "meta_whatsapp_cloud_api",
-        "message_id": msg_id,
+        "delivered": False,
+        "status": "prepared",
+        "mode": "manual_link",
+        "message_id": log_id,
         **msg_info,
     }
 

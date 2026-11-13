@@ -15,7 +15,7 @@ os.environ.setdefault("SECRET_KEY", "test_only_ephemeral_secret_key_for_unit_tes
 
 from fastapi.testclient import TestClient
 
-from app.main import app
+from app.main import app, _shop_today
 from app.seed import seed_initial_data
 from app.security import reset_rate_limits
 
@@ -34,7 +34,7 @@ class TestTreasuryReport(unittest.TestCase):
     def setUp(self):
         reset_rate_limits()
         self.suffix = uuid.uuid4().hex[:6]
-        self.today = date.today().isoformat()
+        self.today = _shop_today()
 
     def _add_movement(self, mtype: str, amount: int, account: str = "cash_box", source: str = "manual"):
         return self.client.post("/api/v1/admin/treasury/movements", headers=self.headers, json={
@@ -75,7 +75,7 @@ class TestTreasuryReport(unittest.TestCase):
         self.assertEqual(r.status_code, 200)
         self.assertIn("text/csv", r.headers["content-type"])
         body = r.text
-        self.assertTrue(body.splitlines()[0].startswith("date,account,movement_type"))
+        self.assertTrue(body.lstrip("\ufeff").splitlines()[0].startswith("Date;Compte;Sens"))
         self.assertIn("TOTAL", body)
 
 

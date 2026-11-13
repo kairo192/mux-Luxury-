@@ -1,20 +1,20 @@
 from . import config
+from . import settings as app_settings
+import logging
 import csv
-import gzip
 import hmac
 import io
 import os
 import hashlib
-import sqlite3
-import tempfile
 import itertools
 import json
 import re
 import secrets
 import time
 from datetime import datetime, timedelta, timezone
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, Iterable, List, Optional
 from fastapi import Depends, FastAPI, File, Header, HTTPException, Query, Request, Response, UploadFile, status
+from fastapi.responses import FileResponse
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field, validator
 
@@ -35,7 +35,7 @@ from .security import (
 )
 
 _DUMMY_PASSWORD_HASH = _hash_pw_init("luxe_constant_time_dummy_mitigation_2026!")
-_ENABLE_PUBLIC_DOCS = (not config.is_production()) or (os.getenv("ENABLE_API_DOCS", "").strip() == "1") 
+_ENABLE_PUBLIC_DOCS = (not config.is_production()) or app_settings.get("ENABLE_API_DOCS") == "1"
 
 app = FastAPI(
     title="Mus Luxury (LUXE) E-Commerce API",
@@ -57,13 +57,92 @@ _DEFAULT_CORS_ORIGINS = [
     "https://www.mus-luxury.com",
     "https://api.mus-luxury.com",
 ]
-_EXTRA_CORS = [o.strip() for o in os.getenv("CORS_ORIGINS", "").split(",") if o.strip()]
+# CORS_ORIGINS (older name CORS_ALLOWED_ORIGINS, used by earlier .env files).
+_EXTRA_CORS = [o.strip() for o in app_settings.get("CORS_ORIGINS").split(",") if o.strip()]
 ALLOWED_CORS_ORIGINS = list(dict.fromkeys(_DEFAULT_CORS_ORIGINS + _EXTRA_CORS))
 
-from starlette.middleware.gzip import GZipMiddleware
+from starlette.middleware.gzip import GZipMiddleware, GZipResponder
+from starlette.datastructures import Headers as _Headers
 
-# High-Performance HTTP Response Compression (brotli/gzip for JSON payloads > 1000 bytes)
-app.add_middleware(GZipMiddleware, minimum_size=1000)
+
+class _LightGZipMiddleware(GZipMiddleware):
+    """gzip for JSON/HTML answers over 1000 bytes, sized for a 1-vCPU server.
+
+    - level 6 (as nginx): level 9 costs far more CPU for ~1 % smaller answers;
+    - the compressor is always closed (Starlette 0.25 leaves it open for small
+      answers: "I/O operation on closed file" in the logs, memory kept longer);
+    - file downloads (encrypted backups, up to 100 MB) are sent as they are:
+      they cannot be compressed and would only burn the single CPU.
+    """
+
+    async def __call__(self, scope, receive, send) -> None:
+        if (
+            scope["type"] == "http"
+            and "gzip" in _Headers(scope=scope).get("Accept-Encoding", "")
+            and not scope.get("path", "").endswith("/download")
+        ):
+            responder = GZipResponder(self.app, self.minimum_size, compresslevel=self.compresslevel)
+            try:
+                await responder(scope, receive, send)
+            finally:
+                responder.gzip_file.close()
+            return
+        await self.app(scope, receive, send)
+
+
+# Compression of API answers over 1000 bytes (catalog, lists, reports).
+app.add_middleware(_LightGZipMiddleware, minimum_size=1000, compresslevel=6)
+
+
+class _RejectNulCharacters:
+    """A NUL character (\\u0000) in an address, a query string or a JSON body
+    crashed PostgreSQL ("cannot contain NUL"), giving a 500 on public routes —
+    e.g. /api/v1/products?category=%00 or an order with "\\u0000" in the name.
+    Refused up front with a 422 in French. JSON bodies are small; uploads
+    (photos, backups) are never read here."""
+
+    _MESSAGE = b'{"detail":"Caract\xc3\xa8re invalide dans la requ\xc3\xaate."}'
+
+    def __init__(self, app):
+        self.app = app
+
+    async def _refuse(self, send):
+        await send({"type": "http.response.start", "status": 422,
+                    "headers": [(b"content-type", b"application/json"),
+                                (b"content-length", str(len(self._MESSAGE)).encode())]})
+        await send({"type": "http.response.body", "body": self._MESSAGE})
+
+    async def __call__(self, scope, receive, send):
+        if scope["type"] != "http":
+            return await self.app(scope, receive, send)
+        qs = scope.get("query_string") or b""
+        if "\x00" in scope.get("path", "") or b"%00" in qs or b"\x00" in qs:
+            return await self._refuse(send)
+        ctype = dict(scope.get("headers") or []).get(b"content-type", b"")
+        if scope.get("method") in ("POST", "PUT", "PATCH") and ctype.startswith(b"application/json"):
+            chunks, more = [], True
+            while more:
+                message = await receive()
+                if message["type"] != "http.request":
+                    return await self.app(scope, receive, send)
+                chunks.append(message.get("body", b""))
+                more = message.get("more_body", False)
+            body = b"".join(chunks)
+            if b"\x00" in body or b"\\u0000" in body:
+                return await self._refuse(send)
+            sent = False
+
+            async def replay():
+                nonlocal sent
+                if not sent:
+                    sent = True
+                    return {"type": "http.request", "body": body, "more_body": False}
+                return await receive()
+            return await self.app(scope, replay, send)
+        return await self.app(scope, receive, send)
+
+
+app.add_middleware(_RejectNulCharacters)
 
 app.add_middleware(
     CORSMiddleware,
@@ -92,14 +171,74 @@ async def add_security_headers(request: Request, call_next):
     response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
     response.headers["X-XSS-Protection"] = "1; mode=block"
     response.headers["Permissions-Policy"] = "geolocation=(), microphone=(), camera=()"
-    response.headers["Content-Security-Policy"] = "default-src 'self'; frame-ancestors 'none'; base-uri 'self'"
+    if not request.url.path.startswith("/api/v1/seo/"):
+        # SEO pages are the shop's own HTML: nginx applies the storefront CSP.
+        response.headers["Content-Security-Policy"] = "default-src 'self'; frame-ancestors 'none'; base-uri 'self'"
     if request.url.path.startswith("/api/v1/admin"):
         response.headers["Cache-Control"] = "no-store, no-cache, must-revalidate, private"
     return response
 
+# ----------------------------------------------------------------------------
+# Shared cache for the shop's public lists (1 vCPU / 2 GB VPS).
+# Every open shop page asks for the catalogue once a minute; without this,
+# each visitor made the server rebuild the whole product list. One answer is
+# now computed and served to everyone for at most 5 s, and the cache is
+# emptied at once by ANY change (CMS edit, order, till sale...), so the shop
+# still shows a new price or a sold-out bag immediately.
+# ----------------------------------------------------------------------------
+_PUBLIC_CACHE_PATHS = {"/api/v1/products", "/api/v1/categories", "/api/v1/delivery-zones"}
+_PUBLIC_CACHE_TTL_S = 5.0
+_PUBLIC_CACHE: Dict[str, tuple] = {}
+_SKIP_CACHED_HEADERS = {"content-length", "date", "x-request-id", "x-response-time-ms"}
+
+
+def public_cache_clear() -> None:
+    _PUBLIC_CACHE.clear()
+
+
+@app.middleware("http")
+async def public_catalog_cache(request: Request, call_next):
+    method = request.method.upper()
+    path = request.url.path
+    if method != "GET" or path not in _PUBLIC_CACHE_PATHS:
+        response = await call_next(request)
+        if method in ("POST", "PUT", "PATCH", "DELETE") and path.startswith("/api/v1/"):
+            public_cache_clear()
+        return response
+    gz = "gzip" in (request.headers.get("accept-encoding") or "")
+    key = f"{path}?{request.url.query}|{'gz' if gz else 'id'}"
+    hit = _PUBLIC_CACHE.get(key)
+    now = time.monotonic()
+    if hit and now - hit[0] < _PUBLIC_CACHE_TTL_S:
+        _, body, headers = hit
+        if request.headers.get("if-none-match") and request.headers.get("if-none-match") == headers.get("etag"):
+            return Response(status_code=304, headers={"ETag": headers["etag"], "Cache-Control": headers.get("cache-control", "")})
+        return Response(content=body, status_code=200, headers=headers)
+    response = await call_next(request)
+    if response.status_code != 200:
+        return response
+    body = b"".join([chunk async for chunk in response.body_iterator])
+    headers = {k: v for k, v in response.headers.items() if k.lower() not in _SKIP_CACHED_HEADERS}
+    if len(_PUBLIC_CACHE) > 200:  # many filter / page combinations: start over
+        public_cache_clear()
+    _PUBLIC_CACHE[key] = (now, body, headers)
+    return Response(content=body, status_code=200, headers=headers)
+
+
 @app.on_event("startup")
 def on_startup():
     seed_initial_data()
+    _log_configuration_report()
+
+
+def _log_configuration_report() -> None:
+    """Production: say at start what is missing in .env (values never logged)."""
+    if not config.is_production():
+        return
+    rep = app_settings.public_report()
+    log = logging.getLogger("luxe.config")
+    for problem in rep["problems"]:
+        log.warning("configuration: %s", problem)
 
 # Ensure DB is initialized even when TestClient is instantiated without startup events
 seed_initial_data()
@@ -110,7 +249,7 @@ seed_initial_data()
 
 def get_current_admin(authorization: Optional[str] = Header(None)) -> dict:
     if not authorization or not authorization.startswith("Bearer "):
-        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Missing or invalid Bearer token")
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Connexion requise.")
     token = authorization.split(" ", 1)[1].strip()
     payload = decode_access_token(token)
     uid = int(payload.get("sub") or 0)
@@ -119,7 +258,27 @@ def get_current_admin(authorization: Optional[str] = Header(None)) -> dict:
         cur.execute("SELECT setting_value FROM store_settings WHERE setting_key = ?", (f"session_revoked_ns:{uid}",))
         rev_row = cur.fetchone()
         if rev_row and int(payload.get("iat_ns") or 0) < int(rev_row["setting_value"] or 0):
-            raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid or expired authentication token")
+            raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Session expirée. Reconnectez-vous.")
+        # Permissions are read from the database on every request, not trusted
+        # from the token: a role change, a deactivation or a permission added
+        # by an update applies at once, without logging out.
+        cur.execute(
+            """SELECT u.is_active, r.name AS role_name
+               FROM admin_users u JOIN roles r ON r.id = u.role_id WHERE u.id = ?""",
+            (uid,),
+        )
+        user_row = cur.fetchone()
+        if not user_row or not int(user_row["is_active"] or 0):
+            raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Session expirée. Reconnectez-vous.")
+        cur.execute(
+            """SELECT p.code FROM permissions p
+               JOIN role_permissions rp ON rp.permission_id = p.id
+               JOIN admin_users u ON u.role_id = rp.role_id
+               WHERE u.id = ?""",
+            (uid,),
+        )
+        payload["perms"] = [r["code"] for r in cur.fetchall()]
+        payload["role"] = user_row["role_name"]
     payload["raw_token"] = token
     return payload
 
@@ -128,7 +287,7 @@ def require_permission(perm: str):
         if perm not in admin.get("perms", []):
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
-                detail=f"Insufficient permissions: '{perm}' required"
+                detail="Votre rôle ne permet pas cette action."
             )
         return admin
     return dep
@@ -139,7 +298,7 @@ def require_any_permission(perms: List[str]):
         if not any(p in granted for p in perms):
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
-                detail=f"Insufficient permissions: one of {perms} required"
+                detail="Votre rôle ne permet pas cette action."
             )
         return admin
     return dep
@@ -197,8 +356,10 @@ class CategoryCreate(BaseModel):
     description_fr: Optional[str] = ""
     description_ar: Optional[str] = ""
     description_en: Optional[str] = ""
-    image_url: Optional[str] = "/assets/cat_sacs.jpg"
-    banner_url: Optional[str] = "/assets/hero_bag_clean.jpg"
+    # No invented photo: empty until the owner uploads one (the shop then
+    # shows a neutral placeholder).
+    image_url: Optional[str] = ""
+    banner_url: Optional[str] = ""
     parent_id: Optional[int] = None
     display_order: int = 10
     is_active: bool = True
@@ -229,7 +390,8 @@ class ProductCreate(BaseModel):
     description_fr: Optional[str] = ""
     description_ar: Optional[str] = ""
     description_en: Optional[str] = ""
-    main_image_url: Optional[str] = "/assets/prod_sac_chanel_hd.jpg"
+    # No invented photo: empty until the owner uploads one.
+    main_image_url: Optional[str] = ""
     purchase_cost_dzd: int = Field(0, ge=0)
     selling_price_dzd: int = Field(..., ge=0)
     previous_price_dzd: Optional[int] = Field(None, ge=0)
@@ -342,18 +504,20 @@ class GuestOrderCreate(BaseModel):
     def validate_algerian_phone(cls, v):
         cleaned = re.sub(r"[\s\-\.]", "", v)
         if not re.match(r"^(\+213|0)(5|6|7)[0-9]{8}$", cleaned):
-            raise ValueError("Invalid Algerian mobile phone number (must start with 05, 06, 07 or +213)")
+            raise ValueError("Numéro de mobile algérien invalide (il doit commencer par 05, 06, 07 ou +213)")
         return cleaned
 
     @validator("full_name", "commune", "delivery_address", "customer_notes", pre=True, always=True)
     def reject_xss_and_html_tags(cls, v):
         if v is None:
             return ""
-        s = str(v).strip()
+        # Invisible control and text-direction override characters (U+202E…)
+        # can disguise a name in the CMS and on receipts: removed.
+        s = re.sub(r"[\u0000-\u0008\u000b-\u001f\u007f\u200e\u200f\u202a-\u202e\u2066-\u2069]", "", str(v)).strip()
         if re.search(r"(<\s*/?\s*(script|iframe|svg|img|object|embed|link|style|meta)|javascript\s*:|on\w+\s*=)", s, re.IGNORECASE):
-            raise ValueError("HTML or script injection characters are not permitted")
+            raise ValueError("Code HTML ou script refusé dans les coordonnées")
         if "<" in s or ">" in s:
-            raise ValueError("Angle brackets (< >) are not permitted in order contact fields")
+            raise ValueError("Les caractères < et > ne sont pas acceptés dans les coordonnées")
         return s
 
 class OrderStatusUpdate(BaseModel):
@@ -587,24 +751,24 @@ def validate_variant_attributes(
         if key not in cat_attrs:
             raise HTTPException(
                 status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-                detail=f"Unknown attribute '{key}' for this category",
+                detail=f"Caractéristique '{key}' inconnue pour cette catégorie",
             )
         if key not in axes:
             raise HTTPException(
                 status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-                detail=f"Attribute '{key}' is not configured as a variant axis for this category",
+                detail=f"'{key}' ne sert pas à créer des déclinaisons dans cette catégorie",
             )
         val = str(raw_val).strip()
         if not val:
             raise HTTPException(
                 status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-                detail=f"Empty value for variant attribute '{key}'",
+                detail=f"Valeur vide pour '{key}'",
             )
         allowed = cat_attrs[key].get("option_values") or set()
         if allowed and val not in allowed and not allow_custom_values:
             raise HTTPException(
                 status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-                detail=f"Invalid value '{val}' for attribute '{key}'. Allowed values: {', '.join(sorted(allowed))}",
+                detail=f"Valeur '{val}' non valable pour '{key}'. Valeurs possibles : {', '.join(sorted(allowed))}",
             )
         cleaned[key] = val
     if not cleaned and axes and not allow_empty:
@@ -643,7 +807,7 @@ def ensure_variant_attribute_options(conn, cat_attrs: Dict[str, dict], attribute
 
 def assert_variant_sku_available(conn, sku: str, exclude_variant_id: Optional[int] = None) -> None:
     if not sku:
-        raise HTTPException(status_code=422, detail="Variant SKU cannot be empty")
+        raise HTTPException(status_code=422, detail="La référence (SKU) de la déclinaison est obligatoire")
     cur = conn.cursor()
     if exclude_variant_id is None:
         cur.execute("SELECT id FROM product_variants WHERE sku = ?", (sku,))
@@ -652,7 +816,7 @@ def assert_variant_sku_available(conn, sku: str, exclude_variant_id: Optional[in
     if cur.fetchone():
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
-            detail=f"Variant SKU '{sku}' already exists",
+            detail=f"La référence (SKU) '{sku}' existe déjà",
         )
 
 def assert_variant_signature_available(
@@ -710,7 +874,7 @@ def serialize_variant_row(conn, variant_id: int) -> dict:
     )
     row = cur.fetchone()
     if not row:
-        raise HTTPException(status_code=404, detail="Variant not found")
+        raise HTTPException(status_code=404, detail="Déclinaison introuvable")
     out = dict(row)
     cur.execute(
         """SELECT ca.attr_key, vav.option_value
@@ -738,10 +902,27 @@ def _is_protected_setting_key(key: str) -> bool:
     k = (key or "").strip().lower()
     return k in _INTERNAL_SETTING_KEYS or k.startswith("system_") or k.startswith("internal_") or k.startswith("session_revoked_ns:")
 
+def _free_delivery_threshold(cur) -> int:
+    """CMS → Contenu → "Seuil Livraison Gratuite (DA)". 0 / empty = no free delivery."""
+    cur.execute("SELECT setting_value FROM store_settings WHERE setting_key = ?", ("free_delivery_threshold_dzd",))
+    row = cur.fetchone()
+    if not row:
+        return 0
+    raw = row["setting_value"]
+    try:
+        raw = json.loads(raw)
+    except Exception:
+        pass
+    try:
+        return max(0, int(str(raw).replace(" ", "").strip() or 0))
+    except (TypeError, ValueError):
+        return 0
+
+
 def _ensure_safe_url_or_text(val: str, field_name: str = "value") -> str:
     s = str(val or "").strip()
     if re.search(r"(<\s*/?\s*(script|iframe|svg|object|embed)|javascript\s*:|vbscript\s*:|data\s*:\s*text/html|on\w+\s*=)", s, re.IGNORECASE):
-        raise HTTPException(status_code=422, detail=f"Dangerous script or URI scheme blocked in {field_name}")
+        raise HTTPException(status_code=422, detail=f"Contenu refusé dans « {field_name} » : code ou lien dangereux (script, javascript:, …)")
     return s
 
 @app.get("/api/v1/store/settings")
@@ -760,6 +941,13 @@ def get_store_settings():
                 out[r["setting_key"]] = val
         return out
 
+# Shop data the owner changes in the CMS (stock, prices, visibility,
+# delivery prices): the browser keeps a copy but checks it on every load
+# (ETag -> 304 when nothing changed), so a sold-out bag, a new price or an
+# archived product shows at once — never minutes or hours late.
+_PUBLIC_LIVE_CACHE = "public, no-cache"
+
+
 @app.get("/api/v1/categories")
 def list_public_categories(response: Response, request: Request):
     with db_session() as conn:
@@ -771,7 +959,8 @@ def list_public_categories(response: Response, request: Request):
         payload = {"items": cats}
         etag = f'"{hashlib.md5(json.dumps(payload, sort_keys=True).encode()).hexdigest()}"'
         response.headers["ETag"] = etag
-        response.headers["Cache-Control"] = "public, max-age=300, stale-while-revalidate=600"
+        # Short cache: a category deleted in the CMS disappears from the shop within ~30 s.
+        response.headers["Cache-Control"] = _PUBLIC_LIVE_CACHE
         if request.headers.get("if-none-match") == etag:
             return Response(status_code=304, headers={"ETag": etag, "Cache-Control": response.headers["Cache-Control"]})
         return payload
@@ -783,7 +972,7 @@ def get_public_category(slug: str):
         cur.execute("SELECT * FROM categories WHERE slug = ? AND is_active = 1 AND deleted_at IS NULL", (slug,))
         row = cur.fetchone()
         if not row:
-            raise HTTPException(status_code=404, detail="Category not found")
+            raise HTTPException(status_code=404, detail="Catégorie introuvable")
         return serialize_category(conn, dict(row))
 
 @app.get("/api/v1/brands")
@@ -818,7 +1007,7 @@ def list_delivery_zones(response: Response, request: Request):
         payload = {"items": zones}
         etag = f'"{hashlib.md5(json.dumps(payload, sort_keys=True).encode()).hexdigest()}"'
         response.headers["ETag"] = etag
-        response.headers["Cache-Control"] = "public, max-age=3600, stale-while-revalidate=86400"
+        response.headers["Cache-Control"] = _PUBLIC_LIVE_CACHE
         if request.headers.get("if-none-match") == etag:
             return Response(status_code=304, headers={"ETag": etag, "Cache-Control": response.headers["Cache-Control"]})
         return payload
@@ -898,7 +1087,7 @@ def list_public_products(
             }
             etag = f'"{hashlib.md5(json.dumps(payload, sort_keys=True).encode()).hexdigest()}"'
             response.headers["ETag"] = etag
-            response.headers["Cache-Control"] = "public, max-age=60, stale-while-revalidate=300"
+            response.headers["Cache-Control"] = _PUBLIC_LIVE_CACHE
             if request.headers.get("if-none-match") == etag:
                 return Response(status_code=304, headers={"ETag": etag, "Cache-Control": response.headers["Cache-Control"]})
             return payload
@@ -935,7 +1124,7 @@ def get_public_product(slug: str):
         )
         row = cur.fetchone()
         if not row:
-            raise HTTPException(status_code=404, detail="Product not found")
+            raise HTTPException(status_code=404, detail="Produit introuvable")
         return serialize_product(conn, dict(row), include_private=False)
 
 def compute_customer_cod_risk(conn, raw_phone: str) -> dict:
@@ -1024,13 +1213,15 @@ def create_guest_order(
         )
         bl_row = chk_cur.fetchone()
         if bl_row:
+            shop = _boutique_info_from_settings(chk_conn)
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
-                detail=f"Commande refusée (Protection Anti-Retour COD) : Ce numéro ({local_chk}) ne peut pas passer de commande automatique. Contactez le service client Mus Luxury sur WhatsApp au 0655534154."
+                detail=(f"Commande refusée (Protection Anti-Retour COD) : Ce numéro ({local_chk}) ne peut pas passer de "
+                        f"commande automatique. Contactez le service client {shop['name']} sur WhatsApp au {shop['phone']}.")
             )
 
     if not payload.items:
-        raise HTTPException(status_code=400, detail="Order must contain at least one item")
+        raise HTTPException(status_code=400, detail="La commande doit contenir au moins un article")
 
     # Compute idempotency signature from explicit Idempotency-Key header or deterministic order payload (M-10)
     has_explicit_idem_key = bool(idempotency_key and idempotency_key.strip())
@@ -1060,14 +1251,14 @@ def create_guest_order(
         if dup:
             raise HTTPException(
                 status_code=status.HTTP_409_CONFLICT,
-                detail=f"Duplicate order detected (existing reference: {dup['order_reference']})"
+                detail=f"Commande déjà enregistrée (référence {dup['order_reference']})"
             )
 
         # 1. Verify Wilaya & Delivery Method Rate on the server
         cur.execute("SELECT * FROM delivery_zones WHERE wilaya_code = ? AND is_active = 1", (payload.wilaya_code,))
         zone = cur.fetchone()
         if not zone:
-            raise HTTPException(status_code=400, detail=f"Unsupported or inactive Wilaya code: {payload.wilaya_code}")
+            raise HTTPException(status_code=400, detail=f"Wilaya {payload.wilaya_code} non desservie")
 
         cur.execute(
             "SELECT fee_dzd, is_supported FROM delivery_rates WHERE zone_id = ? AND delivery_method = ?",
@@ -1075,7 +1266,7 @@ def create_guest_order(
         )
         rate = cur.fetchone()
         if not rate or not rate["is_supported"]:
-            raise HTTPException(status_code=400, detail=f"Delivery method '{payload.delivery_method}' is not available for {zone['wilaya_name_fr']}")
+            raise HTTPException(status_code=400, detail=("La livraison à domicile" if payload.delivery_method == "home" else "La livraison en point relais (stop-desk)") + f" n'est pas disponible pour la wilaya {zone['wilaya_name_fr']}. Choisissez l'autre mode de livraison.")
         delivery_fee_dzd = int(rate["fee_dzd"])
 
         # 2. Consolidate duplicate variant_ids, Verify Variants & Stock, and Calculate True Server-Side Subtotal
@@ -1085,7 +1276,7 @@ def create_guest_order(
             merged_qty_by_vid[raw_item.variant_id] = merged_qty_by_vid.get(raw_item.variant_id, 0) + int(raw_item.quantity)
         for vid, total_q in merged_qty_by_vid.items():
             if total_q > 50:
-                raise HTTPException(status_code=422, detail=f"Maximum quantity per variant is 50 (requested {total_q})")
+                raise HTTPException(status_code=422, detail=f"50 pièces maximum par article (demandé : {total_q})")
             consolidated_items.append(OrderItemInput(variant_id=vid, quantity=total_q))
 
         subtotal_dzd = 0
@@ -1100,11 +1291,11 @@ def create_guest_order(
             )
             v = cur.fetchone()
             if not v or v["product_status"] != "published":
-                raise HTTPException(status_code=404, detail=f"Product variant {item.variant_id} is unavailable")
+                raise HTTPException(status_code=404, detail=f"Un article n'est plus disponible")
             if v["stock_qty"] < item.quantity:
                 raise HTTPException(
                     status_code=status.HTTP_409_CONFLICT,
-                    detail=f"Insufficient stock for '{v['product_name']} ({v['title']})': requested {item.quantity}, available {v['stock_qty']}"
+                    detail=f"Stock insuffisant pour '{v['product_name']} ({v['title']})' : demandé {item.quantity}, disponible {v['stock_qty']}"
                 )
             unit_price = int(v["price_override_dzd"]) if v["price_override_dzd"] is not None else int(v["selling_price_dzd"])
             line_total = unit_price * item.quantity
@@ -1112,6 +1303,7 @@ def create_guest_order(
             resolved_lines.append((v, item.quantity, unit_price, line_total))
 
         discount_dzd = 0
+        coupon_used: Optional[str] = None
         if payload.coupon_code:
             cur.execute(
                 "SELECT * FROM coupons WHERE UPPER(code) = ? AND is_active = 1",
@@ -1119,13 +1311,13 @@ def create_guest_order(
             )
             cpn = cur.fetchone()
             if not cpn:
-                raise HTTPException(status_code=400, detail="Invalid or inactive coupon code")
+                raise HTTPException(status_code=400, detail="Code promo inconnu ou expiré")
             if dict(cpn).get("usage_limit") is not None and int(cpn["usage_count"]) >= int(dict(cpn)["usage_limit"]):
-                raise HTTPException(status_code=400, detail=f"Coupon '{cpn['code']}' has reached its maximum usage limit")
+                raise HTTPException(status_code=400, detail=f"Le code promo '{cpn['code']}' n'est plus utilisable (limite atteinte)")
             if subtotal_dzd < int(cpn["min_order_dzd"]):
                 raise HTTPException(
                     status_code=400,
-                    detail=f"Coupon '{cpn['code']}' requires a minimum order of {cpn['min_order_dzd']} DA"
+                    detail=f"Le code promo '{cpn['code']}' demande un minimum de {cpn['min_order_dzd']} DA d'achat"
                 )
             if cpn["discount_type"] == "percentage":
                 discount_dzd = (subtotal_dzd * int(cpn["discount_value"])) // 100
@@ -1139,8 +1331,15 @@ def create_guest_order(
                 (cpn["id"],),
             )
             if cur.rowcount == 0:
-                raise HTTPException(status_code=400, detail=f"Coupon '{cpn['code']}' has reached its maximum usage limit")
+                raise HTTPException(status_code=400, detail=f"Le code promo '{cpn['code']}' n'est plus utilisable (limite atteinte)")
+            coupon_used = str(cpn["code"])
 
+        # Free delivery promised by the shop (CMS threshold) is applied HERE, so
+        # the stored order (what the courier collects) matches what the
+        # customer was shown.
+        free_threshold = _free_delivery_threshold(cur)
+        if free_threshold and subtotal_dzd >= free_threshold:
+            delivery_fee_dzd = 0
         total_dzd = (subtotal_dzd - discount_dzd) + delivery_fee_dzd
 
         # 3. Upsert Guest Customer Contact Record (NO account/password created)
@@ -1174,19 +1373,21 @@ def create_guest_order(
                     """INSERT INTO orders
                        (order_reference, customer_id, customer_name, customer_phone, wilaya_code, wilaya_name,
                         commune, delivery_address, delivery_method, payment_method,
-                        subtotal_dzd, delivery_fee_dzd, total_dzd, status, customer_notes, stock_deducted, idempotency_hash)
-                       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'cod', ?, ?, ?, 'new', ?, 1, ?)""",
+                        subtotal_dzd, delivery_fee_dzd, total_dzd, status, customer_notes, stock_deducted, idempotency_hash,
+                        coupon_code, discount_dzd)
+                       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'cod', ?, ?, ?, 'new', ?, 1, ?, ?, ?)""",
                     (
                         order_ref, customer_id, payload.full_name, payload.phone,
                         payload.wilaya_code, zone["wilaya_name_fr"], payload.commune,
                         payload.delivery_address, payload.delivery_method,
                         subtotal_dzd, delivery_fee_dzd, total_dzd,
                         payload.customer_notes, idem_hash,
+                        coupon_used, discount_dzd,
                     ),
                 )
                 order_id = cur.lastrowid
                 break
-            except Exception as exc:
+            except Exception:
                 if _attempt == 2:
                     raise
 
@@ -1206,7 +1407,7 @@ def create_guest_order(
             if cur.rowcount == 0:
                 raise HTTPException(
                     status_code=status.HTTP_409_CONFLICT,
-                    detail=f"Insufficient stock for '{v['product_name']} ({v['title']})'"
+                    detail=f"Stock insuffisant pour '{v['product_name']} ({v['title']})'"
                 )
             cur.execute("SELECT stock_qty FROM product_variants WHERE id = ?", (v["id"],))
             new_qty = int(cur.fetchone()["stock_qty"])
@@ -1276,10 +1477,25 @@ def create_guest_order(
 # ADMINISTRATIVE ENDPOINTS (/api/v1/admin/*)
 # ============================================================================
 
+def _int_env(name: str, default: int, low: int, high: int) -> int:
+    try:
+        return max(low, min(high, int(os.getenv(name, default))))
+    except ValueError:
+        return default
+
+
+# Login attempts allowed per minute and per IP address (brute-force guard).
+# Default 5. The browser tests raise it (they log in many times from one
+# machine); it can never exceed 30, and in production nginx limits logins to
+# 5 per minute in front of the API anyway (zone auth_limit).
+# LOGIN_ATTEMPTS_PER_MINUTE (older name MAX_LOGIN_ATTEMPTS_PER_MINUTE).
+_LOGIN_ATTEMPTS_PER_MINUTE = app_settings.get_int("LOGIN_ATTEMPTS_PER_MINUTE", 1, 30)
+
+
 @app.post("/api/v1/admin/auth/login")
 def admin_login(payload: LoginRequest, request: Request):
     client_ip = get_real_client_ip(request)
-    check_rate_limit(f"login:{client_ip}", max_requests=5, window_seconds=60)
+    check_rate_limit(f"login:{client_ip}", max_requests=_LOGIN_ATTEMPTS_PER_MINUTE, window_seconds=60)
 
     with db_session(commit=True) as conn:
         cur = conn.cursor()
@@ -1327,7 +1543,7 @@ def admin_logout(admin: dict = Depends(get_current_admin)):
 def admin_dashboard(admin: dict = Depends(require_permission("dashboard:read"))):
     with db_session() as conn:
         cur = conn.cursor()
-        cur.execute("SELECT COUNT(*) AS cnt, COALESCE(SUM(total_dzd), 0) AS rev FROM orders WHERE status != 'cancelled'")
+        cur.execute("SELECT COUNT(*) AS cnt, COALESCE(SUM(total_dzd), 0) AS rev FROM orders WHERE status NOT IN ('cancelled', 'returned')")
         ord_row = cur.fetchone()
         cur.execute("SELECT COUNT(*) AS cnt FROM orders WHERE status IN ('new', 'pending_confirmation')")
         pending_cnt = cur.fetchone()["cnt"]
@@ -1335,11 +1551,19 @@ def admin_dashboard(admin: dict = Depends(require_permission("dashboard:read")))
         pub_cnt = cur.fetchone()["cnt"]
         cur.execute("SELECT COUNT(*) AS cnt FROM categories WHERE is_active = 1 AND deleted_at IS NULL")
         cat_cnt = cur.fetchone()["cnt"]
-        cur.execute("SELECT COUNT(*) AS cnt FROM product_variants WHERE stock_qty > 0 AND stock_qty <= 3 AND is_active = 1")
+        # Stock figures count the variants (size / colour) of products that are
+        # still in the catalogue — archived or deleted products are left out.
+        live_variant = (
+            "FROM product_variants v JOIN products p ON p.id = v.product_id "
+            "WHERE v.is_active = 1 AND p.deleted_at IS NULL AND p.status != 'archived'"
+        )
+        cur.execute(f"SELECT COUNT(*) AS cnt {live_variant}")
+        active_variant_cnt = cur.fetchone()["cnt"]
+        cur.execute(f"SELECT COUNT(*) AS cnt {live_variant} AND v.stock_qty > 0 AND v.stock_qty <= COALESCE(v.low_stock_threshold, 3)")
         low_stock_only_cnt = cur.fetchone()["cnt"]
-        cur.execute("SELECT COUNT(*) AS cnt FROM product_variants WHERE stock_qty <= 3 AND is_active = 1")
+        cur.execute(f"SELECT COUNT(*) AS cnt {live_variant} AND v.stock_qty <= COALESCE(v.low_stock_threshold, 3)")
         low_stock_cnt = cur.fetchone()["cnt"]
-        cur.execute("SELECT COUNT(*) AS cnt FROM product_variants WHERE stock_qty = 0 AND is_active = 1")
+        cur.execute(f"SELECT COUNT(*) AS cnt {live_variant} AND v.stock_qty <= 0")
         out_of_stock_cnt = cur.fetchone()["cnt"]
 
         status_keys = [
@@ -1367,13 +1591,42 @@ def admin_dashboard(admin: dict = Depends(require_permission("dashboard:read")))
         cur.execute("SELECT COUNT(*) AS cnt FROM backup_records WHERE status = 'failed'")
         failed_bkp_cnt = cur.fetchone()["cnt"]
 
+        # Real day-by-day revenue for the dashboard chart (last 30 days, same
+        # orders as the revenue card: everything except cancelled/returned).
+        # Shop days (Algeria), not UTC days: grouped by UTC hour, then mapped.
+        shop_today = _shop_now().date()
+        since_utc, _ = _utc_range_for_days((shop_today - timedelta(days=29)).isoformat(), shop_today.isoformat())
+        cur.execute(
+            """SELECT substr(created_at, 1, 13) AS hour, COUNT(*) AS cnt, COALESCE(SUM(total_dzd), 0) AS rev
+               FROM orders
+               WHERE status NOT IN ('cancelled', 'returned') AND created_at >= ?
+               GROUP BY substr(created_at, 1, 13)""",
+            (since_utc,),
+        )
+        by_day: Dict[str, tuple] = {}
+        for r in cur.fetchall():
+            d = _shop_day_of(r["hour"])
+            rev0, cnt0 = by_day.get(d, (0, 0))
+            by_day[d] = (rev0 + int(r["rev"]), cnt0 + int(r["cnt"]))
+        revenue_by_day = []
+        for i in range(30):
+            day = (shop_today - timedelta(days=29 - i)).isoformat()
+            rev, cnt = by_day.get(day, (0, 0))
+            revenue_by_day.append({"date": day, "revenue_dzd": rev, "orders": cnt})
+
+        # Money figures only for roles allowed to see finances (owner,
+        # administrator); a cashier or read-only account gets the operations.
+        can_see_money = "finance:read" in admin.get("perms", [])
         return {
+            "finance_visible": can_see_money,
+            "revenue_by_day": revenue_by_day if can_see_money else [],
             "total_orders": ord_row["cnt"],
-            "total_revenue_dzd": ord_row["rev"],
+            "total_revenue_dzd": ord_row["rev"] if can_see_money else None,
             "pending_orders": pending_cnt,
             "published_products": pub_cnt,
             "total_active_products": pub_cnt,
             "total_categories": cat_cnt,
+            "active_variants": active_variant_cnt,
             "low_stock_variants": low_stock_cnt,
             "low_stock_only_variants": low_stock_only_cnt,
             "out_of_stock_variants": out_of_stock_cnt,
@@ -1387,6 +1640,8 @@ def admin_dashboard(admin: dict = Depends(require_permission("dashboard:read")))
             },
             "last_backup": dict(last_bkp_row) if last_bkp_row else None,
             "failed_backups_count": failed_bkp_cnt,
+            "all_orders_count": sum(int(v or 0) for v in orders_by_status.values()),
+            "database_engine": "postgres" if os.getenv("LUXE_DB_ENGINE", "").strip().lower() == "postgres" else "sqlite",
         }
 
 # --- DYNAMIC CATEGORY & ATTRIBUTE BUILDER ---
@@ -1400,7 +1655,7 @@ def create_custom_category(
         cur = conn.cursor()
         cur.execute("SELECT id FROM categories WHERE slug = ?", (payload.slug,))
         if cur.fetchone():
-            raise HTTPException(status_code=409, detail=f"Category slug '{payload.slug}' already exists")
+            raise HTTPException(status_code=409, detail=f"L'adresse de catégorie '{payload.slug}' existe déjà")
 
         cur.execute(
             """INSERT INTO categories
@@ -1454,19 +1709,19 @@ def add_category_attribute(
     admin: dict = Depends(require_permission("categories:write"))
 ):
     if not payload.category_id:
-        raise HTTPException(status_code=400, detail="category_id is required")
+        raise HTTPException(status_code=400, detail="Choisissez une catégorie")
     with db_session(commit=True) as conn:
         cur = conn.cursor()
         cur.execute("SELECT id FROM categories WHERE id = ?", (payload.category_id,))
         if not cur.fetchone():
-            raise HTTPException(status_code=404, detail="Target category not found")
+            raise HTTPException(status_code=404, detail="Catégorie de destination introuvable")
 
         cur.execute(
             "SELECT id FROM category_attributes WHERE category_id = ? AND attr_key = ?",
             (payload.category_id, payload.attr_key)
         )
         if cur.fetchone():
-            raise HTTPException(status_code=409, detail=f"Attribute '{payload.attr_key}' already exists on this category")
+            raise HTTPException(status_code=409, detail=f"La caractéristique '{payload.attr_key}' existe déjà dans cette catégorie")
 
         cur.execute(
             """INSERT INTO category_attributes
@@ -1506,7 +1761,7 @@ def delete_category_attribute(
         cur.execute("SELECT * FROM category_attributes WHERE id = ?", (attr_id,))
         attr = cur.fetchone()
         if not attr:
-            raise HTTPException(status_code=404, detail="Attribute not found")
+            raise HTTPException(status_code=404, detail="Caractéristique introuvable")
 
         cur.execute("SELECT COUNT(*) AS cnt FROM product_attribute_values WHERE attribute_id = ?", (attr_id,))
         prod_usage = cur.fetchone()["cnt"]
@@ -1514,10 +1769,23 @@ def delete_category_attribute(
         var_usage = cur.fetchone()["cnt"]
         total_usage = prod_usage + var_usage
 
+        if var_usage > 0 and int(attr["is_variant_axis"] or 0):
+            # Variants are told apart by this attribute (e.g. Noir / Rouge):
+            # removing it would leave identical, indistinguishable variants.
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail=(
+                    f"« {attr['label_fr']} » sert à distinguer {var_usage} variante(s) de produits (ex. couleurs, tailles). "
+                    "Supprimez ou archivez d'abord ces variantes / produits, puis retirez l'attribut."
+                ),
+            )
         if total_usage > 0 and not force_migrate:
             raise HTTPException(
                 status_code=status.HTTP_409_CONFLICT,
-                detail=f"Attribute '{attr['label_fr']}' is actively used by {total_usage} product/variant record(s). Pass force_migrate=true to confirm archival and removal."
+                detail=(
+                    f"« {attr['label_fr']} » est renseigné sur {total_usage} fiche(s) produit. "
+                    "Si vous confirmez, ces valeurs seront effacées des produits."
+                ),
             )
 
         if force_migrate and total_usage > 0:
@@ -1548,7 +1816,7 @@ def create_dynamic_product(
         cur.execute("SELECT * FROM categories WHERE id = ?", (payload.category_id,))
         cat = cur.fetchone()
         if not cat:
-            raise HTTPException(status_code=404, detail="Category not found")
+            raise HTTPException(status_code=404, detail="Catégorie introuvable")
 
         cur.execute("SELECT * FROM category_attributes WHERE category_id = ?", (payload.category_id,))
         cat_attrs = {r["attr_key"]: dict(r) for r in cur.fetchall()}
@@ -1564,7 +1832,7 @@ def create_dynamic_product(
             if missing:
                 raise HTTPException(
                     status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-                    detail=f"Missing required category attributes for '{cat['name_fr']}': {', '.join(missing)}"
+                    detail=f"Caractéristiques obligatoires manquantes pour '{cat['name_fr']}' : {', '.join(missing)}"
                 )
 
         cur.execute("SELECT id, slug, sku FROM products WHERE slug = ? OR sku = ?", (payload.slug, payload.sku))
@@ -1572,7 +1840,7 @@ def create_dynamic_product(
         if existing_prod:
             raise HTTPException(
                 status_code=status.HTTP_409_CONFLICT,
-                detail=f"Product with slug '{payload.slug}' or SKU '{payload.sku}' already exists"
+                detail=f"Un produit avec l'adresse '{payload.slug}' ou la référence '{payload.sku}' existe déjà"
             )
 
         # Validate every variant (axis membership + option values) and catch duplicates
@@ -1584,9 +1852,9 @@ def create_dynamic_product(
         for v in payload.variants:
             v_sku = normalize_variant_sku(v.sku)
             if not v_sku:
-                raise HTTPException(status_code=422, detail="Variant SKU cannot be empty")
+                raise HTTPException(status_code=422, detail="La référence (SKU) de la déclinaison est obligatoire")
             if v_sku in seen_skus:
-                raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=f"Duplicate variant SKU '{v_sku}' in payload")
+                raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=f"La référence '{v_sku}' apparaît deux fois")
             seen_skus.add(v_sku)
             v_attrs = validate_variant_attributes(cat_attrs_full, v.attributes, allow_custom_values=True)
             ensure_variant_attribute_options(conn, cat_attrs_full, v_attrs)
@@ -1633,7 +1901,7 @@ def create_dynamic_product(
                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
                 (
                     prod_id, v_sku, v.barcode, v.title, v.price_override_dzd, v.stock_qty,
-                    v.image_url or payload.main_image_url, v.purchase_cost_dzd, v.weight_grams,
+                    (v.image_url or "").strip() or None, v.purchase_cost_dzd, v.weight_grams,
                     v.low_stock_threshold, 1, sig,
                 )
             )
@@ -1655,7 +1923,7 @@ def generate_product_variants_matrix(
         cur.execute("SELECT * FROM products WHERE id = ?", (product_id,))
         prod = cur.fetchone()
         if not prod:
-            raise HTTPException(status_code=404, detail="Product not found")
+            raise HTTPException(status_code=404, detail="Produit introuvable")
 
         cur.execute("SELECT * FROM category_attributes WHERE category_id = ?", (prod["category_id"],))
         cat_attrs = {r["attr_key"]: dict(r) for r in cur.fetchall()}
@@ -1665,9 +1933,9 @@ def generate_product_variants_matrix(
             raise HTTPException(status_code=400, detail="At least one variant axis is required")
         for k in axis_keys:
             if k not in cat_attrs or not cat_attrs[k]["is_variant_axis"]:
-                raise HTTPException(status_code=400, detail=f"Attribute '{k}' is not configured as a variant axis for this category")
+                raise HTTPException(status_code=400, detail=f"'{k}' ne sert pas à créer des déclinaisons dans cette catégorie")
             if not payload.axes[k]:
-                raise HTTPException(status_code=400, detail=f"Axis '{k}' has no values")
+                raise HTTPException(status_code=400, detail=f"Aucune valeur choisie pour '{k}'")
 
         # Reject axis values that are not part of the category's configured options.
         cat_attrs_full = load_category_attributes_with_options(conn, prod["category_id"])
@@ -1706,7 +1974,7 @@ def generate_product_variants_matrix(
                    VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
                 (
                     product_id, v_sku, v_title, payload.price_override_dzd, payload.default_stock,
-                    prod["main_image_url"], payload.low_stock_threshold, sig,
+                    None, payload.low_stock_threshold, sig,
                 )
             )
             vid = cur.lastrowid
@@ -1751,7 +2019,7 @@ def admin_create_variant(
         cur.execute("SELECT * FROM products WHERE id = ?", (product_id,))
         prod = cur.fetchone()
         if not prod:
-            raise HTTPException(status_code=404, detail="Product not found")
+            raise HTTPException(status_code=404, detail="Produit introuvable")
 
         cat_attrs = load_category_attributes_with_options(conn, prod["category_id"])
         attrs = validate_variant_attributes(cat_attrs, payload.attributes, allow_custom_values=True)
@@ -1771,7 +2039,7 @@ def admin_create_variant(
                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
             (
                 product_id, sku, payload.barcode, title, payload.price_override_dzd, payload.stock_qty,
-                payload.image_url or prod["main_image_url"], payload.purchase_cost_dzd,
+                (payload.image_url or "").strip() or None, payload.purchase_cost_dzd,
                 payload.weight_grams, payload.low_stock_threshold, 1 if payload.is_active else 0, sig,
             )
         )
@@ -1808,7 +2076,7 @@ def admin_update_variant(
         )
         variant = cur.fetchone()
         if not variant:
-            raise HTTPException(status_code=404, detail="Variant not found")
+            raise HTTPException(status_code=404, detail="Déclinaison introuvable")
 
         fields: Dict[str, Any] = {}
         if payload.sku is not None:
@@ -1820,7 +2088,7 @@ def admin_update_variant(
         if payload.title is not None:
             title = payload.title.strip()
             if not title:
-                raise HTTPException(status_code=422, detail="Variant title cannot be empty")
+                raise HTTPException(status_code=422, detail="Le nom de la déclinaison est obligatoire")
             fields["title"] = title
         if payload.clear_price_override:
             fields["price_override_dzd"] = None
@@ -1893,7 +2161,7 @@ def admin_delete_variant(
         cur.execute("SELECT * FROM product_variants WHERE id = ?", (variant_id,))
         variant = cur.fetchone()
         if not variant:
-            raise HTTPException(status_code=404, detail="Variant not found")
+            raise HTTPException(status_code=404, detail="Déclinaison introuvable")
 
         cur.execute("SELECT COUNT(*) AS cnt FROM order_items WHERE variant_id = ?", (variant_id,))
         used_in_orders = int(cur.fetchone()["cnt"] or 0)
@@ -1945,7 +2213,7 @@ def admin_bulk_update_variants(
             if new_stock < 0:
                 raise HTTPException(
                     status_code=400,
-                    detail=f"Stock for variant '{variant['sku']}' cannot become negative (requested {new_stock})",
+                    detail=f"Le stock de '{variant['sku']}' ne peut pas devenir négatif ({new_stock})",
                 )
             if new_stock != previous_stock:
                 fields["stock_qty"] = new_stock
@@ -2031,7 +2299,7 @@ def admin_update_category_attribute(
         cur.execute("SELECT * FROM category_attributes WHERE id = ?", (attr_id,))
         attr = cur.fetchone()
         if not attr:
-            raise HTTPException(status_code=404, detail="Attribute not found")
+            raise HTTPException(status_code=404, detail="Caractéristique introuvable")
 
         provided = payload.dict(exclude_unset=True)
         fields: Dict[str, Any] = {}
@@ -2069,14 +2337,14 @@ def admin_create_attribute_option(
         cur = conn.cursor()
         cur.execute("SELECT * FROM category_attributes WHERE id = ?", (attr_id,))
         if not cur.fetchone():
-            raise HTTPException(status_code=404, detail="Attribute not found")
+            raise HTTPException(status_code=404, detail="Caractéristique introuvable")
         value = payload.value.strip()
         cur.execute(
             "SELECT id FROM category_attribute_options WHERE attribute_id = ? AND value = ?",
             (attr_id, value),
         )
         if cur.fetchone():
-            raise HTTPException(status_code=409, detail=f"Option '{value}' already exists on this attribute")
+            raise HTTPException(status_code=409, detail=f"La valeur '{value}' existe déjà")
         cur.execute(
             """INSERT INTO category_attribute_options
                (attribute_id, value, label_fr, label_ar, label_en, color_hex, display_order)
@@ -2110,7 +2378,7 @@ def admin_update_attribute_option(
         cur.execute("SELECT * FROM category_attribute_options WHERE id = ?", (option_id,))
         option = cur.fetchone()
         if not option:
-            raise HTTPException(status_code=404, detail="Option not found")
+            raise HTTPException(status_code=404, detail="Valeur introuvable")
         new_value = payload.value.strip()
         if new_value != option["value"]:
             cur.execute(
@@ -2118,7 +2386,7 @@ def admin_update_attribute_option(
                 (option["attribute_id"], new_value, option_id),
             )
             if cur.fetchone():
-                raise HTTPException(status_code=409, detail=f"Option '{new_value}' already exists on this attribute")
+                raise HTTPException(status_code=409, detail=f"La valeur '{new_value}' existe déjà")
             # Keep existing variants consistent: rename the stored option value and
             # recompute each affected variant's combination signature.
             cur.execute(
@@ -2161,7 +2429,7 @@ def admin_delete_attribute_option(
         cur.execute("SELECT * FROM category_attribute_options WHERE id = ?", (option_id,))
         option = cur.fetchone()
         if not option:
-            raise HTTPException(status_code=404, detail="Option not found")
+            raise HTTPException(status_code=404, detail="Valeur introuvable")
         cur.execute(
             """SELECT COUNT(*) AS cnt FROM variant_attribute_values
                WHERE attribute_id = ? AND option_value = ?""",
@@ -2171,7 +2439,7 @@ def admin_delete_attribute_option(
         if in_use > 0:
             raise HTTPException(
                 status_code=status.HTTP_409_CONFLICT,
-                detail=f"Option '{option['value']}' is used by {in_use} variant(s). Rename or remove those variants first.",
+                detail=f"La valeur '{option['value']}' est utilisée par {in_use} déclinaison(s). Renommez ou supprimez-les d'abord.",
             )
         cur.execute("DELETE FROM category_attribute_options WHERE id = ?", (option_id,))
         log_audit(conn, int(admin["sub"]), "delete_attribute_option", "category_attribute_option", str(option_id), {
@@ -2185,14 +2453,25 @@ def admin_delete_attribute_option(
 def list_admin_orders(
     status_filter: Optional[str] = Query(None, alias="status"),
     limit: int = Query(100, ge=1, le=500),
+    q: Optional[str] = Query(None, max_length=120),
     admin: dict = Depends(require_permission("orders:write"))
 ):
+    """Newest orders first. `q` finds any order, however old: order number,
+    phone (spaces ignored) or customer name (a customer calling about an order
+    from months ago is not in the newest 100)."""
+    where, params = [], []
+    if status_filter:
+        where.append("status = ?")
+        params.append(status_filter)
+    text = (q or "").strip()
+    if text:
+        digits = re.sub(r"[\s.\-]", "", text)
+        where.append("(UPPER(order_reference) LIKE ? OR customer_phone LIKE ? OR LOWER(customer_name) LIKE ?)")
+        params += [f"%{text.upper()}%", f"%{digits}%", f"%{text.lower()}%"]
+    sql = "SELECT * FROM orders" + (" WHERE " + " AND ".join(where) if where else "") + " ORDER BY id DESC LIMIT ?"
     with db_session() as conn:
         cur = conn.cursor()
-        if status_filter:
-            cur.execute("SELECT * FROM orders WHERE status = ? ORDER BY id DESC LIMIT ?", (status_filter, limit))
-        else:
-            cur.execute("SELECT * FROM orders ORDER BY id DESC LIMIT ?", (limit,))
+        cur.execute(sql, (*params, limit))
         raw_orders = cur.fetchall()
         orders = [dict(r) for r in raw_orders]
         if orders:
@@ -2231,7 +2510,7 @@ def update_order_status(
         cur.execute("SELECT * FROM orders WHERE id = ?", (order_id,))
         ord_row = cur.fetchone()
         if not ord_row:
-            raise HTTPException(status_code=404, detail="Order not found")
+            raise HTTPException(status_code=404, detail="Commande introuvable")
 
         prev_status = ord_row["status"]
         stock_deducted = int(ord_row["stock_deducted"])
@@ -2243,7 +2522,17 @@ def update_order_status(
             if not (prev_status == "delivered" and payload.status == "returned"):
                 raise HTTPException(
                     status_code=status.HTTP_400_BAD_REQUEST,
-                    detail=f"Invalid order status transition from terminal status '{prev_status}' to '{payload.status}'"
+                    detail=f"Une commande {_fr(prev_status).lower()} ne peut plus changer de statut"
+                )
+
+        # A cancelled order gives its promo-code use back (a limited code is not
+        # used up by orders that never happened). A returned parcel keeps it.
+        if payload.status == "cancelled":
+            code_used = dict(ord_row).get("coupon_code")
+            if code_used:
+                cur.execute(
+                    "UPDATE coupons SET usage_count = CASE WHEN usage_count > 0 THEN usage_count - 1 ELSE 0 END WHERE UPPER(code) = ?",
+                    (str(code_used).upper(),),
                 )
 
         # If order is cancelled or returned and stock was deducted, restore stock atomically (H-2 & M-14)
@@ -2283,6 +2572,18 @@ def update_order_status(
                WHERE id = ?""",
             (payload.status, payload.internal_notes, stock_deducted, order_id)
         )
+        # Treasury: a delivered cash-on-delivery order is money collected; a
+        # return after delivery gives it back.
+        if payload.status == "delivered" and prev_status != "delivered":
+            _record_cash_movement(cur, account="cash_box", movement="inflow", amount=int(ord_row["total_dzd"]),
+                                  source_type="cod_collection", reference=ord_row["order_reference"],
+                                  description=f"Commande livrée {ord_row['order_reference']} (paiement à la livraison)",
+                                  user_id=int(admin["sub"]))
+        elif payload.status == "returned" and prev_status == "delivered":
+            _record_cash_movement(cur, account="cash_box", movement="outflow", amount=int(ord_row["total_dzd"]),
+                                  source_type="cod_refund", reference=ord_row["order_reference"],
+                                  description=f"Retour après livraison {ord_row['order_reference']}",
+                                  user_id=int(admin["sub"]))
         log_audit(conn, int(admin["sub"]), "update_order_status", "order", str(order_id), {"from": prev_status, "to": payload.status})
         cur.execute("SELECT * FROM orders WHERE id = ?", (order_id,))
         return dict(cur.fetchone())
@@ -2305,7 +2606,48 @@ UPLOAD_STORAGE_DIR = _resolve_writable_dir("UPLOAD_DIR", "uploads")
 # BACKUP_STORAGE_DIR removed with the admin-facing /admin/backups endpoints;
 # the shell backup script owns its own directory via $BACKUP_DIR directly.
 
-MAX_UPLOAD_IMAGE_BYTES = 5 * 1024 * 1024
+# Phone photos are often 5-12 MB; they are reduced to a few hundred KB on
+# arrival (_optimize_product_image), so the upload limit can be generous.
+MAX_UPLOAD_IMAGE_BYTES = 15 * 1024 * 1024
+
+PRODUCT_IMAGE_MAX_SIDE = 1600
+
+
+def _optimize_product_image(data: bytes) -> tuple:
+    """Phone photos are 3-5 MB; the shop shows them at most ~800 px wide.
+    Each upload is turned upright (phone rotation), stripped of its metadata
+    (camera EXIF can hold the shop's GPS position), reduced to 1600 px and
+    re-encoded: JPEG, or WebP when it has transparency. A few hundred KB
+    instead of several MB: disk (40 GB), backups and mobile data."""
+    from PIL import Image, ImageOps
+
+    Image.MAX_IMAGE_PIXELS = 64_000_000  # refuse decompression bombs (a 48 MP phone photo is fine)
+    try:
+        img = Image.open(io.BytesIO(data))
+        if img.format != "JPEG" and img.width * img.height > 16_000_000:
+            # PNG / WebP decode at full size: keep within the API's 256 MB.
+            raise HTTPException(status_code=400, detail="Image trop grande (dimensions). Réduisez-la avant de l'envoyer.")
+        if img.format == "JPEG":
+            # Decode directly at a reduced scale: fast and light on memory.
+            img.draft("RGB", (PRODUCT_IMAGE_MAX_SIDE * 2, PRODUCT_IMAGE_MAX_SIDE * 2))
+        img = ImageOps.exif_transpose(img)
+        img.thumbnail((PRODUCT_IMAGE_MAX_SIDE, PRODUCT_IMAGE_MAX_SIDE), Image.LANCZOS)
+        transparent = img.mode in ("RGBA", "LA") or (img.mode == "P" and "transparency" in img.info)
+        out = io.BytesIO()
+        if transparent:
+            img.convert("RGBA").save(out, "WEBP", quality=85, method=4)
+            ext = ".webp"
+        else:
+            img.convert("RGB").save(out, "JPEG", quality=82, optimize=True, progressive=True)
+            ext = ".jpg"
+        return out.getvalue(), ext, img.size
+    except (Image.DecompressionBombError, Image.DecompressionBombWarning):
+        raise HTTPException(status_code=400, detail="Image trop grande (dimensions). Réduisez-la avant de l'envoyer.")
+    except HTTPException:
+        raise
+    except Exception:
+        raise HTTPException(status_code=400, detail="Image illisible ou endommagée.")
+
 
 @app.post("/api/v1/admin/upload", status_code=201)
 async def upload_product_image(
@@ -2314,15 +2656,15 @@ async def upload_product_image(
 ):
     data = await file.read(MAX_UPLOAD_IMAGE_BYTES + 1)
     if len(data) > MAX_UPLOAD_IMAGE_BYTES:
-        raise HTTPException(status_code=413, detail="Image exceeds maximum allowed size of 5 MB")
-    validate_uploaded_image(file.filename or "upload.jpg", file.content_type or "", data)
+        raise HTTPException(status_code=413, detail="Image trop lourde (15 Mo maximum)")
+    validate_uploaded_image(file.filename or "upload.jpg", file.content_type or "", data, max_bytes=MAX_UPLOAD_IMAGE_BYTES)
+    data, ext, (width, height) = _optimize_product_image(data)
     digest = hashlib.sha256(data).hexdigest()[:16]
-    ext = {"image/jpeg": ".jpg", "image/png": ".png", "image/webp": ".webp"}[file.content_type]
     safe_name = f"img_{digest}{ext}"
     dest_path = os.path.join(UPLOAD_STORAGE_DIR, safe_name)
     with open(dest_path, "wb") as uf:
         uf.write(data)
-    return {"filename": safe_name, "url": f"/uploads/{safe_name}", "size_bytes": len(data)}
+    return {"filename": safe_name, "url": f"/uploads/{safe_name}", "size_bytes": len(data), "width": width, "height": height}
 
 @app.get("/uploads/{filename}")
 def serve_uploaded_image(filename: str):
@@ -2330,7 +2672,7 @@ def serve_uploaded_image(filename: str):
         raise HTTPException(status_code=400, detail="Invalid media filename")
     fpath = os.path.join(UPLOAD_STORAGE_DIR, filename)
     if not os.path.isfile(fpath):
-        raise HTTPException(status_code=404, detail="Uploaded media file not found")
+        raise HTTPException(status_code=404, detail="Fichier introuvable")
     ext = os.path.splitext(filename)[1].lower()
     mime = {".jpg": "image/jpeg", ".png": "image/png", ".webp": "image/webp"}.get(ext, "application/octet-stream")
     with open(fpath, "rb") as f:
@@ -2361,14 +2703,21 @@ def serve_uploaded_image(filename: str):
 # ============================================================================
 
 class BannerCreateUpdate(BaseModel):
-    position: str = Field("hero", regex=r"^(hero|promo_grid|seasonal)$")
-    title_fr: str
-    title_ar: Optional[str] = ""
-    title_en: Optional[str] = ""
-    subtitle_fr: Optional[str] = ""
-    cta_text_fr: Optional[str] = "Découvrir"
-    cta_link: Optional[str] = "/categories/sacs"
-    image_url: str = "/assets/hero_bag_clean.jpg"
+    # hero = big banner at the top of the home page; promo_grid = promotion
+    # cards on the home page. No invented defaults: every field comes from
+    # the CMS form.
+    position: str = Field("promo_grid", regex=r"^(hero|promo_grid|seasonal)$")
+    title_fr: str = Field(..., min_length=1, max_length=160)
+    title_ar: Optional[str] = Field("", max_length=160)
+    title_en: Optional[str] = Field("", max_length=160)
+    subtitle_fr: Optional[str] = Field("", max_length=300)
+    subtitle_ar: Optional[str] = Field("", max_length=300)
+    subtitle_en: Optional[str] = Field("", max_length=300)
+    cta_text_fr: Optional[str] = Field("", max_length=60)
+    # Shop address the banner opens: /categorie/<slug>, /produit/<slug>,
+    # #/boutique, or a full https:// link.
+    cta_link: Optional[str] = Field("", max_length=400)
+    image_url: Optional[str] = Field("", max_length=400)
     is_active: bool = True
     display_order: int = 1
 
@@ -2399,7 +2748,8 @@ def get_public_storefront_layout():
             except Exception:
                 settings[r["setting_key"]] = r["setting_value"]
 
-        cur.execute("SELECT * FROM homepage_sections WHERE is_active = 1 ORDER BY display_order ASC")
+        # All blocks, with their on/off state: the shop hides the ones switched off.
+        cur.execute("SELECT * FROM homepage_sections ORDER BY display_order ASC")
         sections = []
         for s in cur.fetchall():
             sd = dict(s)
@@ -2438,18 +2788,50 @@ def admin_create_banner(
         cur = conn.cursor()
         cur.execute(
             """INSERT INTO banners
-               (position, title_fr, title_ar, title_en, subtitle_fr, cta_text_fr, cta_link, image_url, is_active, display_order)
-               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+               (position, title_fr, title_ar, title_en, subtitle_fr, subtitle_ar, subtitle_en,
+                cta_text_fr, cta_link, image_url, is_active, display_order)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
             (
-                payload.position, payload.title_fr, payload.title_ar, payload.title_en,
-                payload.subtitle_fr, payload.cta_text_fr, payload.cta_link,
-                payload.image_url, 1 if payload.is_active else 0, payload.display_order
+                payload.position, payload.title_fr.strip(), payload.title_ar or "", payload.title_en or "",
+                payload.subtitle_fr or "", payload.subtitle_ar or "", payload.subtitle_en or "",
+                payload.cta_text_fr or "", (payload.cta_link or "").strip(),
+                (payload.image_url or "").strip(), 1 if payload.is_active else 0, payload.display_order
             )
         )
         bid = cur.lastrowid
         log_audit(conn, int(admin["sub"]), "create_banner", "banner", str(bid), {"title_fr": payload.title_fr})
         cur.execute("SELECT * FROM banners WHERE id = ?", (bid,))
         return dict(cur.fetchone())
+
+@app.put("/api/v1/admin/banners/{banner_id}")
+def admin_update_banner(
+    banner_id: int,
+    payload: BannerCreateUpdate,
+    admin: dict = Depends(require_permission("content:write"))
+):
+    for field in ("title_fr", "title_ar", "title_en", "subtitle_fr", "subtitle_ar", "subtitle_en", "cta_text_fr", "cta_link", "image_url"):
+        _ensure_safe_url_or_text(getattr(payload, field) or "", field)
+    with db_session(commit=True) as conn:
+        cur = conn.cursor()
+        cur.execute("SELECT id FROM banners WHERE id = ?", (banner_id,))
+        if not cur.fetchone():
+            raise HTTPException(status_code=404, detail="Bannière introuvable")
+        cur.execute(
+            """UPDATE banners SET position = ?, title_fr = ?, title_ar = ?, title_en = ?,
+                   subtitle_fr = ?, subtitle_ar = ?, subtitle_en = ?, cta_text_fr = ?, cta_link = ?,
+                   image_url = ?, is_active = ?, display_order = ?
+               WHERE id = ?""",
+            (
+                payload.position, payload.title_fr.strip(), payload.title_ar or "", payload.title_en or "",
+                payload.subtitle_fr or "", payload.subtitle_ar or "", payload.subtitle_en or "",
+                payload.cta_text_fr or "", (payload.cta_link or "").strip(), (payload.image_url or "").strip(),
+                1 if payload.is_active else 0, payload.display_order, banner_id,
+            ),
+        )
+        log_audit(conn, int(admin["sub"]), "update_banner", "banner", str(banner_id), {"title_fr": payload.title_fr})
+        cur.execute("SELECT * FROM banners WHERE id = ?", (banner_id,))
+        return dict(cur.fetchone())
+
 
 @app.delete("/api/v1/admin/banners/{banner_id}")
 def admin_delete_banner(
@@ -2461,10 +2843,40 @@ def admin_delete_banner(
         cur.execute("SELECT * FROM banners WHERE id = ?", (banner_id,))
         b = cur.fetchone()
         if not b:
-            raise HTTPException(status_code=404, detail="Banner not found")
+            raise HTTPException(status_code=404, detail="Bannière introuvable")
         cur.execute("DELETE FROM banners WHERE id = ?", (banner_id,))
         log_audit(conn, int(admin["sub"]), "delete_banner", "banner", str(banner_id), {"title_fr": b["title_fr"]})
         return {"deleted": True, "banner_id": banner_id}
+
+# The home page blocks the shop knows how to draw (key → titles, default order).
+STANDARD_HOMEPAGE_SECTIONS = {
+    "hero_banner": ("Bannière principale", "البانر الرئيسي", "Main banner", 1),
+    "trust_bar": ("Barre de confiance (4 garanties)", "شريط الثقة", "Trust bar", 2),
+    "categories_grid": ("Grille des catégories", "شبكة الفئات", "Categories grid", 3),
+    "featured_products": ("Produits en vedette", "المنتجات المميزة", "Featured products", 4),
+    "promo_banners": ("Cartes promotionnelles", "العروض", "Promotion cards", 5),
+}
+
+
+@app.get("/api/v1/admin/homepage-sections")
+def admin_list_homepage_sections(admin: dict = Depends(require_permission("content:write"))):
+    """Every standard section, with its saved state (visible + order) or the default."""
+    with db_session() as conn:
+        cur = conn.cursor()
+        cur.execute("SELECT * FROM homepage_sections")
+        saved = {r["section_key"]: dict(r) for r in cur.fetchall()}
+    items = []
+    for key, (t_fr, _t_ar, _t_en, order) in STANDARD_HOMEPAGE_SECTIONS.items():
+        row = saved.get(key)
+        items.append({
+            "section_key": key,
+            "title_fr": (row or {}).get("title_fr") or t_fr,
+            "is_active": bool(row["is_active"]) if row else True,
+            "display_order": int(row["display_order"]) if row else order,
+        })
+    items.sort(key=lambda x: x["display_order"])
+    return {"items": items}
+
 
 @app.put("/api/v1/admin/homepage-sections/{section_key}")
 def admin_update_homepage_section(
@@ -2476,8 +2888,17 @@ def admin_update_homepage_section(
         cur = conn.cursor()
         cur.execute("SELECT * FROM homepage_sections WHERE section_key = ?", (section_key,))
         sec = cur.fetchone()
+        if not sec and section_key in STANDARD_HOMEPAGE_SECTIONS:
+            t_fr, t_ar, t_en, order = STANDARD_HOMEPAGE_SECTIONS[section_key]
+            cur.execute(
+                "INSERT INTO homepage_sections (section_key, title_fr, title_ar, title_en, is_active, display_order, config_json) "
+                "VALUES (?, ?, ?, ?, 1, ?, '{}')",
+                (section_key, t_fr, t_ar, t_en, order),
+            )
+            cur.execute("SELECT * FROM homepage_sections WHERE section_key = ?", (section_key,))
+            sec = cur.fetchone()
         if not sec:
-            raise HTTPException(status_code=404, detail="Homepage section not found")
+            raise HTTPException(status_code=404, detail="Section de la page d'accueil introuvable")
         cur.execute(
             """UPDATE homepage_sections
                SET title_fr = COALESCE(?, title_fr),
@@ -2508,7 +2929,7 @@ def admin_update_store_settings(
         if _is_protected_setting_key(k):
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
-                detail=f"Protected system setting '{k}' cannot be modified via store settings API"
+                detail=f"Le réglage système '{k}' ne peut pas être modifié ici"
             )
         _ensure_safe_url_or_text(json.dumps(v, ensure_ascii=False) if isinstance(v, (dict, list)) else str(v), k)
     with db_session(commit=True) as conn:
@@ -2530,7 +2951,7 @@ def admin_update_store_settings(
 # SECTION 6: WEBHOOKS & STORE INTEGRATIONS
 # ============================================================================
 
-from .security import hash_password, REVOKED_TOKENS, revoke_all_user_sessions
+from .security import hash_password, revoke_all_user_sessions
 
 class ProductConcurrencyUpdate(BaseModel):
     name_fr: str
@@ -2676,11 +3097,15 @@ def track_guest_order(request: Request, reference: str = Query(...), phone: str 
         )
         ord_row = cur.fetchone()
         if not ord_row:
-            raise HTTPException(status_code=404, detail="No order found matching this reference and phone number")
-        od = dict(ord_row)
-        od.pop("internal_notes", None)
-        od.pop("idempotency_hash", None)
-        cur.execute("SELECT product_name, variant_title, quantity, unit_price_dzd, line_total_dzd FROM order_items WHERE order_id = ?", (od["id"],))
+            raise HTTPException(status_code=404, detail="Aucune commande ne correspond à cette référence et à ce numéro")
+        # Only what the customer needs: no internal notes, ids or keys — a new
+        # column added to orders is never exposed here by accident.
+        row = dict(ord_row)
+        public = ("order_reference", "status", "customer_name", "wilaya_code", "wilaya_name", "commune",
+                  "delivery_address", "delivery_method", "payment_method", "subtotal_dzd", "discount_dzd",
+                  "coupon_code", "delivery_fee_dzd", "total_dzd", "customer_notes", "created_at", "updated_at")
+        od = {k: row.get(k) for k in public if k in row}
+        cur.execute("SELECT product_name, variant_title, quantity, unit_price_dzd, line_total_dzd FROM order_items WHERE order_id = ?", (row["id"],))
         od["items"] = [dict(r) for r in cur.fetchall()]
         return od
 
@@ -2699,26 +3124,26 @@ def update_product_with_conflict_detection(
         cur.execute("SELECT * FROM products WHERE id = ?", (product_id,))
         prod = cur.fetchone()
         if not prod:
-            raise HTTPException(status_code=404, detail="Product not found")
+            raise HTTPException(status_code=404, detail="Produit introuvable")
         current_version = int(prod["version"])
         if payload.expected_version != current_version:
             raise HTTPException(
                 status_code=status.HTTP_409_CONFLICT,
-                detail=f"Synchronization conflict detected: server version is {current_version}, but client sent version {payload.expected_version}. Reload latest server data before saving."
+                detail=f"Ce produit a été modifié entre-temps (version {current_version}). Rechargez la fiche avant d'enregistrer."
             )
         if payload.sku and payload.sku != prod["sku"]:
             cur.execute("SELECT id FROM products WHERE sku = ? AND id != ?", (payload.sku, product_id))
             if cur.fetchone():
                 raise HTTPException(
                     status_code=status.HTTP_409_CONFLICT,
-                    detail=f"Product SKU '{payload.sku}' is already used by another product"
+                    detail=f"La référence '{payload.sku}' est déjà utilisée par un autre produit"
                 )
         if payload.slug and payload.slug != prod["slug"]:
             cur.execute("SELECT id FROM products WHERE slug = ? AND id != ?", (payload.slug, product_id))
             if cur.fetchone():
                 raise HTTPException(
                     status_code=status.HTTP_409_CONFLICT,
-                    detail=f"Product slug '{payload.slug}' is already used by another product"
+                    detail=f"L'adresse '{payload.slug}' est déjà utilisée par un autre produit"
                 )
         new_version = current_version + 1
         cur.execute(
@@ -2806,7 +3231,7 @@ def create_coupon(
         code_upper = payload.code.strip().upper()
         cur.execute("SELECT id FROM coupons WHERE UPPER(code) = ?", (code_upper,))
         if cur.fetchone():
-            raise HTTPException(status_code=409, detail=f"Coupon code '{code_upper}' already exists")
+            raise HTTPException(status_code=409, detail=f"Le code promo '{code_upper}' existe déjà")
         cur.execute(
             """INSERT INTO coupons (code, discount_type, discount_value, min_order_dzd, max_discount_dzd, usage_limit, is_active)
                VALUES (?, ?, ?, ?, ?, ?, 1)""",
@@ -2821,7 +3246,16 @@ def create_coupon(
 def admin_list_coupons(admin: dict = Depends(require_permission("content:write"))):
     with db_session() as conn:
         cur = conn.cursor()
-        cur.execute("SELECT * FROM coupons ORDER BY id DESC")
+        # Real results per code: orders kept (not cancelled / returned) and the
+        # discount they gave.
+        cur.execute(
+            """SELECT c.*,
+                      (SELECT COUNT(*) FROM orders o WHERE UPPER(o.coupon_code) = UPPER(c.code)
+                         AND o.status NOT IN ('cancelled', 'returned')) AS orders_count,
+                      (SELECT COALESCE(SUM(o.discount_dzd), 0) FROM orders o WHERE UPPER(o.coupon_code) = UPPER(c.code)
+                         AND o.status NOT IN ('cancelled', 'returned')) AS discount_given_dzd
+               FROM coupons c ORDER BY c.id DESC"""
+        )
         return {"items": [dict(r) for r in cur.fetchall()]}
 
 @app.delete("/api/v1/admin/coupons/{coupon_id}")
@@ -2902,7 +3336,7 @@ class OwnerInitializeInput(BaseModel):
             return None
         cleaned = re.sub(r"[\s\-\.]", "", v)
         if not re.match(r"^(\+213|0)(5|6|7)[0-9]{8}$", cleaned):
-            raise ValueError("Invalid Algerian mobile phone number (must start with 05, 06, 07 or +213)")
+            raise ValueError("Numéro de mobile algérien invalide (il doit commencer par 05, 06, 07 ou +213)")
         return cleaned
 
 @app.get("/api/v1/admin/auth/setup-status")
@@ -2950,7 +3384,7 @@ def initialize_primary_owner(payload: OwnerInitializeInput, request: Request):
         if is_init:
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
-                detail="Security Lockout: Mus Luxury platform has already been initialized with a primary owner account. First-time setup is disabled."
+                detail="Le compte propriétaire existe déjà : la première configuration n'est plus possible."
             )
 
         cur.execute("SELECT id FROM roles WHERE name = 'super_admin'")
@@ -2971,15 +3405,9 @@ def initialize_primary_owner(payload: OwnerInitializeInput, request: Request):
         )
         owner_id = cur.lastrowid
 
-        # Seed emergency recovery token tied to secondary emergency phone (or fallback)
-        emergency_code = f"EMERGENCY-{secrets.token_hex(6).upper()}"
-        code_hash = hashlib.sha256(emergency_code.encode("utf-8")).hexdigest()
-        recovery_phone = payload.emergency_phone or payload.whatsapp_phone or "+213000000000"
-        cur.execute(
-            """INSERT INTO admin_recovery_codes (admin_user_id, phone, code_hash, channel, max_attempts, expires_at)
-               VALUES (?, ?, ?, 'offline_emergency', 3, ?)""",
-            (owner_id, recovery_phone, code_hash, int(time.time()) + 86400 * 365)
-        )
+        # No "emergency code": nothing could ever use one (the WhatsApp
+        # recovery flow was removed). A forgotten password is reset on the
+        # server: `python -m app.admin_cli reset-password --email ...`.
 
         # Mark system as permanently initialized in database
         cur.execute(
@@ -3006,20 +3434,21 @@ def initialize_primary_owner(payload: OwnerInitializeInput, request: Request):
         return {
             "initialized": True,
             "message": "Super Administrator successfully provisioned. Setup is permanently locked.",
-            "emergency_code_backup": emergency_code,
+            "password_recovery": "server: python -m app.admin_cli reset-password --email <email>",
             "access_token": token,
             "user": {
                 "id": owner_id,
                 "email": email_clean,
                 "full_name": payload.full_name.strip(),
                 "role": "super_admin",
+                "permissions": perms,
                 "whatsapp_phone": payload.whatsapp_phone,
                 "emergency_phone": payload.emergency_phone
             }
         }
 
 
-from .security import sign_api_request, verify_signed_request
+from .security import verify_signed_request
 
 @app.post("/api/v1/admin/secure-action")
 async def execute_cryptographically_signed_action(
@@ -3157,13 +3586,13 @@ def admin_adjust_variant_stock(
         cur.execute("SELECT * FROM product_variants WHERE id = ?", (variant_id,))
         v = cur.fetchone()
         if not v:
-            raise HTTPException(status_code=404, detail="Variant not found")
+            raise HTTPException(status_code=404, detail="Déclinaison introuvable")
         cur.execute(
             "UPDATE product_variants SET stock_qty = stock_qty + ? WHERE id = ? AND (stock_qty + ?) >= 0",
             (payload.change_qty, variant_id, payload.change_qty)
         )
         if cur.rowcount == 0:
-            raise HTTPException(status_code=400, detail="Stock quantity cannot become negative")
+            raise HTTPException(status_code=400, detail="Le stock ne peut pas devenir négatif : il n'y a plus d'unité à retirer pour cette variante.")
         cur.execute("SELECT stock_qty FROM product_variants WHERE id = ?", (variant_id,))
         new_qty = int(cur.fetchone()["stock_qty"])
         prev_qty = new_qty - payload.change_qty
@@ -3178,15 +3607,64 @@ def admin_adjust_variant_stock(
         })
         return {"variant_id": variant_id, "sku": v["sku"], "previous_qty": prev_qty, "new_qty": new_qty}
 
+# What a customer really spent, computed from the source (same rules as the
+# customer detail and the reports): online orders neither cancelled nor
+# returned + in-store sales − in-store refunds. The customers.total_spent_dzd
+# column is only a counter bumped when an order is placed, so it is not used.
+_CUSTOMER_SPENT_SQL = """
+    (SELECT COALESCE(SUM(o.total_dzd), 0) FROM orders o
+      WHERE o.customer_id = c.id AND o.status NOT IN ('cancelled', 'returned'))
+  + (SELECT COALESCE(SUM(CASE WHEN ps.sale_type = 'refund' THEN -ps.total_dzd ELSE ps.total_dzd END), 0)
+       FROM pos_sales ps WHERE ps.customer_id = c.id)"""
+_CUSTOMER_COUNT_SQL = """
+    (SELECT COUNT(*) FROM orders o WHERE o.customer_id = c.id AND o.status NOT IN ('cancelled', 'returned'))
+  + (SELECT COUNT(*) FROM pos_sales ps WHERE ps.customer_id = c.id AND ps.sale_type = 'sale')"""
+
+# Customers: managed from Commandes (orders:write) and from the till (pos:sell).
+_CUSTOMER_MANAGE = require_any_permission(["orders:write", "pos:sell"])
+
 @app.get("/api/v1/admin/customers")
-def admin_list_customers(admin: dict = Depends(require_permission("orders:write"))):
+def admin_list_customers(
+    limit: int = Query(200, ge=1, le=1000),
+    offset: int = Query(0, ge=0),
+    admin: dict = Depends(_CUSTOMER_MANAGE),
+):
+    """Best customers first, one page at a time (a shop with 20 000 customers
+    sent 5 MB and drew 20 000 table rows); /admin/customers/search finds anyone."""
     with db_session() as conn:
         cur = conn.cursor()
-        cur.execute("SELECT * FROM customers ORDER BY total_spent_dzd DESC, id DESC")
-        return {"items": [dict(r) for r in cur.fetchall()]}
+        cur.execute("SELECT COUNT(*) AS n FROM customers")
+        total = int(cur.fetchone()["n"])
+        # Totals computed once per table and joined (same figures as
+        # _CUSTOMER_SPENT_SQL / _CUSTOMER_COUNT_SQL), not once per customer:
+        # with 20 000 customers the per-row version took minutes.
+        cur.execute(
+            """SELECT c.*,
+                      COALESCE(o.spent, 0) + COALESCE(p.spent, 0) AS spent_live,
+                      COALESCE(o.cnt, 0) + COALESCE(p.cnt, 0) AS count_live
+               FROM customers c
+               LEFT JOIN (SELECT customer_id, SUM(total_dzd) AS spent, COUNT(*) AS cnt
+                            FROM orders WHERE status NOT IN ('cancelled', 'returned')
+                           GROUP BY customer_id) o ON o.customer_id = c.id
+               LEFT JOIN (SELECT customer_id,
+                                 SUM(CASE WHEN sale_type = 'refund' THEN -total_dzd ELSE total_dzd END) AS spent,
+                                 SUM(CASE WHEN sale_type = 'sale' THEN 1 ELSE 0 END) AS cnt
+                            FROM pos_sales WHERE customer_id IS NOT NULL
+                           GROUP BY customer_id) p ON p.customer_id = c.id
+               ORDER BY spent_live DESC, c.id DESC
+               LIMIT ? OFFSET ?""",
+            (limit, offset),
+        )
+        items = []
+        for r in cur.fetchall():
+            d = dict(r)
+            d["total_spent_dzd"] = int(d.pop("spent_live") or 0)
+            d["orders_count"] = int(d.pop("count_live") or 0)
+            items.append(d)
+        return {"items": items, "total": total, "limit": limit, "offset": offset}
 
 @app.get("/api/v1/admin/reports")
-def admin_analytics_reports(admin: dict = Depends(require_permission("dashboard:read"))):
+def admin_analytics_reports(admin: dict = Depends(require_permission("finance:read"))):
     with db_session() as conn:
         cur = conn.cursor()
         cur.execute("SELECT status, COUNT(*) AS count, COALESCE(SUM(total_dzd), 0) AS total_dzd FROM orders GROUP BY status")
@@ -3247,6 +3725,12 @@ def calculate_delivery_and_order_preview(
                     discount_dzd = int(cpn["discount_value"])
                 discount_dzd = min(discount_dzd, subtotal_dzd)
 
+        # Free delivery promised by the shop (CMS threshold) is applied HERE, so
+        # the stored order (what the courier collects) matches what the
+        # customer was shown.
+        free_threshold = _free_delivery_threshold(cur)
+        if free_threshold and subtotal_dzd >= free_threshold:
+            delivery_fee_dzd = 0
         total_dzd = (subtotal_dzd - discount_dzd) + delivery_fee_dzd
         return {
             "wilaya_code": zone["wilaya_code"],
@@ -3259,6 +3743,8 @@ def calculate_delivery_and_order_preview(
             "subtotal_dzd": subtotal_dzd,
             "discount_dzd": discount_dzd,
             "delivery_fee_dzd": delivery_fee_dzd,
+            "free_delivery_threshold_dzd": free_threshold,
+            "free_delivery_applied": bool(free_threshold and subtotal_dzd >= free_threshold),
             "total_dzd": total_dzd
         }
 
@@ -3366,64 +3852,74 @@ def admin_safe_delete_or_archive_product(
     admin: dict = Depends(require_permission("products:write"))
 ):
     """
-    Safely archives or permanently deletes a product without destroying historical order records.
-    If hard_delete=True and the product has never been ordered, it is permanently deleted from database.
-    If historical orders exist and force=False, it is safely archived to preserve customer invoices.
-    If hard_delete=True and force=True, historical test order attachments are purged and product is deleted.
+    Archive (default) or permanently delete a product.
+
+    A product that has ANY history — sold online, sold in store, bought from a
+    supplier — can only be archived: deleting it would change past invoices,
+    reports and supplier accounts. Customer orders are never deleted here.
+    `force` is accepted for compatibility and ignored.
     """
     with db_session(commit=True) as conn:
         cur = conn.cursor()
         cur.execute("SELECT * FROM products WHERE id = ?", (product_id,))
         prod = cur.fetchone()
         if not prod:
-            raise HTTPException(status_code=404, detail="Product not found")
+            raise HTTPException(status_code=404, detail="Produit introuvable")
 
-        cur.execute(
-            "SELECT COUNT(*) AS cnt FROM order_items WHERE product_id = ? OR variant_id IN (SELECT id FROM product_variants WHERE product_id = ?)",
-            (product_id, product_id)
-        )
-        order_refs = cur.fetchone()["cnt"]
+        variant_ids_sql = "SELECT id FROM product_variants WHERE product_id = ?"
+        history = {}
+        for label, sql in (
+            ("online_order_lines", f"SELECT COUNT(*) AS cnt FROM order_items WHERE product_id = ? OR variant_id IN ({variant_ids_sql})"),
+            ("in_store_sale_lines", f"SELECT COUNT(*) AS cnt FROM pos_sale_items WHERE product_id = ? OR variant_id IN ({variant_ids_sql})"),
+            ("purchase_lines", f"SELECT COUNT(*) AS cnt FROM purchase_order_items WHERE product_id = ? OR variant_id IN ({variant_ids_sql})"),
+        ):
+            cur.execute(sql, (product_id, product_id))
+            history[label] = int(cur.fetchone()["cnt"])
+        has_history = any(history.values())
+
+        def _archive(reason: str):
+            cur.execute(
+                "UPDATE products SET status = 'archived', deleted_at = CURRENT_TIMESTAMP, updated_at = CURRENT_TIMESTAMP WHERE id = ?",
+                (product_id,),
+            )
+            cur.execute("UPDATE product_variants SET is_active = 0 WHERE product_id = ?", (product_id,))
+            log_audit(conn, int(admin["sub"]), "archive_product", "product", str(product_id), {
+                "sku": prod["sku"], "history": history, "reason": reason,
+            })
+
+        if hard_delete and has_history:
+            _archive("delete requested; product has history")
+            parts = []
+            if history["online_order_lines"]:
+                parts.append(f"{history['online_order_lines']} ligne(s) de commande en ligne")
+            if history["in_store_sale_lines"]:
+                parts.append(f"{history['in_store_sale_lines']} vente(s) en magasin")
+            if history["purchase_lines"]:
+                parts.append(f"{history['purchase_lines']} achat(s) fournisseur")
+            return {
+                "archived": True,
+                "deleted": False,
+                "has_orders": True,
+                "product_id": product_id,
+                "status": "archived",
+                "historical_order_items_preserved": history["online_order_lines"],
+                "history": history,
+                "message": (
+                    f"« {prod['name_fr']} » a un historique ({', '.join(parts)}) : il a été archivé, "
+                    "pas supprimé, pour garder les factures et la comptabilité exactes. Il n'est plus en vente."
+                ),
+            }
 
         if hard_delete:
-            if order_refs > 0 and not force:
-                # Historical orders exist: preserve accounting & invoice immutability unless forced
-                cur.execute(
-                    "UPDATE products SET status = 'archived', deleted_at = CURRENT_TIMESTAMP, updated_at = CURRENT_TIMESTAMP WHERE id = ?",
-                    (product_id,)
-                )
-                cur.execute("UPDATE product_variants SET is_active = 0 WHERE product_id = ?", (product_id,))
-                log_audit(conn, int(admin["sub"]), "archive_product", "product", str(product_id), {
-                    "sku": prod["sku"],
-                    "historical_order_items_preserved": order_refs,
-                    "reason": "Hard delete converted to archive to protect orders"
-                })
-                return {
-                    "archived": True,
-                    "deleted": False,
-                    "has_orders": True,
-                    "product_id": product_id,
-                    "status": "archived",
-                    "historical_order_items_preserved": order_refs,
-                    "message": f"Ce produit a {order_refs} commande(s) rattachée(s) : archivé pour protéger la comptabilité. Utilisez l'option 'Forcer' pour le retirer définitivement."
-                }
-
-            if force and order_refs > 0:
-                cur.execute("DELETE FROM order_items WHERE product_id = ? OR variant_id IN (SELECT id FROM product_variants WHERE product_id = ?)", (product_id, product_id))
-                cur.execute("DELETE FROM orders WHERE id NOT IN (SELECT DISTINCT order_id FROM order_items)")
-
-            # Hard delete: permanently remove product and all dependent data
-            cur.execute("DELETE FROM purchase_order_items WHERE product_id = ? OR variant_id IN (SELECT id FROM product_variants WHERE product_id = ?)", (product_id, product_id))
-            cur.execute("DELETE FROM inventory_movements WHERE variant_id IN (SELECT id FROM product_variants WHERE product_id = ?)", (product_id,))
-            cur.execute("DELETE FROM variant_attribute_values WHERE variant_id IN (SELECT id FROM product_variants WHERE product_id = ?)", (product_id,))
+            # Never sold nor bought: remove the product and its own data.
+            cur.execute(f"DELETE FROM inventory_movements WHERE variant_id IN ({variant_ids_sql})", (product_id,))
+            cur.execute(f"DELETE FROM variant_attribute_values WHERE variant_id IN ({variant_ids_sql})", (product_id,))
             cur.execute("DELETE FROM product_variants WHERE product_id = ?", (product_id,))
             cur.execute("DELETE FROM product_images WHERE product_id = ?", (product_id,))
             cur.execute("DELETE FROM product_attribute_values WHERE product_id = ?", (product_id,))
             cur.execute("DELETE FROM products WHERE id = ?", (product_id,))
-
             log_audit(conn, int(admin["sub"]), "delete_product", "product", str(product_id), {
-                "sku": prod["sku"],
-                "name_fr": prod["name_fr"],
-                "forced": force
+                "sku": prod["sku"], "name_fr": prod["name_fr"],
             })
             return {
                 "deleted": True,
@@ -3431,26 +3927,17 @@ def admin_safe_delete_or_archive_product(
                 "product_id": product_id,
                 "status": "deleted",
                 "historical_order_items_preserved": 0,
-                "message": f"Produit \"{prod['name_fr']}\" supprimé définitivement du catalogue et de la base."
+                "message": f"Produit « {prod['name_fr']} » supprimé définitivement (il n'avait jamais été vendu ni acheté).",
             }
 
-        # Soft archive (default)
-        cur.execute(
-            "UPDATE products SET status = 'archived', deleted_at = CURRENT_TIMESTAMP, updated_at = CURRENT_TIMESTAMP WHERE id = ?",
-            (product_id,)
-        )
-        cur.execute("UPDATE product_variants SET is_active = 0 WHERE product_id = ?", (product_id,))
-        log_audit(conn, int(admin["sub"]), "archive_product", "product", str(product_id), {
-            "sku": prod["sku"],
-            "historical_order_items_preserved": order_refs
-        })
+        _archive("archive requested")
         return {
             "archived": True,
             "deleted": False,
             "product_id": product_id,
             "status": "archived",
-            "historical_order_items_preserved": order_refs,
-            "message": f"Produit \"{prod['name_fr']}\" archivé avec succès."
+            "historical_order_items_preserved": history["online_order_lines"],
+            "message": f"Produit « {prod['name_fr']} » archivé : il n'est plus en vente, son historique est conservé.",
         }
 
 @app.post("/api/v1/admin/products/bulk-status")
@@ -3459,16 +3946,32 @@ def admin_bulk_update_product_status(
     admin: dict = Depends(require_permission("products:write"))
 ):
     if not payload.product_ids:
-        raise HTTPException(status_code=400, detail="product_ids cannot be empty")
+        raise HTTPException(status_code=400, detail="Choisissez au moins un produit")
     with db_session(commit=True) as conn:
         cur = conn.cursor()
         updated = 0
         for pid in payload.product_ids:
-            cur.execute(
-                "UPDATE products SET status = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?",
-                (payload.status, pid)
-            )
-            updated += cur.rowcount
+            if payload.status == "archived":
+                # Same effect as the Archive button.
+                cur.execute(
+                    "UPDATE products SET status = 'archived', deleted_at = COALESCE(deleted_at, CURRENT_TIMESTAMP), updated_at = CURRENT_TIMESTAMP WHERE id = ?",
+                    (pid,),
+                )
+                updated += cur.rowcount
+                cur.execute("UPDATE product_variants SET is_active = 0 WHERE product_id = ?", (pid,))
+            else:
+                # Published / draft: really bring an archived product back
+                # (the archive also hid it with deleted_at and switched its
+                # variants off — otherwise it would stay invisible).
+                cur.execute(
+                    "UPDATE products SET status = ?, deleted_at = NULL, updated_at = CURRENT_TIMESTAMP WHERE id = ?",
+                    (payload.status, pid),
+                )
+                updated += cur.rowcount
+                cur.execute(
+                    "UPDATE product_variants SET is_active = 1 WHERE product_id = ? AND is_active = 0",
+                    (pid,),
+                )
         log_audit(conn, int(admin["sub"]), "bulk_product_status", "product", "bulk", {"count": updated, "status": payload.status})
         return {"updated_count": updated, "status": payload.status}
 
@@ -3481,7 +3984,7 @@ def admin_create_brand(
         cur = conn.cursor()
         cur.execute("SELECT id FROM brands WHERE slug = ?", (payload.slug,))
         if cur.fetchone():
-            raise HTTPException(status_code=409, detail=f"Brand slug '{payload.slug}' already exists")
+            raise HTTPException(status_code=409, detail=f"La marque '{payload.slug}' existe déjà")
         cur.execute(
             "INSERT INTO brands (name, slug, logo_url, is_active) VALUES (?, ?, ?, 1)",
             (payload.name, payload.slug, payload.logo_url)
@@ -3502,7 +4005,7 @@ def admin_update_category(
         cur.execute("SELECT * FROM categories WHERE id = ?", (category_id,))
         cat = cur.fetchone()
         if not cat:
-            raise HTTPException(status_code=404, detail="Category not found")
+            raise HTTPException(status_code=404, detail="Catégorie introuvable")
         cur.execute(
             """UPDATE categories
                SET name_fr = COALESCE(?, name_fr),
@@ -3532,6 +4035,21 @@ def admin_update_category(
         cur.execute("SELECT * FROM categories WHERE id = ?", (category_id,))
         return serialize_category(conn, dict(cur.fetchone()))
 
+@app.post("/api/v1/admin/categories/{category_id}/restore")
+def admin_restore_category(category_id: int, admin: dict = Depends(require_permission("categories:write"))):
+    """Brings an archived category back (visible again in the CMS and, if
+    active, on the storefront)."""
+    with db_session(commit=True) as conn:
+        cur = conn.cursor()
+        cur.execute("SELECT slug FROM categories WHERE id = ?", (category_id,))
+        cat = cur.fetchone()
+        if not cat:
+            raise HTTPException(status_code=404, detail="Catégorie introuvable")
+        cur.execute("UPDATE categories SET is_active = 1, deleted_at = NULL WHERE id = ?", (category_id,))
+        log_audit(conn, int(admin["sub"]), "restore_category", "category", str(category_id), {"slug": cat["slug"]})
+        return {"restored": True, "category_id": category_id}
+
+
 @app.delete("/api/v1/admin/categories/{category_id}")
 def admin_archive_category(
     category_id: int,
@@ -3543,7 +4061,7 @@ def admin_archive_category(
         cur.execute("SELECT * FROM categories WHERE id = ?", (category_id,))
         cat = cur.fetchone()
         if not cat:
-            raise HTTPException(status_code=404, detail="Category not found")
+            raise HTTPException(status_code=404, detail="Catégorie introuvable")
 
         cur.execute("SELECT COUNT(*) AS cnt FROM products WHERE category_id = ? AND deleted_at IS NULL", (category_id,))
         prods_count = cur.fetchone()["cnt"]
@@ -3554,6 +4072,24 @@ def admin_archive_category(
                     status_code=400,
                     detail=f"Impossible de supprimer définitivement : {prods_count} produit(s) sont encore rattachés à cette catégorie. Veuillez d'abord réassigner ou archiver ces produits."
                 )
+            cur.execute("SELECT COUNT(*) AS cnt FROM products WHERE category_id = ?", (category_id,))
+            archived_count = int(cur.fetchone()["cnt"])
+            if archived_count > 0:
+                # Archived products still belong to it (their sales history
+                # depends on them): hide the category instead of deleting it.
+                cur.execute(
+                    "UPDATE categories SET is_active = 0, deleted_at = COALESCE(deleted_at, CURRENT_TIMESTAMP) WHERE id = ?",
+                    (category_id,),
+                )
+                log_audit(conn, int(admin["sub"]), "archive_category", "category", str(category_id),
+                          {"slug": cat["slug"], "reason": "delete requested; archived products remain"})
+                return {
+                    "archived": True, "deleted": False, "category_id": category_id,
+                    "message": (
+                        f"La catégorie « {cat['name_fr']} » contient encore {archived_count} produit(s) archivé(s) "
+                        "dont l'historique est conservé : elle a été archivée (masquée) au lieu d'être supprimée."
+                    ),
+                }
             cur.execute("DELETE FROM category_attribute_options WHERE attribute_id IN (SELECT id FROM category_attributes WHERE category_id = ?)", (category_id,))
             cur.execute("DELETE FROM category_attributes WHERE category_id = ?", (category_id,))
             cur.execute("DELETE FROM categories WHERE id = ?", (category_id,))
@@ -3596,40 +4132,95 @@ def admin_list_inventory_movements(
             )
         return {"items": [dict(r) for r in cur.fetchall()]}
 
+# ---------------------------------------------------------------- CSV ----
+# Every CSV export opens directly in Excel (French Windows): UTF-8 with BOM
+# so accents display, ";" as separator, French headers and values, short
+# dates. Cells that would be read as formulas are neutralised.
+_FR_CODES = {
+    # orders
+    "new": "Nouvelle", "pending_confirmation": "À confirmer", "confirmed": "Confirmée", "preparing": "En préparation",
+    "ready_for_shipment": "Prête à expédier", "shipped": "Expédiée", "delivered": "Livrée", "cancelled": "Annulée",
+    "returned": "Retournée", "home": "À domicile", "stop_desk": "Point relais", "cod": "Paiement à la livraison",
+    # payments / accounts / treasury
+    "cash": "Espèces", "card": "Carte", "transfer": "Virement", "bank_transfer": "Virement", "check": "Chèque",
+    "other": "Autre", "paid": "Payée", "pending": "À régler", "unpaid": "À régler", "partial": "Partiellement payée",
+    "cash_box": "Caisse", "bank_account": "Banque / CCP", "inflow": "Entrée", "outflow": "Sortie",
+    "deposit": "Dépôt", "withdrawal": "Retrait",
+    "pos_sale": "Vente magasin", "pos_refund": "Remboursement magasin", "cod_collection": "Commande livrée (COD)",
+    "cod_refund": "Retour après livraison", "expense_payment": "Paiement dépense",
+    "purchase_payment": "Paiement fournisseur", "manual_adjustment": "Mouvement manuel", "register_variance": "Écart de caisse",
+    "expense_cancelled": "Annulation dépense",
+    # stock movements
+    "order_reserved": "Commande en ligne", "order_cancelled": "Commande annulée", "order_returned": "Commande retournée",
+    "pos_sale_offline": "Vente hors ligne synchronisée", "physical_count_reconcile": "Inventaire physique",
+    "cms_manual_adjustment": "Ajustement manuel", "stock_write_off": "Sortie de stock",
+    "variant_created": "Création de la variante", "create_variant": "Création de la variante",
+    "variant_edit": "Modification de la variante", "purchase_received": "Réception fournisseur",
+    "writeoff_damaged": "Démarque — endommagé", "writeoff_lost": "Démarque — perte/vol",
+    "writeoff_return_to_supplier": "Retour fournisseur", "writeoff_promotional_giveaway": "Cadeau / promo",
+    "writeoff_stocktake_correction": "Correction d'inventaire",
+    # expense categories
+    "loyer": "Loyer & local", "rent": "Loyer & local", "salaires": "Salaires", "electricite_eau": "Électricité, gaz & eau",
+    "internet_tel": "Internet & télécoms", "packaging": "Emballages", "publicite_marketing": "Publicité",
+    "transport_logistique": "Transport & coursiers", "maintenance": "Maintenance", "abonnements_logiciels": "Logiciels",
+    "autre": "Autres charges",
+}
+
+
+def _fr(code: Any) -> str:
+    c = "" if code is None else str(code)
+    return _FR_CODES.get(c, c.replace("_", " "))
+
+
+def _csv_cell(value: Any) -> Any:
+    if value is None:
+        return ""
+    if isinstance(value, (int, float)):
+        return value
+    text = str(value)
+    stripped = text.lstrip()
+    # Formula injection: =, -, @, tab/CR, or a "+" that is not an Algerian phone.
+    if stripped.startswith(("=", "-", "@", "\t", "\r")) or (stripped.startswith("+") and not re.match(r"^\+213\d+$", stripped)):
+        return "'" + text
+    return text
+
+
+def _csv_date(value: Any) -> str:
+    """Stored UTC timestamp -> shop local 'YYYY-MM-DD HH:MM'; plain dates unchanged."""
+    text = str(value or "").replace("T", " ")
+    return _shop_time_text(text) if len(text) >= 19 else text[:16]
+
+
+def _excel_csv_response(filename: str, header: List[str], rows: Iterable[Iterable[Any]]) -> Response:
+    buf = io.StringIO()
+    writer = csv.writer(buf, delimiter=";")
+    writer.writerow(header)
+    for row in rows:
+        writer.writerow([_csv_cell(v) for v in row])
+    return Response(
+        content="\ufeff" + buf.getvalue(),
+        media_type="text/csv; charset=utf-8",
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )
+
+
 @app.get("/api/v1/admin/orders/export.csv")
 def admin_export_orders_csv(admin: dict = Depends(require_permission("orders:write"))):
     with db_session() as conn:
         cur = conn.cursor()
         cur.execute("SELECT * FROM orders ORDER BY id DESC")
-        output = io.StringIO()
-        writer = csv.writer(output)
-        writer.writerow([
-            "order_id", "order_reference", "status", "payment_method",
-            "customer_name", "customer_phone", "wilaya_code", "wilaya_name",
-            "commune", "delivery_method", "subtotal_dzd", "delivery_fee_dzd",
-            "total_dzd", "created_at"
-        ])
-        def _safe_csv_cell(val: Any) -> Any:
-            if not isinstance(val, str):
-                return val
-            stripped = val.lstrip()
-            # Prevent CSV Formula Injection in Excel/Calc while preserving +213 phone numbers
-            if stripped.startswith(("=", "-", "@", "\t", "\r")) or (stripped.startswith("+") and not re.match(r"^\+213\d+$", stripped)):
-                return f"'{val}"
-            return val
-
-        for r in cur.fetchall():
-            writer.writerow([
-                r["id"], _safe_csv_cell(r["order_reference"]), _safe_csv_cell(r["status"]), _safe_csv_cell(r["payment_method"]),
-                _safe_csv_cell(r["customer_name"]), _safe_csv_cell(r["customer_phone"]), _safe_csv_cell(r["wilaya_code"]), _safe_csv_cell(r["wilaya_name"]),
-                _safe_csv_cell(r["commune"]), _safe_csv_cell(r["delivery_method"]), r["subtotal_dzd"], r["delivery_fee_dzd"],
-                r["total_dzd"], r["created_at"]
-            ])
-        return Response(
-            content=output.getvalue(),
-            media_type="text/csv; charset=utf-8",
-            headers={"Content-Disposition": "attachment; filename=mus_luxury_orders.csv"}
-        )
+        rows = [
+            [r["order_reference"], _csv_date(r["created_at"]), _fr(r["status"]), r["customer_name"], r["customer_phone"],
+             f'{r["wilaya_code"]} - {r["wilaya_name"]}', r["commune"], _fr(r["delivery_method"]),
+             r["subtotal_dzd"], r["delivery_fee_dzd"], r["total_dzd"], _fr(r["payment_method"])]
+            for r in cur.fetchall()
+        ]
+    return _excel_csv_response(
+        "commandes_mus_luxury.csv",
+        ["Référence", "Date", "Statut", "Client", "Téléphone", "Wilaya", "Commune", "Livraison",
+         "Articles (DA)", "Frais de livraison (DA)", "Total (DA)", "Paiement"],
+        rows,
+    )
 
 @app.get("/api/v1/admin/orders/{order_id}/delivery-note")
 def admin_get_order_delivery_note(
@@ -3644,7 +4235,7 @@ def admin_get_order_delivery_note(
         cur.execute("SELECT * FROM orders WHERE id = ?", (order_id,))
         o = cur.fetchone()
         if not o:
-            raise HTTPException(status_code=404, detail="Order not found")
+            raise HTTPException(status_code=404, detail="Commande introuvable")
         od = dict(o)
         cur.execute(
             """SELECT oi.product_name, oi.variant_title, oi.sku, oi.quantity
@@ -3669,20 +4260,14 @@ def admin_get_order_invoice(
         cur.execute("SELECT * FROM orders WHERE id = ?", (order_id,))
         o = cur.fetchone()
         if not o:
-            raise HTTPException(status_code=404, detail="Order not found")
+            raise HTTPException(status_code=404, detail="Commande introuvable")
         od = dict(o)
         cur.execute("SELECT * FROM order_items WHERE order_id = ?", (order_id,))
         items = [dict(r) for r in cur.fetchall()]
         od["items"] = items
         od["boutique_info"] = {
-            "name": "Mus Luxury (LUXE)",
-            "address": "FVX6+GCJ Mus luxury, Ouled Yaïch, Blida (09), Algérie",
-            "phone": "0655534154",
-            "whatsapp": "+213655534154",
-            "instagram": "https://www.instagram.com/musluxury09?rpxt=emk3bjBhdjV5d2Ux",
-            "tiktok": "https://www.tiktok.com/@musluxury.092?_r=1&_t=ZS-9B2mO0gpA7V",
-            "currency": "DZD (DA)",
-            "payment_notice": "Paiement en espèces à la livraison (Cash on Delivery)"
+            **_boutique_info_from_settings(conn),
+            "payment_notice": "Paiement en espèces à la livraison",
         }
         return od
 
@@ -3790,7 +4375,7 @@ def admin_add_product_image(
         cur = conn.cursor()
         cur.execute("SELECT * FROM products WHERE id = ?", (product_id,))
         if not cur.fetchone():
-            raise HTTPException(status_code=404, detail="Product not found")
+            raise HTTPException(status_code=404, detail="Produit introuvable")
         cur.execute(
             """INSERT INTO product_images (product_id, variant_id, image_url, alt_text, display_order)
                VALUES (?, ?, ?, ?, ?)""",
@@ -3816,7 +4401,7 @@ def admin_reorder_product_images(
         cur = conn.cursor()
         cur.execute("SELECT * FROM products WHERE id = ?", (product_id,))
         if not cur.fetchone():
-            raise HTTPException(status_code=404, detail="Product not found")
+            raise HTTPException(status_code=404, detail="Produit introuvable")
         for item in payload.orders:
             cur.execute(
                 "UPDATE product_images SET display_order = ? WHERE id = ? AND product_id = ?",
@@ -3841,7 +4426,7 @@ def admin_delete_product_image(
         cur.execute("SELECT * FROM product_images WHERE id = ?", (image_id,))
         img = cur.fetchone()
         if not img:
-            raise HTTPException(status_code=404, detail="Product image not found")
+            raise HTTPException(status_code=404, detail="Photo introuvable")
         cur.execute("DELETE FROM product_images WHERE id = ?", (image_id,))
         log_audit(conn, int(admin["sub"]), "delete_product_image", "product_image", str(image_id), {"product_id": img["product_id"]})
         return {"deleted": True, "image_id": image_id}
@@ -3860,7 +4445,7 @@ def get_public_static_page(slug: str):
         cur.execute("SELECT * FROM static_pages WHERE slug = ? AND is_published = 1", (slug,))
         row = cur.fetchone()
         if not row:
-            raise HTTPException(status_code=404, detail="Page not found")
+            raise HTTPException(status_code=404, detail="Page introuvable")
         return dict(row)
 
 @app.put("/api/v1/admin/pages/{slug}")
@@ -3989,7 +4574,7 @@ def admin_notify_order_customer_whatsapp(
         cur.execute("SELECT * FROM orders WHERE id = ?", (order_id,))
         ord_row = cur.fetchone()
         if not ord_row:
-            raise HTTPException(status_code=404, detail="Order not found")
+            raise HTTPException(status_code=404, detail="Commande introuvable")
         od = dict(ord_row)
         receipt = dispatch_customer_whatsapp_order_update(
             od,
@@ -4017,15 +4602,22 @@ def admin_list_communications_outbox(
     limit: int = Query(30, ge=1, le=100),
     admin: dict = Depends(require_permission("orders:write")),
 ):
-    cfg = get_whatsapp_config()
     items = list_recent_whatsapp_outbox(limit=limit)
+    # The shop's own number comes from CMS → Contenu → Coordonnées.
+    with db_session() as conn:
+        cur = conn.cursor()
+        cur.execute("SELECT setting_value FROM store_settings WHERE setting_key = ?", ("whatsapp_contact_number",))
+        row = cur.fetchone()
+    digits = re.sub(r"\D", "", str((row["setting_value"] if row else "") or "").strip('"'))
+    if digits.startswith("0"):
+        digits = "213" + digits[1:]
+    local = ("0" + digits[3:]) if digits.startswith("213") else digits
     return {
         "items": items,
         "count": len(items),
-        "whatsapp_configured": cfg["is_configured"],
-        "sandbox_mode": cfg["sandbox_mode"],
-        "boutique_whatsapp_e164": "+213655534154",
-        "boutique_whatsapp_local": "0655534154",
+        "mode": "manual_link",
+        "boutique_whatsapp_e164": ("+" + digits) if digits else "",
+        "boutique_whatsapp_local": local,
     }
 
 
@@ -4034,14 +4626,20 @@ def api_readiness_check():
     try:
         with db_session() as conn:
             cur = conn.cursor()
+            # Ready = the 69 wilayas exist (seeded) and photos can be saved.
+            # The owner switching off delivery to some wilayas is a business
+            # choice, not a fault: it is reported, not counted against health.
+            cur.execute("SELECT COUNT(*) AS cnt FROM delivery_zones")
+            zones_cnt = int(cur.fetchone()["cnt"])
             cur.execute("SELECT COUNT(*) AS cnt FROM delivery_zones WHERE is_active = 1")
             w_cnt = int(cur.fetchone()["cnt"])
             cur.execute("SELECT COUNT(*) AS cnt FROM products WHERE deleted_at IS NULL")
             p_cnt = int(cur.fetchone()["cnt"])
         storage_ok = os.path.isdir(UPLOAD_STORAGE_DIR) and os.access(UPLOAD_STORAGE_DIR, os.W_OK)
+        ok = zones_cnt == 69 and storage_ok
         return {
-            "ready": w_cnt == 69 and storage_ok,
-            "status": "ready" if (w_cnt == 69 and storage_ok) else "degraded",
+            "ready": ok,
+            "status": "ready" if ok else "degraded",
             "database": "connected",
             "storage_writable": storage_ok,
             "active_wilayas": w_cnt,
@@ -4050,6 +4648,107 @@ def api_readiness_check():
         }
     except Exception:
         raise HTTPException(status_code=503, detail="Service not ready")
+
+
+# French names for the audit log (CMS → Journal d'audit). Codes stay in the
+# database; the screen and its search use these names.
+_AUDIT_ACTION_FR: Dict[str, str] = {
+    "add_category_attribute": "Ajout d'une caractéristique de catégorie",
+    "add_product_image": "Ajout d'une photo produit",
+    "adjust_variant_stock": "Correction de stock",
+    "admin_login": "Connexion au CMS",
+    "apply_inventory_count": "Inventaire validé",
+    "archive_category": "Catégorie archivée",
+    "archive_product": "Produit archivé",
+    "assign_barcode": "Code-barres attribué",
+    "bulk_product_status": "Statut de plusieurs produits modifié",
+    "bulk_update_delivery_zones": "Tarifs de livraison modifiés (lot)",
+    "bulk_update_variants": "Déclinaisons modifiées (lot)",
+    "cancel_inventory_count": "Inventaire annulé",
+    "clear_barcode": "Code-barres retiré",
+    "close_register": "Clôture de caisse",
+    "create_admin_user": "Utilisateur créé",
+    "create_attribute_option": "Valeur de caractéristique ajoutée",
+    "create_banner": "Bannière créée",
+    "create_brand": "Marque créée",
+    "create_category": "Catégorie créée",
+    "create_coupon": "Code promo créé",
+    "create_customer": "Client créé",
+    "create_device": "Appareil ajouté",
+    "create_expense": "Dépense enregistrée",
+    "create_product": "Produit créé",
+    "create_purchase_order": "Bon de commande fournisseur créé",
+    "create_supplier": "Fournisseur créé",
+    "create_variant": "Déclinaison créée",
+    "database_backup": "Sauvegarde de la base",
+    "download_backup": "Copie de sauvegarde enregistrée sur le PC",
+    "import_backup": "Sauvegarde renvoyée depuis le PC",
+    "deactivate_coupon": "Code promo désactivé",
+    "deactivate_variant": "Déclinaison désactivée",
+    "delete_attribute_option": "Valeur de caractéristique supprimée",
+    "delete_banner": "Bannière supprimée",
+    "delete_category_attribute": "Caractéristique de catégorie supprimée",
+    "delete_category_permanent": "Catégorie supprimée définitivement",
+    "delete_device": "Appareil supprimé",
+    "delete_expense": "Dépense supprimée",
+    "delete_product": "Produit supprimé",
+    "delete_product_image": "Photo produit supprimée",
+    "delete_variant": "Déclinaison supprimée",
+    "first_time_owner_initialized": "Compte propriétaire créé (1re configuration)",
+    "generate_variants": "Déclinaisons générées",
+    "open_inventory_count": "Inventaire ouvert",
+    "open_register": "Ouverture de caisse",
+    "pay_expense": "Dépense payée",
+    "pos_refund": "Remboursement magasin",
+    "pos_sale": "Vente magasin",
+    "pos_sale_offline_sync": "Vente hors ligne synchronisée",
+    "receive_purchase_order": "Réception fournisseur",
+    "remove_cod_blacklist": "Numéro retiré de la liste noire",
+    "remove_legacy_demo_content": "Suppression des exemples (ancienne version)",
+    "reorder_categories": "Ordre des catégories modifié",
+    "reorder_product_images": "Ordre des photos modifié",
+    "reset_admin_password": "Mot de passe réinitialisé",
+    "reset_admin_password_server": "Mot de passe réinitialisé (commande serveur)",
+    "restore_category": "Catégorie restaurée",
+    "set_default_device": "Appareil par défaut choisi",
+    "stock_write_off": "Mise au rebut (stock)",
+    "test_device": "Test d'appareil",
+    "treasury_backfill": "Trésorerie reconstituée depuis les ventes",
+    "treasury_manual_entry": "Mouvement de trésorerie manuel",
+    "update_admin_user": "Utilisateur modifié",
+    "update_attribute_option": "Valeur de caractéristique modifiée",
+    "update_banner": "Bannière modifiée",
+    "update_category": "Catégorie modifiée",
+    "update_category_attribute": "Caractéristique de catégorie modifiée",
+    "update_customer": "Client modifié",
+    "update_delivery_zone": "Tarif de livraison modifié",
+    "update_device": "Appareil modifié",
+    "update_fiscal_settings": "Paramètres fiscaux modifiés",
+    "update_homepage_section": "Section de la page d'accueil modifiée",
+    "update_order_status": "Statut de commande modifié",
+    "update_product_synced": "Produit modifié",
+    "update_store_settings": "Paramètres de la boutique modifiés",
+    "update_variant": "Déclinaison modifiée",
+    "notify_customer_whatsapp": "Message WhatsApp préparé pour le client",
+    "whatsapp_webhook_status": "Statut d'un message WhatsApp reçu",
+    "upsert_cod_blacklist": "Numéro ajouté à la liste noire",
+    "upsert_static_page": "Page d'information modifiée",
+}
+_AUDIT_ENTITY_FR: Dict[str, str] = {
+    "admin_user": "Utilisateur", "banner": "Bannière", "brand": "Marque", "cash_movement": "Trésorerie",
+    "cash_register_session": "Session de caisse", "category": "Catégorie", "category_attribute": "Caractéristique",
+    "category_attribute_option": "Valeur de caractéristique", "coupon": "Code promo", "customer": "Client",
+    "customer_phone_blacklist": "Liste noire", "database": "Base de données", "delivery_zone": "Livraison",
+    "device": "Appareil", "expense": "Dépense", "homepage_section": "Page d'accueil", "inventory_count": "Inventaire",
+    "order": "Commande", "pos_sale": "Vente magasin", "product": "Produit", "product_image": "Photo produit",
+    "product_variant": "Déclinaison", "purchase_order": "Achat fournisseur", "static_page": "Page d'information",
+    "store_settings": "Paramètres", "supplier": "Fournisseur", "system": "Système", "whatsapp_message": "Message WhatsApp", "treasury": "Trésorerie",
+}
+
+
+def _audit_label(table: Dict[str, str], code: Optional[str]) -> str:
+    c = str(code or "")
+    return table.get(c) or c.replace("_", " ")
 
 
 @app.get("/api/v1/admin/audit-logs")
@@ -4070,9 +4769,21 @@ def admin_list_audit_logs(
     if admin_user_id is not None:
         where.append("al.admin_user_id = ?"); params.append(admin_user_id)
     if q:
-        like = f"%{q.strip()}%"
-        where.append("(al.action LIKE ? OR al.entity_id LIKE ? OR al.details_json LIKE ?)")
-        params.extend([like, like, like])
+        needle = q.strip()
+        like = f"%{needle}%"
+        clauses = ["al.action LIKE ?", "al.entity_id LIKE ?", "al.details_json LIKE ?", "au.email LIKE ?", "au.full_name LIKE ?"]
+        params.extend([like] * len(clauses))
+        # Searching in French ("connexion", "caisse"…) finds the matching codes.
+        folded = needle.lower()
+        codes = [c for c, lbl in _AUDIT_ACTION_FR.items() if folded in lbl.lower()]
+        if codes:
+            clauses.append("al.action IN (" + ",".join("?" for _ in codes) + ")")
+            params.extend(codes)
+        ents = [c for c, lbl in _AUDIT_ENTITY_FR.items() if folded in lbl.lower()]
+        if ents:
+            clauses.append("al.entity_type IN (" + ",".join("?" for _ in ents) + ")")
+            params.extend(ents)
+        where.append("(" + " OR ".join(clauses) + ")")
     where_sql = (" WHERE " + " AND ".join(where)) if where else ""
     sql = (
         "SELECT al.*, au.email AS admin_email, au.full_name AS admin_name "
@@ -4090,6 +4801,8 @@ def admin_list_audit_logs(
                 d["details"] = json.loads(d.pop("details_json") or "{}")
             except Exception:
                 d["details"] = {}
+            d["action_label"] = _audit_label(_AUDIT_ACTION_FR, d.get("action"))
+            d["entity_label"] = _audit_label(_AUDIT_ENTITY_FR, d.get("entity_type"))
             items.append(d)
         return {"items": items, "count": len(items)}
 
@@ -4111,8 +4824,10 @@ def admin_audit_log_facets(admin: dict = Depends(require_permission("settings:wr
             actions_set[r["action"]] = actions_set.get(r["action"], 0) + int(r["c"])
             entities_set[r["entity_type"]] = entities_set.get(r["entity_type"], 0) + int(r["c"])
         return {
-            "actions": [{"code": k, "count": v} for k, v in sorted(actions_set.items())],
-            "entity_types": [{"code": k, "count": v} for k, v in sorted(entities_set.items())],
+            "actions": sorted(({"code": k, "label": _audit_label(_AUDIT_ACTION_FR, k), "count": v}
+                               for k, v in actions_set.items()), key=lambda a: a["label"].lower()),
+            "entity_types": sorted(({"code": k, "label": _audit_label(_AUDIT_ENTITY_FR, k), "count": v}
+                                    for k, v in entities_set.items()), key=lambda a: a["label"].lower()),
         }
 # ============================================================================
 # ERP MODULES: PURCHASING, SUPPLIERS, EXPENSES, TREASURY & ACCOUNTING LEDGER
@@ -4166,16 +4881,35 @@ class ExpenseCreateInput(BaseModel):
 
 class CashMovementCreateInput(BaseModel):
     account_type: str = Field("cash_box", regex=r"^(cash_box|bank_account)$")
-    movement_type: str = Field(..., regex=r"^(inflow|outflow|deposit|withdrawal)$")
+    movement_type: str = Field("inflow", regex=r"^(inflow|outflow|deposit|withdrawal)$")
     amount_dzd: int = Field(..., gt=0)
-    description: str = Field(..., min_length=3, max_length=255)
+    # What the entry is (CMS → Trésorerie). Transfers move money between the
+    # cash box and the bank and are recorded on both sides.
+    category: Optional[str] = Field(None, max_length=40)
+    description: Optional[str] = Field(None, max_length=255)
+    notes: Optional[str] = Field(None, max_length=255)
     source_reference: Optional[str] = None
+
+
+# category → (label, [(account, movement), ...])
+_TREASURY_ENTRY_KINDS = {
+    "cash_in": ("Fond de caisse / alimentation", [("cash_box", "inflow")]),
+    "capital_contribution": ("Apport du propriétaire", [(None, "inflow")]),
+    "other_inflow": ("Autre entrée", [(None, "inflow")]),
+    "cash_out": ("Retrait du propriétaire", [(None, "outflow")]),
+    "minor_expense": ("Petite dépense boutique", [("cash_box", "outflow")]),
+    "cash_adjustment": ("Régularisation d'écart de caisse", [("cash_box", "outflow")]),
+    "other_outflow": ("Autre sortie", [(None, "outflow")]),
+    "bank_deposit": ("Dépôt d'espèces à la banque", [("cash_box", "outflow"), ("bank_account", "inflow")]),
+    "bank_withdrawal": ("Retrait à la banque vers la caisse", [("bank_account", "outflow"), ("cash_box", "inflow")]),
+    "courier_remittance": ("Versement du livreur sur le compte", [("cash_box", "outflow"), ("bank_account", "inflow")]),
+}
 
 
 # --- SUPPLIER ENDPOINTS ---
 
 @app.get("/api/v1/admin/suppliers")
-def admin_list_suppliers(admin: dict = Depends(require_permission("dashboard:read"))):
+def admin_list_suppliers(admin: dict = Depends(require_permission("finance:read"))):
     with db_session() as conn:
         cur = conn.cursor()
         # Join per-supplier aggregate stats from purchase_orders so the UI can
@@ -4194,7 +4928,7 @@ def admin_list_suppliers(admin: dict = Depends(require_permission("dashboard:rea
 @app.get("/api/v1/admin/suppliers/{supplier_id}")
 def admin_get_supplier_detail(
     supplier_id: int,
-    admin: dict = Depends(require_permission("dashboard:read")),
+    admin: dict = Depends(require_permission("finance:read")),
 ):
     with db_session() as conn:
         cur = conn.cursor()
@@ -4318,7 +5052,7 @@ def admin_delete_supplier(
 @app.get("/api/v1/admin/purchases/{po_id}/document")
 def admin_get_purchase_order_document(
     po_id: int,
-    admin: dict = Depends(require_permission("dashboard:read")),
+    admin: dict = Depends(require_permission("finance:read")),
 ):
     """A4 purchase order document (bon de commande fournisseur): full supplier
     identity, boutique header, itemised table with quantities ordered vs
@@ -4360,7 +5094,7 @@ def admin_get_purchase_order_document(
 
 
 @app.get("/api/v1/admin/purchases")
-def admin_list_purchases(admin: dict = Depends(require_permission("dashboard:read"))):
+def admin_list_purchases(admin: dict = Depends(require_permission("finance:read"))):
     with db_session() as conn:
         cur = conn.cursor()
         cur.execute(
@@ -4401,19 +5135,32 @@ def admin_create_purchase_order(
             p = cur.fetchone()
             if not p:
                 raise HTTPException(status_code=400, detail=f"Produit ID {it.product_id} introuvable")
-            variant_title = "Standard"
-            sku = p["sku"]
-            if it.variant_id:
-                cur.execute("SELECT * FROM product_variants WHERE id = ?", (it.variant_id,))
+            # Stock lives per variant (colour / size): every line must say
+            # which one is received. Without it, receiving would credit an
+            # arbitrary variant.
+            variant_id = it.variant_id
+            if variant_id:
+                cur.execute("SELECT * FROM product_variants WHERE id = ? AND product_id = ?", (variant_id, it.product_id))
                 v = cur.fetchone()
-                if v:
-                    variant_title = v["title"]
-                    sku = v["sku"]
+                if not v:
+                    raise HTTPException(status_code=400, detail=f"La variante choisie n'appartient pas à « {p['name_fr']} ».")
+            else:
+                cur.execute("SELECT * FROM product_variants WHERE product_id = ? AND is_active = 1 ORDER BY id", (it.product_id,))
+                variants = cur.fetchall()
+                if len(variants) != 1:
+                    raise HTTPException(
+                        status_code=400,
+                        detail=f"Choisissez la variante (couleur / taille) de « {p['name_fr']} » à commander.",
+                    )
+                v = variants[0]
+                variant_id = int(v["id"])
+            variant_title = v["title"]
+            sku = v["sku"]
             line_tot = it.quantity * it.unit_cost_dzd
             subtotal += line_tot
             enriched_items.append({
                 "product_id": it.product_id,
-                "variant_id": it.variant_id,
+                "variant_id": variant_id,
                 "product_name": p["name_fr"],
                 "variant_title": variant_title,
                 "sku": sku,
@@ -4558,7 +5305,22 @@ def admin_receive_purchase_order(
         cur.execute("SELECT * FROM purchase_order_items WHERE purchase_order_id = ?", (po_id,))
         items = [dict(it) for it in cur.fetchall()]
 
-        today_str = datetime.now().strftime("%Y-%m-%d")
+        today_str = _shop_today()
+        # Landed cost: shipping and tax of the order are spread over the lines
+        # in proportion to their value, so the product cost (and the margins)
+        # include them — the same total that is booked to stock in the journal.
+        extra_cost = int(po["shipping_dzd"] or 0) + int(po["tax_dzd"] or 0)
+        goods_value = sum(int(it["quantity_ordered"]) * int(it["unit_cost_dzd"]) for it in items)
+        total_units = sum(int(it["quantity_ordered"]) for it in items) or 1
+
+        def landed_unit_cost(it) -> int:
+            unit = int(it["unit_cost_dzd"])
+            if extra_cost <= 0:
+                return unit
+            if goods_value > 0:
+                return int(round(unit + extra_cost * unit / goods_value))
+            return int(round(unit + extra_cost / total_units))
+
         for it in items:
             v_id = it["variant_id"]
             if not v_id:
@@ -4570,9 +5332,15 @@ def admin_receive_purchase_order(
                 v_row = cur.fetchone()
 
             if v_row:
-                old_stock = int(v_row["stock_qty"])
-                new_stock = old_stock + it["quantity_ordered"]
-                cur.execute("UPDATE product_variants SET stock_qty = ? WHERE id = ?", (new_stock, v_row["id"]))
+                # Added in place (not "read, then write the total"): a sale
+                # made at the same moment is never undone by the receipt.
+                cur.execute(
+                    "UPDATE product_variants SET stock_qty = stock_qty + ? WHERE id = ?",
+                    (it["quantity_ordered"], v_row["id"]),
+                )
+                cur.execute("SELECT stock_qty FROM product_variants WHERE id = ?", (v_row["id"],))
+                new_stock = int(cur.fetchone()["stock_qty"])
+                old_stock = new_stock - int(it["quantity_ordered"])
                 cur.execute(
                     """INSERT INTO inventory_movements (variant_id, admin_user_id, change_qty, previous_qty, new_qty, reason)
                        VALUES (?, ?, ?, ?, ?, ?)""",
@@ -4585,12 +5353,25 @@ def admin_receive_purchase_order(
             curr_cost = int(p_cost_row["purchase_cost_dzd"]) if p_cost_row and p_cost_row["purchase_cost_dzd"] else it["unit_cost_dzd"]
             cur.execute("SELECT COALESCE(SUM(stock_qty), 0) AS total_stk FROM product_variants WHERE product_id = ?", (it["product_id"],))
             total_stk = int(cur.fetchone()["total_stk"])
-            # Weighted average formula
-            if total_stk > 0:
-                weighted_unit_cost = int(((total_stk - it["quantity_ordered"]) * curr_cost + it["quantity_ordered"] * it["unit_cost_dzd"]) / total_stk)
+            # Weighted average cost (PMP) with the landed unit cost. Units already
+            # in stock keep their cost; an oversold (negative) stock counts as 0.
+            new_unit = landed_unit_cost(it)
+            qty_in = int(it["quantity_ordered"])
+            before_qty = max(total_stk - qty_in, 0)
+            if before_qty + qty_in > 0:
+                weighted_unit_cost = int(round((before_qty * curr_cost + qty_in * new_unit) / (before_qty + qty_in)))
             else:
-                weighted_unit_cost = it["unit_cost_dzd"]
+                weighted_unit_cost = new_unit
             cur.execute("UPDATE products SET purchase_cost_dzd = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?", (weighted_unit_cost, it["product_id"]))
+            # A variant with its own cost keeps its own weighted average (the
+            # cost used for its margin is "variant cost, else product cost").
+            if v_row:
+                cur.execute("SELECT purchase_cost_dzd FROM product_variants WHERE id = ?", (v_row["id"],))
+                v_cost = cur.fetchone()["purchase_cost_dzd"]
+                if v_cost is not None:
+                    v_before = max(int(old_stock), 0)
+                    v_new = int(round((v_before * int(v_cost) + qty_in * new_unit) / (v_before + qty_in)))
+                    cur.execute("UPDATE product_variants SET purchase_cost_dzd = ? WHERE id = ?", (v_new, v_row["id"]))
             cur.execute("UPDATE purchase_order_items SET quantity_received = quantity_ordered WHERE id = ?", (it["id"],))
 
         # Update purchase order status
@@ -4650,7 +5431,7 @@ def admin_pay_purchase_order(
         )
 
         # Double-entry ledger: Debit 4010 (Fournisseurs) / Credit 5300 (Caisse) or 5120 (Banque)
-        today_str = datetime.now().strftime("%Y-%m-%d")
+        today_str = _shop_today()
         credit_acc = "5120" if payment_method == "bank_transfer" else "5300"
         credit_name = "Banque" if payment_method == "bank_transfer" else "Caisse Boutique"
         cur.execute(
@@ -4672,7 +5453,7 @@ def admin_pay_purchase_order(
 @app.get("/api/v1/admin/expenses")
 def admin_list_expenses(
     category: Optional[str] = None,
-    admin: dict = Depends(require_permission("dashboard:read"))
+    admin: dict = Depends(require_permission("finance:read"))
 ):
     with db_session() as conn:
         cur = conn.cursor()
@@ -4689,7 +5470,7 @@ def admin_create_expense(
 ):
     with db_session(commit=True) as conn:
         cur = conn.cursor()
-        exp_date = payload.expense_date or datetime.now().strftime("%Y-%m-%d")
+        exp_date = payload.expense_date or _shop_today()
         cur.execute(
             """INSERT INTO expenses (description, category, amount_dzd, expense_date, payment_method, recipient, receipt_reference, payment_status, notes, created_by)
                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
@@ -4710,7 +5491,7 @@ def admin_create_expense(
 
         # If paid, immediately register cash outflow and ledger entry
         if payload.payment_status == "paid":
-            acc_type = "bank_account" if payload.payment_method == "bank_transfer" else "cash_box"
+            acc_type = _account_for_method(payload.payment_method)
             cur.execute(
                 """INSERT INTO cash_movements (account_type, movement_type, amount_dzd, source_type, source_reference, description, recorded_by)
                    VALUES (?, 'outflow', ?, 'expense_payment', ?, ?, ?)""",
@@ -4751,14 +5532,47 @@ def admin_delete_expense(
         if not exp:
             raise HTTPException(status_code=404, detail="Dépense introuvable")
         cur.execute("DELETE FROM expenses WHERE id = ?", (expense_id,))
+        if exp["payment_status"] == "paid":
+            # The money was taken out of the treasury when it was paid: put
+            # it back with a visible correcting entry (history is kept).
+            _record_cash_movement(cur, account=_account_for_method(exp["payment_method"]), movement="inflow",
+                                  amount=int(exp["amount_dzd"]), source_type="expense_cancelled",
+                                  reference=f"EXP-{expense_id}", description=f"Annulation dépense: {exp['description']}",
+                                  user_id=int(admin["sub"]))
         log_audit(conn, int(admin["sub"]), "delete_expense", "expense", str(expense_id), {"description": exp["description"]})
         return {"deleted": True, "expense_id": expense_id}
+
+
+@app.post("/api/v1/admin/expenses/{expense_id}/pay")
+def admin_pay_expense(
+    expense_id: int,
+    payment_method: str = Query("cash", regex=r"^(cash|bank_transfer|check|card)$"),
+    admin: dict = Depends(require_permission("settings:write")),
+):
+    """An expense recorded as "à régler" is paid now: status → paid and the
+    money leaves the cash box or the bank."""
+    with db_session(commit=True) as conn:
+        cur = conn.cursor()
+        cur.execute("SELECT * FROM expenses WHERE id = ?", (expense_id,))
+        exp = cur.fetchone()
+        if not exp:
+            raise HTTPException(status_code=404, detail="Dépense introuvable")
+        if exp["payment_status"] == "paid":
+            raise HTTPException(status_code=400, detail="Cette dépense est déjà payée.")
+        cur.execute("UPDATE expenses SET payment_status = 'paid', payment_method = ? WHERE id = ?", (payment_method, expense_id))
+        _record_cash_movement(cur, account=_account_for_method(payment_method), movement="outflow",
+                              amount=int(exp["amount_dzd"]), source_type="expense_payment",
+                              reference=f"EXP-{expense_id}", description=f"Dépense: {exp['description']}",
+                              user_id=int(admin["sub"]))
+        log_audit(conn, int(admin["sub"]), "pay_expense", "expense", str(expense_id), {"amount_dzd": int(exp["amount_dzd"])})
+        cur.execute("SELECT * FROM expenses WHERE id = ?", (expense_id,))
+        return dict(cur.fetchone())
 
 
 # --- CASH REGISTER & TREASURY (CAISSE & TRÉSORERIE) ---
 
 @app.get("/api/v1/admin/treasury/summary")
-def admin_get_treasury_summary(admin: dict = Depends(require_permission("dashboard:read"))):
+def admin_get_treasury_summary(admin: dict = Depends(require_permission("finance:read"))):
     with db_session() as conn:
         cur = conn.cursor()
         # Inflows & Outflows for Cash Box
@@ -4776,7 +5590,7 @@ def admin_get_treasury_summary(admin: dict = Depends(require_permission("dashboa
         bank_balance = bank_in - bank_out
 
         # Pending COD Receivables (Orders Shipped / In Prep not yet marked Delivered)
-        cur.execute("SELECT COALESCE(SUM(total_dzd), 0) AS s FROM orders WHERE status IN ('shipped', 'in_preparation', 'confirmed')")
+        cur.execute("SELECT COALESCE(SUM(total_dzd), 0) AS s FROM orders WHERE status IN ('confirmed', 'preparing', 'ready_for_shipment', 'shipped')")
         pending_cod = int(cur.fetchone()["s"])
 
         # Total Delivered Orders Cash Collected
@@ -4811,194 +5625,195 @@ def admin_get_treasury_summary(admin: dict = Depends(require_permission("dashboa
 @app.get("/api/v1/admin/treasury/movements")
 def admin_list_cash_movements(
     limit: int = Query(50, ge=1, le=200),
-    admin: dict = Depends(require_permission("dashboard:read"))
+    admin: dict = Depends(require_permission("finance:read"))
 ):
     with db_session() as conn:
         cur = conn.cursor()
-        cur.execute("SELECT * FROM cash_movements ORDER BY id ASC")
-        rows = [dict(r) for r in cur.fetchall()]
-        cash_bal = 0
-        bank_bal = 0
-        for m in rows:
-            amt = int(m.get("amount_dzd") or 0)
-            if m.get("movement_type") == "outflow":
-                amt = -amt
-            if m.get("account_type") == "bank_account":
-                bank_bal += amt
-                m["balance_after_dzd"] = bank_bal
-            else:
-                cash_bal += amt
-                m["balance_after_dzd"] = cash_bal
-        rows.reverse()
-        return {"items": rows[:limit]}
+        # Running balance per account (bank / cash) computed by the database
+        # (window function, PostgreSQL and SQLite) and only the last `limit`
+        # rows returned — not every movement since opening loaded into Python.
+        cur.execute(
+            """SELECT * FROM (
+                   SELECT cm.*, au.full_name AS created_by,
+                          SUM(CASE WHEN cm.movement_type IN ('outflow', 'withdrawal')
+                                   THEN -cm.amount_dzd ELSE cm.amount_dzd END)
+                            OVER (PARTITION BY CASE WHEN cm.account_type = 'bank_account' THEN 1 ELSE 0 END
+                                  ORDER BY cm.id ROWS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW) AS balance_after_dzd
+                   FROM cash_movements cm LEFT JOIN admin_users au ON au.id = cm.recorded_by
+               ) AS x ORDER BY id DESC LIMIT ?""",
+            (limit,),
+        )
+        rows = []
+        for r in cur.fetchall():
+            m = dict(r)
+            m["balance_after_dzd"] = int(m.get("balance_after_dzd") or 0)
+            m["created_by"] = m.get("created_by") or ("Système" if not m.get("recorded_by") else None)
+            rows.append(m)
+        return {"items": rows}
 
 @app.post("/api/v1/admin/treasury/movements", status_code=201)
 def admin_record_cash_movement(
     payload: CashMovementCreateInput,
     admin: dict = Depends(require_permission("settings:write"))
 ):
+    kind = _TREASURY_ENTRY_KINDS.get(payload.category or "")
+    if payload.category and not kind:
+        raise HTTPException(status_code=422, detail="Type de mouvement de trésorerie inconnu.")
+    label = kind[0] if kind else "Mouvement manuel"
+    text = " — ".join(x for x in [label, (payload.description or payload.notes or "").strip()] if x)
+    legs = kind[1] if kind else [(payload.account_type, payload.movement_type)]
     with db_session(commit=True) as conn:
         cur = conn.cursor()
-        cur.execute(
-            """INSERT INTO cash_movements (account_type, movement_type, amount_dzd, source_type, source_reference, description, recorded_by)
-               VALUES (?, ?, ?, 'manual_adjustment', ?, ?, ?)""",
-            (
-                payload.account_type,
-                payload.movement_type,
-                payload.amount_dzd,
-                payload.source_reference,
-                payload.description.strip(),
-                int(admin["sub"]),
+        ids = []
+        for account, movement in legs:
+            cur.execute(
+                """INSERT INTO cash_movements (account_type, movement_type, amount_dzd, source_type, source_reference, description, recorded_by)
+                   VALUES (?, ?, ?, 'manual_adjustment', ?, ?, ?)""",
+                (account or payload.account_type, movement, payload.amount_dzd,
+                 payload.source_reference, text[:255], int(admin["sub"])),
             )
-        )
-        mov_id = cur.lastrowid
-        return {"created": True, "movement_id": mov_id}
+            ids.append(cur.lastrowid)
+        log_audit(conn, int(admin["sub"]), "treasury_manual_entry", "cash_movement", str(ids[0]),
+                  {"category": payload.category, "amount_dzd": payload.amount_dzd, "legs": len(ids)})
+        return {"created": True, "movement_id": ids[0], "movement_ids": ids}
 
 
 # --- COMPTABILITÉ & CALCUL DES BÉNÉFICES (P&L, MARGINS & LEDGER) ---
 
 @app.get("/api/v1/admin/accounting/pnl")
-def admin_get_pnl_statement(admin: dict = Depends(require_permission("dashboard:read"))):
+def admin_get_pnl_statement(admin: dict = Depends(require_permission("finance:read"))):
     """
-    Authoritative Financial Statement (Compte de Résultat & Analyse des Marges):
-    1. Chiffre d'Affaires Brut (Sales Revenue).
-    2. Frais de port collectés.
-    3. Coût d'Achat des Marchandises Vendues (COGS).
-    4. Marge Brute Réalisée (Gross Profit = Ventes - Coût Achat).
-    5. Taux de Marge Brute (%).
-    6. Dépenses d'Exploitation (Loyer, Salaires, Pub, Packaging).
-    7. Résultat Net d'Exploitation (Net Profit = Marge Brute - Dépenses).
-    8. Taux de Marge Nette (%).
+    Compte de résultat since the shop opened, BOTH channels:
+      revenue  = online merchandise + delivery fees + in-store sales − in-store refunds
+      COGS     = units sold × purchase cost (variant cost, else product cost)
+      gross    = revenue − COGS;  net = gross − operating expenses (paid or
+                 not) − stock losses (write-offs, count gaps, at cost)
+    Online sales = orders neither cancelled nor returned (a returned COD parcel
+    was never paid). Same rules as the business dashboard and sales report.
     """
     with db_session() as conn:
         cur = conn.cursor()
-        # All orders non-cancelled
+        sold = "status NOT IN ('cancelled', 'returned')"
         cur.execute(
-            """SELECT COUNT(*) AS count,
-                      COALESCE(SUM(subtotal_dzd), 0) AS subtotal_dzd,
+            f"""SELECT COUNT(*) AS count,
+                      COALESCE(SUM(total_dzd - delivery_fee_dzd), 0) AS merch_dzd,  -- after coupons
                       COALESCE(SUM(delivery_fee_dzd), 0) AS delivery_fee_dzd,
                       COALESCE(SUM(total_dzd), 0) AS total_dzd
-               FROM orders
-               WHERE status != 'cancelled'"""
+               FROM orders WHERE {sold}"""
         )
-        ord_stats = dict(cur.fetchone())
-
-        # Delivered (Collected) Orders
+        online = dict(cur.fetchone())
         cur.execute(
-            """SELECT COUNT(*) AS count,
-                      COALESCE(SUM(subtotal_dzd), 0) AS subtotal_dzd,
-                      COALESCE(SUM(total_dzd), 0) AS total_dzd
-               FROM orders
-               WHERE status = 'delivered'"""
+            """SELECT COUNT(*) AS count, COALESCE(SUM(total_dzd), 0) AS total_dzd
+               FROM orders WHERE status = 'delivered'"""
         )
-        deliv_stats = dict(cur.fetchone())
+        delivered = dict(cur.fetchone())
+        pos = {}
+        for kind in ("sale", "refund"):
+            cur.execute("SELECT COUNT(*) AS c, COALESCE(SUM(total_dzd), 0) AS t FROM pos_sales WHERE sale_type = ?", (kind,))
+            r = cur.fetchone()
+            pos[kind] = (int(r["c"]), int(r["t"]))
 
-        # Cost of Goods Sold (COGS) for all active orders
-        cur.execute(
-            """SELECT COALESCE(SUM(oi.quantity * COALESCE(p.purchase_cost_dzd, 0)), 0) AS cogs_total
-               FROM order_items oi
-               JOIN orders o ON o.id = oi.order_id
-               JOIN products p ON p.id = oi.product_id
-               WHERE o.status != 'cancelled'"""
-        )
-        cogs_all = int(cur.fetchone()["cogs_total"])
+        online_cogs = _scalar(cur, f"""SELECT COALESCE(SUM(oi.quantity * {_UNIT_COST_SQL}), 0) AS v
+            FROM order_items oi JOIN orders o ON o.id = oi.order_id
+            JOIN product_variants pv ON pv.id = oi.variant_id JOIN products p ON p.id = pv.product_id
+            WHERE o.{sold}""")
+        delivered_cogs = _scalar(cur, f"""SELECT COALESCE(SUM(oi.quantity * {_UNIT_COST_SQL}), 0) AS v
+            FROM order_items oi JOIN orders o ON o.id = oi.order_id
+            JOIN product_variants pv ON pv.id = oi.variant_id JOIN products p ON p.id = pv.product_id
+            WHERE o.status = 'delivered'""")
+        pos_cogs = {}
+        for kind in ("sale", "refund"):
+            pos_cogs[kind] = _scalar(cur, f"""SELECT COALESCE(SUM(psi.quantity * {_UNIT_COST_SQL}), 0) AS v
+                FROM pos_sale_items psi JOIN pos_sales ps ON ps.id = psi.sale_id
+                JOIN product_variants pv ON pv.id = psi.variant_id JOIN products p ON p.id = pv.product_id
+                WHERE ps.sale_type = ?""", (kind,))
+        units_online = _scalar(cur, f"""SELECT COALESCE(SUM(oi.quantity), 0) AS v FROM order_items oi
+            JOIN orders o ON o.id = oi.order_id WHERE o.{sold}""")
+        units_store = _scalar(cur, """SELECT COALESCE(SUM(CASE WHEN ps.sale_type = 'sale' THEN psi.quantity ELSE -psi.quantity END), 0) AS v
+            FROM pos_sale_items psi JOIN pos_sales ps ON ps.id = psi.sale_id""")
 
-        # Cost of Goods Sold (COGS) for delivered orders only
-        cur.execute(
-            """SELECT COALESCE(SUM(oi.quantity * COALESCE(p.purchase_cost_dzd, 0)), 0) AS cogs_deliv
-               FROM order_items oi
-               JOIN orders o ON o.id = oi.order_id
-               JOIN products p ON p.id = oi.product_id
-               WHERE o.status = 'delivered'"""
-        )
-        cogs_delivered = int(cur.fetchone()["cogs_deliv"])
-
-        # Total Operating Expenses
-        cur.execute("SELECT COALESCE(SUM(amount_dzd), 0) AS s FROM expenses WHERE payment_status = 'paid'")
-        total_expenses = int(cur.fetchone()["s"])
-
-        # Expenses by category breakdown
+        # Charges are counted when incurred, paid or still "à régler" — the same
+        # rule as revenue (orders count before the COD cash arrives) and as the
+        # Analytique screen and the expense report. The unpaid part is shown apart.
+        total_expenses = _scalar(cur, "SELECT COALESCE(SUM(amount_dzd), 0) AS v FROM expenses")
+        unpaid_expenses = _scalar(cur, "SELECT COALESCE(SUM(amount_dzd), 0) AS v FROM expenses WHERE payment_status = 'pending'")
         cur.execute("SELECT category, COALESCE(SUM(amount_dzd), 0) AS total_dzd, COUNT(*) AS count FROM expenses GROUP BY category")
         expenses_by_cat = [dict(r) for r in cur.fetchall()]
 
-        # Financial Calculations (in DZD integers)
-        subtotal = int(ord_stats["subtotal_dzd"])
-        gross_profit_all = subtotal - cogs_all
-        gross_margin_pct_all = round((gross_profit_all / subtotal * 100), 1) if subtotal > 0 else 0.0
+        inv_val = _scalar(cur, f"""SELECT COALESCE(SUM(pv.stock_qty * {_UNIT_COST_SQL}), 0) AS v
+            FROM product_variants pv JOIN products p ON p.id = pv.product_id
+            WHERE pv.is_active = 1 AND p.deleted_at IS NULL AND p.status != 'archived' AND pv.stock_qty > 0""")
 
-        subtotal_deliv = int(deliv_stats["subtotal_dzd"])
-        gross_profit_delivered = subtotal_deliv - cogs_delivered
-        gross_margin_pct_deliv = round((gross_profit_delivered / subtotal_deliv * 100), 1) if subtotal_deliv > 0 else 0.0
+        stock_losses = _stock_losses_dzd(cur)
 
-        net_profit_all = gross_profit_all - total_expenses
-        net_margin_pct_all = round((net_profit_all / subtotal * 100), 1) if subtotal > 0 else 0.0
-
-        net_profit_delivered = gross_profit_delivered - total_expenses
-
-        # Count total units sold across non-cancelled orders
-        cur.execute(
-            """SELECT COALESCE(SUM(oi.quantity), 0) AS total_units
-               FROM order_items oi
-               JOIN orders o ON o.id = oi.order_id
-               WHERE o.status != 'cancelled'"""
-        )
-        total_units_sold = int(cur.fetchone()["total_units"])
-
-        # Current total inventory valuation
-        cur.execute(
-            """SELECT COALESCE(SUM(pv.stock_qty * COALESCE(p.purchase_cost_dzd, 0)), 0) AS total_val
-               FROM product_variants pv
-               JOIN products p ON p.id = pv.product_id"""
-        )
-        inv_val = int(cur.fetchone()["total_val"])
+        online_merch = int(online["merch_dzd"])
+        delivery_fees = int(online["delivery_fee_dzd"])
+        store_net = pos["sale"][1] - pos["refund"][1]
+        merchandise = online_merch + store_net            # what the goods sold for
+        total_revenue = merchandise + delivery_fees        # everything collected
+        cogs = online_cogs + pos_cogs["sale"] - pos_cogs["refund"]
+        # Delivery fees collected are revenue (courier invoices are entered as
+        # expenses) — same figure as the business dashboard.
+        gross_profit = total_revenue - cogs
+        gross_pct = round(gross_profit / total_revenue * 100, 1) if total_revenue > 0 else 0.0
+        net_profit = gross_profit - total_expenses - stock_losses
+        net_pct = round(net_profit / total_revenue * 100, 1) if total_revenue > 0 else 0.0
+        delivered_profit = int(delivered["total_dzd"]) - delivered_cogs
 
         return {
-            "gross_revenue_dzd": subtotal,
-            "delivery_revenue_dzd": int(ord_stats["delivery_fee_dzd"]),
-            "total_revenue_dzd": int(ord_stats["total_dzd"]),
-            "cogs_dzd": cogs_all,
-            "gross_profit_dzd": gross_profit_all,
-            "gross_margin_percent": gross_margin_pct_all,
+            "gross_revenue_dzd": merchandise,
+            "delivery_revenue_dzd": delivery_fees,
+            "total_revenue_dzd": total_revenue,
+            "cogs_dzd": cogs,
+            "gross_profit_dzd": gross_profit,
+            "gross_margin_percent": gross_pct,
             "operating_expenses_dzd": total_expenses,
-            "net_operating_profit_dzd": net_profit_all,
-            "net_margin_percent": net_margin_pct_all,
-            "orders_count": int(ord_stats["count"]),
-            "units_sold": total_units_sold,
+            "operating_expenses_unpaid_dzd": unpaid_expenses,
+            "stock_losses_dzd": stock_losses,
+            "net_operating_profit_dzd": net_profit,
+            "net_margin_percent": net_pct,
+            "orders_count": int(online["count"]),
+            "in_store_sales_count": pos["sale"][0],
+            "units_sold": units_online + units_store,
             "inventory_valuation_dzd": inv_val,
+            "period": "since_opening",
             "revenue": {
-                "total_sales_dzd": int(ord_stats["total_dzd"]),
-                "subtotal_merchandise_dzd": subtotal,
-                "delivery_fees_dzd": int(ord_stats["delivery_fee_dzd"]),
-                "orders_count": int(ord_stats["count"]),
-                "delivered_sales_dzd": int(deliv_stats["total_dzd"]),
-                "delivered_subtotal_dzd": subtotal_deliv,
-                "delivered_orders_count": int(deliv_stats["count"]),
+                "online_merchandise_dzd": online_merch,
+                "in_store_net_dzd": store_net,
+                "in_store_refunds_dzd": pos["refund"][1],
+                "subtotal_merchandise_dzd": merchandise,
+                "delivery_fees_dzd": delivery_fees,
+                "total_sales_dzd": total_revenue,
+                "orders_count": int(online["count"]),
+                "delivered_sales_dzd": int(delivered["total_dzd"]),
+                "delivered_orders_count": int(delivered["count"]),
             },
             "cogs": {
-                "cogs_all_orders_dzd": cogs_all,
-                "cogs_delivered_orders_dzd": cogs_delivered,
+                "cogs_all_orders_dzd": cogs,
+                "cogs_online_dzd": online_cogs,
+                "cogs_in_store_dzd": pos_cogs["sale"] - pos_cogs["refund"],
+                "cogs_delivered_orders_dzd": delivered_cogs,
             },
             "margins": {
-                "gross_profit_all_dzd": gross_profit_all,
-                "gross_margin_pct_all": gross_margin_pct_all,
-                "gross_profit_delivered_dzd": gross_profit_delivered,
-                "gross_margin_pct_delivered": gross_margin_pct_deliv,
+                "gross_profit_all_dzd": gross_profit,
+                "gross_margin_pct_all": gross_pct,
+                "gross_profit_delivered_dzd": delivered_profit,
             },
             "operating_expenses": {
                 "total_expenses_dzd": total_expenses,
                 "breakdown_by_category": expenses_by_cat,
             },
             "net_results": {
-                "net_profit_all_dzd": net_profit_all,
-                "net_margin_pct_all": net_margin_pct_all,
-                "net_profit_delivered_dzd": net_profit_delivered,
-            }
+                "net_profit_all_dzd": net_profit,
+                "net_margin_pct_all": net_pct,
+            },
         }
+
 
 @app.get("/api/v1/admin/accounting/products-profitability")
 def admin_get_products_profitability(
     include_archived: bool = Query(True),
-    admin: dict = Depends(require_permission("dashboard:read"))
+    admin: dict = Depends(require_permission("finance:read"))
 ):
     """
     Returns unit margins, markups, total sales and total profits generated by each product.
@@ -5006,16 +5821,33 @@ def admin_get_products_profitability(
     with db_session() as conn:
         cur = conn.cursor()
         where_clause = "" if include_archived else "WHERE p.deleted_at IS NULL"
+        # Units and revenue from BOTH channels; online = orders neither
+        # cancelled nor returned, in-store = sales minus refunds.
         cur.execute(
             f"""SELECT p.id, p.sku, p.name_fr, p.selling_price_dzd,
                       COALESCE(p.purchase_cost_dzd, 0) AS purchase_cost_dzd,
                       p.status,
-                      COALESCE(SUM(oi.quantity), 0) AS units_sold,
-                      COALESCE(SUM(oi.line_total_dzd), 0) AS total_revenue_dzd
+                      COALESCE(s.units, 0) AS units_sold,
+                      COALESCE(s.revenue, 0) AS total_revenue_dzd,
+                      COALESCE(s.cost, 0) AS cost_sold
                FROM products p
-               LEFT JOIN order_items oi ON oi.product_id = p.id
+               LEFT JOIN (
+                   SELECT pv.product_id, SUM(x.q) AS units, SUM(x.r) AS revenue, SUM(x.q * {_UNIT_COST_SQL}) AS cost
+                   FROM (
+                       SELECT oi.variant_id, oi.quantity AS q, oi.line_total_dzd AS r
+                       FROM order_items oi JOIN orders o ON o.id = oi.order_id
+                       WHERE o.status NOT IN ('cancelled', 'returned')
+                       UNION ALL
+                       SELECT psi.variant_id,
+                              CASE WHEN ps.sale_type = 'refund' THEN -psi.quantity ELSE psi.quantity END,
+                              CASE WHEN ps.sale_type = 'refund' THEN -psi.line_total_dzd ELSE psi.line_total_dzd END
+                       FROM pos_sale_items psi JOIN pos_sales ps ON ps.id = psi.sale_id
+                   ) AS x
+                   JOIN product_variants pv ON pv.id = x.variant_id
+                   JOIN products p ON p.id = pv.product_id
+                   GROUP BY pv.product_id
+               ) AS s ON s.product_id = p.id
                {where_clause}
-               GROUP BY p.id
                ORDER BY total_revenue_dzd DESC, p.id ASC"""
         )
         items = []
@@ -5026,7 +5858,7 @@ def admin_get_products_profitability(
             unit_profit = sell - cost
             gross_margin_pct = round((unit_profit / sell * 100), 1) if sell > 0 else 0.0
             markup_pct = round((unit_profit / cost * 100), 1) if cost > 0 else 0.0
-            total_cost_sold = cost * int(d["units_sold"])
+            total_cost_sold = int(d.pop("cost_sold") or 0)
             total_profit = int(d["total_revenue_dzd"]) - total_cost_sold
             d["unit_profit_dzd"] = unit_profit
             d["gross_margin_pct"] = gross_margin_pct
@@ -5039,7 +5871,7 @@ def admin_get_products_profitability(
 @app.get("/api/v1/admin/accounting/ledger")
 def admin_list_accounting_ledger(
     limit: int = Query(100, ge=1, le=500),
-    admin: dict = Depends(require_permission("dashboard:read"))
+    admin: dict = Depends(require_permission("finance:read"))
 ):
     with db_session() as conn:
         cur = conn.cursor()
@@ -5057,6 +5889,54 @@ def admin_list_accounting_ledger(
             "is_balanced": int(sums["deb"]) == int(sums["cred"]),
             "entries_count": len(rows),
         }
+
+@app.get("/api/v1/admin/accounting/export.csv")
+def admin_export_accounting_csv(
+    part: str = Query("pnl", regex=r"^(pnl|products|ledger)$"),
+    admin: dict = Depends(require_permission("finance:read")),
+):
+    """Excel-ready CSV of the Comptabilité tab being viewed."""
+    stamp = _shop_today()
+    if part == "pnl":
+        d = admin_get_pnl_statement(admin)
+        rows = [
+            ["Ventes en ligne (articles)", d["revenue"]["online_merchandise_dzd"]],
+            ["Ventes magasin (net des remboursements)", d["revenue"]["in_store_net_dzd"]],
+            ["Frais de livraison facturés", d["delivery_revenue_dzd"]],
+            ["Chiffre d'affaires", d["total_revenue_dzd"]],
+            ["Coût d'achat des articles vendus", -int(d["cogs_dzd"])],
+            ["Marge brute", d["gross_profit_dzd"]],
+            ["Marge brute (%)", d["gross_margin_percent"]],
+            ["Charges d'exploitation", -int(d["operating_expenses_dzd"])],
+            ["  dont charges encore à régler", -int(d.get("operating_expenses_unpaid_dzd") or 0)],
+            ["Pertes et écarts de stock (au coût)", -int(d.get("stock_losses_dzd") or 0)],
+            ["Bénéfice net d'exploitation", d["net_operating_profit_dzd"]],
+            ["Bénéfice net (%)", d["net_margin_percent"]],
+            ["Commandes en ligne comptées", d["orders_count"]],
+            ["Ventes magasin comptées", d["in_store_sales_count"]],
+            ["Valeur du stock au coût d'achat", d["inventory_valuation_dzd"]],
+        ]
+        return _excel_csv_response(f"compte_de_resultat_{stamp}.csv", ["Poste", "Montant (DA)"], rows)
+    if part == "products":
+        items = admin_get_products_profitability(True, admin)["items"]
+        rows = [[it["name_fr"], it["sku"], it["purchase_cost_dzd"], it["selling_price_dzd"], it["unit_profit_dzd"],
+                 it["gross_margin_pct"], it["units_sold"], it["total_revenue_dzd"], it["total_cost_sold_dzd"],
+                 it["total_profit_dzd"]] for it in items]
+        return _excel_csv_response(
+            f"rentabilite_produits_{stamp}.csv",
+            ["Produit", "Réf. (SKU)", "Coût d'achat (DA)", "Prix de vente (DA)", "Marge unitaire (DA)", "Marge (%)",
+             "Unités vendues", "Chiffre d'affaires (DA)", "Coût des ventes (DA)", "Bénéfice (DA)"], rows)
+    with db_session() as conn:
+        cur = conn.cursor()
+        cur.execute("SELECT * FROM accounting_ledger ORDER BY entry_date, id")
+        rows = [[str(r["entry_date"])[:10], r["entry_number"], r["journal_code"], r["account_code"], r["account_name"],
+                 r["label"], int(r["debit_dzd"] or 0), int(r["credit_dzd"] or 0), r["source_document"] or ""]
+                for r in cur.fetchall()]
+    return _excel_csv_response(
+        f"journal_achats_depenses_{stamp}.csv",
+        ["Date", "N° écriture", "Journal", "Compte", "Intitulé du compte", "Libellé", "Débit (DA)", "Crédit (DA)", "Pièce"],
+        rows)
+
 
 # ============================================================================
 # POINT OF SALE (POS) — In-store sales, cash register sessions & refunds
@@ -5147,12 +6027,25 @@ def _boutique_info_from_settings(conn) -> dict:
         return _BOUTIQUE_INFO
     legal = (f.get("fiscal_legal_name") or "").strip()
     commercial = (f.get("fiscal_commercial_name") or "").strip()
+    # Shop contacts edited in CMS → Contenu (the same ones the website shows).
+    shop: Dict[str, str] = {}
+    try:
+        cur = conn.cursor()
+        cur.execute(
+            "SELECT setting_key, setting_value FROM store_settings WHERE setting_key IN "
+            "('store_name', 'store_phone', 'store_location', 'whatsapp_contact_number', 'instagram_url', 'tiktok_url')"
+        )
+        shop = {r["setting_key"]: str(r["setting_value"] or "").strip().strip('"') for r in cur.fetchall()}
+    except Exception:
+        shop = {}
     return {
-        "name": commercial or legal or _BOUTIQUE_INFO["name"],
-        "legal_name": legal or commercial or _BOUTIQUE_INFO["name"],
-        "address": (f.get("fiscal_address") or "").strip() or _BOUTIQUE_INFO["address"],
-        "phone": (f.get("fiscal_phone") or "").strip() or _BOUTIQUE_INFO["phone"],
-        "whatsapp": _BOUTIQUE_INFO["whatsapp"],
+        "name": commercial or legal or shop.get("store_name") or _BOUTIQUE_INFO["name"],
+        "legal_name": legal or commercial or shop.get("store_name") or _BOUTIQUE_INFO["name"],
+        "address": (f.get("fiscal_address") or "").strip() or shop.get("store_location") or _BOUTIQUE_INFO["address"],
+        "phone": (f.get("fiscal_phone") or "").strip() or shop.get("store_phone") or _BOUTIQUE_INFO["phone"],
+        "whatsapp": shop.get("whatsapp_contact_number") or _BOUTIQUE_INFO["whatsapp"],
+        "instagram": shop.get("instagram_url") or "",
+        "tiktok": shop.get("tiktok_url") or "",
         "currency": _BOUTIQUE_INFO["currency"],
         "nif": f.get("fiscal_nif") or "",
         "nis": f.get("fiscal_nis") or "",
@@ -5167,7 +6060,7 @@ def _pos_sale_payload(conn, sale_id: int) -> dict:
     cur.execute("SELECT * FROM pos_sales WHERE id = ?", (sale_id,))
     s = cur.fetchone()
     if not s:
-        raise HTTPException(status_code=404, detail="Sale not found")
+        raise HTTPException(status_code=404, detail="Vente introuvable")
     sale = dict(s)
     cur.execute("SELECT * FROM pos_sale_items WHERE sale_id = ? ORDER BY id", (sale_id,))
     sale["items"] = [dict(r) for r in cur.fetchall()]
@@ -5222,7 +6115,7 @@ def pos_open_register(payload: RegisterOpenInput, admin: dict = Depends(require_
         if existing:
             raise HTTPException(
                 status_code=status.HTTP_409_CONFLICT,
-                detail=f"A cash register session (#{existing['id']}) is already open. Close it before opening a new one.",
+                detail=f"Une caisse (n° {existing['id']}) est déjà ouverte. Clôturez-la avant d'en ouvrir une autre.",
             )
         cur.execute(
             """INSERT INTO cash_register_sessions
@@ -5235,7 +6128,12 @@ def pos_open_register(payload: RegisterOpenInput, admin: dict = Depends(require_
             "opening_float_dzd": payload.opening_float_dzd, "register_name": payload.register_name,
         })
         cur.execute("SELECT * FROM cash_register_sessions WHERE id = ?", (session_id,))
-        return dict(cur.fetchone())
+        sd = dict(cur.fetchone())
+        # Same shape as /register/current: the float shows as expected cash at once.
+        totals = _register_runtime_totals(conn, sd["id"])
+        sd.update(totals)
+        sd["expected_cash_dzd"] = int(sd["opening_float_dzd"]) + totals["net_cash_dzd"]
+        return sd
 
 
 @app.get("/api/v1/admin/pos/register/current")
@@ -5259,7 +6157,7 @@ def pos_close_register(payload: RegisterCloseInput, admin: dict = Depends(requir
         cur = conn.cursor()
         session = _get_open_register(conn)
         if not session:
-            raise HTTPException(status_code=404, detail="No open cash register session to close")
+            raise HTTPException(status_code=404, detail="Aucune caisse ouverte à clôturer.")
         session_id = int(session["id"])
         totals = _register_runtime_totals(conn, session_id)
         expected_cash = int(session["opening_float_dzd"]) + totals["net_cash_dzd"]
@@ -5276,7 +6174,16 @@ def pos_close_register(payload: RegisterCloseInput, admin: dict = Depends(requir
              payload.notes, session_id),
         )
         if cur.rowcount == 0:
-            raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Register session already closed")
+            raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Cette caisse est déjà clôturée.")
+        # The counted drawer is the truth: a shortage leaves the cash box, a
+        # surplus enters it, so the treasury matches the money really there.
+        if variance != 0:
+            _record_cash_movement(
+                cur, account="cash_box", movement="inflow" if variance > 0 else "outflow", amount=abs(variance),
+                source_type="register_variance", reference=f"CAISSE-{session_id}",
+                description=f"Écart de caisse à la clôture ({'excédent' if variance > 0 else 'manque'} de {abs(variance)} DA)",
+                user_id=int(admin["sub"]),
+            )
         log_audit(conn, int(admin["sub"]), "close_register", "cash_register_session", str(session_id), {
             "expected_cash_dzd": expected_cash, "counted_cash_dzd": payload.counted_cash_dzd, "variance_dzd": variance,
         })
@@ -5299,7 +6206,17 @@ def pos_list_register_sessions(
                ORDER BY crs.id DESC LIMIT ?""",
             (limit,),
         )
-        return {"items": [dict(r) for r in cur.fetchall()]}
+        items = [dict(r) for r in cur.fetchall()]
+        # Totals are stored when a register is closed; an open one is computed live.
+        for sd in items:
+            if sd.get("status") == "open" or sd.get("closed_at") in (None, ""):
+                totals = _register_runtime_totals(conn, sd["id"])
+                sd.update(totals)
+                sd["expected_cash_dzd"] = int(sd["opening_float_dzd"]) + totals["net_cash_dzd"]
+                # Same field names as a closed register.
+                sd["total_sales_dzd"] = totals["sales_total_dzd"]
+                sd["total_refunds_dzd"] = totals["refunds_total_dzd"]
+        return {"items": items}
 
 
 # ============================================================================
@@ -5388,6 +6305,16 @@ def _pos_catalog_variants_rows(conn, since_iso: Optional[str] = None):
     return rows
 
 
+def _catalog_epoch(conn) -> str:
+    """Changes when the database is reset or restored: POS PCs that see a new
+    epoch drop their offline catalog and download it again (deltas cannot
+    describe rows that were physically removed)."""
+    cur = conn.cursor()
+    cur.execute("SELECT setting_value FROM store_settings WHERE setting_key = ?", ("catalog_epoch",))
+    row = cur.fetchone()
+    return str(row["setting_value"]) if row else "initial"
+
+
 @app.get("/api/v1/admin/pos/catalog/snapshot")
 def pos_catalog_snapshot(admin: dict = Depends(require_permission("pos:read"))):
     """Full catalog dump — call this once, then prefer `/catalog/deltas`.
@@ -5399,10 +6326,12 @@ def pos_catalog_snapshot(admin: dict = Depends(require_permission("pos:read"))):
     with db_session() as conn:
         products = _pos_catalog_products_rows(conn, since_iso=None)
         variants = _pos_catalog_variants_rows(conn, since_iso=None)
+        epoch = _catalog_epoch(conn)
     cursor = (datetime.utcnow() + timedelta(seconds=1)).strftime("%Y-%m-%dT%H:%M:%SZ")
     return {
         "generated_at": datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%SZ"),
         "cursor": cursor,
+        "catalog_epoch": epoch,
         "products": products,
         "variants": variants,
         "stats": {
@@ -5428,10 +6357,12 @@ def pos_catalog_deltas(
     with db_session() as conn:
         products = _pos_catalog_products_rows(conn, since_iso=since_s)
         variants = _pos_catalog_variants_rows(conn, since_iso=since_s)
+        epoch = _catalog_epoch(conn)
     cursor = (datetime.utcnow() + timedelta(seconds=1)).strftime("%Y-%m-%dT%H:%M:%SZ")
     return {
         "generated_at": datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%SZ"),
         "cursor": cursor,
+        "catalog_epoch": epoch,
         "since": since_s,
         "products": products,
         "variants": variants,
@@ -5537,14 +6468,14 @@ def pos_create_sale(
         if not session:
             raise HTTPException(
                 status_code=status.HTTP_409_CONFLICT,
-                detail="No open cash register session. Open the register before selling.",
+                detail="Aucune caisse ouverte. Ouvrez la caisse avant de vendre.",
             )
 
         # Validate optional customer
         if payload.customer_id is not None:
             cur.execute("SELECT id FROM customers WHERE id = ?", (payload.customer_id,))
             if not cur.fetchone():
-                raise HTTPException(status_code=404, detail=f"Customer {payload.customer_id} not found")
+                raise HTTPException(status_code=404, detail=f"Client introuvable")
 
         # Consolidate duplicate variant lines (sum quantities, sum line discounts)
         merged: Dict[int, Dict[str, int]] = {}
@@ -5565,12 +6496,12 @@ def pos_create_sale(
             )
             v = cur.fetchone()
             if not v or v["product_status"] == "archived":
-                raise HTTPException(status_code=404, detail=f"Product variant {vid} is unavailable")
+                raise HTTPException(status_code=404, detail=f"Un article n'est plus disponible")
             qty = m["quantity"]
             if v["stock_qty"] < qty:
                 raise HTTPException(
                     status_code=status.HTTP_409_CONFLICT,
-                    detail=f"Insufficient stock for '{v['product_name']} ({v['title']})': requested {qty}, available {v['stock_qty']}",
+                    detail=f"Stock insuffisant pour '{v['product_name']} ({v['title']})' : demandé {qty}, disponible {v['stock_qty']}",
                 )
             unit_price = int(v["price_override_dzd"]) if v["price_override_dzd"] is not None else int(v["selling_price_dzd"])
             line_gross = unit_price * qty
@@ -5592,13 +6523,13 @@ def pos_create_sale(
         if paid != total_dzd:
             raise HTTPException(
                 status_code=422,
-                detail=f"Payments ({paid} DA) must equal sale total ({total_dzd} DA)",
+                detail=f"Le paiement ({paid} DA) doit être égal au total de la vente ({total_dzd} DA)",
             )
 
         sale_ref = ""
         sale_id = None
         for _attempt in range(3):
-            sale_ref = f"POS-{int(time.time()) % 100000:05d}-{secrets.token_hex(3).upper()}"
+            sale_ref = f"{_doc_prefix(cur, 'receipt_prefix_pos', 'POS')}-{int(time.time()) % 100000:05d}-{secrets.token_hex(3).upper()}"
             try:
                 cur.execute(
                     """INSERT INTO pos_sales
@@ -5629,7 +6560,7 @@ def pos_create_sale(
             )
             if cur.rowcount == 0:
                 raise HTTPException(status_code=status.HTTP_409_CONFLICT,
-                                    detail=f"Insufficient stock for '{v['product_name']} ({v['title']})'")
+                                    detail=f"Stock insuffisant pour '{v['product_name']} ({v['title']})'")
             cur.execute("SELECT stock_qty FROM product_variants WHERE id = ?", (v["id"],))
             new_qty = int(cur.fetchone()["stock_qty"])
             prev_qty = new_qty + qty
@@ -5650,6 +6581,9 @@ def pos_create_sale(
                    VALUES (?, ?, ?, ?, ?)""",
                 (sale_id, pm.method, int(pm.amount_dzd), pm.tendered_dzd, change),
             )
+            _record_cash_movement(cur, account=_account_for_method(pm.method), movement="inflow",
+                                  amount=int(pm.amount_dzd), source_type="pos_sale", reference=sale_ref,
+                                  description=f"Vente magasin {sale_ref}", user_id=int(admin["sub"]))
 
         log_audit(conn, int(admin["sub"]), "pos_sale", "pos_sale", str(sale_id), {
             "sale_reference": sale_ref, "total_dzd": total_dzd, "items": len(resolved),
@@ -5700,6 +6634,36 @@ def pos_get_sale_invoice(sale_id: int, admin: dict = Depends(require_permission(
         return sale
 
 
+
+def _doc_prefix(cur, key: str, default: str) -> str:
+    """Receipt / document prefix chosen in CMS → Paramètres fiscaux
+    (letters and digits only, so references stay safe in URLs and files)."""
+    cur.execute("SELECT setting_value FROM store_settings WHERE setting_key = ?", (key,))
+    row = cur.fetchone()
+    raw = str((row["setting_value"] if row else "") or "").strip().strip('"').upper()
+    clean = re.sub(r"[^A-Z0-9]", "", raw)[:10]
+    return clean or default
+
+
+def _record_cash_movement(cur, *, account: str, movement: str, amount: int, source_type: str,
+                          reference: str, description: str, user_id: Optional[int]) -> None:
+    """Treasury (Trésorerie): money that really entered or left the cash box
+    or the bank. Called where the money moves: till sales/refunds, delivered
+    cash-on-delivery orders, expense and supplier payments, manual entries."""
+    amount = int(amount or 0)
+    if amount <= 0:
+        return
+    cur.execute(
+        """INSERT INTO cash_movements (account_type, movement_type, amount_dzd, source_type, source_reference, description, recorded_by)
+           VALUES (?, ?, ?, ?, ?, ?, ?)""",
+        (account, movement, amount, source_type, reference, description[:255], user_id),
+    )
+
+
+def _account_for_method(method: str) -> str:
+    """Cash goes to the cash box; card, transfer, cheque, CCP… to the bank."""
+    return "cash_box" if (method or "cash") == "cash" else "bank_account"
+
 @app.post("/api/v1/admin/pos/sales/{sale_id}/refund", status_code=201)
 def pos_refund_sale(
     sale_id: int,
@@ -5713,22 +6677,22 @@ def pos_refund_sale(
         cur.execute("SELECT * FROM pos_sales WHERE id = ?", (sale_id,))
         orig = cur.fetchone()
         if not orig:
-            raise HTTPException(status_code=404, detail="Sale not found")
+            raise HTTPException(status_code=404, detail="Vente introuvable")
         if orig["sale_type"] != "sale":
-            raise HTTPException(status_code=400, detail="Only sales can be refunded")
+            raise HTTPException(status_code=400, detail="Seule une vente peut être remboursée")
         if orig["status"] in ("refunded", "voided"):
-            raise HTTPException(status_code=409, detail=f"Sale already {orig['status']}")
+            raise HTTPException(status_code=409, detail=f"Vente déjà {_fr(orig['status']).lower()}")
 
         session = _get_open_register(conn)
         if not session:
             raise HTTPException(
                 status_code=status.HTTP_409_CONFLICT,
-                detail="No open cash register session. Open the register before refunding.",
+                detail="Aucune caisse ouverte. Ouvrez la caisse avant de rembourser.",
             )
 
         # Sold quantities per variant on the original sale
         cur.execute(
-            "SELECT variant_id, product_id, product_name, variant_title, sku, unit_price_dzd, quantity "
+            "SELECT variant_id, product_id, product_name, variant_title, sku, unit_price_dzd, quantity, line_total_dzd "
             "FROM pos_sale_items WHERE sale_id = ?",
             (sale_id,),
         )
@@ -5753,36 +6717,62 @@ def pos_refund_sale(
             requested = {vid: q for vid, q in requested.items() if q > 0}
 
         if not requested:
-            raise HTTPException(status_code=400, detail="Nothing left to refund on this sale")
+            raise HTTPException(status_code=400, detail="Tout a déjà été remboursé sur cette vente")
+
+        # A refund gives back what the customer actually PAID: each unit at its
+        # share of the ticket total (line discounts, ticket discount and tax
+        # included) — never the list price.
+        items_total = sum(int(l["line_total_dzd"] or 0) for l in sold.values())
+        paid_total = int(orig["total_dzd"])
+        cur.execute(
+            "SELECT COALESCE(SUM(total_dzd), 0) AS s FROM pos_sales WHERE sale_type = 'refund' AND reverses_sale_id = ?",
+            (sale_id,),
+        )
+        already_refunded = int(cur.fetchone()["s"])
+        refundable_left = max(0, paid_total - already_refunded)
 
         refund_lines = []
-        refund_subtotal = 0
+        refund_subtotal = 0      # list price of the returned units
+        refund_total = 0         # money given back
         for vid, qty in requested.items():
             if vid not in sold:
-                raise HTTPException(status_code=400, detail=f"Variant {vid} was not part of sale #{sale_id}")
+                raise HTTPException(status_code=400, detail=f"Cet article ne fait pas partie de la vente n° {sale_id}")
             remaining = sold[vid]["quantity"] - refunded_qty.get(vid, 0)
             if qty > remaining:
                 raise HTTPException(
                     status_code=400,
-                    detail=f"Cannot refund {qty} of variant {vid}: only {remaining} remain refundable",
+                    detail=f"Impossible de rembourser {qty} pièce(s) : il en reste {remaining} remboursable(s)",
                 )
             unit_price = int(sold[vid]["unit_price_dzd"])
-            line_total = unit_price * qty
-            refund_subtotal += line_total
-            refund_lines.append((sold[vid], qty, unit_price, line_total))
+            sold_line_total = int(sold[vid]["line_total_dzd"] or 0)
+            share = (sold_line_total / items_total) if items_total > 0 else 0
+            line_paid = round(paid_total * share * qty / int(sold[vid]["quantity"]))
+            refund_subtotal += unit_price * qty
+            refund_total += line_paid
+            refund_lines.append([sold[vid], qty, unit_price, line_paid])
+
+        # Last refund on the ticket: give back exactly what is left (no rounding drift).
+        empties_ticket = all(
+            refunded_qty.get(v, 0) + requested.get(v, 0) >= sold[v]["quantity"] for v in sold
+        )
+        if empties_ticket or refund_total > refundable_left:
+            diff = refundable_left - refund_total
+            refund_total = refundable_left
+            if refund_lines:
+                refund_lines[-1][3] += diff
 
         ref = ""
         refund_id = None
         for _attempt in range(3):
-            ref = f"RMA-{int(time.time()) % 100000:05d}-{secrets.token_hex(3).upper()}"
+            ref = f"{_doc_prefix(cur, 'receipt_prefix_refund', 'RMA')}-{int(time.time()) % 100000:05d}-{secrets.token_hex(3).upper()}"
             try:
                 cur.execute(
                     """INSERT INTO pos_sales
                        (sale_reference, register_session_id, cashier_admin_id, customer_id, sale_type,
                         reverses_sale_id, subtotal_dzd, discount_dzd, tax_dzd, total_dzd, status, notes)
-                       VALUES (?, ?, ?, ?, 'refund', ?, ?, 0, 0, ?, 'completed', ?)""",
+                       VALUES (?, ?, ?, ?, 'refund', ?, ?, ?, 0, ?, 'completed', ?)""",
                     (ref, int(session["id"]), int(admin["sub"]), orig["customer_id"], sale_id,
-                     refund_subtotal, refund_subtotal, payload.notes),
+                     refund_subtotal, refund_subtotal - refund_total, refund_total, payload.notes),
                 )
                 refund_id = cur.lastrowid
                 break
@@ -5795,9 +6785,9 @@ def pos_refund_sale(
                 """INSERT INTO pos_sale_items
                    (sale_id, product_id, variant_id, product_name, variant_title, sku,
                     unit_price_dzd, line_discount_dzd, quantity, line_total_dzd)
-                   VALUES (?, ?, ?, ?, ?, ?, ?, 0, ?, ?)""",
+                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
                 (refund_id, line["product_id"], line["variant_id"], line["product_name"],
-                 line["variant_title"], line["sku"], unit_price, qty, line_total),
+                 line["variant_title"], line["sku"], unit_price, unit_price * qty - line_total, qty, line_total),
             )
             # Restock the returned units
             cur.execute("UPDATE product_variants SET stock_qty = stock_qty + ? WHERE id = ?", (qty, line["variant_id"]))
@@ -5814,8 +6804,11 @@ def pos_refund_sale(
 
         cur.execute(
             "INSERT INTO pos_payments (sale_id, method, amount_dzd, change_dzd) VALUES (?, ?, ?, 0)",
-            (refund_id, payload.refund_method, refund_subtotal),
+            (refund_id, payload.refund_method, refund_total),
         )
+        _record_cash_movement(cur, account=_account_for_method(payload.refund_method), movement="outflow",
+                              amount=refund_total, source_type="pos_refund", reference=ref,
+                              description=f"Remboursement {ref} (vente {orig['sale_reference']})", user_id=int(admin["sub"]))
 
         # Update original sale status: fully vs partially refunded
         total_refunded_after = {vid: refunded_qty.get(vid, 0) for vid in sold}
@@ -5827,7 +6820,7 @@ def pos_refund_sale(
 
         log_audit(conn, int(admin["sub"]), "pos_refund", "pos_sale", str(refund_id), {
             "refund_reference": ref, "reverses_sale_id": sale_id,
-            "refund_total_dzd": refund_subtotal, "original_new_status": new_status,
+            "refund_total_dzd": refund_total, "original_new_status": new_status,
         })
         return _pos_sale_payload(conn, int(refund_id))
 
@@ -6112,6 +7105,21 @@ def _tcp_probe(host: str, port: int, timeout: float = 2.0) -> tuple:
         return False, f"{type(exc).__name__}: {exc}"
 
 
+def _is_lan_address(host: str) -> bool:
+    """True for addresses of a shop's local network (private / link-local IPs,
+    .local names). Loopback is NOT included: it is the server's own machine,
+    so a failed probe there is a real failure."""
+    import ipaddress
+    h = (host or "").strip().lower()
+    if h.endswith(".local"):
+        return True
+    try:
+        ip = ipaddress.ip_address(h)
+    except ValueError:
+        return False
+    return (ip.is_private or ip.is_link_local) and not ip.is_loopback
+
+
 def _device_payload(row) -> dict:
     d = dict(row)
     try:
@@ -6236,21 +7244,31 @@ def admin_test_device(device_id: int, payload: DeviceTestInput, admin: dict = De
         error = None
         method = None
 
-        if dev["connection_type"] == "network":
+        if payload.success is not None:
+            # Honest result reported by the shop PC (the desktop app printed a
+            # test ticket / label on the real printer).
+            method = "client_reported"
+            status_val = "ok" if payload.success else "error"
+            error = None if payload.success else (payload.error or "Échec rapporté par le poste local")
+        elif dev["connection_type"] == "network":
             method = "tcp_probe"
             host = str(config.get("host") or "").strip()
             port = config.get("port")
             if not host or port is None:
-                status_val, error = "error", "Configuration réseau incomplète (host/port)"
+                status_val, error = "error", "Configuration réseau incomplète (adresse IP / port)"
             else:
                 ok, probe_err = _tcp_probe(host, int(port))
-                status_val = "ok" if ok else "error"
-                error = None if ok else f"Connexion impossible à {host}:{port} — {probe_err}"
-        elif payload.success is not None:
-            # Honest client/bridge-reported result (e.g. Windows print path succeeded).
-            method = "client_reported"
-            status_val = "ok" if payload.success else "error"
-            error = None if payload.success else (payload.error or "Échec rapporté par le poste local")
+                if ok:
+                    status_val, error = "ok", None
+                elif _is_lan_address(host):
+                    # A server in the cloud cannot see the shop's local network:
+                    # a failed probe says nothing about the printer itself.
+                    status_val = "unknown"
+                    error = (f"Le serveur ne peut pas joindre {host} : c'est une adresse du réseau local de la boutique. "
+                             "Lancez le test depuis l'application de bureau installée sur le poste de la boutique.")
+                else:
+                    status_val = "error"
+                    error = f"Connexion impossible à {host}:{port} — {probe_err}"
         else:
             # No real signal available: do not fabricate a status.
             method = "unavailable"
@@ -6285,6 +7303,22 @@ def admin_test_device(device_id: int, payload: DeviceTestInput, admin: dict = De
 # ============================================================================
 
 _ISO_CREATED_RE = re.compile(r"^\d{4}-\d{2}-\d{2}[ T]\d{2}:\d{2}:\d{2}")
+
+
+def _client_ts_to_utc_text(value: Optional[str]) -> Optional[str]:
+    """Offline sale time sent by the POS ('2026-11-11T21:30:00', '…Z', '…+01:00')
+    -> stored form 'YYYY-MM-DD HH:MM:SS' in UTC (no zone = already UTC, as
+    sent by toISOString). None when missing or unreadable."""
+    text = (value or "").strip()
+    if not text or not _ISO_CREATED_RE.match(text):
+        return None
+    try:
+        dt = datetime.fromisoformat(text.replace("Z", "+00:00").replace(" ", "T", 1))
+    except ValueError:
+        return None
+    if dt.tzinfo is not None:
+        dt = dt.astimezone(timezone.utc).replace(tzinfo=None)
+    return dt.strftime("%Y-%m-%d %H:%M:%S")
 
 
 class PosSyncOperation(BaseModel):
@@ -6369,13 +7403,14 @@ def _process_offline_sale(conn, op: PosSyncOperation, cashier_id: int) -> dict:
         open_s = _get_open_register(conn)
         reg = int(open_s["id"]) if open_s else None
 
-    created_at_valid = bool(op.created_at_client and _ISO_CREATED_RE.match(op.created_at_client.strip()))
+    client_ts = _client_ts_to_utc_text(op.created_at_client)
+    created_at_valid = client_ts is not None
 
     # 4. Create the sale (idempotency_key = client txn id)
     sale_ref = ""
     sale_id = None
     for _attempt in range(3):
-        sale_ref = f"POS-{int(time.time()) % 100000:05d}-{secrets.token_hex(3).upper()}"
+        sale_ref = f"{_doc_prefix(cur, 'receipt_prefix_pos', 'POS')}-{int(time.time()) % 100000:05d}-{secrets.token_hex(3).upper()}"
         try:
             if created_at_valid:
                 cur.execute(
@@ -6384,7 +7419,7 @@ def _process_offline_sale(conn, op: PosSyncOperation, cashier_id: int) -> dict:
                         subtotal_dzd, discount_dzd, tax_dzd, total_dzd, status, idempotency_key, notes, created_at)
                        VALUES (?, ?, ?, ?, 'sale', ?, ?, ?, ?, 'completed', ?, ?, ?)""",
                     (sale_ref, reg, cashier_id, payload.customer_id, subtotal_dzd, discount_dzd, tax_dzd,
-                     total_dzd, txn, payload.notes, op.created_at_client.strip()),
+                     total_dzd, txn, payload.notes, client_ts),
                 )
             else:
                 cur.execute(
@@ -6436,6 +7471,9 @@ def _process_offline_sale(conn, op: PosSyncOperation, cashier_id: int) -> dict:
             "INSERT INTO pos_payments (sale_id, method, amount_dzd, tendered_dzd, change_dzd) VALUES (?, ?, ?, ?, ?)",
             (sale_id, pm.method, int(pm.amount_dzd), pm.tendered_dzd, change),
         )
+        _record_cash_movement(cur, account=_account_for_method(pm.method), movement="inflow",
+                              amount=int(pm.amount_dzd), source_type="pos_sale", reference=sale_ref,
+                              description=f"Vente magasin {sale_ref} (hors ligne)", user_id=cashier_id)
 
     log_audit(conn, cashier_id, "pos_sale_offline_sync", "pos_sale", str(sale_id), {
         "client_txn_id": txn, "sale_reference": sale_ref, "total_dzd": total_dzd,
@@ -6453,6 +7491,23 @@ def _process_offline_sale(conn, op: PosSyncOperation, cashier_id: int) -> dict:
 # Unit cost expression shared by COGS/valuation queries (variant cost, else product cost).
 _UNIT_COST_SQL = "COALESCE(pv.purchase_cost_dzd, p.purchase_cost_dzd, 0)"
 
+# Stock that left (or came back) without a sale: write-offs (damaged, lost,
+# gift, correction) and the gaps found by a physical count, valued at cost.
+# A return to the supplier is not a loss (the supplier credits it).
+_STOCK_LOSS_REASONS_SQL = (
+    "(substr(im.reason, 1, 9) = 'writeoff_' AND im.reason != 'writeoff_return_to_supplier')"
+    " OR im.reason = 'physical_count_reconcile'"
+)
+
+
+def _stock_losses_dzd(cur, since_utc: Optional[str] = None) -> int:
+    """Value at cost of stock lost (positive) minus stock found (count surplus)."""
+    where = f"({_STOCK_LOSS_REASONS_SQL})" + (" AND im.created_at >= ?" if since_utc else "")
+    return -_scalar(cur, f"""SELECT COALESCE(SUM(im.change_qty * {_UNIT_COST_SQL}), 0) AS v
+        FROM inventory_movements im
+        JOIN product_variants pv ON pv.id = im.variant_id JOIN products p ON p.id = pv.product_id
+        WHERE {where}""", (since_utc,) if since_utc else ())
+
 
 def _scalar(cur, sql: str, params=(), key: str = "v") -> int:
     cur.execute(sql, params)
@@ -6461,18 +7516,20 @@ def _scalar(cur, sql: str, params=(), key: str = "v") -> int:
 
 
 @app.get("/api/v1/admin/dashboard/business")
-def admin_business_dashboard(admin: dict = Depends(require_permission("dashboard:read"))):
+def admin_business_dashboard(admin: dict = Depends(require_permission("finance:read"))):
     now = datetime.now(timezone.utc)
-    today_start = now.strftime("%Y-%m-%d 00:00:00")
-    month_start = now.strftime("%Y-%m-01 00:00:00")
-    month_start_date = now.strftime("%Y-%m-01")
+    shop_now = _shop_now().replace(tzinfo=None)
+    # "Today" / "this month" are the shop's (Algeria), converted to stored UTC.
+    today_start = _shop_local_to_utc(shop_now.replace(hour=0, minute=0, second=0, microsecond=0))
+    month_start = _shop_local_to_utc(shop_now.replace(day=1, hour=0, minute=0, second=0, microsecond=0))
+    month_start_date = shop_now.strftime("%Y-%m-01")
 
     with db_session() as conn:
         cur = conn.cursor()
 
         def online(period_clause: str, params=()):
             cur.execute(
-                f"SELECT COUNT(*) AS c, COALESCE(SUM(total_dzd),0) AS r FROM orders WHERE status != 'cancelled' {period_clause}",
+                f"SELECT COUNT(*) AS c, COALESCE(SUM(total_dzd),0) AS r FROM orders WHERE status NOT IN ('cancelled', 'returned') {period_clause}",
                 params,
             )
             row = cur.fetchone()
@@ -6516,7 +7573,7 @@ def admin_business_dashboard(admin: dict = Depends(require_permission("dashboard
                 FROM order_items oi JOIN orders o ON o.id = oi.order_id
                 JOIN product_variants pv ON pv.id = oi.variant_id
                 JOIN products p ON p.id = pv.product_id
-                WHERE o.status != 'cancelled' AND o.created_at >= ?""", (month_start,))
+                WHERE o.status NOT IN ('cancelled', 'returned') AND o.created_at >= ?""", (month_start,))
         instore_sale_cogs = _scalar(cur,
             f"""SELECT COALESCE(SUM(psi.quantity * {_UNIT_COST_SQL}),0) AS v
                 FROM pos_sale_items psi JOIN pos_sales ps ON ps.id = psi.sale_id
@@ -6534,6 +7591,7 @@ def admin_business_dashboard(admin: dict = Depends(require_permission("dashboard
         cogs_month = online_cogs + instore_sale_cogs - instore_refund_cogs
         gross_margin = revenue_month - cogs_month
         opex_month = _scalar(cur, "SELECT COALESCE(SUM(amount_dzd),0) AS v FROM expenses WHERE expense_date >= ?", (month_start_date,))
+        losses_month = _stock_losses_dzd(cur, month_start)
         margin_pct = round((gross_margin / revenue_month) * 100, 1) if revenue_month > 0 else 0.0
 
         margin_month = {
@@ -6542,7 +7600,8 @@ def admin_business_dashboard(admin: dict = Depends(require_permission("dashboard
             "gross_margin_dzd": gross_margin,
             "gross_margin_percent": margin_pct,
             "operating_expenses_dzd": opex_month,
-            "net_profit_dzd": gross_margin - opex_month,
+            "stock_losses_dzd": losses_month,
+            "net_profit_dzd": gross_margin - opex_month - losses_month,
         }
 
         # --- Inventory valuation + stock health ---
@@ -6593,13 +7652,13 @@ def admin_business_dashboard(admin: dict = Depends(require_permission("dashboard
 
         # --- Best sellers across both channels ---
         cur.execute(
-            """SELECT variant_id, product_name, sku, SUM(q) AS qty FROM (
+            """SELECT variant_id, MAX(product_name) AS product_name, MAX(sku) AS sku, SUM(q) AS qty FROM (
                  SELECT variant_id, product_name, sku, quantity AS q
-                 FROM order_items oi JOIN orders o ON o.id = oi.order_id WHERE o.status != 'cancelled'
+                 FROM order_items oi JOIN orders o ON o.id = oi.order_id WHERE o.status NOT IN ('cancelled', 'returned')
                  UNION ALL
                  SELECT variant_id, product_name, sku, quantity AS q
                  FROM pos_sale_items psi JOIN pos_sales ps ON ps.id = psi.sale_id WHERE ps.sale_type = 'sale'
-               ) GROUP BY variant_id ORDER BY qty DESC LIMIT 8"""
+               ) AS sold GROUP BY variant_id ORDER BY qty DESC LIMIT 8"""
         )
         best_sellers = [{"variant_id": r["variant_id"], "product_name": r["product_name"], "sku": r["sku"], "qty_sold": int(r["qty"])} for r in cur.fetchall()]
 
@@ -6835,7 +7894,6 @@ def admin_reset_user_password(user_id: int, payload: AdminPasswordReset, admin: 
 # sales. Privacy: only the fields the business needs are stored.
 # ============================================================================
 
-_CUSTOMER_MANAGE = require_any_permission(["orders:write", "pos:sell"])
 
 
 class CustomerCreate(BaseModel):
@@ -6875,7 +7933,7 @@ class CustomerUpdate(BaseModel):
 
 def _customer_totals_and_history(conn, customer_id: int) -> dict:
     cur = conn.cursor()
-    cur.execute("SELECT COUNT(*) AS c, COALESCE(SUM(total_dzd),0) AS s FROM orders WHERE customer_id = ? AND status != 'cancelled'", (customer_id,))
+    cur.execute("SELECT COUNT(*) AS c, COALESCE(SUM(total_dzd),0) AS s FROM orders WHERE customer_id = ? AND status NOT IN ('cancelled', 'returned')", (customer_id,))
     on = cur.fetchone()
     cur.execute("SELECT COUNT(*) AS c, COALESCE(SUM(total_dzd),0) AS s FROM pos_sales WHERE customer_id = ? AND sale_type = 'sale'", (customer_id,))
     ins = cur.fetchone()
@@ -6911,8 +7969,11 @@ def admin_search_customers(q: str = Query(..., min_length=1, max_length=120), ad
     with db_session() as conn:
         cur = conn.cursor()
         cur.execute(
-            """SELECT id, full_name, phone, email, wilaya_code, commune, orders_count, total_spent_dzd
-               FROM customers WHERE full_name LIKE ? OR phone LIKE ? ORDER BY total_spent_dzd DESC, id DESC LIMIT 20""",
+            f"""SELECT * FROM (
+                   SELECT c.id, c.full_name, c.phone, c.email, c.wilaya_code, c.commune,
+                          {_CUSTOMER_COUNT_SQL} AS orders_count, {_CUSTOMER_SPENT_SQL} AS total_spent_dzd
+                   FROM customers c WHERE c.full_name LIKE ? OR c.phone LIKE ?
+               ) AS x ORDER BY total_spent_dzd DESC, id DESC LIMIT 20""",
             (like, like),
         )
         return {"items": [dict(r) for r in cur.fetchall()]}
@@ -7064,7 +8125,7 @@ def admin_open_count(payload: CountOpenInput, admin: dict = Depends(require_perm
         ref = ""
         count_id = None
         for _attempt in range(3):
-            ref = f"INV-{int(time.time()) % 100000:05d}-{secrets.token_hex(2).upper()}"
+            ref = f"{_doc_prefix(cur, 'receipt_prefix_inventory', 'INV')}-{int(time.time()) % 100000:05d}-{secrets.token_hex(2).upper()}"
             try:
                 cur.execute(
                     """INSERT INTO inventory_counts (reference, name, opened_by_admin_id, notes)
@@ -7165,7 +8226,7 @@ def admin_apply_count(count_id: int, admin: dict = Depends(require_permission("i
         if c["status"] != "open":
             raise HTTPException(status_code=409, detail=f"Inventaire déjà {c['status']}")
         cur.execute(
-            "SELECT id, variant_id, counted_qty FROM inventory_count_items WHERE count_id = ?",
+            "SELECT id, variant_id, expected_qty, counted_qty FROM inventory_count_items WHERE count_id = ?",
             (count_id,),
         )
         lines = [dict(r) for r in cur.fetchall()]
@@ -7174,16 +8235,21 @@ def admin_apply_count(count_id: int, admin: dict = Depends(require_permission("i
 
         applied = 0
         for line in lines:
-            # Re-read stock inside the transaction to compute the delta vs the LIVE
-            # stock (sales may have happened between counting and applying). This
-            # guarantees stock becomes exactly the counted value without double-
-            # counting intermediate sales.
+            # Apply the DIFFERENCE the count found (counted − stock the system
+            # showed when the item was counted) to the live stock. Sales or
+            # receptions made between counting and applying are therefore kept:
+            # counted 5 of 5, then 1 sold → stays 4 (setting it to 5 would
+            # "un-sell" the item).
+            # Lock the row first (PostgreSQL row lock / SQLite write lock): no
+            # sale can slip in between reading the stock and writing it.
+            cur.execute("UPDATE product_variants SET stock_qty = stock_qty WHERE id = ?", (line["variant_id"],))
             cur.execute("SELECT stock_qty FROM product_variants WHERE id = ?", (line["variant_id"],))
             v = cur.fetchone()
             if not v:
                 continue
             prev_q = int(v["stock_qty"])
-            new_q = int(line["counted_qty"])
+            diff = int(line["counted_qty"]) - int(line["expected_qty"])
+            new_q = max(0, prev_q + diff)
             delta = new_q - prev_q
             if delta == 0:
                 continue
@@ -7296,6 +8362,68 @@ def admin_stock_write_off(payload: WriteOffInput, admin: dict = Depends(require_
 _DATE_RE = re.compile(r"^\d{4}-\d{2}-\d{2}$")
 
 
+# ----------------------------------------------------------------------------
+# Shop time zone. Timestamps are stored in UTC (no zone marker); days, "today"
+# and "this month" are the SHOP's days (Algeria: UTC+1, no daylight saving).
+# ----------------------------------------------------------------------------
+def _load_shop_tz():
+    name = os.getenv("SHOP_TIMEZONE", "Africa/Algiers").strip() or "Africa/Algiers"
+    try:
+        from zoneinfo import ZoneInfo
+        return ZoneInfo(name)
+    except Exception:  # no tz database on this machine: Algeria is a fixed UTC+1
+        return timezone(timedelta(hours=1), "UTC+01:00")
+
+
+SHOP_TZ = _load_shop_tz()
+_UTC_FMT = "%Y-%m-%d %H:%M:%S"
+
+
+def _shop_now() -> datetime:
+    return datetime.now(timezone.utc).astimezone(SHOP_TZ)
+
+
+def _shop_today() -> str:
+    return _shop_now().strftime("%Y-%m-%d")
+
+
+def _shop_local_to_utc(local_naive: datetime) -> str:
+    """Shop wall-clock time -> stored UTC text."""
+    return local_naive.replace(tzinfo=SHOP_TZ).astimezone(timezone.utc).strftime(_UTC_FMT)
+
+
+def _utc_range_for_days(date_from: str, date_to: str) -> tuple:
+    """Shop days [date_from .. date_to] -> UTC [start, end) for `created_at >= ? AND created_at < ?`."""
+    d0 = datetime.strptime(date_from, "%Y-%m-%d")
+    d1 = datetime.strptime(date_to, "%Y-%m-%d") + timedelta(days=1)
+    return _shop_local_to_utc(d0), _shop_local_to_utc(d1)
+
+
+def _shop_day_of(utc_text: Any) -> str:
+    """Stored UTC timestamp (or an 'YYYY-MM-DD HH' hour bucket) -> shop day."""
+    s = str(utc_text or "").replace("T", " ")
+    if len(s) < 10:
+        return s
+    try:
+        if len(s) == 13:  # hour bucket from substr(created_at, 1, 13)
+            dt = datetime.strptime(s, "%Y-%m-%d %H")
+        else:
+            dt = datetime.strptime(s[:19], _UTC_FMT) if len(s) >= 19 else datetime.strptime(s[:10], "%Y-%m-%d")
+    except ValueError:
+        return s[:10]
+    return dt.replace(tzinfo=timezone.utc).astimezone(SHOP_TZ).strftime("%Y-%m-%d")
+
+
+def _shop_time_text(utc_text: Any) -> str:
+    """Stored UTC timestamp -> 'YYYY-MM-DD HH:MM' in shop time (CSV exports)."""
+    s = str(utc_text or "").replace("T", " ")
+    try:
+        dt = datetime.strptime(s[:19], _UTC_FMT)
+    except ValueError:
+        return s
+    return dt.replace(tzinfo=timezone.utc).astimezone(SHOP_TZ).strftime("%Y-%m-%d %H:%M")
+
+
 def _parse_date_or_422(s: str, field: str) -> str:
     if not s or not _DATE_RE.match(s):
         raise HTTPException(status_code=422, detail=f"{field}: date attendue au format YYYY-MM-DD")
@@ -7304,32 +8432,37 @@ def _parse_date_or_422(s: str, field: str) -> str:
 
 def _sales_report_data(conn, date_from: str, date_to: str) -> dict:
     cur = conn.cursor()
-    start = f"{date_from} 00:00:00"
-    end = f"{date_to} 23:59:59"
+    start, end = _utc_range_for_days(date_from, date_to)  # shop days -> UTC [start, end)
 
     # Per-day online revenue & count
     cur.execute(
-        """SELECT substr(created_at, 1, 10) AS day,
+        """SELECT substr(created_at, 1, 13) AS hour,
                   COUNT(*) AS c, COALESCE(SUM(total_dzd), 0) AS r
            FROM orders
-           WHERE status != 'cancelled' AND created_at BETWEEN ? AND ?
-           GROUP BY day ORDER BY day""",
+           WHERE status NOT IN ('cancelled', 'returned') AND created_at >= ? AND created_at < ?
+           GROUP BY substr(created_at, 1, 13)""",
         (start, end),
     )
-    online_by_day = {r["day"]: {"count": int(r["c"]), "revenue_dzd": int(r["r"])} for r in cur.fetchall()}
+    # Grouped by UTC hour, folded into SHOP days (a 00:30 order in Algiers
+    # belongs to that day, not to the previous UTC day).
+    online_by_day: Dict[str, Dict[str, int]] = {}
+    for r in cur.fetchall():
+        d = online_by_day.setdefault(_shop_day_of(r["hour"]), {"count": 0, "revenue_dzd": 0})
+        d["count"] += int(r["c"])
+        d["revenue_dzd"] += int(r["r"])
 
     # Per-day in-store (sales minus refunds)
     cur.execute(
-        """SELECT substr(created_at, 1, 10) AS day, sale_type,
+        """SELECT substr(created_at, 1, 13) AS hour, sale_type,
                   COUNT(*) AS c, COALESCE(SUM(total_dzd), 0) AS r
            FROM pos_sales
-           WHERE created_at BETWEEN ? AND ?
-           GROUP BY day, sale_type ORDER BY day""",
+           WHERE created_at >= ? AND created_at < ?
+           GROUP BY substr(created_at, 1, 13), sale_type""",
         (start, end),
     )
     instore_by_day: Dict[str, Dict[str, int]] = {}
     for r in cur.fetchall():
-        d = instore_by_day.setdefault(r["day"], {"sales_count": 0, "sales_revenue_dzd": 0, "refunds_dzd": 0, "refunds_count": 0})
+        d = instore_by_day.setdefault(_shop_day_of(r["hour"]), {"sales_count": 0, "sales_revenue_dzd": 0, "refunds_dzd": 0, "refunds_count": 0})
         if r["sale_type"] == "sale":
             d["sales_count"] += int(r["c"])
             d["sales_revenue_dzd"] += int(r["r"])
@@ -7370,15 +8503,15 @@ def _sales_report_data(conn, date_from: str, date_to: str) -> dict:
 
     # Top products across both channels
     cur.execute(
-        """SELECT variant_id, product_name, sku, SUM(q) AS qty, SUM(r) AS rev FROM (
+        """SELECT variant_id, MAX(product_name) AS product_name, MAX(sku) AS sku, SUM(q) AS qty, SUM(r) AS rev FROM (
              SELECT oi.variant_id, oi.product_name, oi.sku, oi.quantity AS q, oi.line_total_dzd AS r
              FROM order_items oi JOIN orders o ON o.id = oi.order_id
-             WHERE o.status != 'cancelled' AND o.created_at BETWEEN ? AND ?
+             WHERE o.status NOT IN ('cancelled', 'returned') AND o.created_at >= ? AND o.created_at < ?
              UNION ALL
              SELECT psi.variant_id, psi.product_name, psi.sku, psi.quantity AS q, psi.line_total_dzd AS r
              FROM pos_sale_items psi JOIN pos_sales ps ON ps.id = psi.sale_id
-             WHERE ps.sale_type = 'sale' AND ps.created_at BETWEEN ? AND ?
-           ) GROUP BY variant_id ORDER BY qty DESC LIMIT 20""",
+             WHERE ps.sale_type = 'sale' AND ps.created_at >= ? AND ps.created_at < ?
+           ) AS sold GROUP BY variant_id ORDER BY qty DESC LIMIT 20""",
         (start, end, start, end),
     )
     top_products = [{"variant_id": r["variant_id"], "product_name": r["product_name"], "sku": r["sku"],
@@ -7388,7 +8521,7 @@ def _sales_report_data(conn, date_from: str, date_to: str) -> dict:
     cur.execute(
         """SELECT pp.method, COUNT(*) AS c, COALESCE(SUM(CASE WHEN ps.sale_type = 'sale' THEN pp.amount_dzd ELSE -pp.amount_dzd END), 0) AS total
            FROM pos_payments pp JOIN pos_sales ps ON ps.id = pp.sale_id
-           WHERE ps.created_at BETWEEN ? AND ?
+           WHERE ps.created_at >= ? AND ps.created_at < ?
            GROUP BY pp.method""",
         (start, end),
     )
@@ -7536,7 +8669,7 @@ def admin_low_stock_report(
                 """SELECT (
                       SELECT COALESCE(SUM(oi.quantity), 0)
                       FROM order_items oi JOIN orders o ON o.id = oi.order_id
-                      WHERE oi.variant_id = ? AND o.status != 'cancelled' AND o.created_at >= ?
+                      WHERE oi.variant_id = ? AND o.status NOT IN ('cancelled', 'returned') AND o.created_at >= ?
                    ) + (
                       SELECT COALESCE(SUM(psi.quantity), 0)
                       FROM pos_sale_items psi JOIN pos_sales ps ON ps.id = psi.sale_id
@@ -7575,8 +8708,7 @@ def admin_low_stock_report(
 
 def _treasury_report_data(conn, date_from: str, date_to: str) -> dict:
     cur = conn.cursor()
-    start = f"{date_from} 00:00:00"
-    end = f"{date_to} 23:59:59"
+    start, end = _utc_range_for_days(date_from, date_to)  # shop days -> UTC [start, end)
 
     # Per-source inflow/outflow by account
     cur.execute(
@@ -7584,7 +8716,7 @@ def _treasury_report_data(conn, date_from: str, date_to: str) -> dict:
                   COUNT(*) AS c,
                   COALESCE(SUM(amount_dzd), 0) AS total
            FROM cash_movements
-           WHERE created_at BETWEEN ? AND ?
+           WHERE created_at >= ? AND created_at < ?
            GROUP BY account_type, movement_type, source_type
            ORDER BY total DESC""",
         (start, end),
@@ -7602,21 +8734,25 @@ def _treasury_report_data(conn, date_from: str, date_to: str) -> dict:
 
     # Per-day net (for a mini-trend)
     cur.execute(
-        """SELECT substr(created_at, 1, 10) AS day,
+        """SELECT substr(created_at, 1, 13) AS hour,
                   COALESCE(SUM(CASE WHEN movement_type IN ('inflow','deposit') THEN amount_dzd ELSE -amount_dzd END), 0) AS net
            FROM cash_movements
-           WHERE created_at BETWEEN ? AND ?
-           GROUP BY day ORDER BY day""",
+           WHERE created_at >= ? AND created_at < ?
+           GROUP BY substr(created_at, 1, 13)""",
         (start, end),
     )
-    by_day = [{"day": r["day"], "net_dzd": int(r["net"])} for r in cur.fetchall()]
+    net_by_day: Dict[str, int] = {}
+    for r in cur.fetchall():
+        day = _shop_day_of(r["hour"])
+        net_by_day[day] = net_by_day.get(day, 0) + int(r["net"])
+    by_day = [{"day": d, "net_dzd": v} for d, v in sorted(net_by_day.items())]
 
     # List of movements for the detail table and CSV
     cur.execute(
         """SELECT cm.*, au.full_name AS admin_name
            FROM cash_movements cm
            LEFT JOIN admin_users au ON au.id = cm.recorded_by
-           WHERE cm.created_at BETWEEN ? AND ?
+           WHERE cm.created_at >= ? AND cm.created_at < ?
            ORDER BY cm.id DESC LIMIT 2000""",
         (start, end),
     )
@@ -7646,7 +8782,7 @@ def _treasury_report_data(conn, date_from: str, date_to: str) -> dict:
 def admin_treasury_report(
     date_from: str = Query(..., alias="from"),
     date_to: str = Query(..., alias="to"),
-    admin: dict = Depends(require_permission("dashboard:read")),
+    admin: dict = Depends(require_permission("finance:read")),
 ):
     date_from = _parse_date_or_422(date_from, "from")
     date_to = _parse_date_or_422(date_to, "to")
@@ -7660,7 +8796,7 @@ def admin_treasury_report(
 def admin_treasury_report_csv(
     date_from: str = Query(..., alias="from"),
     date_to: str = Query(..., alias="to"),
-    admin: dict = Depends(require_permission("dashboard:read")),
+    admin: dict = Depends(require_permission("finance:read")),
 ):
     date_from = _parse_date_or_422(date_from, "from")
     date_to = _parse_date_or_422(date_to, "to")
@@ -7669,28 +8805,14 @@ def admin_treasury_report_csv(
     with db_session() as conn:
         data = _treasury_report_data(conn, date_from, date_to)
 
-    buf = io.StringIO()
-    writer = csv.writer(buf)
-    def _s(v: Any) -> str:
-        s = str(v if v is not None else "")
-        if s and s[0] in ("=", "+", "-", "@"):
-            s = "'" + s
-        return s
-
-    writer.writerow(["date", "account", "movement_type", "source_type", "source_reference", "description", "amount_dzd", "admin"])
-    for it in data["items"]:
-        writer.writerow([
-            _s(it["created_at"]), _s(it["account_type"]), _s(it["movement_type"]), _s(it["source_type"]),
-            _s(it.get("source_reference") or ""), _s(it["description"]), it["amount_dzd"], _s(it.get("admin_name") or ""),
-        ])
-    writer.writerow([])
     t = data["totals"]
-    writer.writerow(["TOTAL", "", "", "", "", f"net={t['net_dzd']}", f"in={t['inflow_dzd']} out={t['outflow_dzd']}", ""])
-    return Response(
-        content=buf.getvalue(),
-        media_type="text/csv; charset=utf-8",
-        headers={"Content-Disposition": f'attachment; filename="treasury_{date_from}_{date_to}.csv"'},
-    )
+    rows = [[_csv_date(it["created_at"]), _fr(it["account_type"]), _fr(it["movement_type"]), _fr(it["source_type"]),
+             it.get("source_reference") or "", it["description"], it["amount_dzd"], it.get("admin_name") or ""]
+            for it in data["items"]]
+    rows += [[], ["TOTAL entrées", "", "", "", "", "", t["inflow_dzd"], ""],
+             ["TOTAL sorties", "", "", "", "", "", t["outflow_dzd"], ""], ["Flux net", "", "", "", "", "", t["net_dzd"], ""]]
+    return _excel_csv_response(f"tresorerie_{date_from}_{date_to}.csv",
+                               ["Date", "Compte", "Sens", "Origine", "Référence", "Libellé", "Montant (DA)", "Saisi par"], rows)
 
 
 # ============================================================================
@@ -7702,10 +8824,9 @@ def admin_treasury_report_csv(
 
 def _inventory_movements_data(conn, date_from: str, date_to: str, variant_id: Optional[int] = None) -> dict:
     cur = conn.cursor()
-    start = f"{date_from} 00:00:00"
-    end = f"{date_to} 23:59:59"
+    start, end = _utc_range_for_days(date_from, date_to)  # shop days -> UTC [start, end)
     params: List[Any] = [start, end]
-    where = ["im.created_at BETWEEN ? AND ?"]
+    where = ["im.created_at >= ? AND im.created_at < ?"]
     if variant_id is not None:
         where.append("im.variant_id = ?")
         params.append(variant_id)
@@ -7785,29 +8906,13 @@ def admin_inventory_movements_report_csv(
     with db_session() as conn:
         data = _inventory_movements_data(conn, date_from, date_to, variant_id)
 
-    buf = io.StringIO()
-    writer = csv.writer(buf)
-    def _s(v: Any) -> str:
-        s = str(v if v is not None else "")
-        if s and s[0] in ("=", "+", "-", "@"):
-            s = "'" + s
-        return s
-
-    writer.writerow(["date", "sku", "product_name", "variant_title", "change_qty", "previous_qty", "new_qty", "reason", "admin"])
-    for it in data["items"]:
-        writer.writerow([
-            _s(it["created_at"]), _s(it["sku"]), _s(it["product_name"]), _s(it["variant_title"]),
-            it["change_qty"], it["previous_qty"], it["new_qty"],
-            _s(it["reason"]), _s(it.get("admin_name") or ""),
-        ])
-    writer.writerow([])
     t = data["totals"]
-    writer.writerow(["TOTAL", "", "", "", t["net_change"], "", "", f"{t['count']} mouvements", ""])
-    return Response(
-        content=buf.getvalue(),
-        media_type="text/csv; charset=utf-8",
-        headers={"Content-Disposition": f'attachment; filename="inventory_{date_from}_{date_to}.csv"'},
-    )
+    rows = [[_csv_date(it["created_at"]), it["sku"], it["product_name"], it["variant_title"],
+             it["change_qty"], it["previous_qty"], it["new_qty"], _fr(it["reason"]), it.get("admin_name") or ""]
+            for it in data["items"]]
+    rows += [[], ["TOTAL", "", "", "", t["net_change"], "", "", f"{t['count']} mouvement(s)", ""]]
+    return _excel_csv_response(f"mouvements_stock_{date_from}_{date_to}.csv",
+                               ["Date", "SKU", "Produit", "Variante", "Variation", "Avant", "Après", "Motif", "Par"], rows)
 
 
 # ============================================================================
@@ -7872,7 +8977,7 @@ def _expenses_report_data(conn, date_from: str, date_to: str) -> dict:
 def admin_expense_report(
     date_from: str = Query(..., alias="from"),
     date_to: str = Query(..., alias="to"),
-    admin: dict = Depends(require_permission("dashboard:read")),
+    admin: dict = Depends(require_permission("finance:read")),
 ):
     date_from = _parse_date_or_422(date_from, "from")
     date_to = _parse_date_or_422(date_to, "to")
@@ -7886,7 +8991,7 @@ def admin_expense_report(
 def admin_expense_report_csv(
     date_from: str = Query(..., alias="from"),
     date_to: str = Query(..., alias="to"),
-    admin: dict = Depends(require_permission("dashboard:read")),
+    admin: dict = Depends(require_permission("finance:read")),
 ):
     date_from = _parse_date_or_422(date_from, "from")
     date_to = _parse_date_or_422(date_to, "to")
@@ -7895,35 +9000,19 @@ def admin_expense_report_csv(
     with db_session() as conn:
         data = _expenses_report_data(conn, date_from, date_to)
 
-    buf = io.StringIO()
-    writer = csv.writer(buf)
-    def _s(v: Any) -> str:
-        s = str(v if v is not None else "")
-        if s and s[0] in ("=", "+", "-", "@"):
-            s = "'" + s
-        return s
-
-    writer.writerow(["date", "category", "description", "recipient", "payment_method", "payment_status", "amount_dzd", "receipt_reference"])
-    for it in data["items"]:
-        writer.writerow([
-            _s(it["expense_date"]), _s(it["category"]), _s(it["description"]), _s(it.get("recipient") or ""),
-            _s(it["payment_method"]), _s(it["payment_status"]), it["amount_dzd"], _s(it.get("receipt_reference") or ""),
-        ])
-    writer.writerow([])
-    writer.writerow(["TOTAL", "", "", "", "", "", data["totals"]["total_dzd"], ""])
-
-    return Response(
-        content=buf.getvalue(),
-        media_type="text/csv; charset=utf-8",
-        headers={"Content-Disposition": f'attachment; filename="expenses_{date_from}_{date_to}.csv"'},
-    )
+    rows = [[it["expense_date"], _fr(it["category"]), it["description"], it.get("recipient") or "",
+             _fr(it["payment_method"]), _fr(it["payment_status"]), it["amount_dzd"], it.get("receipt_reference") or ""]
+            for it in data["items"]]
+    rows += [[], ["TOTAL", "", "", "", "", "", data["totals"]["total_dzd"], ""]]
+    return _excel_csv_response(f"depenses_{date_from}_{date_to}.csv",
+                               ["Date", "Catégorie", "Description", "Bénéficiaire", "Paiement", "Statut", "Montant (DA)", "N° de reçu"], rows)
 
 
 @app.get("/api/v1/admin/reports/sales")
 def admin_sales_report(
     date_from: str = Query(..., alias="from"),
     date_to: str = Query(..., alias="to"),
-    admin: dict = Depends(require_permission("dashboard:read")),
+    admin: dict = Depends(require_permission("finance:read")),
 ):
     date_from = _parse_date_or_422(date_from, "from")
     date_to = _parse_date_or_422(date_to, "to")
@@ -7937,7 +9026,7 @@ def admin_sales_report(
 def admin_sales_report_csv(
     date_from: str = Query(..., alias="from"),
     date_to: str = Query(..., alias="to"),
-    admin: dict = Depends(require_permission("dashboard:read")),
+    admin: dict = Depends(require_permission("finance:read")),
 ):
     date_from = _parse_date_or_422(date_from, "from")
     date_to = _parse_date_or_422(date_to, "to")
@@ -7946,40 +9035,14 @@ def admin_sales_report_csv(
     with db_session() as conn:
         data = _sales_report_data(conn, date_from, date_to)
 
-    buf = io.StringIO()
-    writer = csv.writer(buf)
-    writer.writerow([
-        "day", "online_count", "online_revenue_dzd",
-        "in_store_count", "in_store_revenue_dzd",
-        "in_store_refunds_count", "in_store_refunds_dzd",
-        "net_revenue_dzd",
-    ])
-    # CSV formula-injection defence: prefix leading =/+/-/@ with a single quote.
-    def _s(v: Any) -> str:
-        s = str(v if v is not None else "")
-        if s and s[0] in ("=", "+", "-", "@"):
-            s = "'" + s
-        return s
-
-    for d in data["by_day"]:
-        writer.writerow([
-            _s(d["day"]), d["online_count"], d["online_revenue_dzd"],
-            d["in_store_count"], d["in_store_revenue_dzd"],
-            d["in_store_refunds_count"], d["in_store_refunds_dzd"],
-            d["net_revenue_dzd"],
-        ])
     t = data["totals"]
-    writer.writerow([])
-    writer.writerow(["TOTAL", t["online_count"], t["online_revenue_dzd"],
-                     t["in_store_count"], t["in_store_revenue_dzd"],
-                     t["in_store_refunds_count"], t["in_store_refunds_dzd"],
-                     t["net_revenue_dzd"]])
-
-    return Response(
-        content=buf.getvalue(),
-        media_type="text/csv; charset=utf-8",
-        headers={"Content-Disposition": f'attachment; filename="sales_{date_from}_{date_to}.csv"'},
-    )
+    rows = [[d["day"], d["online_count"], d["online_revenue_dzd"], d["in_store_count"], d["in_store_revenue_dzd"],
+             d["in_store_refunds_count"], d["in_store_refunds_dzd"], d["net_revenue_dzd"]] for d in data["by_day"]]
+    rows += [[], ["TOTAL", t["online_count"], t["online_revenue_dzd"], t["in_store_count"], t["in_store_revenue_dzd"],
+                  t["in_store_refunds_count"], t["in_store_refunds_dzd"], t["net_revenue_dzd"]]]
+    return _excel_csv_response(f"ventes_{date_from}_{date_to}.csv",
+                               ["Jour", "Commandes en ligne", "CA en ligne (DA)", "Ventes magasin", "CA magasin (DA)",
+                                "Remboursements", "Remboursé (DA)", "CA net (DA)"], rows)
 
 
 @app.post("/api/v1/admin/inventory/counts/{count_id}/cancel")
@@ -7996,3 +9059,196 @@ def admin_cancel_count(count_id: int, admin: dict = Depends(require_permission("
         log_audit(conn, int(admin["sub"]), "cancel_inventory_count", "inventory_count", str(count_id), {"reference": c["reference"]})
         return _count_payload(conn, count_id)
 
+
+# ============================================================================
+# DATABASE ADMINISTRATION (owner only) — status, backup now, restore,
+# "nouvelle base de données". Backup files never leave the server over HTTP.
+# Engine: app/backup_engine.py (same code as the nightly job).
+# ============================================================================
+from . import backup_engine as _bk
+
+
+class OwnerConfirmPayload(BaseModel):
+    password: str = Field(..., min_length=1, max_length=256)
+    confirm: str = Field(..., min_length=1, max_length=40)
+
+
+class DatabaseResetPayload(OwnerConfirmPayload):
+    keep_settings: bool = True
+
+
+class BackupCreatePayload(BaseModel):
+    include_media: bool = False
+
+
+def _require_owner(admin: dict) -> int:
+    if admin.get("role") != "super_admin":
+        raise HTTPException(status_code=403, detail="Réservé au propriétaire (super administrateur).")
+    return int(admin["sub"])
+
+
+def _check_owner_password(user_id: int, password: str) -> None:
+    with db_session() as conn:
+        cur = conn.cursor()
+        cur.execute("SELECT password_hash FROM admin_users WHERE id = ? AND is_active = 1", (user_id,))
+        row = cur.fetchone()
+    if not row or not verify_password(password, row["password_hash"]):
+        raise HTTPException(status_code=403, detail="Mot de passe incorrect : opération annulée.")
+
+
+def _bk_call(fn, *args, **kwargs):
+    try:
+        return fn(*args, **kwargs)
+    except _bk.BackupError as exc:
+        raise HTTPException(status_code=409, detail=str(exc))
+
+
+@app.get("/api/v1/admin/system/configuration")
+def admin_configuration_status(admin: dict = Depends(require_permission("backups:write"))):
+    """Owner only: which .env settings are set, missing or for features not
+    built — secret values are never returned (app/settings.py)."""
+    _require_owner(admin)
+    return app_settings.public_report()
+
+
+@app.get("/api/v1/admin/system/database")
+def admin_database_status(admin: dict = Depends(require_permission("backups:write"))):
+    _require_owner(admin)
+    return _bk_call(_bk.database_info)
+
+
+@app.post("/api/v1/admin/system/backups", status_code=201)
+def admin_create_backup(payload: BackupCreatePayload, admin: dict = Depends(require_permission("backups:write"))):
+    uid = _require_owner(admin)
+    meta = _bk_call(_bk.create_backup, "manual", uid, payload.include_media)
+    with db_session(commit=True) as conn:
+        log_audit(conn, uid, "database_backup", "database", "store", {"backup": meta["name"], "media": bool(meta.get("media"))})
+    return meta
+
+
+@app.get("/api/v1/admin/system/backups/{name}/download")
+def admin_download_backup_for_pc(name: str, admin: dict = Depends(require_permission("backups:write"))):
+    """The owner's desktop CMS keeps a copy of each backup on the shop PC (the
+    VPS disk is small). Owner only, encrypted files only, written to the
+    audit log."""
+    uid = _require_owner(admin)
+    path = _bk_call(_bk.file_for_pc_copy, name)
+    with db_session(commit=True) as conn:
+        log_audit(conn, uid, "download_backup", "database", "store", {"backup": name})
+    return FileResponse(str(path), media_type="application/octet-stream", filename=name,
+                        headers={"Cache-Control": "no-store"})
+
+
+@app.post("/api/v1/admin/system/backups/import", status_code=201)
+async def admin_import_backup_from_pc(file: UploadFile = File(...), admin: dict = Depends(require_permission("backups:write"))):
+    """A copy kept on the PC is sent back (new server, lost disk); it can then
+    be restored like any backup (password + RESTAURER)."""
+    uid = _require_owner(admin)
+    blob = await file.read(_bk.MAX_IMPORT_BYTES + 1)
+    meta = _bk_call(_bk.import_pc_copy, blob, file.filename or "", uid)
+    with db_session(commit=True) as conn:
+        log_audit(conn, uid, "import_backup", "database", "store", {"backup": meta["name"], "from": meta["imported_from"]})
+    return meta
+
+
+@app.post("/api/v1/admin/system/backups/{name}/restore")
+def admin_restore_backup(name: str, payload: OwnerConfirmPayload, admin: dict = Depends(require_permission("backups:write"))):
+    uid = _require_owner(admin)
+    if payload.confirm.strip().upper() != "RESTAURER":
+        raise HTTPException(status_code=400, detail="Tapez RESTAURER pour confirmer.")
+    _check_owner_password(uid, payload.password)
+    return _bk_call(_bk.restore_backup, name, uid)
+
+
+@app.post("/api/v1/admin/system/reset")
+def admin_reset_database(payload: DatabaseResetPayload, admin: dict = Depends(require_permission("backups:write"))):
+    uid = _require_owner(admin)
+    if payload.confirm.strip().upper() != "EFFACER":
+        raise HTTPException(status_code=400, detail="Tapez EFFACER pour confirmer.")
+    _check_owner_password(uid, payload.password)
+    return _bk_call(_bk.reset_database, uid, payload.keep_settings)
+
+
+# ============================================================================
+# SEARCH ENGINES & LINK PREVIEWS (app/seo.py)
+# nginx routes https://mus-luxury.com/produit/<slug> and /categorie/<slug> here,
+# and /sitemap.xml. Public data only (published products, active categories).
+# ============================================================================
+from . import seo as _seo
+from fastapi.responses import HTMLResponse as _HTMLResponse
+
+
+def _seo_base(request: Request) -> str:
+    proto = request.headers.get("x-forwarded-proto") or request.url.scheme
+    host = request.headers.get("x-forwarded-host") or request.headers.get("host") or ""
+    return _seo.store_base_url(f"{proto}://{host}" if host else "")
+
+
+@app.get("/api/v1/seo/render/{kind}/{slug}", response_class=_HTMLResponse, include_in_schema=False)
+def seo_render_page(kind: str, slug: str, request: Request):
+    base = _seo_base(request)
+    path = f"/{kind}/{slug}"
+    found = False
+    if kind == "produit" and re.fullmatch(r"[a-z0-9-]{2,160}", slug or ""):
+        with db_session() as conn:
+            cur = conn.cursor()
+            cur.execute(
+                "SELECT p.* FROM products p WHERE p.slug = ? AND p.status = 'published' AND p.deleted_at IS NULL",
+                (slug,),
+            )
+            row = cur.fetchone()
+            if row:
+                product = serialize_product(conn, dict(row), include_private=False)
+                cur.execute("SELECT * FROM categories WHERE id = ? AND deleted_at IS NULL", (product.get("category_id"),))
+                cat = cur.fetchone()
+                title, tags = _seo.product_page_tags(base, product, dict(cat) if cat else None)
+                found = True
+        redirect = f"/#/produit/{slug}"
+    elif kind == "categorie" and re.fullmatch(r"[a-z0-9-]{2,120}", slug or ""):
+        with db_session() as conn:
+            cur = conn.cursor()
+            cur.execute("SELECT * FROM categories WHERE slug = ? AND is_active = 1 AND deleted_at IS NULL", (slug,))
+            cat = cur.fetchone()
+            if cat:
+                cur.execute(
+                    "SELECT slug, name_fr FROM products WHERE category_id = ? AND status = 'published' "
+                    "AND deleted_at IS NULL ORDER BY id DESC LIMIT 30",
+                    (cat["id"],),
+                )
+                prods = [dict(r) for r in cur.fetchall()]
+                title, tags = _seo.category_page_tags(base, dict(cat), prods)
+                found = True
+        redirect = f"/#/category/{slug}"
+    else:
+        redirect = "/"
+    if not found:
+        title, tags = _seo.not_found_tags(base, path)
+    template = _seo.get_template()
+    body = _seo.render_page(template, title, tags) if template else _seo.fallback_page(title, tags, redirect)
+    return _HTMLResponse(
+        body,
+        status_code=200 if found else 404,
+        headers={"Cache-Control": "public, max-age=300", "Vary": "Accept-Encoding"},
+    )
+
+
+@app.get("/api/v1/seo/sitemap.xml", include_in_schema=False)
+def seo_sitemap(request: Request):
+    base = _seo_base(request)
+    with db_session() as conn:
+        cur = conn.cursor()
+        cur.execute(
+            "SELECT slug, created_at, updated_at FROM categories WHERE is_active = 1 AND deleted_at IS NULL "
+            "ORDER BY display_order, id"
+        )
+        cats = [dict(r) for r in cur.fetchall()]
+        cur.execute(
+            "SELECT slug, created_at, updated_at FROM products WHERE status = 'published' AND deleted_at IS NULL "
+            "ORDER BY id DESC LIMIT 45000"
+        )
+        prods = [dict(r) for r in cur.fetchall()]
+    return Response(
+        content=_seo.sitemap_xml(base, cats, prods),
+        media_type="application/xml",
+        headers={"Cache-Control": "public, max-age=3600"},
+    )

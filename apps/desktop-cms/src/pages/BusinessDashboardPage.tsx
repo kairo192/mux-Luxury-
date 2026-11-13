@@ -14,6 +14,7 @@ import {
 } from "lucide-react";
 import { DesktopCmsApi } from "../api/adminClient";
 import { useT } from "../i18n";
+import { serverDate } from "../utils/serverDate";
 
 const fmt = (dzd: number) => `${Number(dzd || 0).toLocaleString("fr-DZ")} DA`;
 
@@ -101,6 +102,7 @@ export const BusinessDashboardPage: React.FC = () => {
         </div>
         <p className="text-[11px] text-gray-400 mt-1">
           {t("dashboard.opex_footnote", { amount: fmt(m.operating_expenses_dzd) })}
+          {Number(m.stock_losses_dzd || 0) !== 0 && ` ${t("dashboard.losses_footnote", { amount: fmt(m.stock_losses_dzd) })}`}
         </p>
       </Section>
 
@@ -159,7 +161,7 @@ export const BusinessDashboardPage: React.FC = () => {
       </div>
 
       <p className="text-[11px] text-gray-400 text-center">
-        {t("dashboard.generated_at", { date: new Date(data.generated_at).toLocaleString("fr-DZ") })}
+        {t("dashboard.generated_at", { date: serverDate(data.generated_at).toLocaleString("fr-FR") })}
       </p>
     </div>
   );

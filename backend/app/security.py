@@ -8,7 +8,7 @@ import os
 import re
 import secrets
 import time
-from typing import Dict, List, Optional, Set, Tuple
+from typing import Dict, Optional, Set, Tuple
 from cryptography.fernet import Fernet
 from fastapi import HTTPException, Request, status
 
@@ -133,7 +133,7 @@ def decode_access_token(token: str) -> dict:
     exp_rev = REVOKED_TOKENS.get(token)
     if exp_rev is not None:
         if now < exp_rev:
-            raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Session token has been revoked")
+            raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Session fermée. Reconnectez-vous.")
         REVOKED_TOKENS.pop(token, None)
     try:
         raw, sig = token.split(".", 1)
@@ -149,7 +149,7 @@ def decode_access_token(token: str) -> dict:
             raise ValueError("Token revoked by password reset")
         return payload
     except Exception:
-        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid or expired authentication token")
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Session expirée. Reconnectez-vous.")
 
 
 def revoke_all_user_sessions(user_id: int, conn=None) -> int:
@@ -283,7 +283,7 @@ def check_rate_limit(key: str, max_requests: int, window_seconds: int = 60) -> N
     if len(bucket) >= max_requests:
         raise HTTPException(
             status_code=status.HTTP_429_TOO_MANY_REQUESTS,
-            detail="Rate limit exceeded. Progressive security backoff triggered. Please wait before retrying.",
+            detail="Trop de tentatives. Patientez un moment avant de réessayer.",
         )
     bucket.append(now)
 
@@ -306,17 +306,17 @@ def validate_uploaded_image(filename: str, content_type: str, data: bytes, max_b
         raise HTTPException(status_code=400, detail="Path traversal characters detected in upload filename")
     basename = os.path.basename(filename)
     if not re.fullmatch(r"^[a-zA-Z0-9_.\-]+\.(jpg|jpeg|png|webp)$", basename, re.IGNORECASE):
-        raise HTTPException(status_code=400, detail="Filename contains dangerous characters or non-image extension")
+        raise HTTPException(status_code=400, detail="Nom de fichier non accepté (image JPEG, PNG ou WEBP attendue)")
 
     # 2. Prevent Buffer Overflow / DoS via huge payload
     if len(data) == 0:
-        raise HTTPException(status_code=400, detail="Empty file uploaded")
+        raise HTTPException(status_code=400, detail="Fichier vide")
     if len(data) > max_bytes:
-        raise HTTPException(status_code=413, detail="Image exceeds maximum allowed size of 5 MB")
+        raise HTTPException(status_code=413, detail="Image trop lourde (5 Mo maximum)")
 
     # 3. Magic-Byte Binary Header & Extension-to-MIME Consistency Inspection
     if content_type not in ALLOWED_MIME_SIGNATURES:
-        raise HTTPException(status_code=400, detail="Unsupported image format. Allowed: JPEG, PNG, WEBP")
+        raise HTTPException(status_code=400, detail="Format d'image non accepté (JPEG, PNG ou WEBP)")
     ext_lower = os.path.splitext(basename)[1].lower()
     allowed_exts_for_mime = {
         "image/jpeg": (".jpg", ".jpeg"),

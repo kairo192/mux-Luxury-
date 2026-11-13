@@ -1,4 +1,5 @@
 // ============================================================================
+import { serverDate } from "./serverDate";
 // POS hardware bridge — thin typed wrapper around the Tauri 2 invoke commands
 // defined in `apps/desktop-cms/src-tauri/src/pos_hardware/`.
 //
@@ -27,6 +28,9 @@ export interface PrinterInfo {
 export interface PrinterTarget {
   printer_name?: string | null;
   device_path?: string | null;
+  /** Network printer (raw printing, port 9100 by default). */
+  host?: string | null;
+  port?: number | null;
   line_width?: number;  // 32 (58mm) or 42 (80mm) typical
   drawer_pin?: 2 | 5;
 }
@@ -61,7 +65,7 @@ export interface HardwareResult {
 
 // -------------------------------------------------- Tauri bridge --------
 
-function getTauriInvoke(): ((cmd: string, args?: Record<string, unknown>) => Promise<any>) | null {
+export function getTauriInvoke(): ((cmd: string, args?: Record<string, unknown>) => Promise<any>) | null {
   if (typeof window === "undefined") return null;
   const w = window as any;
   if (w.__TAURI_INTERNALS__ && typeof w.__TAURI_INTERNALS__.invoke === "function") {
@@ -210,7 +214,7 @@ export function buildReceiptLines(sale: PosSalePayload, width = 32): ReceiptLine
   out.push({ rule: true });
 
   const ref = sale.sale_reference || "—";
-  const date = sale.created_at ? new Date(sale.created_at).toLocaleString("fr-FR") : "—";
+  const date = sale.created_at ? serverDate(sale.created_at).toLocaleString("fr-FR") : "—";
   out.push({ left: "Ticket", right: ref, bold: true });
   out.push({ left: "Date",   right: date });
   if (sale.customer?.full_name) out.push({ left: "Client", right: sale.customer.full_name });
@@ -265,6 +269,8 @@ export function buildReceiptLines(sale: PosSalePayload, width = 32): ReceiptLine
 export interface LabelPrinterTarget {
   printer_name?: string | null;
   device_path?: string | null;
+  host?: string | null;
+  port?: number | null;
   format?: "zpl" | "escpos-text";
   width_mm?: number;
   height_mm?: number;

@@ -1,6 +1,7 @@
 import React, { useMemo, useState } from "react";
 import {
   AlertTriangle,
+  Image as ImageIcon,
   Check,
   CheckCircle2,
   Layers,
@@ -11,7 +12,7 @@ import {
   Trash2,
   X,
 } from "lucide-react";
-import { DesktopCmsApi } from "../api/adminClient";
+import { DesktopCmsApi, mediaUrl } from "../api/adminClient";
 import { notifyClientError, notifyClientSuccess, notifyClientWarning } from "../utils/clientNotifier";
 import { useT } from "../i18n";
 
@@ -52,6 +53,8 @@ export type EditorVariant = {
   is_low_stock?: boolean;
   effective_price_dzd?: number;
   attributes: Record<string, string>;
+  /** This variant's own photo (e.g. the red version). Empty = product photo. */
+  image_url?: string | null;
   /** local-only marker so the CMS can flag what still has to be created */
   __new?: boolean;
 };
@@ -64,6 +67,8 @@ type Props = {
   variants: EditorVariant[];
   onChange?: (variants: EditorVariant[]) => void;
   onRefresh?: () => void | Promise<void>;
+  /** Photos of the product (main + gallery) the owner can assign to a variant. */
+  availableImages?: string[];
 };
 
 function badgeColor(value: string, axis?: VariantAxis) {
@@ -94,6 +99,7 @@ export function VariantManager({
   variants,
   onChange,
   onRefresh,
+  availableImages = [],
 }: Props) {
   const t = useT();
   const isCreateMode = !productId;
@@ -115,6 +121,17 @@ export function VariantManager({
   const [selectedIds, setSelectedIds] = useState<number[]>([]);
   const [busy, setBusy] = useState(false);
   const [rowEdits, setRowEdits] = useState<Record<number, Partial<EditorVariant>>>({});
+  const [photoPickerFor, setPhotoPickerFor] = useState<string | null>(null);
+
+  // Assign a photo to one variant (null = use the product's main photo).
+  function setVariantPhoto(variant: EditorVariant, idx: number, url: string | null) {
+    if (isCreateMode || !variant.id) {
+      onChange?.(variants.map((v, i) => (i === idx ? { ...v, image_url: url } : v)));
+    } else {
+      setRowEdits((prev) => ({ ...prev, [variant.id!]: { ...prev[variant.id!], image_url: url ?? "" } }));
+    }
+    setPhotoPickerFor(null);
+  }
   // Reusable inline numeric prompt — replaces the three window.prompt() calls
   // that were impossible to use on a touchscreen till.
   const [numPrompt, setNumPrompt] = useState<null | {
@@ -324,7 +341,7 @@ export function VariantManager({
 
   async function saveRowEdits() {
     if (isCreateMode) {
-      const merged = variants.map((v, idx) => {
+      const merged = variants.map((v) => {
         const edit = v.id ? rowEdits[v.id] : undefined;
         return edit ? { ...v, ...edit } : v;
       });
@@ -346,6 +363,7 @@ export function VariantManager({
       if (patch.barcode !== undefined) payload.barcode = patch.barcode ? String(patch.barcode).trim() : "";
       if (patch.low_stock_threshold !== undefined) payload.low_stock_threshold = Number(patch.low_stock_threshold);
       if (patch.is_active !== undefined) payload.is_active = Boolean(patch.is_active);
+      if (patch.image_url !== undefined) payload.image_url = patch.image_url || "";
       if (patch.price_override_dzd !== undefined) {
         if (patch.price_override_dzd === null || String(patch.price_override_dzd) === "") {
           payload.clear_price_override = true;
@@ -516,6 +534,7 @@ export function VariantManager({
                   <button
                     key={opt.value}
                     type="button"
+                    aria-pressed={active}
                     onClick={() => toggleValue(axis.attr_key, opt.value)}
                     className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg border font-semibold transition ${
                       active
@@ -561,7 +580,7 @@ export function VariantManager({
                         <span>{v}</span>
                         {active && <Check className="w-3 h-3 text-[#D4AF62]" />}
                       </button>
-                      <button
+                      <button aria-label="Retirer cette valeur"
                         type="button"
                         onClick={() => removeCustomValue(axis.attr_key, v)}
                         className={`px-1.5 py-1 rounded-r-lg border border-l-0 text-xs transition ${
@@ -804,7 +823,7 @@ export function VariantManager({
             <button type="button" onClick={() => runBulk("deactivate")} className="px-2.5 py-1 rounded-lg bg-amber-50 border border-amber-300 font-bold text-amber-800">
               {t("variant_mgr.bulk_deactivate")}
             </button>
-            <button type="button" onClick={() => setSelectedIds([])} className="ml-auto p-1 rounded text-gray-500 hover:text-black">
+            <button aria-label="Tout désélectionner" type="button" onClick={() => setSelectedIds([])} className="ml-auto p-1 rounded text-gray-500 hover:text-black">
               <X className="w-3.5 h-3.5" />
             </button>
           </div>
@@ -834,6 +853,7 @@ export function VariantManager({
                       disabled={isCreateMode}
                     />
                   </th>
+                  <th className="p-2">{t("variant_mgr.th_photo")}</th>
                   <th className="p-2">{t("variant_mgr.th_variant")}</th>
                   <th className="p-2">{t("variant_mgr.th_sku")}</th>
                   <th className="p-2">{t("variant_mgr.th_barcode")}</th>
@@ -867,6 +887,56 @@ export function VariantManager({
                           }}
                           className="w-3.5 h-3.5"
                         />
+                      </td>
+                      <td className="p-2 relative">
+                        {(() => {
+                          const own = value("image_url") as string | null | undefined;
+                          const pickerKey = String(key);
+                          return (
+                            <>
+                              <button
+                                type="button"
+                                onClick={() => setPhotoPickerFor(photoPickerFor === pickerKey ? null : pickerKey)}
+                                title={t("variant_mgr.photo_pick")}
+                                className={`w-10 h-10 rounded-lg overflow-hidden border-2 ${own ? "border-[#D4AF62]" : "border-dashed border-gray-300"} bg-[#F8F6F0] flex items-center justify-center`}
+                              >
+                                {own ? (
+                                  <img src={mediaUrl(own)} alt="" className="w-full h-full object-cover" />
+                                ) : (
+                                  <ImageIcon className="w-4 h-4 text-gray-400" />
+                                )}
+                              </button>
+                              {photoPickerFor === pickerKey && (
+                                <div className="absolute z-30 top-12 start-0 w-64 p-2.5 rounded-xl bg-white border border-[#D4AF62]/50 shadow-2xl space-y-2">
+                                  <p className="text-[11px] font-bold text-[#063D2E]">{t("variant_mgr.photo_pick")}</p>
+                                  {availableImages.length === 0 ? (
+                                    <p className="text-[11px] text-gray-500">{t("variant_mgr.photo_none_available")}</p>
+                                  ) : (
+                                    <div className="grid grid-cols-4 gap-1.5">
+                                      {availableImages.map((url) => (
+                                        <button
+                                          key={url}
+                                          type="button"
+                                          onClick={() => setVariantPhoto(variant, idx, url)}
+                                          className={`aspect-square rounded-md overflow-hidden border-2 ${own === url ? "border-[#063D2E]" : "border-transparent hover:border-[#D4AF62]"}`}
+                                        >
+                                          <img src={mediaUrl(url)} alt="" className="w-full h-full object-cover" />
+                                        </button>
+                                      ))}
+                                    </div>
+                                  )}
+                                  <button
+                                    type="button"
+                                    onClick={() => setVariantPhoto(variant, idx, null)}
+                                    className="w-full py-1 rounded-lg border border-gray-300 text-[11px] font-bold text-gray-600 hover:bg-gray-50"
+                                  >
+                                    {t("variant_mgr.photo_use_product")}
+                                  </button>
+                                </div>
+                              )}
+                            </>
+                          );
+                        })()}
                       </td>
                       <td className="p-2">
                         <div className="flex flex-wrap items-center gap-1">

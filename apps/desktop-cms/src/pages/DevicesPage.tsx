@@ -20,6 +20,8 @@ import {
 import { DesktopCmsApi } from "../api/adminClient";
 import { confirmClientAction } from "../utils/clientNotifier";
 import { useT } from "../i18n";
+import { isTauriRuntime, testPrint, testPrintLabel } from "../utils/posHardware";
+import { serverDate } from "../utils/serverDate";
 
 type DeviceType = "receipt_printer" | "label_printer" | "barcode_scanner" | "cash_drawer" | "customer_display" | "other";
 type ConnectionType = "usb" | "network" | "windows" | "serial" | "hid_keyboard" | "browser";
@@ -168,13 +170,36 @@ export const DevicesPage: React.FC = () => {
     }
   };
 
+  // Printers are plugged into the shop PC: the test runs HERE (desktop app)
+  // and the result is reported to the server. The cloud server cannot reach a
+  // printer on the shop's local network, so it is never asked to.
   const runTest = async (dev: Device) => {
     setBusy(true);
     try {
-      const res = await DesktopCmsApi.testDevice(dev.id);
-      if (res.status === "ok") flash(`${dev.name} : OK`);
-      else if (res.status === "error") setError(`${dev.name} : ${res.last_error}`);
-      else flash(res.last_error || "Test OK");
+      const isPrinter = dev.device_type === "receipt_printer" || dev.device_type === "label_printer";
+      if (isPrinter && isTauriRuntime()) {
+        const cfg = dev.config || {};
+        const target = {
+          printer_name: cfg.windows_printer_name || null,
+          device_path: cfg.device_path || null,
+          // Network printer: sent over the network by the desktop app (not a file path).
+          host: cfg.host || null,
+          port: cfg.host ? Number(cfg.port) || 9100 : null,
+          line_width: Number(cfg.paper_width_mm) === 58 ? 32 : 42,
+        };
+        const res = dev.device_type === "label_printer"
+          ? await testPrintLabel(target as any)
+          : await testPrint(target);
+        await DesktopCmsApi.testDevice(dev.id, { success: res.ok, error: res.ok ? undefined : res.error });
+        if (res.ok) flash(`${dev.name} : test imprimé avec succès.`);
+        else setError(`${dev.name} : ${res.error || "échec du test d'impression"}`);
+      } else if (isPrinter) {
+        setError("Le test d'une imprimante se fait depuis l'application de bureau installée sur le poste de la boutique.");
+      } else {
+        const res = await DesktopCmsApi.testDevice(dev.id);
+        if (res.status === "ok") flash(`${dev.name} : OK`);
+        else setError(`${dev.name} : ${res.last_error || "état inconnu"}`);
+      }
       load();
     } catch (e: any) {
       setError(e?.userMessage || t("status.error"));
@@ -193,18 +218,29 @@ export const DevicesPage: React.FC = () => {
       <div style="font-weight:700">Mus Luxury</div>
       <div>— TEST D'IMPRESSION —</div>
       <div>${dev.name}</div>
-      <div>${new Date().toLocaleString("fr-DZ")}</div>
+      <div>${new Date().toLocaleString("fr-FR")}</div>
       <div>................................</div>
       <div>Imprimante fonctionnelle ✓</div>
       <script>window.onload=function(){window.print();setTimeout(function(){window.close();},300);};<\/script>
       </body></html>`);
     w.document.close();
+    // Only the person in front of the printer knows if the ticket came out:
+    // ask, then record that answer (never assume success).
+    const printed = await confirmClientAction({
+      title: "Test d'impression",
+      message: `Le ticket de test est-il bien sorti de « ${dev.name} » ?`,
+      confirmLabel: "Oui, imprimé",
+      cancelLabel: "Non",
+    });
     try {
-      await DesktopCmsApi.testDevice(dev.id, { success: true });
-      flash(`${dev.name} : OK`);
+      await DesktopCmsApi.testDevice(dev.id, printed
+        ? { success: true }
+        : { success: false, error: "Le ticket de test n'est pas sorti (signalé au poste)." });
+      if (printed) flash(`${dev.name} : OK`);
+      else setError(`${dev.name} : le ticket de test n'est pas sorti. Vérifiez le câble, le papier et le pilote Windows.`);
       load();
-    } catch {
-      /* ignore */
+    } catch (e: any) {
+      setError(e?.userMessage || t("status.error"));
     }
   };
 
@@ -280,7 +316,7 @@ export const DevicesPage: React.FC = () => {
           <p className="text-gray-500 mt-1">{t("devices.subtitle")}</p>
         </div>
         <div className="flex gap-2">
-          <button type="button" onClick={load} className="h-12 w-12 rounded-2xl border-2 border-gray-200 flex items-center justify-center text-gray-500 active:scale-95">
+          <button aria-label="Actualiser" type="button" onClick={load} className="h-12 w-12 rounded-2xl border-2 border-gray-200 flex items-center justify-center text-gray-500 active:scale-95">
             <RefreshCw className="w-5 h-5" />
           </button>
           <button type="button" onClick={() => setForm({ ...emptyForm })} className="h-12 px-5 rounded-2xl bg-[#063D2E] text-[#D4AF62] font-bold flex items-center gap-2 active:scale-95">
@@ -339,7 +375,7 @@ export const DevicesPage: React.FC = () => {
                       <div className="mt-2 text-[11px] text-red-600 break-words">{dev.last_error}</div>
                     )}
                     {dev.last_test_at && (
-                      <div className="mt-1 text-[11px] text-gray-400">{t("devices.last_test", { date: new Date(dev.last_test_at).toLocaleString("fr-DZ") })}</div>
+                      <div className="mt-1 text-[11px] text-gray-400">{t("devices.last_test", { date: serverDate(dev.last_test_at).toLocaleString("fr-FR") })}</div>
                     )}
 
                     <div className="flex flex-wrap gap-1.5 mt-3">
@@ -356,10 +392,10 @@ export const DevicesPage: React.FC = () => {
                           <Star className="w-4 h-4" /> {t("devices.btn_set_default")}
                         </button>
                       )}
-                      <button type="button" onClick={() => editDevice(dev)} className="h-10 w-10 rounded-xl border-2 border-gray-200 flex items-center justify-center text-gray-500 active:scale-95">
+                      <button aria-label="Modifier" type="button" onClick={() => editDevice(dev)} className="h-10 w-10 rounded-xl border-2 border-gray-200 flex items-center justify-center text-gray-500 active:scale-95">
                         <Pencil className="w-4 h-4" />
                       </button>
-                      <button type="button" onClick={() => remove(dev)} className="h-10 w-10 rounded-xl border-2 border-red-200 flex items-center justify-center text-red-500 active:scale-95">
+                      <button aria-label="Supprimer" type="button" onClick={() => remove(dev)} className="h-10 w-10 rounded-xl border-2 border-red-200 flex items-center justify-center text-red-500 active:scale-95">
                         <Trash2 className="w-4 h-4" />
                       </button>
                     </div>
@@ -377,7 +413,7 @@ export const DevicesPage: React.FC = () => {
           <div className="bg-white rounded-3xl w-full max-w-md max-h-[92vh] overflow-auto" onClick={(e) => e.stopPropagation()}>
             <div className="flex items-center justify-between px-5 py-4 border-b">
               <h3 className="font-serif font-bold text-[#063D2E] text-lg">{form.id === null ? t("devices.modal_new") : t("devices.modal_edit")}</h3>
-              <button type="button" onClick={() => setForm(null)} className="w-11 h-11 rounded-xl flex items-center justify-center text-gray-400 hover:bg-gray-100 active:scale-95">
+              <button aria-label="Fermer" type="button" onClick={() => setForm(null)} className="w-11 h-11 rounded-xl flex items-center justify-center text-gray-400 hover:bg-gray-100 active:scale-95">
                 <X className="w-6 h-6" />
               </button>
             </div>

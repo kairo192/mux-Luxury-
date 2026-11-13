@@ -1,6 +1,7 @@
-import json
+import datetime as _dt
 import os
 import re
+from decimal import Decimal as _Decimal
 import sqlite3
 from contextlib import contextmanager
 from typing import Any, Iterable, Optional, Tuple
@@ -8,6 +9,59 @@ from typing import Any, Iterable, Optional, Tuple
 DB_PATH = os.getenv("LUXE_SQLITE_PATH", os.path.join(os.path.dirname(__file__), "..", "luxe_store.sqlite3"))
 SCHEMA_PATH = os.path.join(os.path.dirname(__file__), "..", "migrations", "001_initial_schema.sql")
 PG_SCHEMA_PATH = os.path.join(os.path.dirname(__file__), "..", "migrations", "001_initial_schema_postgres.sql")
+
+
+# Tables whose primary key is not an "id" column: an INSERT into them must
+# not get "RETURNING id" (PostgreSQL would reject the statement). Keep in sync
+# with migrations/001_initial_schema_postgres.sql and migrations/versions/.
+TABLES_WITHOUT_ID = frozenset({"role_permissions", "store_settings", "schema_migrations"})
+
+
+# SQLite functions used by the application SQL, rewritten for PostgreSQL:
+#   substr(col, a, b)  -> substr(CAST(col AS TEXT), a, b)   (timestamps → "YYYY-MM-DD ...")
+#   datetime(x)        -> CAST(x AS TIMESTAMP)
+#   MAX(a, b) (scalar) -> GREATEST(a, b)   (the 1-argument aggregate MAX is untouched)
+#   LIKE               -> ILIKE (case-insensitive, as on SQLite)
+_SUBSTR_RE = re.compile(r"\bsubstr\(\s*([A-Za-z_][A-Za-z0-9_.]*)\s*,", re.I)
+_DATETIME_RE = re.compile(r"\bdatetime\(\s*([A-Za-z_][A-Za-z0-9_.]*|%s)\s*\)", re.I)
+_SCALAR_MAX_RE = re.compile(r"\bMAX\(\s*([^(),]+?)\s*,\s*([^(),]+?)\s*\)", re.I)
+# SQLite's LIKE ignores letter case; PostgreSQL's does not → ILIKE, so a
+# search for "karim" finds "Karim" on the server too.
+_LIKE_RE = re.compile(r"\b(NOT\s+)?LIKE\b", re.I)
+
+
+def _translate_sqlite_functions(pg_sql: str) -> str:
+    pg_sql = _SUBSTR_RE.sub(r"substr(CAST(\1 AS TEXT),", pg_sql)
+    pg_sql = _DATETIME_RE.sub(r"CAST(\1 AS TIMESTAMP)", pg_sql)
+    pg_sql = _SCALAR_MAX_RE.sub(r"GREATEST(\1, \2)", pg_sql)
+    pg_sql = _LIKE_RE.sub(lambda m: (m.group(1) or "") + "ILIKE", pg_sql)
+    return pg_sql
+
+
+def _sqlite_shaped(value: Any) -> Any:
+    """PostgreSQL returns datetime / Decimal objects where SQLite returns text
+    and numbers. The application (JSON responses, ETags, CSV exports, date
+    slicing like str(v)[:10]) is written for the SQLite shapes, so every row
+    read from PostgreSQL is normalised to them."""
+    if isinstance(value, _dt.datetime):
+        return value.isoformat(sep=" ")
+    if isinstance(value, (_dt.date, _dt.time)):
+        return value.isoformat()
+    if isinstance(value, _Decimal):
+        return int(value) if value == value.to_integral_value() else float(value)
+    return value
+
+
+def sqlite_shaped_dict_row(cursor):
+    """psycopg row factory: dict rows with SQLite-shaped values."""
+    from psycopg.rows import dict_row
+    make = dict_row(cursor)
+
+    def row(values):
+        d = make(values)
+        return {k: _sqlite_shaped(v) for k, v in d.items()}
+
+    return row
 
 
 def translate_sql_for_postgres(sql: str) -> Tuple[str, bool]:
@@ -48,11 +102,13 @@ def translate_sql_for_postgres(sql: str) -> Tuple[str, bool]:
     if is_insert_ignore and "ON CONFLICT" not in pg_sql.upper():
         pg_sql += " ON CONFLICT DO NOTHING"
 
+    pg_sql = _translate_sqlite_functions(pg_sql)
+
+    target = re.match(r"\s*INSERT\s+INTO\s+([A-Za-z_][A-Za-z0-9_]*)", pg_sql, re.I)
     needs_returning_id = (
-        pg_sql.upper().startswith("INSERT INTO ")
+        target is not None
         and "RETURNING " not in pg_sql.upper()
-        and "role_permissions" not in pg_sql.lower()
-        and "store_settings" not in pg_sql.lower()
+        and target.group(1).lower() not in TABLES_WITHOUT_ID
     )
     if needs_returning_id:
         pg_sql += " RETURNING id"
@@ -210,8 +266,9 @@ class PostgresConnectionPool:
 
     def _create_new_raw(self, pg_url: str):
         import psycopg
-        from psycopg.rows import dict_row
-        return psycopg.connect(pg_url, row_factory=dict_row)
+        # Times are stored as UTC without a zone (like SQLite's CURRENT_TIMESTAMP);
+        # pin the session zone so a server set to another TZ cannot shift them.
+        return psycopg.connect(pg_url, row_factory=sqlite_shaped_dict_row, options="-c timezone=UTC")
 
     def _create_new(self, pg_url: str):
         with self._lock:
@@ -313,6 +370,9 @@ _ADDITIVE_COLUMNS = [
     # Customer management: optional contact + CRM notes (walk-in friendly)
     ("customers", "email", "VARCHAR(255)"),
     ("customers", "notes", "TEXT"),
+    # Orders keep the promo code used and the discount it gave
+    ("orders", "coupon_code", "VARCHAR(32)"),
+    ("orders", "discount_dzd", "INTEGER NOT NULL DEFAULT 0"),
 ]
 
 

@@ -2,6 +2,9 @@ fastapi>=0.92.0,<0.100.0
 uvicorn[standard]>=0.20.0,<0.30.0
 pydantic>=1.10.4,<2.0.0
 cryptography>=38.0.0
-httpx>=0.23.0
+# <0.28: Starlette 0.25's TestClient passes app= to httpx (removed in 0.28).
+httpx>=0.23.0,<0.28
 psycopg[binary]>=3.1.0; python_version >= '3.11'
 python-multipart>=0.0.6
+tzdata>=2024.1
+Pillow>=10.3

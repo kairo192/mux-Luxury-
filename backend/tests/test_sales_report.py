@@ -15,7 +15,7 @@ os.environ.setdefault("SECRET_KEY", "test_only_ephemeral_secret_key_for_unit_tes
 
 from fastapi.testclient import TestClient
 
-from app.main import app
+from app.main import app, _shop_today
 from app.seed import seed_initial_data
 from app.security import reset_rate_limits
 
@@ -73,7 +73,7 @@ class TestSalesReport(unittest.TestCase):
         self.assertEqual(self._report("2026-02-01", "2026-01-01").status_code, 422)
 
     def test_03_in_store_sale_and_refund_reflected(self):
-        today = date.today().isoformat()
+        today = _shop_today()
         base = self._report(today, today).json()["totals"]
 
         self.client.post("/api/v1/admin/pos/register/open", headers=self.headers, json={"opening_float_dzd": 0})
@@ -99,7 +99,7 @@ class TestSalesReport(unittest.TestCase):
         self.assertTrue(any(p["variant_id"] == self.variant["id"] and p["qty_sold"] >= 2 for p in after2["top_products"]))
 
     def test_04_online_order_in_net(self):
-        today = date.today().isoformat()
+        today = _shop_today()
         base = self._report(today, today).json()["totals"]["net_revenue_dzd"]
         ord_r = self.client.post("/api/v1/orders", headers={"Idempotency-Key": f"rep-{self.suffix}"}, json={
             "full_name": "Client Rapport", "phone": "0551234568", "wilaya_code": "09",
@@ -111,13 +111,13 @@ class TestSalesReport(unittest.TestCase):
         self.assertEqual(after - base, total)
 
     def test_05_csv_export(self):
-        today = date.today().isoformat()
+        today = _shop_today()
         r = self.client.get("/api/v1/admin/reports/sales.csv", headers=self.headers, params={"from": today, "to": today})
         self.assertEqual(r.status_code, 200, r.text)
         self.assertIn("text/csv", r.headers["content-type"])
-        self.assertIn('attachment; filename="sales_', r.headers["content-disposition"])
+        self.assertIn('attachment; filename="ventes_', r.headers["content-disposition"])
         body = r.text
-        self.assertIn("day,online_count,online_revenue_dzd", body.splitlines()[0])
+        self.assertIn("Jour;Commandes en ligne;CA en ligne (DA)", body.lstrip("\ufeff").splitlines()[0])
         self.assertIn("TOTAL", body)
 
 

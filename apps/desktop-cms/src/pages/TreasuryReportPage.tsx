@@ -2,10 +2,12 @@ import React, { useEffect, useState, useCallback } from "react";
 import { Landmark, Download, RefreshCw, AlertTriangle, ArrowUp, ArrowDown, Wallet, Banknote, Building2 } from "lucide-react";
 import { DesktopCmsApi, getAccessToken } from "../api/adminClient";
 import { useT } from "../i18n";
+import { codeLabel } from "../utils/codeLabels";
+import { serverDate, localDateIso } from "../utils/serverDate";
 
 const fmt = (dzd: number) => `${Number(dzd || 0).toLocaleString("fr-DZ")} DA`;
 
-function todayIso(): string { return new Date().toISOString().slice(0, 10); }
+function todayIso(): string { return localDateIso(); }
 function monthStartIso(): string { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-01`; }
 
 const SOURCE_LABEL: Record<string, string> = {
@@ -60,16 +62,16 @@ export const TreasuryReportPage: React.FC = () => {
   const applyPreset = (p: "7d" | "month" | "30d" | "year") => {
     const today = todayIso();
     let f = today;
-    if (p === "7d") { const d = new Date(); d.setDate(d.getDate() - 6); f = d.toISOString().slice(0, 10); }
+    if (p === "7d") { const d = new Date(); d.setDate(d.getDate() - 6); f = localDateIso(d); }
     if (p === "month") f = monthStartIso();
-    if (p === "30d") { const d = new Date(); d.setDate(d.getDate() - 29); f = d.toISOString().slice(0, 10); }
+    if (p === "30d") { const d = new Date(); d.setDate(d.getDate() - 29); f = localDateIso(d); }
     if (p === "year") f = `${new Date().getFullYear()}-01-01`;
     setFrom(f); setTo(today); load(f, today);
   };
 
   const accountIcon = (acc: string) => (acc === "bank_account" ? Building2 : Banknote);
   const accountLabel = (acc: string) => (acc === "bank_account" ? t("treasury_report.acc_bank") : acc === "cash_box" ? t("treasury_report.acc_cash") : acc);
-  const sourceLabel = (s: string) => SOURCE_LABEL[s] || s;
+  const sourceLabel = (s: string) => SOURCE_LABEL[s] || codeLabel(s);
 
   return (
     <div className="space-y-4 text-sm">
@@ -151,7 +153,7 @@ export const TreasuryReportPage: React.FC = () => {
                 {data.by_source.map((s: any, idx: number) => (
                   <div key={idx} className="flex items-center justify-between py-1.5 border-b border-gray-50 last:border-0 text-[11px]">
                     <span>
-                      {sourceLabel(s.source_type)} <span className="text-gray-400">· {s.movement_type} · {accountLabel(s.account_type)}</span>
+                      {sourceLabel(s.source_type)} <span className="text-gray-400">· {codeLabel(s.movement_type)} · {accountLabel(s.account_type)}</span>
                     </span>
                     <span className="font-mono font-bold">{fmt(s.total)} <span className="text-gray-400 text-[10px]">({s.c})</span></span>
                   </div>
@@ -176,7 +178,7 @@ export const TreasuryReportPage: React.FC = () => {
                       const outgoing = it.movement_type === "outflow" || it.movement_type === "withdrawal";
                       return (
                         <tr key={it.id} className="border-t border-gray-100">
-                          <td className="px-3 py-2 font-mono text-[10px] whitespace-nowrap">{new Date(it.created_at).toLocaleString("fr-DZ")}</td>
+                          <td className="px-3 py-2 font-mono text-[10px] whitespace-nowrap">{serverDate(it.created_at).toLocaleString("fr-FR")}</td>
                           <td className="px-3 py-2">
                             <div className="truncate">{it.description}</div>
                             <div className="text-gray-400 text-[10px]">{accountLabel(it.account_type)} · {sourceLabel(it.source_type)}</div>

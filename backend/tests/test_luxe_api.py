@@ -22,10 +22,6 @@ if os.environ.get("LUXE_DB_ENGINE") != "postgres":
     os.environ["LUXE_SQLITE_PATH"] = TEST_DB_PATH
 os.environ.setdefault("SECRET_KEY", "test_only_ephemeral_secret_key_for_unit_test_suite_2026_0123456789")
 os.environ.setdefault("BACKUP_ENCRYPTION_KEY", "test_only_ephemeral_backup_encryption_key_2026_0123456789abcdef")
-os.environ.setdefault("WHATSAPP_CLOUD_API_TOKEN", "EAATest_Sandbox_Token_For_Automated_Suite")
-os.environ.setdefault("WHATSAPP_PHONE_NUMBER_ID", "109283746519283")
-os.environ.setdefault("WHATSAPP_SANDBOX_MODE", "true")
-os.environ.setdefault("WHATSAPP_TEST_CAPTURE", "1")
 os.environ.setdefault("WHATSAPP_WEBHOOK_VERIFY_TOKEN", "mus_luxury_wa_webhook_verify_2026_secret")
 os.environ.setdefault("WHATSAPP_APP_SECRET", "meta_app_secret_test_key_2026") 
 
@@ -33,6 +29,15 @@ from fastapi.testclient import TestClient
 from app.main import app
 from app.seed import seed_initial_data
 from app.security import reset_rate_limits
+
+
+def _real_image(fmt: str = "PNG", size=(16, 16)) -> bytes:
+    """A small real picture: uploads are decoded and re-encoded, so a bare
+    file signature followed by junk is (rightly) refused."""
+    from PIL import Image
+    buf = io.BytesIO()
+    Image.new("RGB", size, (6, 61, 46)).save(buf, fmt)
+    return buf.getvalue()
 
 class TestLuxeEcommercePlatform(unittest.TestCase):
     @classmethod
@@ -302,7 +307,7 @@ class TestLuxeEcommercePlatform(unittest.TestCase):
         self.assertEqual(r_bad.status_code, 400)
 
         # Accept valid PNG binary header
-        valid_png = io.BytesIO(b"\x89PNG\r\n\x1a\n\x00\x00\x00\rIHDR")
+        valid_png = io.BytesIO(_real_image("PNG"))
         r_good = self.client.post(
             "/api/v1/admin/upload",
             headers=headers,
@@ -478,7 +483,7 @@ class TestLuxeEcommercePlatform(unittest.TestCase):
         }
         r_locked = self.client.post("/api/v1/admin/auth/initialize-owner", json=payload)
         self.assertEqual(r_locked.status_code, 403)
-        self.assertIn("already been initialized", r_locked.json()["detail"])
+        self.assertIn("compte propriétaire existe déjà", r_locked.json()["detail"])
 
     # 16. Cryptographic Request Signing & Replay Attack Prevention
     def test_16_cryptographic_signing_and_replay_attack_prevention(self):
@@ -796,7 +801,7 @@ class TestLuxeEcommercePlatform(unittest.TestCase):
         # Verify CSV export
         r_csv = self.client.get("/api/v1/admin/orders/export.csv", headers=headers)
         self.assertEqual(r_csv.status_code, 200)
-        self.assertIn("order_reference", r_csv.text)
+        self.assertIn("Référence", r_csv.text)
 
     # 26. Real Compressed Backup Archive Creation & Isolated Non-Destructive Restoration Test (Section 7)
     def test_26_isolated_backup_creation_and_non_destructive_restore_verification(self):
@@ -865,7 +870,7 @@ class TestLuxeEcommercePlatform(unittest.TestCase):
         self.assertEqual(r_brand.status_code, 201)
         brand_id = r_brand.json()["id"]
 
-        valid_png = b"\x89PNG\r\n\x1a\n" + b"\x00" * 64
+        valid_png = _real_image("PNG")
         r_up = self.client.post(
             "/api/v1/admin/upload",
             headers=headers,
@@ -1143,33 +1148,17 @@ class TestLuxeEcommercePlatform(unittest.TestCase):
         with open(env_example_path, "r", encoding="utf-8") as f:
             env_text = f.read()
 
-        required_env_keys = [
-            "SECRET_KEY=",
-            "CMS_HMAC_SIGNING_SECRET=",
-            "POSTGRES_HOST=",
-            "POSTGRES_PORT=",
-            "POSTGRES_DB=",
-            "POSTGRES_USER=",
-            "POSTGRES_PASSWORD=",
-            "DATABASE_URL=",
-            "LUXE_SQLITE_PATH=",
-            "ADMIN_INITIAL_EMAIL=",
-            "ADMIN_INITIAL_PASSWORD=",
-            "STORE_WHATSAPP_CONTACT_NUMBER=",
-            "YALIDINE_API_ID=",
-            "YALIDINE_API_TOKEN=",
-            "ZR_EXPRESS_API_KEY=",
-            "ZR_EXPRESS_TOKEN=",
-            "MAYSTRO_API_TOKEN=",
-            "CHARGILY_PUBLIC_KEY=",
-            "CHARGILY_SECRET_KEY=",
-            "S3_ACCESS_KEY_ID=",
-            "S3_SECRET_ACCESS_KEY=",
-            "VITE_API_BASE_URL=",
-            "VITE_CMS_API_URL=",
-        ]
-        for key in required_env_keys:
-            self.assertIn(key, env_text, f"Missing required environment variable {key} in .env.example")
+        # Every key production needs is offered; keys of features that are not
+        # built are not (app/settings.py is the single list of .env keys).
+        from app import settings as _settings
+        for s in _settings.SETTINGS:
+            if s.required_in_production:
+                self.assertIn(f"{s.name}=", env_text, f"Missing required environment variable {s.name} in .env.example")
+        import re as _re
+        offered = set(_re.findall(r"^([A-Z][A-Z0-9_]+)=", env_text, _re.M))
+        self.assertEqual(sorted(offered - set(_settings.BY_NAME)), [], "the template offers only keys the code reads")
+        for key in ("S3_ACCESS_KEY_ID=", "S3_SECRET_ACCESS_KEY=", "ADMIN_INITIAL_EMAIL=", "ADMIN_INITIAL_PASSWORD="):
+            self.assertIn(key, env_text)
 
         # Verify .gitignore blocks .env, *.sqlite3, *.db, and backups from being committed
         res_ignore = subprocess.run(
@@ -1303,9 +1292,6 @@ const files = [
   "apps/desktop-cms/src/pages/DeliveryWilayasPage.tsx",
   "apps/desktop-cms/src/App.tsx",
   "apps/desktop-cms/src/main.tsx",
-  "apps/storefront/src/api/client.ts",
-  "apps/storefront/src/App.tsx",
-  "apps/storefront/src/main.tsx",
 ];
 for (const f of files) {
   const full = path.resolve(process.cwd(), f);
@@ -1333,8 +1319,6 @@ console.log("ALL_TSX_COMPILED_OK");
         # 2. Enforce Strict Architecture Separation: Public Website must NEVER contain Web CMS or Admin Login
         for pub_file in [
             os.path.join(repo_root, "apps", "storefront", "index.html"),
-            os.path.join(repo_root, "apps", "storefront", "src", "App.tsx"),
-            os.path.join(repo_root, "apps", "storefront", "src", "api", "client.ts"),
         ]:
             with open(pub_file, "r", encoding="utf-8") as pf:
                 content = pf.read()
@@ -1690,22 +1674,20 @@ console.log("ALL_TSX_COMPILED_OK");
         self.assertIn("orders: []", shtml)
         self.assertIn("syncStorefrontWithBackend", shtml)
 
-        # 2. Verify 100% of exported functions in apps/storefront/src/api/client.ts are called in apps/storefront/src/App.tsx
-        with open(os.path.join(repo_root, "apps", "storefront", "src", "api", "client.ts"), "r", encoding="utf-8") as f:
-            sclient = f.read()
-        with open(os.path.join(repo_root, "apps", "storefront", "src", "App.tsx"), "r", encoding="utf-8") as f:
-            sapp = f.read()
-        exported_fns = _re.findall(r"export function (\w+)\s*\(", sclient)
-        self.assertGreaterEqual(len(exported_fns), 11)
-        for fn in exported_fns:
-            self.assertIn(f"{fn}(", sapp, f"Storefront client function {fn} is not wired in apps/storefront/src/App.tsx")
+        # 2. The live shop (index.html; the unused React copy was removed) calls
+        #    every public endpoint it depends on.
+        for endpoint in [
+            "/api/v1/categories", "/api/v1/products", "/api/v1/delivery-zones", "/api/v1/store/layout",
+            "/api/v1/coupons/validate", "/api/v1/orders", "/api/v1/orders/track", "/api/v1/pages/",
+        ]:
+            self.assertIn(endpoint, shtml, f"Storefront does not call {endpoint}")
 
 
 
     # 47. Real Upload Disk Persistence, Safe Media Serving & Traversal Defense
     def test_47_upload_disk_persistence_and_safe_media_serving_traversal_defense(self):
         headers = self.get_admin_headers()
-        valid_png = b"\x89PNG\r\n\x1a\n" + b"\x00" * 128
+        valid_png = _real_image("PNG", (32, 24))
         r_up = self.client.post(
             "/api/v1/admin/upload",
             headers=headers,
@@ -1715,10 +1697,13 @@ console.log("ALL_TSX_COMPILED_OK");
         up_data = r_up.json()
         url_path = up_data["url"]
 
-        # Fetch the uploaded image via GET /uploads/{filename} and verify byte-for-byte persistence
+        # Fetch the uploaded image via GET /uploads/{filename}: it is the stored
+        # (optimized, metadata-free) picture, still the same image size.
         r_get = self.client.get(url_path)
         self.assertEqual(r_get.status_code, 200)
-        self.assertEqual(r_get.content, valid_png)
+        from PIL import Image
+        self.assertEqual(Image.open(io.BytesIO(r_get.content)).size, (32, 24))
+        self.assertEqual(len(r_get.content), up_data["size_bytes"])
         self.assertEqual(r_get.headers.get("X-Content-Type-Options"), "nosniff")
         self.assertIn("immutable", r_get.headers.get("Cache-Control", ""))
 
@@ -2102,7 +2087,6 @@ console.log("CLIENT_NOTIFIER_ALL_TESTS_PASSED");
         repo_root = Path(__file__).resolve().parents[2]
 
         shtml = (repo_root / "apps" / "storefront" / "index.html").read_text(encoding="utf-8")
-        sapp = (repo_root / "apps" / "storefront" / "src" / "App.tsx").read_text(encoding="utf-8")
 
         # 1. Verify Storefront Customer Message Box Modal & DOM XSS Escaping in index.html
         self.assertIn("id=\"store-message-box-modal\"", shtml)
@@ -2113,14 +2097,10 @@ console.log("CLIENT_NOTIFIER_ALL_TESTS_PASSED");
         self.assertIn("escapeHtml(found.reference)", shtml)
         self.assertIn("escapeHtml(found.customer_name)", shtml)
 
-        # 2. Verify Free Shipping Progress Bar (25 000 DA) & 4-Step Order Tracking Timeline in both index.html and App.tsx
+        # 2. Verify Free Shipping Progress Bar (25 000 DA) & 4-Step Order Tracking Timeline in the live shop
         self.assertIn("Livraison Prioritaire Offerte débloquée", shtml)
-        self.assertIn("Livraison Prioritaire Offerte débloquée", sapp)
         self.assertIn("1. Reçue", shtml)
         self.assertIn("4. Livrée", shtml)
-        self.assertIn("1. Reçue", sapp)
-        self.assertIn("4. Livrée (COD)", sapp)
-        self.assertIn("customerNotice", sapp)
 
 
 
@@ -2183,7 +2163,9 @@ console.log("CLIENT_NOTIFIER_ALL_TESTS_PASSED");
             )
             self.assertEqual(r_notif.status_code, 200, r_notif.text)
             notif_data = r_notif.json()
-            self.assertTrue(notif_data["delivered"])
+            # Prepared for the staff to send from WhatsApp; never claimed as delivered.
+            self.assertFalse(notif_data["delivered"])
+            self.assertEqual(notif_data["status"], "prepared")
             self.assertEqual(notif_data["recipient_e164"], "+213554123456")
             self.assertIn("https://wa.me/213554123456?text=", notif_data["wa_me_customer_url"])
 
@@ -2612,7 +2594,7 @@ flushOfflineMutationQueue(async () => true).then((res) => {
         self.assertEqual(r_fake_webp.status_code, 400, r_fake_webp.text)
 
         # 3. Genuine WebP header (RIFF....WEBP) must succeed with 201 Created
-        real_webp = b"RIFF\x24\x00\x00\x00WEBPVP8 \x18\x00\x00\x00" + (b"\x00" * 32)
+        real_webp = _real_image("WEBP")
         r_good_webp = self.client.post(
             "/api/v1/admin/upload",
             headers=headers,
@@ -2666,13 +2648,13 @@ flushOfflineMutationQueue(async () => true).then((res) => {
         finally:
             mem_conn.close()
 
-        # Verify Storefront App.tsx includes cart quantity controls, commune selector, and dynamic 4-step order tracking
+        # Verify the live shop includes cart quantity controls (remove at 0), brand display and the commune selector
         repo_root = Path(__file__).resolve().parents[2]
-        sf_code = (repo_root / "apps" / "storefront" / "src" / "App.tsx").read_text(encoding="utf-8")
-        self.assertIn("function updateCartQuantity", sf_code)
-        self.assertIn("function removeFromCart", sf_code)
-        self.assertIn("p.brand?.name", sf_code)
-        self.assertIn("setCommune(e.target.value)", sf_code)
+        sf_code = (repo_root / "apps" / "storefront" / "index.html").read_text(encoding="utf-8")
+        self.assertIn("function updateCartItemQty", sf_code)
+        self.assertIn("state.cart.splice", sf_code)
+        self.assertIn("p.brand && p.brand.name", sf_code)
+        self.assertIn('id="chk-commune"', sf_code)
 
 
     # 73. Cross-Worker & CLI Persistent Database Session Revocation Verification
@@ -2759,6 +2741,14 @@ flushOfflineMutationQueue(async () => true).then((res) => {
             env["BACKUP_DIR"] = tmpdir
             env["UPLOAD_DIR"] = str(repo_root / "backend" / "uploads")
             env.pop("DATABASE_URL", None)
+            # The script's database, made here: never depend on a local dev file
+            # (backend/luxe_store.sqlite3) that a fresh CI machine does not have.
+            import sqlite3
+            db_file = Path(tmpdir) / "shop.sqlite3"
+            with sqlite3.connect(db_file) as db:
+                db.execute("CREATE TABLE products (id INTEGER PRIMARY KEY, name TEXT)")
+                db.execute("INSERT INTO products (name) VALUES ('Sac test')")
+            env["LUXE_SQLITE_PATH"] = str(db_file)
             res = subprocess.run(["bash", str(bkp_script)], cwd=str(repo_root), env=env, capture_output=True, text=True)
             self.assertEqual(res.returncode, 0, res.stderr)
             sha_files = list(Path(tmpdir).glob("*.sha256"))

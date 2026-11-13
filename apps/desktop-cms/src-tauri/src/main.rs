@@ -11,6 +11,8 @@
 //    devices.
 // ============================================================================
 
+mod app_services;
+mod backup_copies;
 mod pos_hardware;
 mod pos_mirror;
 
@@ -80,6 +82,37 @@ fn keychain_status() -> serde_json::Value {
     })
 }
 
+/// Opens an https:// link with the computer's default handler (browser, or
+/// WhatsApp Desktop for wa.me links). Only https:// is accepted, and the URL
+/// is passed as a single argument — never through a shell — so a crafted
+/// link cannot run a command.
+#[tauri::command]
+fn open_external_url(url: String) -> Result<(), String> {
+    let u = url.trim();
+    if !u.starts_with("https://") || u.len() > 4000 || u.chars().any(|c| c.is_whitespace() || c == '"' || c.is_control()) {
+        return Err("Lien refusé : seules les adresses https:// valides peuvent être ouvertes.".into());
+    }
+    #[cfg(target_os = "windows")]
+    let mut cmd = {
+        let mut c = std::process::Command::new("rundll32.exe");
+        c.arg("url.dll,FileProtocolHandler").arg(u);
+        c
+    };
+    #[cfg(target_os = "macos")]
+    let mut cmd = {
+        let mut c = std::process::Command::new("open");
+        c.arg(u);
+        c
+    };
+    #[cfg(all(unix, not(target_os = "macos")))]
+    let mut cmd = {
+        let mut c = std::process::Command::new("xdg-open");
+        c.arg(u);
+        c
+    };
+    cmd.spawn().map(|_| ()).map_err(|e| format!("Ouverture du lien impossible : {e}"))
+}
+
 fn main() {
     std::panic::set_hook(Box::new(|info| {
         let msg = format!("PANIC: {:?}\nBacktrace: {:?}", info, std::backtrace::Backtrace::capture());
@@ -91,10 +124,21 @@ fn main() {
         }
     }));
 
-    let result = tauri::Builder::default()
+    let mut builder = tauri::Builder::default()
         .manage(SecureMemoryVault(Mutex::new(HashMap::new())))
         .manage(pos_mirror::MirrorState::new())
+        .manage(app_services::PendingUpdate::default())
         .plugin(tauri_plugin_store::Builder::default().build())
+        .plugin(tauri_plugin_notification::init());
+
+    // The updater plugin is registered ONLY when this build carries a public
+    // key (LUXE_UPDATER_PUBKEY at compile time). Unconfigured builds never
+    // touch it, so a missing key can't stop the app from starting.
+    if let Some(pubkey) = app_services::updater_pubkey() {
+        builder = builder.plugin(tauri_plugin_updater::Builder::new().pubkey(pubkey).build());
+    }
+
+    let result = builder
         .on_window_event(|window, event| match event {
             tauri::WindowEvent::CloseRequested { .. } => {
                 let msg = format!("Window close requested on window '{}'\n", window.label());
@@ -119,6 +163,7 @@ fn main() {
             keychain_get_secret,
             keychain_delete_secret,
             keychain_status,
+            open_external_url,
             pos_hardware::pos_list_printers,
             pos_hardware::pos_print_receipt,
             pos_hardware::pos_open_cash_drawer,
@@ -137,6 +182,14 @@ fn main() {
             pos_mirror::pos_queue_upsert_batch,
             pos_mirror::pos_queue_remove,
             pos_mirror::pos_queue_clear_synced,
+            app_services::os_notify,
+            app_services::app_focus_main_window,
+            app_services::updater_status,
+            app_services::updater_check,
+            app_services::updater_install,
+            backup_copies::backup_copy_save,
+            backup_copies::backup_copy_list,
+            backup_copies::backup_copy_read,
         ])
         .run(tauri::generate_context!());
 

@@ -47,7 +47,7 @@ placeholders.
 | `POSTGRES_PASSWORD`                             | Yearly, or on compromise             |
 | SSH deploy keys                                 | Yearly, or when staff leaves         |
 | `TAURI_SIGNING_PRIVATE_KEY`                     | **Never** without a plan — see below |
-| WhatsApp / Chargily / S3 tokens                 | On provider rotation or compromise   |
+| WhatsApp webhook / S3 tokens                    | On provider rotation or compromise   |
 
 **Rotating the Tauri signing key** forces every existing POS installation
 to reinstall because `tauri-plugin-updater` refuses manifests signed by a

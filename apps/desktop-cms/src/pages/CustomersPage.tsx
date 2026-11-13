@@ -15,6 +15,7 @@ import {
 } from "lucide-react";
 import { DesktopCmsApi } from "../api/adminClient";
 import { useT } from "../i18n";
+import { serverDate } from "../utils/serverDate";
 
 const fmt = (dzd: number) => `${Number(dzd || 0).toLocaleString("fr-DZ")} DA`;
 
@@ -33,6 +34,8 @@ interface Customer {
 export const CustomersPage: React.FC = () => {
   const t = useT();
   const [customers, setCustomers] = useState<Customer[]>([]);
+  // Whole list = best customers first, 200 at a time; null while searching.
+  const [totalCustomers, setTotalCustomers] = useState<number | null>(null);
   const [query, setQuery] = useState("");
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -46,6 +49,7 @@ export const CustomersPage: React.FC = () => {
     try {
       const d = await DesktopCmsApi.listCustomers();
       setCustomers(d.items || []);
+      setTotalCustomers(typeof d.total === "number" ? d.total : null);
       setError(null);
     } catch (e: any) {
       setError(e?.userMessage || "Chargement impossible");
@@ -70,10 +74,24 @@ export const CustomersPage: React.FC = () => {
     try {
       const d = await DesktopCmsApi.searchCustomers(query.trim());
       setCustomers(d.items || []);
+      setTotalCustomers(null);
     } catch (e: any) {
       setError(e?.userMessage || "Recherche échouée");
     } finally {
       setLoading(false);
+    }
+  };
+
+  const loadMore = async () => {
+    setBusy(true);
+    try {
+      const d = await DesktopCmsApi.listCustomers(customers.length);
+      setCustomers((prev) => [...prev, ...(d.items || [])]);
+      if (typeof d.total === "number") setTotalCustomers(d.total);
+    } catch (e: any) {
+      setError(e?.userMessage || "Chargement impossible");
+    } finally {
+      setBusy(false);
     }
   };
 
@@ -142,7 +160,7 @@ export const CustomersPage: React.FC = () => {
               placeholder={t("customers.search_placeholder")}
               className="flex-1 md:w-64 h-12 px-3 rounded-2xl border-2 border-gray-200 focus:border-[#063D2E] outline-none"
             />
-            <button type="button" onClick={runSearch} className="h-12 px-4 rounded-2xl bg-[#063D2E] text-[#D4AF62] font-bold flex items-center gap-2 active:scale-95">
+            <button aria-label="Rechercher" type="button" onClick={runSearch} className="h-12 px-4 rounded-2xl bg-[#063D2E] text-[#D4AF62] font-bold flex items-center gap-2 active:scale-95">
               <Search className="w-5 h-5" />
             </button>
           </div>
@@ -182,7 +200,7 @@ export const CustomersPage: React.FC = () => {
                   </td>
                   <td className="px-4 py-3 text-right font-mono font-bold">{fmt(c.total_spent_dzd || 0)}</td>
                   <td className="px-4 py-3 text-right" onClick={(e) => e.stopPropagation()}>
-                    <button type="button" onClick={() => setForm({ id: c.id, full_name: c.full_name, phone: c.phone, email: c.email || "", notes: c.notes || "" })} className="h-10 w-10 rounded-xl border-2 border-gray-200 inline-flex items-center justify-center text-gray-500 active:scale-95">
+                    <button aria-label="Modifier" type="button" onClick={() => setForm({ id: c.id, full_name: c.full_name, phone: c.phone, email: c.email || "", notes: c.notes || "" })} className="h-10 w-10 rounded-xl border-2 border-gray-200 inline-flex items-center justify-center text-gray-500 active:scale-95">
                       <Pencil className="w-4 h-4" />
                     </button>
                   </td>
@@ -190,6 +208,14 @@ export const CustomersPage: React.FC = () => {
               ))}
             </tbody>
           </table>
+          {totalCustomers !== null && totalCustomers > customers.length && (
+            <div className="flex items-center justify-between gap-3 px-4 py-3 border-t border-gray-100 text-sm text-gray-500">
+              <span>{t("customers.shown_of").replace("{shown}", String(customers.length)).replace("{total}", String(totalCustomers))}</span>
+              <button type="button" disabled={busy} onClick={loadMore} className="h-10 px-4 rounded-xl border-2 border-[#063D2E] text-[#063D2E] font-bold active:scale-95 disabled:opacity-50">
+                {t("customers.show_more")}
+              </button>
+            </div>
+          )}
         </div>
       )}
 
@@ -205,7 +231,7 @@ export const CustomersPage: React.FC = () => {
                   {detail.email && <span className="flex items-center gap-1"><Mail className="w-3 h-3" /> {detail.email}</span>}
                 </div>
               </div>
-              <button type="button" onClick={() => setDetail(null)} className="w-11 h-11 rounded-xl flex items-center justify-center text-gray-400 hover:bg-gray-100 active:scale-95">
+              <button aria-label="Fermer" type="button" onClick={() => setDetail(null)} className="w-11 h-11 rounded-xl flex items-center justify-center text-gray-400 hover:bg-gray-100 active:scale-95">
                 <X className="w-6 h-6" />
               </button>
             </div>
@@ -225,7 +251,7 @@ export const CustomersPage: React.FC = () => {
                       <div className="flex items-center gap-2">
                         {h.channel === "online" ? <Globe className="w-4 h-4 text-sky-600" /> : <Store className="w-4 h-4 text-[#7a5c16]" />}
                         <span className="font-mono font-bold">{h.reference}</span>
-                        <span className="text-[11px] text-gray-400">{new Date(h.created_at).toLocaleDateString("fr-DZ")}</span>
+                        <span className="text-[11px] text-gray-400">{serverDate(h.created_at).toLocaleDateString("fr-FR")}</span>
                         {h.sale_type === "refund" && <span className="text-[10px] text-red-600 font-bold">REMB.</span>}
                       </div>
                       <span className="font-mono font-bold">{fmt(h.total_dzd)}</span>
@@ -244,7 +270,7 @@ export const CustomersPage: React.FC = () => {
           <div className="bg-white rounded-3xl w-full max-w-md" onClick={(e) => e.stopPropagation()}>
             <div className="flex items-center justify-between px-5 py-4 border-b">
               <h3 className="font-serif font-bold text-[#063D2E] text-lg">{form.id === null ? t("customers.modal_new_title") : t("customers.modal_edit_title")}</h3>
-              <button type="button" onClick={() => setForm(null)} className="w-11 h-11 rounded-xl flex items-center justify-center text-gray-400 hover:bg-gray-100 active:scale-95">
+              <button aria-label="Fermer" type="button" onClick={() => setForm(null)} className="w-11 h-11 rounded-xl flex items-center justify-center text-gray-400 hover:bg-gray-100 active:scale-95">
                 <X className="w-6 h-6" />
               </button>
             </div>

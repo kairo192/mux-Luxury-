@@ -37,12 +37,14 @@ luxe-ecommerce/
 │   ├── migrations/
 │   │   ├── 001_initial_schema.sql          # SQLite schema (41 relational tables)
 │   │   └── 001_initial_schema_postgres.sql # PostgreSQL 16 schema (100% parity)
-│   └── tests/                    # 242 automated backend tests (100% passing)
+│   └── tests/                    # 300 automated backend tests (SQLite + PostgreSQL 16)
 ├── apps/
-│   ├── storefront/               # High-performance boutique: React 18 + Vite (Guest COD across 69 Wilayas)
+│   ├── storefront/               # Online shop: one index.html (vanilla JS, FR/AR/EN) + Vite/Tailwind (guest COD, 69 wilayas)
 │   └── desktop-cms/              # Tauri 2.0 + Rust Windows Desktop CMS & POS (wincred token storage)
+├── e2e/                          # Browser tests of the shop + CMS together (Playwright), see e2e/README.md
 ├── infrastructure/               # Nginx reverse proxy, automated backup & deploy scripts
-└── docs/                         # Production documentation & runbooks
+├── scripts/windows/              # Windows helpers (VC++ build tools, local CMS window)
+└── docs/                         # Production documentation & runbooks (docs/specs: original specifications)
     ├── architecture/             # SYSTEM_ARCHITECTURE.md (Topology & 41 tables)
     ├── deployment/               # VPS_DEPLOYMENT.md (Octenium setup) & CI_CD.md
     ├── security/                 # SECURITY_HARDENING.md & SECRETS_MANAGEMENT.md
@@ -53,14 +55,17 @@ luxe-ecommerce/
 
 ## 3. Production Documentation Index
 
-- [System Architecture](file:///c:/Users/MOURAD/Desktop/mix%20luxury/luxe-ecommerce/docs/architecture/SYSTEM_ARCHITECTURE.md)
-- [Octenium VPS Deployment Guide](file:///c:/Users/MOURAD/Desktop/mix%20luxury/luxe-ecommerce/docs/deployment/VPS_DEPLOYMENT.md)
-- [CI/CD & GitHub Actions](file:///c:/Users/MOURAD/Desktop/mix%20luxury/luxe-ecommerce/docs/deployment/CI_CD.md)
-- [Security Hardening Standards](file:///c:/Users/MOURAD/Desktop/mix%20luxury/luxe-ecommerce/docs/security/SECURITY_HARDENING.md)
-- [Secrets Management Policy](file:///c:/Users/MOURAD/Desktop/mix%20luxury/luxe-ecommerce/docs/security/SECRETS_MANAGEMENT.md)
-- [Backup & Disaster Recovery Runbook](file:///c:/Users/MOURAD/Desktop/mix%20luxury/luxe-ecommerce/docs/operations/BACKUP_AND_RESTORE.md)
-- [Operations & Routine Maintenance](file:///c:/Users/MOURAD/Desktop/mix%20luxury/luxe-ecommerce/docs/operations/MAINTENANCE.md)
-- [Troubleshooting & Diagnostics](file:///c:/Users/MOURAD/Desktop/mix%20luxury/luxe-ecommerce/docs/operations/TROUBLESHOOTING.md)
+- [System Architecture](docs/architecture/SYSTEM_ARCHITECTURE.md)
+- [Desktop CMS / POS architecture](apps/desktop-cms/ARCHITECTURE.md) — folders, data flow, permissions, how to add a screen
+- [Operations guide for the owner](docs/OPERATIONS_GUIDE.md)
+- [Configuration (.env keys, checks)](docs/CONFIGURATION.md)
+- [Octenium VPS Deployment Guide](docs/deployment/VPS_DEPLOYMENT.md)
+- [CI/CD & GitHub Actions](docs/deployment/CI_CD.md)
+- [Security Hardening Standards](docs/security/SECURITY_HARDENING.md)
+- [Secrets Management Policy](docs/security/SECRETS_MANAGEMENT.md)
+- [Backup & Disaster Recovery Runbook](docs/operations/BACKUP_AND_RESTORE.md)
+- [Operations & Routine Maintenance](docs/operations/MAINTENANCE.md)
+- [Troubleshooting & Diagnostics](docs/operations/TROUBLESHOOTING.md)
 
 ---
 
@@ -76,12 +81,14 @@ Because you are managing the project from a smartphone:
      git remote add origin https://github.com/<your-username>/luxe-ecommerce.git
      git push -u origin main
      ```
-3. **Run Backend & Automated Tests in the Cloud**:
+3. **Run the tests** (all run in CI on every push, see `.github/workflows/ci.yml`):
    ```bash
-   cd backend
-   python3 -m unittest discover -s tests -v
-   uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
+   npm run lint          # ruff (backend) + TypeScript (CMS, no unused code allowed)
+   npm run test:backend  # 300 backend tests (SQLite; CI also runs them on PostgreSQL 16)
+   npm run test:e2e      # 28 browser tests: shop + CMS together on a fresh production-mode API
    ```
+   Local development: `cd backend && uvicorn app.main:app --reload --port 8000`,
+   then `npm run dev:cms` and `npm run dev:storefront`.
 4. **Deploy to an Algerian VPS (e.g., Icosnet, Djaweb, or Cloud VPS)**:
    ```bash
    cp .env.example .env

@@ -21,6 +21,7 @@ import {
   History,
 } from "lucide-react";
 import { DesktopCmsApi } from "../api/adminClient";
+import { notifyClient } from "../utils/clientNotifier";
 import { useT } from "../i18n";
 import {
   subscribePosQueue,
@@ -46,6 +47,8 @@ import { openSystemPrint, renderReceiptHtml, type ReceiptBlock } from "../utils/
 import { resolveLookup } from "../utils/posLookupResolver";
 import { syncCatalog, ensureMirrorReady } from "../utils/posMirrorSync";
 import { mirrorStatus, type MirrorStatus as MirrorStatusType } from "../utils/posMirror";
+import { useEscapeToClose } from "../utils/useEscapeToClose";
+import { serverDate } from "../utils/serverDate";
 
 // ---------------------------------------------------------------------------
 // POS — Touch-first cashier workspace.
@@ -145,7 +148,7 @@ const Keypad: React.FC<{
         <button type="button" onClick={() => press("0")} className={keyCls}>
           0
         </button>
-        <button type="button" onClick={() => press("del")} className={`${keyCls} text-[#B91C1C]`}>
+        <button aria-label="Effacer le dernier chiffre" type="button" onClick={() => press("del")} className={`${keyCls} text-[#B91C1C]`}>
           <Delete className="w-7 h-7" />
         </button>
       </div>
@@ -259,6 +262,31 @@ export const PosPage: React.FC<{ onInventoryUpdated?: () => void }> = ({ onInven
           if (summary.duplicate) parts.push(`${summary.duplicate} déjà connue(s)`);
           if (summary.conflict) parts.push(`${summary.conflict} conflit(s)`);
           flashSuccess(`Synchronisation : ${parts.join(", ") || "rien à faire"}`);
+        } else {
+          // Background sync (reconnect / app start): the cashier may be in
+          // another tab or app, so surface the result in the notification
+          // center and, when the CMS is in background, as a Windows alert.
+          if (summary.created) {
+            notifyClient({
+              type: "success",
+              category: "sync",
+              os: true,
+              showModalBox: false,
+              title: t("sync.bg_title"),
+              message: t("sync.bg_body", { n: summary.created }),
+            });
+          }
+          if (summary.conflict) {
+            notifyClient({
+              type: "warning",
+              category: "sync",
+              os: true,
+              showModalBox: false,
+              durationMs: 0,
+              title: t("sync.conflict_title"),
+              message: t("sync.conflict_body", { n: summary.conflict }),
+            });
+          }
         }
         loadRegister();
         loadRecentSales();
@@ -267,7 +295,7 @@ export const PosPage: React.FC<{ onInventoryUpdated?: () => void }> = ({ onInven
     } finally {
       setSyncing(false);
     }
-  }, [loadRegister, loadRecentSales, onInventoryUpdated]);
+  }, [loadRegister, loadRecentSales, onInventoryUpdated, t]);
 
   useEffect(() => {
     const unsub = subscribePosQueue(setQueue);
@@ -446,17 +474,15 @@ export const PosPage: React.FC<{ onInventoryUpdated?: () => void }> = ({ onInven
 
   const removeLine = (variantId: number) => setCart((prev) => prev.filter((l) => l.variant_id !== variantId));
 
-  const setLineDiscount = (variantId: number, value: string) => {
-    const d = Math.max(0, parseInt(value || "0", 10) || 0);
-    setCart((prev) => prev.map((l) => (l.variant_id === variantId ? { ...l, line_discount_dzd: d } : l)));
-  };
-
   const subtotal = cart.reduce((s, l) => s + l.unit_price_dzd * l.quantity, 0);
   const lineDiscounts = cart.reduce((s, l) => s + Math.min(l.line_discount_dzd, l.unit_price_dzd * l.quantity), 0);
   const orderDisc = Math.min(parseInt(orderDiscount || "0", 10) || 0, subtotal - lineDiscounts);
   const total = subtotal - lineDiscounts - orderDisc;
   const itemCount = cart.reduce((s, l) => s + l.quantity, 0);
+  // Empty = the customer pays the exact amount. The amount received is never
+  // pre-filled, so a discount applied afterwards cannot leave a stale figure.
   const tenderedNum = parseInt(tendered || "0", 10) || 0;
+  const receivedShown = tenderedNum > 0 ? tenderedNum : total;
   const change = payMethod === "cash" ? Math.max(0, tenderedNum - total) : 0;
 
   const clearCart = () => {
@@ -504,6 +530,7 @@ export const PosPage: React.FC<{ onInventoryUpdated?: () => void }> = ({ onInven
 
   // ------------------------------------------------------------ checkout
   const handleConfirmSale = async () => {
+    // (tendered empty = exact amount)
     if (!cart.length) return flashError("Panier vide");
     if (total <= 0) return flashError("Total invalide");
     if (payMethod === "cash" && tenderedNum > 0 && tenderedNum < total) {
@@ -646,7 +673,7 @@ export const PosPage: React.FC<{ onInventoryUpdated?: () => void }> = ({ onInven
     }
     blocks.push({ rule: true });
     blocks.push({ left: "Ticket", right: receipt.sale_reference || "—", bold: true });
-    blocks.push({ left: "Date", right: receipt.created_at ? new Date(receipt.created_at).toLocaleString("fr-DZ") : "—" });
+    blocks.push({ left: "Date", right: receipt.created_at ? serverDate(receipt.created_at).toLocaleString("fr-FR") : "—" });
     if (receipt.customer?.full_name) blocks.push({ left: "Client", right: receipt.customer.full_name });
     if (receipt.offline) blocks.push({ text: "** HORS LIGNE — à synchroniser **", align: "center", bold: true });
     if (receipt.sale_type === "refund") blocks.push({ text: "** REMBOURSEMENT **", align: "center", bold: true });
@@ -867,7 +894,7 @@ export const PosPage: React.FC<{ onInventoryUpdated?: () => void }> = ({ onInven
                   onClick={() => refreshMirror(false)}
                   disabled={mirrorSyncing}
                   className="h-12 px-3 rounded-2xl bg-white/10 hover:bg-white/20 text-[#E8D4A5] font-bold flex items-center gap-2 active:scale-95 disabled:opacity-60"
-                  title={`Catalogue local — ${mirrorStat.variant_count} variantes${mirrorStat.last_synced_at ? ` · dernière sync ${new Date(mirrorStat.last_synced_at).toLocaleTimeString("fr-DZ")}` : ""}`}
+                  title={`Catalogue local — ${mirrorStat.variant_count} variantes${mirrorStat.last_synced_at ? ` · dernière sync ${new Date(mirrorStat.last_synced_at).toLocaleTimeString("fr-FR")}` : ""}`}
                 >
                   <RefreshCw className={`w-4 h-4 ${mirrorSyncing ? "animate-spin" : ""}`} />
                   <span className="font-mono text-xs">
@@ -929,7 +956,7 @@ export const PosPage: React.FC<{ onInventoryUpdated?: () => void }> = ({ onInven
                 <div className="bg-white p-4 rounded-3xl border border-gray-200">
                   <div className="flex items-center justify-between mb-2">
                     <h4 className="font-bold text-[#063D2E] text-base">Résultats</h4>
-                    <button type="button" onClick={() => setSearchResults([])} className="text-gray-400 hover:text-gray-700">
+                    <button aria-label="Effacer les résultats" type="button" onClick={() => setSearchResults([])} className="text-gray-400 hover:text-gray-700">
                       <X className="w-5 h-5" />
                     </button>
                   </div>
@@ -972,7 +999,7 @@ export const PosPage: React.FC<{ onInventoryUpdated?: () => void }> = ({ onInven
               <div className="bg-white p-4 rounded-3xl border border-gray-200">
                 <div className="flex items-center justify-between mb-2">
                   <h4 className="font-bold text-[#063D2E] text-base">Ventes récentes</h4>
-                  <button type="button" onClick={loadRecentSales} className="w-10 h-10 rounded-xl flex items-center justify-center text-gray-400 hover:text-[#063D2E] active:scale-95">
+                  <button aria-label="Actualiser" type="button" onClick={loadRecentSales} className="w-10 h-10 rounded-xl flex items-center justify-center text-gray-400 hover:text-[#063D2E] active:scale-95">
                     <RefreshCw className="w-5 h-5" />
                   </button>
                 </div>
@@ -993,7 +1020,9 @@ export const PosPage: React.FC<{ onInventoryUpdated?: () => void }> = ({ onInven
                               : "bg-emerald-100 text-emerald-700"
                           }`}
                         >
-                          {s.sale_type === "refund" ? "Remb." : s.status === "completed" ? "Payé" : s.status}
+                          {s.sale_type === "refund"
+                            ? "Avoir"
+                            : ({ completed: "Payé", refunded: "Remboursé", partially_refunded: "Remb. partiel", voided: "Annulé" } as Record<string, string>)[s.status] || s.status}
                         </span>
                       </div>
                       <div className="flex items-center gap-2">
@@ -1071,17 +1100,17 @@ export const PosPage: React.FC<{ onInventoryUpdated?: () => void }> = ({ onInven
                         <div className="font-bold text-[#063D2E] truncate text-base">{l.product_name}</div>
                         <div className="text-gray-500 font-mono">{l.variant_title} · {fmt(l.unit_price_dzd)}</div>
                       </div>
-                      <button type="button" onClick={() => removeLine(l.variant_id)} className="w-10 h-10 rounded-xl flex items-center justify-center text-gray-300 hover:text-red-600 active:scale-95">
+                      <button type="button" aria-label={`Retirer ${l.product_name} du ticket`} onClick={() => removeLine(l.variant_id)} className="w-10 h-10 rounded-xl flex items-center justify-center text-gray-300 hover:text-red-600 active:scale-95">
                         <Trash2 className="w-5 h-5" />
                       </button>
                     </div>
                     <div className="flex items-center justify-between mt-2">
                       <div className="flex items-center gap-2">
-                        <button type="button" onClick={() => updateQty(l.variant_id, -1)} className="w-12 h-12 rounded-2xl bg-gray-100 flex items-center justify-center active:scale-95">
+                        <button type="button" aria-label="Un de moins" onClick={() => updateQty(l.variant_id, -1)} className="w-12 h-12 rounded-2xl bg-gray-100 flex items-center justify-center active:scale-95">
                           <Minus className="w-5 h-5" />
                         </button>
                         <span className="w-10 text-center font-bold text-xl tabular-nums">{l.quantity}</span>
-                        <button type="button" onClick={() => updateQty(l.variant_id, 1)} className="w-12 h-12 rounded-2xl bg-emerald-100 text-emerald-900 flex items-center justify-center active:scale-95">
+                        <button type="button" aria-label="Un de plus" onClick={() => updateQty(l.variant_id, 1)} className="w-12 h-12 rounded-2xl bg-emerald-100 text-emerald-900 flex items-center justify-center active:scale-95">
                           <Plus className="w-5 h-5" />
                         </button>
                       </div>
@@ -1112,7 +1141,7 @@ export const PosPage: React.FC<{ onInventoryUpdated?: () => void }> = ({ onInven
                   type="button"
                   disabled={busy || cart.length === 0}
                   onClick={() => {
-                    setTendered(String(total));
+                    setTendered("");
                     setShowPay(true);
                   }}
                   className="w-full h-16 rounded-2xl bg-gradient-to-r from-[#D4AF62] to-[#E8D4A5] text-[#02291F] font-extrabold text-xl flex items-center justify-center gap-3 disabled:opacity-40 active:scale-[0.99] shadow-sm"
@@ -1167,12 +1196,13 @@ export const PosPage: React.FC<{ onInventoryUpdated?: () => void }> = ({ onInven
               <div className="grid grid-cols-2 gap-3 mb-3">
                 <div className="p-3 rounded-2xl bg-[#F5F3EE] text-center">
                   <div className="text-xs uppercase tracking-wide text-gray-500 font-bold">Reçu</div>
-                  <div className="text-2xl font-bold text-[#063D2E] font-mono tabular-nums">{fmt(tenderedNum)}</div>
+                  <div className="text-2xl font-bold text-[#063D2E] font-mono tabular-nums">{fmt(receivedShown)}</div>
+                  {tenderedNum === 0 && <div className="text-[11px] text-gray-500">montant exact</div>}
                 </div>
-                <div className={`p-3 rounded-2xl text-center ${tenderedNum >= total ? "bg-emerald-50" : "bg-red-50"}`}>
+                <div className={`p-3 rounded-2xl text-center ${receivedShown >= total ? "bg-emerald-50" : "bg-red-50"}`}>
                   <div className="text-xs uppercase tracking-wide text-gray-500 font-bold">Monnaie</div>
-                  <div className={`text-2xl font-bold font-mono tabular-nums ${tenderedNum >= total ? "text-emerald-700" : "text-red-600"}`}>
-                    {tenderedNum >= total ? fmt(change) : `-${fmt(total - tenderedNum)}`}
+                  <div className={`text-2xl font-bold font-mono tabular-nums ${receivedShown >= total ? "text-emerald-700" : "text-red-600"}`}>
+                    {receivedShown >= total ? fmt(change) : `-${fmt(total - receivedShown)}`}
                   </div>
                 </div>
               </div>
@@ -1273,6 +1303,8 @@ export const PosPage: React.FC<{ onInventoryUpdated?: () => void }> = ({ onInven
                 <div className="text-gray-500 mt-1 grid grid-cols-2 gap-x-3 gap-y-0.5 font-mono text-[11px]">
                   <span>Fond: {fmt(s.opening_float_dzd)}</span>
                   <span>Ventes: {fmt(s.total_sales_dzd || 0)}</span>
+                  {(s.total_refunds_dzd || 0) > 0 && <span>Remb.: {fmt(s.total_refunds_dzd)}</span>}
+                  {s.status === "open" && <span>Caisse attendue: {fmt(s.expected_cash_dzd || 0)}</span>}
                   {s.status === "closed" && <span>Attendu: {fmt(s.expected_cash_dzd || 0)}</span>}
                   {s.status === "closed" && <span>Compté: {fmt(s.counted_cash_dzd || 0)}</span>}
                   {s.status === "closed" && (
@@ -1344,7 +1376,7 @@ export const PosPage: React.FC<{ onInventoryUpdated?: () => void }> = ({ onInven
                 <div key={i.client_txn_id} className="p-3 rounded-2xl border-2 border-red-100 bg-red-50/40">
                   <div className="flex items-center justify-between">
                     <span className="font-mono font-bold text-[#063D2E]">{fmt(i.total_dzd)}</span>
-                    <span className="text-xs text-gray-400">{new Date(i.created_at).toLocaleString("fr-DZ")}</span>
+                    <span className="text-xs text-gray-400">{serverDate(i.created_at).toLocaleString("fr-FR")}</span>
                   </div>
                   <div className="text-red-600 text-[13px] mt-1">{i.error}</div>
                   <div className="text-gray-500 text-[11px] mt-1">
@@ -1390,7 +1422,9 @@ const Stat: React.FC<{ label: string; value: string; gold?: boolean }> = ({ labe
 );
 
 // Bottom sheet — large, touch-dismissable (modality.md: one task, obvious way out)
-const Sheet: React.FC<{ title: string; onClose: () => void; children: React.ReactNode }> = ({ title, onClose, children }) => (
+const Sheet: React.FC<{ title: string; onClose: () => void; children: React.ReactNode }> = ({ title, onClose, children }) => {
+  useEscapeToClose(onClose);
+  return (
   <div className="fixed inset-0 bg-black/40 flex items-end sm:items-center justify-center z-50 p-0 sm:p-4" onClick={onClose}>
     <div
       className="bg-white rounded-t-3xl sm:rounded-3xl p-5 w-full sm:max-w-md max-h-[92vh] overflow-auto"
@@ -1398,7 +1432,7 @@ const Sheet: React.FC<{ title: string; onClose: () => void; children: React.Reac
     >
       <div className="flex items-center justify-between mb-4">
         <h3 className="font-serif font-bold text-[#063D2E] text-lg">{title}</h3>
-        <button type="button" onClick={onClose} className="w-11 h-11 rounded-xl flex items-center justify-center text-gray-400 hover:text-gray-700 hover:bg-gray-100 active:scale-95">
+        <button aria-label="Fermer" type="button" onClick={onClose} className="w-11 h-11 rounded-xl flex items-center justify-center text-gray-400 hover:text-gray-700 hover:bg-gray-100 active:scale-95">
           <X className="w-6 h-6" />
         </button>
       </div>
@@ -1406,8 +1440,10 @@ const Sheet: React.FC<{ title: string; onClose: () => void; children: React.Reac
     </div>
   </div>
 );
+};
 
 const ReceiptModal: React.FC<{ sale: any; onClose: () => void; onPrint: () => void; onSystemPrint?: () => void }> = ({ sale, onClose, onPrint, onSystemPrint }) => {
+  useEscapeToClose(onClose);
   const b = sale.boutique_info || {};
   return (
     <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4" onClick={onClose}>
@@ -1429,7 +1465,7 @@ const ReceiptModal: React.FC<{ sale: any; onClose: () => void; onPrint: () => vo
           </div>
           <div className="border-t border-dashed my-2" />
           <div>Reçu: {sale.sale_reference}</div>
-          <div>{new Date(sale.created_at).toLocaleString("fr-DZ")}</div>
+          <div>{serverDate(sale.created_at).toLocaleString("fr-FR")}</div>
           {sale.cashier_name && <div>Caissier: {sale.cashier_name}</div>}
           {sale.customer && <div>Client: {sale.customer.full_name}</div>}
           {sale.offline && <div className="font-bold text-amber-700">** HORS LIGNE — à synchroniser **</div>}

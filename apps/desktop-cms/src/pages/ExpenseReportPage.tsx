@@ -11,10 +11,12 @@ import {
 } from "lucide-react";
 import { DesktopCmsApi, getAccessToken } from "../api/adminClient";
 import { useT } from "../i18n";
+import { codeLabel } from "../utils/codeLabels";
+import { localDateIso } from "../utils/serverDate";
 
 const fmt = (dzd: number) => `${Number(dzd || 0).toLocaleString("fr-DZ")} DA`;
 
-function todayIso(): string { return new Date().toISOString().slice(0, 10); }
+function todayIso(): string { return localDateIso(); }
 function monthStartIso(): string { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-01`; }
 
 export const ExpenseReportPage: React.FC = () => {
@@ -59,9 +61,9 @@ export const ExpenseReportPage: React.FC = () => {
   const applyPreset = (preset: "today" | "7d" | "month" | "30d" | "year") => {
     const tToday = todayIso();
     let f = tToday;
-    if (preset === "7d") { const d = new Date(); d.setDate(d.getDate() - 6); f = d.toISOString().slice(0, 10); }
+    if (preset === "7d") { const d = new Date(); d.setDate(d.getDate() - 6); f = localDateIso(d); }
     if (preset === "month") f = monthStartIso();
-    if (preset === "30d") { const d = new Date(); d.setDate(d.getDate() - 29); f = d.toISOString().slice(0, 10); }
+    if (preset === "30d") { const d = new Date(); d.setDate(d.getDate() - 29); f = localDateIso(d); }
     if (preset === "year") f = `${new Date().getFullYear()}-01-01`;
     setFrom(f); setTo(tToday); load(f, tToday);
   };
@@ -127,7 +129,7 @@ export const ExpenseReportPage: React.FC = () => {
                   return (
                     <div key={c.category}>
                       <div className="flex items-center justify-between text-[12px]">
-                        <span className="font-bold text-[#063D2E] truncate">{c.category}</span>
+                        <span className="font-bold text-[#063D2E] truncate">{codeLabel(c.category)}</span>
                         <span className="font-mono font-bold whitespace-nowrap ml-2">{fmt(c.total_dzd)} <span className="text-gray-400 text-[10px]">({pct}%)</span></span>
                       </div>
                       <div className="h-2 rounded bg-gray-100 mt-1 overflow-hidden">
@@ -157,7 +159,7 @@ export const ExpenseReportPage: React.FC = () => {
                         <td className="px-3 py-2 font-mono text-[11px] whitespace-nowrap">{it.expense_date}</td>
                         <td className="px-3 py-2">
                           <div className="truncate">{it.description}</div>
-                          <div className="text-gray-400 text-[11px]">{it.category} · {it.payment_method}{it.payment_status === "pending" ? <span className="text-amber-700 font-bold ml-1">· {t("expense_report.badge_pending")}</span> : ""}</div>
+                          <div className="text-gray-400 text-[11px]">{codeLabel(it.category)} · {codeLabel(it.payment_method)}{it.payment_status === "pending" ? <span className="text-amber-700 font-bold ml-1">· {t("expense_report.badge_pending")}</span> : ""}</div>
                         </td>
                         <td className="px-3 py-2 text-right font-mono font-bold">{fmt(it.amount_dzd)}</td>
                       </tr>

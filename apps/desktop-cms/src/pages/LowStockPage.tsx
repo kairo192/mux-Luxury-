@@ -65,7 +65,7 @@ export const LowStockPage: React.FC = () => {
             <input type="checkbox" checked={includeOut} onChange={(e) => setIncludeOut(e.target.checked)} className="w-5 h-5" />
             {t("low_stock.include_out")}
           </label>
-          <button type="button" onClick={load} className="h-12 w-12 rounded-2xl border-2 border-gray-200 flex items-center justify-center text-gray-500 active:scale-95">
+          <button aria-label="Actualiser" type="button" onClick={load} className="h-12 w-12 rounded-2xl border-2 border-gray-200 flex items-center justify-center text-gray-500 active:scale-95">
             <RefreshCw className={`w-5 h-5 ${loading ? "animate-spin" : ""}`} />
           </button>
         </div>

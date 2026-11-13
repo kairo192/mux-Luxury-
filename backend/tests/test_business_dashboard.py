@@ -131,7 +131,12 @@ class TestBusinessDashboard(unittest.TestCase):
         })
         d1 = self._biz()
         self.assertEqual(d1["devices"]["total"] - d0["devices"]["total"], 1)
-        self.assertTrue(any(b["variant_id"] == self.variant["id"] for b in d1["best_sellers"]))
+        # The list is the top 8 of the whole (shared) database: the sold variant
+        # is either listed, or outranked by 8 variants that sold at least as much.
+        best = d1["best_sellers"]
+        if not any(b["variant_id"] == self.variant["id"] for b in best):
+            self.assertEqual(len(best), 8)
+            self.assertTrue(all(b["qty_sold"] >= 1 for b in best))
         self.client.post("/api/v1/admin/pos/register/close", headers=self.headers, json={"counted_cash_dzd": 0})
 
     def test_05_unauthorized(self):

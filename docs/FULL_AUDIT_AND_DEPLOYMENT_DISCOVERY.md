@@ -1,7 +1,7 @@
 # MUS LUXURY (`LUXE`) — FULL CODEBASE AUDIT & DEPLOYMENT DISCOVERY REPORT
 
 **Target Platform:** Mus Luxury E-Commerce & Retail ERP Monorepo  
-**Production Host:** Octenium Ubuntu VPS (1 Intel Xeon vCore, 2 GB RAM, 150 GB RAID 10, Fixed Public IPv4)  
+**Production Host:** Octenium Ubuntu VPS (1 Intel Xeon vCore, 2 GB RAM, 40 GB NVMe, Fixed Public IPv4)  
 **Production Domain:** `mus-luxury.com`  
 **Audit Date:** November 9, 2026  
 **Auditor Roles:** Senior Software Architect, DevOps Engineer, Database Architect, Application Security Engineer  
@@ -328,7 +328,7 @@ Defensive source-code audit findings, classified by severity:
 ### VPS Specifications
 - **Provider:** Octenium
 - **Operating System:** Ubuntu 22.04 or 24.04 LTS
-- **Hardware Profile:** 1 Intel Xeon vCore, 2 GB RAM, 150 GB RAID 10 storage, 250 Mbps bandwidth, 1 fixed IPv4 address.
+- **Hardware Profile:** 1 Intel Xeon vCore, 2 GB RAM, 40 GB NVMe storage, 250 Mbps bandwidth, 1 fixed IPv4 address.
 - **Domain:** `mus-luxury.com` (API: `api.mus-luxury.com`)
 
 ### Memory Budgeting for 2 GB RAM
@@ -465,8 +465,7 @@ To update installed Windows desktop instances safely without breaking compatibil
 The following items cannot be determined solely by inspecting the repository and require details from your hosting and third-party provider dashboards:
 1. **Octenium DNS Management Panel:** Access to configure A records for `mus-luxury.com`, `www.mus-luxury.com`, and `api.mus-luxury.com` pointing to the VPS public IP.
 2. **Existing DNS Zone Records:** Confirmation of any existing MX, SPF, DKIM, or DMARC records on `mus-luxury.com` so they are not overwritten during DNS setup.
-3. **Meta WhatsApp Business Cloud API Credentials (Optional):** Live production tokens for customer order notification messages (`WHATSAPP_CLOUD_API_TOKEN`, `WHATSAPP_PHONE_NUMBER_ID`, `WHATSAPP_APP_SECRET`). Owner password recovery has been decoupled and hardened to CLI-only.
-4. **Algerian Logistics / Yalidine API Keys:** Live API credentials if automated dispatch syncing is required immediately at launch.
+3. **Off-site backup storage (recommended):** an S3-compatible bucket and its keys (see `docs/CONFIGURATION.md`).
 
 ---
 

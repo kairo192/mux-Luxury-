@@ -8,7 +8,9 @@
     "dev:cms": "npm --prefix apps/desktop-cms run dev",
     "build:storefront": "npm --prefix apps/storefront run build",
     "build:cms": "npm --prefix apps/desktop-cms run build",
-    "test:backend": "cd backend && python -m unittest discover -s tests -v"
+    "test:backend": "cd backend && python -m unittest discover -s tests -v",
+    "test:e2e": "npm --prefix e2e test",
+    "lint": "ruff check backend && npm --prefix apps/desktop-cms exec tsc -- --noEmit -p apps/desktop-cms"
   },
   "repository": {
     "type": "git",

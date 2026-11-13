@@ -105,3 +105,73 @@
 .animate-modal {
   animation: scaleInModal 0.25s cubic-bezier(0.16, 1, 0.3, 1) forwards;
 }
+
+/* ---------------------------------------------------------------------------
+   Toast notifications (components/ToastStack.tsx)
+   The progress bar's animation IS the auto-dismiss timer: pausing it on hover,
+   keyboard focus or while the window is hidden keeps the toast on screen.
+   --------------------------------------------------------------------------- */
+@keyframes luxeToastIn {
+  from {
+    opacity: 0;
+    transform: translateY(14px) scale(0.97);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+@keyframes luxeToastProgress {
+  from {
+    transform: scaleX(1);
+  }
+  to {
+    transform: scaleX(0);
+  }
+}
+
+.luxe-toast {
+  animation: luxeToastIn 0.32s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.luxe-toast-progress {
+  transform-origin: left center;
+  animation-name: luxeToastProgress;
+  animation-timing-function: linear;
+  animation-fill-mode: forwards;
+}
+
+[dir="rtl"] .luxe-toast-progress {
+  transform-origin: right center;
+}
+
+.luxe-toast:hover .luxe-toast-progress,
+.luxe-toast:focus-within .luxe-toast-progress,
+.luxe-toast-stack[data-paused="true"] .luxe-toast-progress {
+  animation-play-state: paused;
+}
+
+@keyframes luxePanelIn {
+  from {
+    opacity: 0;
+    transform: translateY(-6px) scale(0.98);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+.animate-panel {
+  animation: luxePanelIn 0.18s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .luxe-toast,
+  .animate-panel,
+  .animate-modal,
+  .animate-backdrop {
+    animation: none;
+  }
+}

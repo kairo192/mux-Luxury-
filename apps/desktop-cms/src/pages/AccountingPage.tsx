@@ -16,6 +16,7 @@ import {
 } from "lucide-react";
 import { DesktopCmsApi, getAccessToken } from "../api/adminClient";
 import { useT } from "../i18n";
+import { localDateIso } from "../utils/serverDate";
 
 interface PnlStatement {
   gross_revenue_dzd: number;
@@ -25,6 +26,8 @@ interface PnlStatement {
   gross_profit_dzd: number;
   gross_margin_percent: number;
   operating_expenses_dzd: number;
+  operating_expenses_unpaid_dzd?: number;
+  stock_losses_dzd?: number;
   net_operating_profit_dzd: number;
   net_margin_percent: number;
   orders_count: number;
@@ -100,17 +103,20 @@ export const AccountingPage: React.FC = () => {
     loadAllAccountingData();
   }, []);
 
-  const handleExportOrdersCsv = async () => {
+  // Exports the tab being viewed (income statement, product profitability or
+  // purchases/expenses journal) through the configured server address.
+  const handleExportCsv = async () => {
     try {
       const token = getAccessToken();
-      const res = await fetch("http://127.0.0.1:8000/api/v1/admin/orders/export.csv", {
+      const res = await fetch(DesktopCmsApi.accountingCsvUrl(activeTab), {
         headers: token ? { Authorization: `Bearer ${token}` } : {},
       });
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       const blob = await res.blob();
+      const names = { pnl: "compte_de_resultat", products: "rentabilite_produits", ledger: "journal_achats_depenses" } as const;
       const a = document.createElement("a");
       a.href = URL.createObjectURL(blob);
-      a.download = `orders_${new Date().toISOString().slice(0, 10)}.csv`;
+      a.download = `${names[activeTab]}_${localDateIso()}.csv`;
       a.click();
       URL.revokeObjectURL(a.href);
     } catch {
@@ -137,6 +143,7 @@ export const AccountingPage: React.FC = () => {
   const netMarginPct = pnl?.net_margin_percent ?? (pnl as any)?.net_results?.net_margin_pct_all ?? 0;
   const ordCount = pnl?.orders_count ?? (pnl as any)?.revenue?.orders_count ?? 0;
   const unitsSold = pnl?.units_sold ?? 0;
+  const storeCount = (pnl as any)?.in_store_sales_count ?? 0;
 
   const ledgerEntries: LedgerEntry[] = ledger?.entries || (ledger as any)?.items || [];
   const totDebits = ledger?.total_debits_dzd ?? (ledger as any)?.total_debit_dzd ?? 0;
@@ -165,7 +172,7 @@ export const AccountingPage: React.FC = () => {
             <span>{t("common.refresh")}</span>
           </button>
           <button
-            onClick={handleExportOrdersCsv}
+            onClick={handleExportCsv}
             className="inline-flex items-center gap-1.5 px-4 py-2 text-xs font-semibold rounded-xl bg-[#063D2E] text-[#D4AF62] hover:bg-[#0A5C45] shadow-xs transition-all"
           >
             <Download className="w-3.5 h-3.5 text-[#D4AF62]" />
@@ -218,7 +225,7 @@ export const AccountingPage: React.FC = () => {
             <AlertTriangle className="w-4 h-4 text-red-600 shrink-0" />
             <span>{error}</span>
           </span>
-          <button onClick={() => setError(null)} className="text-red-500 font-bold hover:opacity-75 transition">
+          <button aria-label="Masquer le message" onClick={() => setError(null)} className="text-red-500 font-bold hover:opacity-75 transition">
             <X className="w-4 h-4" />
           </button>
         </div>
@@ -244,10 +251,12 @@ export const AccountingPage: React.FC = () => {
                 </span>
               </div>
               <div className="text-2xl font-bold font-mono text-gray-900 mt-2">
-                {grossRev.toLocaleString()} <span className="text-xs font-sans text-[#D4AF62]">DZD</span>
+                {totalRev.toLocaleString()} <span className="text-xs font-sans text-[#D4AF62]">DZD</span>
               </div>
               <div className="text-[11px] text-gray-400 mt-1">
-                {ordCount} commandes • {unitsSold} pièces
+                Articles {grossRev.toLocaleString()} + livraison {deliveryRev.toLocaleString()} DZD
+                <br />
+                {ordCount} commande(s) en ligne • {storeCount} vente(s) magasin • {unitsSold} pièce(s)
               </div>
             </div>
 
@@ -263,7 +272,7 @@ export const AccountingPage: React.FC = () => {
                 {grossProfit.toLocaleString()} <span className="text-xs font-sans text-emerald-600">DZD</span>
               </div>
               <div className="text-[11px] text-emerald-600 font-semibold mt-1">
-                {t("accounting.net_margin")}
+                Chiffre d'affaires − coût d'achat
               </div>
             </div>
 
@@ -325,8 +334,13 @@ export const AccountingPage: React.FC = () => {
                         <span className="w-2.5 h-2.5 rounded-full bg-amber-600" /> COGS: <strong>{cogsPct}%</strong> ({cogsVal.toLocaleString()} DZD)
                       </span>
                       <span className="flex items-center gap-1.5">
-                        <span className="w-2.5 h-2.5 rounded-full bg-red-500" /> OPEX: <strong>{opexPct}%</strong> ({opExpenses.toLocaleString()} DZD)
+                        <span className="w-2.5 h-2.5 rounded-full bg-red-500" /> Charges: <strong>{opexPct}%</strong> ({opExpenses.toLocaleString()} DZD{Number(pnl?.operating_expenses_unpaid_dzd || 0) > 0 ? `, dont ${Number(pnl?.operating_expenses_unpaid_dzd).toLocaleString()} DZD à régler` : ""})
                       </span>
+                      {Number(pnl?.stock_losses_dzd || 0) !== 0 && (
+                        <span className="flex items-center gap-1.5">
+                          <span className="w-2.5 h-2.5 rounded-full bg-gray-500" /> Pertes de stock: <strong>{Number(pnl?.stock_losses_dzd).toLocaleString()} DZD</strong>
+                        </span>
+                      )}
                       <span className="flex items-center gap-1.5">
                         <span className="w-2.5 h-2.5 rounded-full bg-emerald-600" /> {t("accounting.stat_net_profit")}: <strong>{netPct}%</strong> ({netProfit.toLocaleString()} DZD)
                       </span>
@@ -457,11 +471,11 @@ export const AccountingPage: React.FC = () => {
               <div>
                 <div className="font-bold text-xs">
                   {isBalanced
-                    ? "Grand Livre Conforme & Équilibré"
+                    ? "Journal équilibré (débits = crédits)"
                     : "Déséquilibre détecté !"}
                 </div>
                 <div className="text-[11px] opacity-80">
-                  Débits = {totDebits.toLocaleString()} DZD | Crédits = {totCredits.toLocaleString()} DZD
+                  Débits = {totDebits.toLocaleString()} DZD | Crédits = {totCredits.toLocaleString()} DZD — écritures des achats fournisseurs et des dépenses. Les ventes sont dans le Compte de résultat et la Trésorerie.
                 </div>
               </div>
             </div>

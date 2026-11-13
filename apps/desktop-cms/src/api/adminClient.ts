@@ -48,6 +48,53 @@ export function getApiBaseUrl(): string {
   return apiBaseUrl;
 }
 
+/**
+ * Address of the online shop that goes with the configured API:
+ *   https://api.mus-luxury.com/api/v1 → https://mus-luxury.com
+ *   http://localhost:8000/api/v1      → http://localhost:5173 (dev)
+ */
+export function storefrontBaseUrl(): string {
+  try {
+    const u = new URL(apiBaseUrl);
+    if (u.hostname === "localhost" || u.hostname === "127.0.0.1") return `${u.protocol}//localhost:5173`;
+    return `${u.protocol}//${u.hostname.replace(/^api\./, "")}`;
+  } catch {
+    return "https://mus-luxury.com";
+  }
+}
+
+/**
+ * Turns a stored image path into an address the CMS can display.
+ * Uploaded photos (/uploads/…) live on the API server; built-in images
+ * (/assets/…) live on the shop. Without this the CMS looked for them on
+ * itself and every uploaded photo appeared broken.
+ */
+export function mediaUrl(url?: string | null): string {
+  const raw = String(url || "").trim();
+  if (!raw) return "";
+  if (/^(https?:|data:|blob:)/i.test(raw)) return raw;
+  const path = raw.startsWith("/") ? raw : `/${raw}`;
+  if (path.startsWith("/uploads/")) {
+    try {
+      return new URL(apiBaseUrl).origin + path;
+    } catch {
+      return path;
+    }
+  }
+  return storefrontBaseUrl() + path;
+}
+
+/** Neutral image for products/categories without a photo (works offline). */
+export const PLACEHOLDER_IMG =
+  "data:image/svg+xml;charset=utf-8," +
+  encodeURIComponent(
+    '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 600 600"><rect width="600" height="600" fill="#063D2E"/>' +
+      '<rect x="24" y="24" width="552" height="552" rx="28" fill="none" stroke="#D4AF62" stroke-opacity=".35" stroke-width="2"/>' +
+      '<circle cx="300" cy="270" r="92" fill="none" stroke="#D4AF62" stroke-width="3"/>' +
+      '<text x="300" y="300" text-anchor="middle" font-family="Georgia,serif" font-size="84" font-weight="700" fill="#D4AF62">ML</text>' +
+      '<text x="300" y="430" text-anchor="middle" font-family="Georgia,serif" font-size="30" fill="#E8D4A5" letter-spacing="6">PHOTO À VENIR</text></svg>'
+  );
+
 export function setAccessToken(token: string | null) {
   accessToken = token;
   if (token) {
@@ -117,6 +164,10 @@ async function adminFetch(path: string, options: RequestInit = {}, timeoutMs = d
 
     try {
       const res = await fetch(`${apiBaseUrl}${path}`, {
+        // The CMS must always see live data: never answer from the WebView's
+        // HTTP cache (public endpoints are cacheable for the storefront, which
+        // made deleted categories "come back" after a reload).
+        cache: "no-store",
         ...options,
         headers,
         signal: options.signal || controller.signal,
@@ -238,13 +289,54 @@ export const DesktopCmsApi = {
     adminFetch(`/admin/sync/delta?since_order_id=${sinceOrderId}&since_movement_id=${sinceMovementId}`),
 
   // Dynamic Categories & 14-Type Attribute Builder
-  listCategories: () => adminFetch("/categories"),
+  // Admin list (never the cached public one). includeArchived=true also
+  // returns archived categories (deleted_at set) for the Categories page.
+  listCategories: (includeArchived = false) =>
+    adminFetch(`/admin/categories?include_archived=${includeArchived}`),
+  // Database administration (owner only) — see backend/app/backup_engine.py
+  getDatabaseStatus: () => adminFetch("/admin/system/database", {}, 30000),
+  // Owner only: which .env settings are set / missing (values never returned).
+  getServerConfiguration: () => adminFetch("/admin/system/configuration"),
+  createDatabaseBackup: (includeMedia = false) =>
+    adminFetch("/admin/system/backups", { method: "POST", body: JSON.stringify({ include_media: includeMedia }) }, 180000),
+  restoreDatabaseBackup: (name: string, password: string, confirm: string) =>
+    adminFetch(`/admin/system/backups/${encodeURIComponent(name)}/restore`, {
+      method: "POST",
+      body: JSON.stringify({ password, confirm }),
+    }, 300000),
+  /** Encrypted backup file, for the copy kept on the owner's PC. */
+  downloadBackupForPc: async (name: string): Promise<Uint8Array> => {
+    const token = getAccessToken();
+    const res = await fetch(`${apiBaseUrl}/admin/system/backups/${encodeURIComponent(name)}/download`, {
+      cache: "no-store",
+      headers: token ? { Authorization: `Bearer ${token}` } : {},
+    });
+    if (!res.ok) {
+      const data = await res.json().catch(() => ({}));
+      const tr = sanitizeAndTranslateError(data, res.status, "/admin/system/backups/download", "Copie impossible");
+      throw new ClientSafeApiError({ status: res.status, title: tr.title, userMessage: tr.message, code: tr.code });
+    }
+    return new Uint8Array(await res.arrayBuffer());
+  },
+  /** Sends a copy kept on the PC back to the server so it can be restored. */
+  importBackupFromPc: (fileName: string, bytes: Uint8Array) => {
+    const fd = new FormData();
+    fd.append("file", new Blob([bytes as Uint8Array<ArrayBuffer>], { type: "application/octet-stream" }), fileName);
+    return adminFetch("/admin/system/backups/import", { method: "POST", body: fd }, 180000);
+  },
+  resetDatabase: (password: string, confirm: string, keepSettings: boolean) =>
+    adminFetch("/admin/system/reset", {
+      method: "POST",
+      body: JSON.stringify({ password, confirm, keep_settings: keepSettings }),
+    }, 300000),
   listAdminCategories: (includeArchived = true) =>
     adminFetch(`/admin/categories?include_archived=${includeArchived}`),
   createCategory: (payload: unknown) =>
     adminFetch("/admin/categories", { method: "POST", body: JSON.stringify(payload) }),
   updateCategory: (categoryId: number, payload: unknown) =>
     adminFetch(`/admin/categories/${categoryId}`, { method: "PUT", body: JSON.stringify(payload) }),
+  restoreCategory: (categoryId: number) =>
+    adminFetch(`/admin/categories/${categoryId}/restore`, { method: "POST" }),
   archiveCategory: (categoryId: number) =>
     adminFetch(`/admin/categories/${categoryId}`, { method: "DELETE" }),
   deleteCategory: (categoryId: number, hard = false) =>
@@ -372,8 +464,13 @@ export const DesktopCmsApi = {
     }),
 
   // Order Management, Invoices & CSV Export
-  listOrders: (status?: string) =>
-    adminFetch(`/admin/orders${status ? `?status=${status}` : ""}`),
+  listOrders: (status?: string, q?: string) => {
+    const qs = new URLSearchParams();
+    if (status) qs.set("status", status);
+    if (q && q.trim()) qs.set("q", q.trim());
+    const s = qs.toString();
+    return adminFetch(`/admin/orders${s ? `?${s}` : ""}`);
+  },
   updateOrderStatus: (orderId: number, status: string, internal_notes?: string) =>
     adminFetch(`/admin/orders/${orderId}`, {
       method: "PATCH",
@@ -382,14 +479,15 @@ export const DesktopCmsApi = {
   getOrderInvoice: (orderId: number) => adminFetch(`/admin/orders/${orderId}/invoice`),
   getOrderDeliveryNote: (orderId: number) => adminFetch(`/admin/orders/${orderId}/delivery-note`),
   exportOrdersCsv: () => adminFetch("/admin/orders/export.csv"),
-  listCustomers: () => adminFetch("/admin/customers"),
+  listCustomers: (offset = 0, limit = 200) => adminFetch(`/admin/customers?limit=${limit}&offset=${offset}`),
   searchCustomers: (q: string) => adminFetch(`/admin/customers/search?q=${encodeURIComponent(q)}`),
   getCustomer: (customerId: number) => adminFetch(`/admin/customers/${customerId}`),
   createCustomer: (payload: { full_name: string; phone: string; email?: string | null; wilaya_code?: string | null; commune?: string | null; address?: string | null; notes?: string | null }) =>
     adminFetch("/admin/customers", { method: "POST", body: JSON.stringify(payload) }),
   updateCustomer: (customerId: number, payload: unknown) =>
     adminFetch(`/admin/customers/${customerId}`, { method: "PUT", body: JSON.stringify(payload) }),
-  getReports: () => adminFetch("/admin/reports"),
+  accountingCsvUrl: (part: "pnl" | "products" | "ledger") =>
+    `${getApiBaseUrl()}/admin/accounting/export.csv?part=${part}`,
   getSalesReport: (from: string, to: string) =>
     adminFetch(`/admin/reports/sales?from=${encodeURIComponent(from)}&to=${encodeURIComponent(to)}`),
   salesReportCsvUrl: (from: string, to: string) =>
@@ -458,6 +556,9 @@ export const DesktopCmsApi = {
     adminFetch("/admin/banners", { method: "POST", body: JSON.stringify(payload) }),
   deleteBanner: (bannerId: number) =>
     adminFetch(`/admin/banners/${bannerId}`, { method: "DELETE" }),
+  updateBanner: (bannerId: number, payload: unknown) =>
+    adminFetch(`/admin/banners/${bannerId}`, { method: "PUT", body: JSON.stringify(payload) }),
+  listHomepageSections: () => adminFetch("/admin/homepage-sections"),
   listCoupons: () => adminFetch("/admin/coupons"),
   createCoupon: (payload: unknown) =>
     adminFetch("/admin/coupons", { method: "POST", body: JSON.stringify(payload) }),
@@ -470,7 +571,6 @@ export const DesktopCmsApi = {
     }),
 
   // Product Image Gallery Management & Static Pages
-  checkHealth: () => adminFetch("/health"),
   uploadMediaFile: (file: File) => {
     const fd = new FormData();
     fd.append("file", file);
@@ -538,6 +638,8 @@ export const DesktopCmsApi = {
     adminFetch(`/admin/expenses${category ? `?category=${category}` : ""}`),
   createExpense: (payload: unknown) =>
     adminFetch("/admin/expenses", { method: "POST", body: JSON.stringify(payload) }),
+  payExpense: (expenseId: number, method: string) =>
+    adminFetch(`/admin/expenses/${expenseId}/pay?payment_method=${encodeURIComponent(method)}`, { method: "POST" }),
   deleteExpense: (expenseId: number) =>
     adminFetch(`/admin/expenses/${expenseId}`, { method: "DELETE" }),
 

@@ -101,13 +101,29 @@ fi
 
 # -------------------------------------------------- 3. Pre-migration backup
 log "== pre-migration backup =="
-set -a
-# shellcheck disable=SC1091
-source "$SHARED_DIR/.env"
-set +a
-# Run backup against the CURRENTLY RUNNING release (not the new one yet)
+# Read as Docker reads it (values taken literally, never run as shell code:
+# passwords may hold ? # & ; $ and unused services keep <FILL_IN_…>).
+# shellcheck source=env-file.sh
+source "$NEW_RELEASE/infrastructure/scripts/env-file.sh"
+luxe_load_env "$SHARED_DIR/.env" || fail "cannot read $SHARED_DIR/.env"
+# Every setting production needs must be there before anything changes
+# (backend/app/settings.py; values are never printed).
+if command -v python3 >/dev/null 2>&1; then
+  (cd "$NEW_RELEASE/backend" && python3 -m app.settings check "$SHARED_DIR/.env") \
+    || fail "required settings missing in $SHARED_DIR/.env (see above) — nothing was changed"
+fi
+# One Compose project for every release (else: second database container and
+# an empty database volume) — see compose-project.sh.
+# shellcheck source=compose-project.sh
+source "$NEW_RELEASE/infrastructure/scripts/compose-project.sh"
+luxe_ensure_compose_project "$SHARED_DIR/.env"
+log "compose project: $COMPOSE_PROJECT_NAME"
+luxe_check_db_volume || fail "database volume check failed — nothing was changed"
+# Back up the data of the CURRENTLY RUNNING shop (it lives in the Docker
+# containers, not in the release folder). The backup SCRIPT is taken from the
+# NEW release so backup fixes apply from this deploy on.
 if [ -L "$CURRENT_LINK" ] && [ -d "$CURRENT_LINK" ]; then
-  (cd "$CURRENT_LINK" && BACKUP_DIR=/var/lib/luxe/backups UPLOAD_DIR=/var/lib/luxe/uploads \
+  (cd "$NEW_RELEASE" && BACKUP_DIR=/var/lib/luxe/backups UPLOAD_DIR=/var/lib/luxe/uploads \
       bash infrastructure/backups/backup_postgres_and_media.sh) \
       || fail "pre-migration backup failed — aborting deploy"
 else
@@ -149,8 +165,23 @@ if [ "$HEALTH_OK" -ne 1 ]; then
   if [ -n "$PREVIOUS_RELEASE" ] && [ -d "$PREVIOUS_RELEASE" ]; then
     ln -snf "$PREVIOUS_RELEASE" "${CURRENT_LINK}.new"
     mv -Tf  "${CURRENT_LINK}.new" "$CURRENT_LINK"
-    (cd "$CURRENT_LINK" && docker compose up -d --remove-orphans) || true
-    log "rolled back to $PREVIOUS_RELEASE"
+    # --build: the images of the release that just failed carry the same
+    # names; rebuild the previous release's code (layers are cached).
+    if ! (cd "$CURRENT_LINK" && docker compose up -d --build --remove-orphans); then
+      log "ROLLBACK FAILED: the previous release could not be rebuilt/started — manual intervention needed"
+      exit 2
+    fi
+    ROLLBACK_OK=0
+    DEADLINE=$(( $(date +%s) + HEALTH_TIMEOUT_SEC ))
+    while [ "$(date +%s)" -lt "$DEADLINE" ]; do
+      if curl -fsS --max-time 5 "$HEALTH_URL" >/dev/null 2>&1; then ROLLBACK_OK=1; break; fi
+      sleep 3
+    done
+    if [ "$ROLLBACK_OK" -ne 1 ]; then
+      log "ROLLBACK FAILED: $PREVIOUS_RELEASE started but is not healthy — manual intervention needed"
+      exit 2
+    fi
+    log "rolled back to $PREVIOUS_RELEASE (healthy)"
   else
     log "no previous release to roll back to — manual intervention needed"
   fi
@@ -169,5 +200,12 @@ ls -1dt "$RELEASES_DIR"/* 2>/dev/null \
         log "pruned $old"
       fi
     done
+
+# -------------------------------------------------- 10. Free disk (40 GB server)
+# Images replaced by this build and build cache older than a week. Images in
+# use and the database/photo volumes are never touched.
+docker image prune -f >/dev/null 2>&1 || true
+docker builder prune -f --filter until=168h >/dev/null 2>&1 || true
+log "old images and build cache removed"
 
 log "== deploy SUCCESS: $VERSION =="

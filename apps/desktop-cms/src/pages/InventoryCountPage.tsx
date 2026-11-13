@@ -15,6 +15,7 @@ import {
 import { DesktopCmsApi } from "../api/adminClient";
 import { confirmClientAction } from "../utils/clientNotifier";
 import { useT } from "../i18n";
+import { serverDate } from "../utils/serverDate";
 
 interface Count {
   id: number;
@@ -106,7 +107,7 @@ export const InventoryCountPage: React.FC<{ onInventoryUpdated?: () => void }> =
   const openNew = async () => {
     setBusy(true);
     try {
-      const c = await DesktopCmsApi.openInventoryCount({ name: `Inventaire ${new Date().toLocaleDateString("fr-DZ")}` });
+      const c = await DesktopCmsApi.openInventoryCount({ name: `Inventaire ${new Date().toLocaleDateString("fr-FR")}` });
       setActive(c);
       flash(`Inventaire ${c.reference} ouvert`);
       load();
@@ -179,7 +180,11 @@ export const InventoryCountPage: React.FC<{ onInventoryUpdated?: () => void }> =
     if (!active) return;
     const confirmed = await confirmClientAction({
       title: t("inventory_count.btn_apply"),
-      message: `${t("inventory_count.btn_apply")} ${active.reference} ?`,
+      message:
+        `${active.reference} : le stock de ${(active.items || []).length} article(s) compté(s) sera corrigé ` +
+        "de l'écart trouvé (compté − stock affiché au moment du comptage). Les ventes faites depuis le comptage sont conservées ; " +
+        "les articles non comptés ne changent pas. Cette opération est définitive.",
+      confirmLabel: t("inventory_count.btn_apply"),
       danger: false,
     });
     if (!confirmed) return;
@@ -263,7 +268,7 @@ export const InventoryCountPage: React.FC<{ onInventoryUpdated?: () => void }> =
                 {active.reference}
                 <span className={`px-2 py-0.5 rounded-lg text-xs font-bold ${BADGE[active.status]}`}>{statusLabels[active.status]}</span>
               </div>
-              <div className="text-gray-500 text-[11px]">{active.name} · {new Date(active.opened_at).toLocaleString("fr-DZ")}{active.opened_by_name ? ` · ${active.opened_by_name}` : ""}</div>
+              <div className="text-gray-500 text-[11px]">{active.name} · {serverDate(active.opened_at).toLocaleString("fr-FR")}{active.opened_by_name ? ` · ${active.opened_by_name}` : ""}</div>
             </div>
             <div className="flex gap-4 text-sm">
               <Stat label={t("inventory_count.stat_lines")} value={String(active.total_lines)} />
@@ -335,7 +340,7 @@ export const InventoryCountPage: React.FC<{ onInventoryUpdated?: () => void }> =
                       <td className={`px-4 py-3 text-right font-mono font-bold ${vClass}`}>{l.variance > 0 ? `+${l.variance}` : l.variance}</td>
                       <td className="px-4 py-3 text-right">
                         {active.status === "open" && (
-                          <button type="button" onClick={() => removeLine(l)} className="h-9 w-9 rounded-xl border-2 border-red-200 inline-flex items-center justify-center text-red-500 active:scale-95">
+                          <button aria-label="Supprimer" type="button" onClick={() => removeLine(l)} className="h-9 w-9 rounded-xl border-2 border-red-200 inline-flex items-center justify-center text-red-500 active:scale-95">
                             <Trash2 className="w-4 h-4" />
                           </button>
                         )}
@@ -355,7 +360,7 @@ export const InventoryCountPage: React.FC<{ onInventoryUpdated?: () => void }> =
               <button type="button" onClick={cancel} className="h-14 px-5 rounded-2xl border-2 border-red-200 text-red-600 font-bold flex items-center gap-2 active:scale-95">
                 <Ban className="w-5 h-5" /> {t("inventory_count.btn_cancel")}
               </button>
-              <button type="button" onClick={reloadActive} className="h-14 w-14 rounded-2xl border-2 border-gray-200 flex items-center justify-center text-gray-500 active:scale-95">
+              <button aria-label="Actualiser" type="button" onClick={reloadActive} className="h-14 w-14 rounded-2xl border-2 border-gray-200 flex items-center justify-center text-gray-500 active:scale-95">
                 <RefreshCw className="w-5 h-5" />
               </button>
             </div>
@@ -369,7 +374,7 @@ export const InventoryCountPage: React.FC<{ onInventoryUpdated?: () => void }> =
           <div className="bg-white rounded-t-3xl sm:rounded-3xl p-5 w-full sm:max-w-md max-h-[92vh] overflow-auto" onClick={(e) => e.stopPropagation()}>
             <div className="flex items-center justify-between mb-3">
               <h3 className="font-serif font-bold text-[#063D2E] text-lg">{t("inventory_count.history_title")}</h3>
-              <button type="button" onClick={() => setShowHistory(false)} className="w-11 h-11 rounded-xl flex items-center justify-center text-gray-400 hover:bg-gray-100 active:scale-95">
+              <button aria-label="Fermer" type="button" onClick={() => setShowHistory(false)} className="w-11 h-11 rounded-xl flex items-center justify-center text-gray-400 hover:bg-gray-100 active:scale-95">
                 <X className="w-6 h-6" />
               </button>
             </div>
@@ -383,7 +388,7 @@ export const InventoryCountPage: React.FC<{ onInventoryUpdated?: () => void }> =
                     <span className={`px-2 py-0.5 rounded-lg text-xs font-bold ${BADGE[c.status]}`}>{statusLabels[c.status]}</span>
                   </div>
                   <div className="text-gray-500 text-[11px] mt-1">{c.name} · {c.total_lines} · écart {c.total_variance_abs}</div>
-                  <div className="text-gray-400 text-[11px]">{new Date(c.opened_at).toLocaleString("fr-DZ")}</div>
+                  <div className="text-gray-400 text-[11px]">{serverDate(c.opened_at).toLocaleString("fr-FR")}</div>
                 </button>
               ))}
             </div>
