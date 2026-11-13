@@ -132,13 +132,21 @@ new server: same `S3_*` values in `/opt/luxe/shared/.env`, `rclone` installed):
    older database still uses):
 
    - download that night's `luxe_backup_<ts>.sha256` (same folder as its
-     `luxe_db_…`): it lists the `luxe_media_….tar.gz.enc` that covers that
-     night (the last one made, when photos had not changed or disk was low);
+     `luxe_db_…`): it lists the `luxe_media_….tar.gz.enc` of that night —
+     made that night, or the last one made before when photos had not
+     changed. **Limits:**
+     - on a night with low disk space no new photo archive is made, so the
+       listed one is older and lacks the photos added or changed since;
+     - if the list has **no** `luxe_media_` line, no photo archive existed
+       yet (first nights, or disk always low): that night's photos cannot be
+       restored from these backups — look for a CMS backup made "+ photos"
+       or the original photo files;
    - download that archive from `<host>/media/`;
    - if it is no longer there (only the newest `BACKUP_MEDIA_KEEP` photo
-     archives are kept off-site), take the oldest one still listed under
-     `<host>/media/` — the closest to that night — and expect a few photos to
-     be missing or extra.
+     archives are kept off-site), the oldest one still under `<host>/media/`
+     is the closest, but it can differ a lot from that night's database
+     (missing or extra photos, depending on how much the catalogue changed):
+     check the shop's pages after the restore and re-upload what is missing.
 
    Then put the photos back (the API container must be running):
 
