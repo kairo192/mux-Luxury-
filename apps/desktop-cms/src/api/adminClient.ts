@@ -25,7 +25,10 @@ function resolveDefaultApiBaseUrl(): string {
   }
   if (typeof window !== "undefined" && window.location) {
     const h = window.location.hostname;
-    if (h === "localhost" || h === "127.0.0.1" || h === "tauri.localhost") {
+    // Development only (vite / `tauri dev` on localhost:1420). The INSTALLED
+    // app runs at http://tauri.localhost on Windows: it must use the real
+    // server below, never this PC.
+    if (h === "localhost" || h === "127.0.0.1") {
       return "http://127.0.0.1:8000/api/v1";
     }
   }

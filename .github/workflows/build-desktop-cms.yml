@@ -46,6 +46,9 @@ jobs:
   build-windows:
     name: Build & (if tag) sign Tauri 2 Windows installer
     runs-on: windows-latest
+    env:
+      # The installed CMS talks to the production server (also the built-in default).
+      VITE_CMS_API_URL: https://api.mus-luxury.com/api/v1
     defaults:
       run:
         working-directory: ./apps/desktop-cms

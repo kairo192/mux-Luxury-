@@ -1,0 +1,5 @@
+# Link the Microsoft C runtime INTO the program: the installed CMS then starts on
+# any Windows 10/11 PC without the "Visual C++ Redistributable" being installed
+# (no "VCRUNTIME140.dll was not found" error on a fresh laptop).
+[target.x86_64-pc-windows-msvc]
+rustflags = ["-C", "target-feature=+crt-static"]
