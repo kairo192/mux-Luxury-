@@ -24,7 +24,7 @@ step needs something only they have (passwords, VPS IP, provider accounts).
 ## Part 0. Read first (10 minutes)
 1. `docs/WORK_SUMMARY_2026-11-11.md`: what was done and the owner's to-do list.
 2. `docs/OPERATIONS_GUIDE.md`: how the PC, the VPS, GitHub, backups and updates work.
-3. `HANDOFF_FOR_ANTIGRAVITY.md`, sections **0** (newest) and **0 LATEST ROUND**: technical details for you.
+3. `docs/handoff/HANDOFF_FOR_ANTIGRAVITY.md`, sections **0** (newest) and **0 LATEST ROUND**: technical details for you.
 
 ## Part A. Update the codebase on this PC
 ```powershell
@@ -37,7 +37,7 @@ git merge origin/feat/pos-core-cash-register-18lsk6
 ```
 - The commits you must end up with include `d789d5f`, `0db9dbc`, `e9bea80`, `c32dfd3`, `f7088b4` (check with
   `git log --oneline -8`).
-- If there are conflicts: keep **both** sides' intent. In `HANDOFF_FOR_ANTIGRAVITY.md`, keep all
+- If there are conflicts: keep **both** sides' intent. In `docs/handoff/HANDOFF_FOR_ANTIGRAVITY.md`, keep all
   sections. In code, prefer the cloud version for the files listed in the summary (§5–§8) unless your
   change is newer and unrelated. Then run the tests (Part B) before committing the merge.
 - Install and refresh dependencies:
@@ -132,4 +132,4 @@ Write `docs/ANTIGRAVITY_REPORT_<date>.md` with:
 - What you checked by hand on Windows (notifications, categories, database panel): OK / problem + screenshot path.
 - C1–C5: done / waiting for owner (say exactly what is missing).
 Commit it and push `feat/pos-core-cash-register`. Then add a short "section 0" at the top of
-`HANDOFF_FOR_CLAUDE.md` so Claude Code can continue from where you stopped.
+`docs/handoff/HANDOFF_FOR_CLAUDE.md` so Claude Code can continue from where you stopped.

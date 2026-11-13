@@ -150,7 +150,7 @@ The nightly backup now also includes a snapshot that can be restored in one clic
   data lives; how sync and updates work; backups, restore and "new database"; the incident list and
   remaining risks; key status; routine checklist.
 - `docs/DESKTOP_CMS_RELEASE_GUIDE.md`: release and update process (updated).
-- `HANDOFF_FOR_ANTIGRAVITY.md`: technical notes for the other AI working on the PC branch (updated).
+- `docs/handoff/HANDOFF_FOR_ANTIGRAVITY.md`: technical notes for the other AI working on the PC branch (updated).
 
 ## 11. Online shop — Step 1 fixes (after the storefront review)
 

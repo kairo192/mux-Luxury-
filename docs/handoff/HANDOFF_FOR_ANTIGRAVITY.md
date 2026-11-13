@@ -349,7 +349,7 @@ M  backend/tests/test_security_hardening.py
 
 I'll commit + push this as one atomic change before this session ends. If the session ends **before** that push, just `git diff` to see the full picture.
 
-**This `HANDOFF_FOR_ANTIGRAVITY.md` file itself is part of that commit.**
+**This `docs/handoff/HANDOFF_FOR_ANTIGRAVITY.md` file itself is part of that commit.**
 
 ---
 
@@ -367,8 +367,8 @@ I'll commit + push this as one atomic change before this session ends. If the se
    - For every page, add RTL polish per the recipe's §5 (test with the
      language toggle — no reload needed; the provider updates
      `document.documentElement.{lang,dir}` live).
-2. **Keep working on the `docs/specs/claude code.md` modules.** The handoff you left me (`HANDOFF_FOR_CLAUDE.md`) listed the roadmap; it's still accurate except that the backup admin UI and WhatsApp recovery UI are now intentionally gone from the CMS. Do not re-add them.
-3. **Keep writing to `HANDOFF_FOR_CLAUDE.md`.** The user wants a continuously-updated handoff doc that documents the current state so the next Claude session can resume without context loss. You own that file.
+2. **Keep working on the `docs/specs/claude code.md` modules.** The handoff you left me (`docs/handoff/HANDOFF_FOR_CLAUDE.md`) listed the roadmap; it's still accurate except that the backup admin UI and WhatsApp recovery UI are now intentionally gone from the CMS. Do not re-add them.
+3. **Keep writing to `docs/handoff/HANDOFF_FOR_CLAUDE.md`.** The user wants a continuously-updated handoff doc that documents the current state so the next Claude session can resume without context loss. You own that file.
 4. **Three blockers from your own earlier audit (BLOCKER-01/02/03) are untouched.** I deliberately did not change them because they need the owner's input (domain confirmation, Dockerfile build stage, Tauri signing keypair). Confirm with the user before changing.
 5. **Do NOT regenerate the production `.env`** — the user already has the values from my run. If they need fresh entropy, re-run `backend/scripts/generate_production_env.py --force` and have them re-copy to the VPS.
 
@@ -385,7 +385,7 @@ leaves the storefront empty (demo catalog gated behind
 LUXE_SEED_DEMO_PRODUCTS=1). Adds a production .env generator with
 cryptographically strong values for every secret the stack owns.
 
-Details in HANDOFF_FOR_ANTIGRAVITY.md.
+Details in docs/handoff/HANDOFF_FOR_ANTIGRAVITY.md.
 ```
 
 Followed by the standard `Co-Authored-By: Claude Opus 4.7 <noreply@anthropic.com>` trailer.
@@ -403,7 +403,7 @@ Followed by the standard `Co-Authored-By: Claude Opus 4.7 <noreply@anthropic.com
 
 ## 7. When your limits are near
 
-Mirror what I did here: write `HANDOFF_FOR_CLAUDE.md` with the shape above. Include **what you just committed**, **what's uncommitted**, **what tests pass**, and **what section of `docs/specs/claude code.md` to pick up next**. Leave the backend running if you had it running — I'll probe `/api/v1/health` to know.
+Mirror what I did here: write `docs/handoff/HANDOFF_FOR_CLAUDE.md` with the shape above. Include **what you just committed**, **what's uncommitted**, **what tests pass**, and **what section of `docs/specs/claude code.md` to pick up next**. Leave the backend running if you had it running — I'll probe `/api/v1/health` to know.
 
 Good luck. The user is watching the shop open in Blida — every decision has to work in the real boutique.
 

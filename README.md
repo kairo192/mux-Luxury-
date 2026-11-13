@@ -37,23 +37,31 @@ luxe-ecommerce/
 │   ├── migrations/
 │   │   ├── 001_initial_schema.sql          # SQLite schema (41 relational tables)
 │   │   └── 001_initial_schema_postgres.sql # PostgreSQL 16 schema (100% parity)
-│   └── tests/                    # 300 automated backend tests (SQLite + PostgreSQL 16)
+│   ├── scripts/                  # Operator tools (production .env generator, owner reset…); dev/ = benchmarks
+│   └── tests/                    # 346 automated backend tests (SQLite + PostgreSQL 16)
 ├── apps/
 │   ├── storefront/               # Online shop: one index.html (vanilla JS, FR/AR/EN) + Vite/Tailwind (guest COD, 69 wilayas)
 │   └── desktop-cms/              # Tauri 2.0 + Rust Windows Desktop CMS & POS (wincred token storage)
 ├── e2e/                          # Browser tests of the shop + CMS together (Playwright), see e2e/README.md
 ├── infrastructure/               # Nginx reverse proxy, automated backup & deploy scripts
 ├── scripts/windows/              # Windows helpers (VC++ build tools, local CMS window)
-└── docs/                         # Production documentation & runbooks (docs/specs: original specifications)
+├── scratch/                      # Generated secrets only (production.env, git-ignored — never committed)
+└── docs/                         # Documentation — start with docs/README.md (index)
     ├── architecture/             # SYSTEM_ARCHITECTURE.md (Topology & 41 tables)
     ├── deployment/               # VPS_DEPLOYMENT.md (Octenium setup) & CI_CD.md
     ├── security/                 # SECURITY_HARDENING.md & SECRETS_MANAGEMENT.md
-    └── operations/               # BACKUP_AND_RESTORE.md, MAINTENANCE.md & TROUBLESHOOTING.md
+    ├── operations/               # BACKUP_AND_RESTORE.md, MAINTENANCE.md & TROUBLESHOOTING.md
+    ├── cicd/                     # CI/CD, releases, rollback, off-site backups, POS hardware
+    ├── handoff/                  # Notes & prompts for the AI assistants on the PC
+    ├── specs/                    # Original specifications (as written by the owner)
+    └── archive/                  # Older documents kept for history
 ```
 
 ---
 
 ## 3. Production Documentation Index
+
+Full index: **[docs/README.md](docs/README.md)**.
 
 - [System Architecture](docs/architecture/SYSTEM_ARCHITECTURE.md)
 - [Desktop CMS / POS architecture](apps/desktop-cms/ARCHITECTURE.md) — folders, data flow, permissions, how to add a screen
@@ -63,7 +71,7 @@ luxe-ecommerce/
 - [CI/CD & GitHub Actions](docs/deployment/CI_CD.md)
 - [Security Hardening Standards](docs/security/SECURITY_HARDENING.md)
 - [Secrets Management Policy](docs/security/SECRETS_MANAGEMENT.md)
-- [Backup & Disaster Recovery Runbook](docs/operations/BACKUP_AND_RESTORE.md)
+- [Backups & restore (owner)](docs/OPERATIONS_GUIDE.md) §5 · [Off-site copy & disaster recovery](docs/cicd/BACKUP_OFFSITE.md)
 - [Operations & Routine Maintenance](docs/operations/MAINTENANCE.md)
 - [Troubleshooting & Diagnostics](docs/operations/TROUBLESHOOTING.md)
 
