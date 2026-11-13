@@ -127,8 +127,20 @@ new server: same `S3_*` values in `/opt/luxe/shared/.env`, `rclone` installed):
    the CMS instead, download the `luxe_app_….json.gz.enc` of the same night.
 
    **Photos are separate.** Neither the nightly database dump nor the nightly
-   CMS snapshot contains them. Download the newest `<host>/media/luxe_media_….tar.gz.enc`
-   too and put the photos back (the API container must be running):
+   CMS snapshot contains them. Take the photo archive **of the night you
+   restore**, not simply the newest one (a newer archive can lack photos an
+   older database still uses):
+
+   - download that night's `luxe_backup_<ts>.sha256` (same folder as its
+     `luxe_db_…`): it lists the `luxe_media_….tar.gz.enc` that covers that
+     night (the last one made, when photos had not changed or disk was low);
+   - download that archive from `<host>/media/`;
+   - if it is no longer there (only the newest `BACKUP_MEDIA_KEEP` photo
+     archives are kept off-site), take the oldest one still listed under
+     `<host>/media/` — the closest to that night — and expect a few photos to
+     be missing or extra.
+
+   Then put the photos back (the API container must be running):
 
    ```bash
    cd /var/lib/luxe/backups
