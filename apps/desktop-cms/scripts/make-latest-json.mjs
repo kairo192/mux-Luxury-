@@ -72,7 +72,12 @@ if (existsSync(msiDir)) {
   }
 }
 
-const url = `https://github.com/${repo}/releases/download/${tag}/${installerName}`;
+// Installed apps download from the shop's own server (the GitHub repository is
+// private: its release files cannot be downloaded without a login).
+const baseUrl = (arg("base-url", process.env.UPDATE_BASE_URL || "") || "").replace(/\/+$/, "");
+const url = baseUrl
+  ? `${baseUrl}/${installerName}`
+  : `https://github.com/${repo}/releases/download/${tag}/${installerName}`;
 const signature = readFileSync(signaturePath, "utf8").trim();
 const platform = { signature, url };
 

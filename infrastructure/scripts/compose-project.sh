@@ -31,6 +31,23 @@ luxe_ensure_compose_project() {
   export COMPOSE_PROJECT_NAME="$name"
 }
 
+# Folder served at https://mus-luxury.com/downloads/ (desktop CMS installer and
+# signed update files, uploaded by the release workflow). Kept in shared/ so it
+# survives every release; recorded in the shared .env so manual `docker compose`
+# commands mount the same folder.
+luxe_ensure_downloads_dir() {
+  local env_file="$1" shared_dir="$2" dir
+  dir=$(grep -E '^[[:space:]]*LUXE_DOWNLOADS_DIR[[:space:]]*=' "$env_file" 2>/dev/null \
+    | tail -n 1 | cut -d= -f2- | tr -d "\"' \r\t" || true)
+  if [ -z "$dir" ]; then
+    dir="$shared_dir/downloads"
+    printf '\n# Desktop CMS installer + update files, served at /downloads/ (added by release-deploy.sh).\nLUXE_DOWNLOADS_DIR=%s\n' \
+      "$dir" >> "$env_file"
+  fi
+  mkdir -p "$dir/cms"
+  export LUXE_DOWNLOADS_DIR="$dir"
+}
+
 luxe_check_db_volume() {
   local want="${COMPOSE_PROJECT_NAME:?COMPOSE_PROJECT_NAME not set}_pgdata" others
   docker volume inspect "$want" >/dev/null 2>&1 && return 0

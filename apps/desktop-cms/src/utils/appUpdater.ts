@@ -3,7 +3,7 @@
 //
 // Thin state machine over the Rust commands in src-tauri/src/app_services.rs:
 //   updater_status  → is this build configured (public key baked in)?
-//   updater_check   → ask GitHub Releases' latest.json for a newer version
+//   updater_check   → ask the shop server's latest.json (mus-luxury.com/downloads/cms) for a newer version
 //   updater_install → download, verify signature, install, restart
 //
 // Checks run 15 s after start, then every 4 h. A found update raises an

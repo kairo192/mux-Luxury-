@@ -30,7 +30,7 @@ const UPDATER_PUBKEY: Option<&str> = option_env!("LUXE_UPDATER_PUBKEY");
 /// Where the signed release manifest lives. Kept in sync with
 /// tauri.conf.json → plugins.updater.endpoints (the plugin reads that one).
 const UPDATE_ENDPOINT: &str =
-    "https://github.com/kairo192/mux-Luxury-/releases/latest/download/latest.json";
+    "https://mus-luxury.com/downloads/cms/latest.json";
 
 const PROGRESS_EVENT: &str = "luxe://updater-progress";
 

@@ -3,14 +3,18 @@
  Mus Luxury - one-time setup of the keys GitHub needs (run on YOUR Windows PC)
 
  What it does, with nothing to type by hand:
-   1. Creates the app-update signing key (Tauri) + a strong random password.
-      -> every installed CMS only accepts updates signed with this key.
+   1. Checks the app-update signing key (Tauri). Its PUBLIC half is committed
+      (apps/desktop-cms/src-tauri/updater-key.pub) and every installed CMS only
+      accepts updates signed with the matching private key: the owner received
+      that private key file + password; put them in %USERPROFILE%\.tauri\ as
+      mux_luxury.key and mux_luxury.key.password. A new key is NEVER created
+      while a public key is committed (it would make every update fail).
    2. Creates the SSH deploy key GitHub Actions uses to publish to the VPS.
    3. If the GitHub CLI (gh) is installed and logged in, stores everything in
       the repository directly:
         secrets   TAURI_SIGNING_PRIVATE_KEY, TAURI_SIGNING_PRIVATE_KEY_PASSWORD,
                   PRODUCTION_SSH_PRIVATE_KEY, PRODUCTION_SSH_USER, PRODUCTION_SSH_HOST
-        variables TAURI_UPDATER_PUBKEY, PRODUCTION_URL, PRODUCTION_HEALTH_URL
+        variables PRODUCTION_URL, PRODUCTION_HEALTH_URL
    4. Prints the ONE line to give to the VPS (public deploy key).
 
  The private keys are created on this PC and never printed. Existing keys
@@ -57,13 +61,49 @@ function New-StrongPassword {
   return ([Convert]::ToBase64String($bytes) -replace '[+/=]', 'x')
 }
 
+# Key id of a Tauri key/signature file (base64 of a minisign text file: the
+# binary line holds 2 algorithm bytes, then the 8-byte key id).
+function Get-MinisignKeyId([string]$path) {
+  $text = [Text.Encoding]::UTF8.GetString([Convert]::FromBase64String((Get-Content $path -Raw).Trim()))
+  $line = $text -split "`n" | Where-Object { $_.Trim() -and -not $_.StartsWith("untrusted comment") -and -not $_.StartsWith("trusted comment") } | Select-Object -First 1
+  return [BitConverter]::ToString([Convert]::FromBase64String($line.Trim()), 2, 8)
+}
+
+# Signs a scratch file with the private key and checks the signature's key id
+# against the committed public key: the only proof that installed apps will
+# accept updates signed with this key (the .pub file next to it may be absent).
+function Assert-KeyMatchesRepo([string]$keyPath, [string]$passPath, [string]$pubPath) {
+  $probe = Join-Path ([IO.Path]::GetTempPath()) ("luxe-key-probe-" + [Guid]::NewGuid() + ".txt")
+  Set-Content -Path $probe -Value "probe" -Encoding ascii
+  try {
+    Push-Location (Join-Path $root "apps\desktop-cms")
+    try {
+      npx --yes tauri signer sign -f "$keyPath" -p ((Get-Content $passPath -Raw).Trim()) "$probe" | Out-Null
+    } finally { Pop-Location }
+    if ($LASTEXITCODE -ne 0 -or -not (Test-Path "$probe.sig")) {
+      throw "Could not sign with $keyPath (wrong password file?). Nothing was stored."
+    }
+    if ((Get-MinisignKeyId "$probe.sig") -ne (Get-MinisignKeyId $pubPath)) {
+      throw "The key in $keyPath is NOT the one whose public half is committed (apps\desktop-cms\src-tauri\updater-key.pub). Use the key file you received; nothing was stored."
+    }
+  } finally { Remove-Item -Force -ErrorAction SilentlyContinue $probe, "$probe.sig" }
+}
+
 # ----------------------------------------------------------------- 1. Tauri
 Step "1/4  App-update signing key"
 New-Item -ItemType Directory -Force -Path $tauriDir | Out-Null
+$repoPub = Join-Path $root "apps\desktop-cms\src-tauri\updater-key.pub"
+$storeTauri = $true
 if ((Test-Path $signKey) -and (Test-Path $signPass)) {
-  Ok "existing key re-used: $signKey"
+  if (Test-Path $repoPub) { Assert-KeyMatchesRepo $signKey $signPass $repoPub }
+  Ok "existing key re-used (matches the committed public key): $signKey"
 } elseif (Test-Path $signKey) {
   throw "A signing key exists at $signKey but its password file $signPass is missing. Restore the password file instead of creating a new key."
+} elseif (Test-Path $repoPub) {
+  # The key pair already exists (public half committed). Do not create another.
+  $storeTauri = $false
+  Warn "No private signing key in ${tauriDir}: the TAURI_* secrets are left as they are in GitHub."
+  Warn "If they are not set yet, copy the key file you received to $signKey and its password to $signPass, then re-run."
 } else {
   $pw = New-StrongPassword
   Push-Location (Join-Path $root "apps\desktop-cms")
@@ -73,9 +113,9 @@ if ((Test-Path $signKey) -and (Test-Path $signPass)) {
   Set-Content -Path $signPass -Value $pw -NoNewline -Encoding ascii
   Restrict-ToCurrentUser $signKey
   Restrict-ToCurrentUser $signPass
-  Ok "created $signKey (+ password file, readable only by $($env:USERNAME))"
+  Copy-Item $signPub $repoPub
+  Ok "created $signKey (+ password file, readable only by $($env:USERNAME)); commit $repoPub"
 }
-if (-not (Test-Path $signPub)) { throw "Public key $signPub not found." }
 
 # ------------------------------------------------------------- 2. SSH key
 Step "2/4  Deploy SSH key (GitHub Actions -> VPS)"
@@ -98,12 +138,12 @@ $gh = Get-Command gh -ErrorAction SilentlyContinue
 $ghReady = $false
 if ($gh) { gh auth status 2>$null | Out-Null; $ghReady = ($LASTEXITCODE -eq 0) }
 if ($ghReady) {
-  Get-Content $signKey -Raw | gh secret set TAURI_SIGNING_PRIVATE_KEY --repo $Repo
-  Assert-Stored TAURI_SIGNING_PRIVATE_KEY
-  Get-Content $signPass -Raw | gh secret set TAURI_SIGNING_PRIVATE_KEY_PASSWORD --repo $Repo
-  Assert-Stored TAURI_SIGNING_PRIVATE_KEY_PASSWORD
-  gh variable set TAURI_UPDATER_PUBKEY --repo $Repo --body ((Get-Content $signPub -Raw).Trim())
-  Assert-Stored TAURI_UPDATER_PUBKEY
+  if ($storeTauri) {
+    Get-Content $signKey -Raw | gh secret set TAURI_SIGNING_PRIVATE_KEY --repo $Repo
+    Assert-Stored TAURI_SIGNING_PRIVATE_KEY
+    Get-Content $signPass -Raw | gh secret set TAURI_SIGNING_PRIVATE_KEY_PASSWORD --repo $Repo
+    Assert-Stored TAURI_SIGNING_PRIVATE_KEY_PASSWORD
+  }
   Get-Content $deployKey -Raw | gh secret set PRODUCTION_SSH_PRIVATE_KEY --repo $Repo
   Assert-Stored PRODUCTION_SSH_PRIVATE_KEY
   gh secret set PRODUCTION_SSH_USER --repo $Repo --body $DeployUser
