@@ -1,39 +1,32 @@
 #!/usr/bin/env bash
 # =============================================================================
-# Mus Luxury — off-site backup upload
+# Mus Luxury — off-site copy of the nightly backup.
 #
-# Picks the newest encrypted archives + sha256 manifest in $BACKUP_DIR and
-# pushes them to an S3-compatible bucket. Default target is AWS S3 (eu-west-3
-# per the shop's existing .env.example) but any endpoint speaking the S3 HTTP
-# API works: Wasabi, Backblaze B2, Scaleway, MinIO, Hetzner, DigitalOcean
-# Spaces. The transport is the only thing the operator picks; we never run
-# a provider SDK.
+# Sends the files of the last backup run (the newest luxe_backup_<ts>.sha256
+# manifest and every file it lists) to S3-compatible storage, then deletes
+# old copies there so a FREE plan never fills up:
+#   - database files older than OFFSITE_RETENTION_DAYS (default 30) days;
+#   - photo archives beyond the newest BACKUP_MEDIA_KEEP (default 3) — the
+#     newest ones are kept whatever their age (photos may not change for months).
 #
-# Why its own script: the nightly cron needs three steps (dump → upload →
-# verify). Keeping each in its own file means a single failing step does not
-# tie up the retention pruning that lives in the dump script, and the cron
-# installer can chain them with && so a failure on upload actually alerts
-# instead of being swallowed by "|| true".
+# Works with any S3-compatible storage. Free plans: Backblaze B2 and
+# Cloudflare R2 (10 GB each). Paid: Wasabi, Scaleway, OVH, AWS…
+# Only the standard storage class is used (the one free plans cover).
 #
-# Required env (from /opt/luxe/shared/.env):
+# Tool: rclone (`apt-get install -y rclone`; installed by vps-bootstrap.sh).
+# It is configured from the .env values below — no rclone config file.
+#
+# Settings (from /opt/luxe/shared/.env):
 #   S3_BACKUP_ENABLED=true
-#   S3_ENDPOINT_URL=https://s3.eu-west-3.amazonaws.com
-#   S3_REGION=eu-west-3
-#   S3_BUCKET_NAME=mus-luxury-backups
-#   S3_ACCESS_KEY_ID=...
-#   S3_SECRET_ACCESS_KEY=...
-#   (optional)  S3_BUCKET_PREFIX=db-nightly  — path inside the bucket.
-#   (optional)  OFFSITE_RETENTION_DAYS=90    — lifecycle hint used in logs.
+#   S3_ENDPOINT_URL      e.g. https://s3.eu-central-003.backblazeb2.com
+#                        or   https://<account-id>.r2.cloudflarestorage.com
+#   S3_REGION            e.g. eu-central-003 (B2) / auto (R2)
+#   S3_BUCKET_NAME, S3_ACCESS_KEY_ID, S3_SECRET_ACCESS_KEY
+#   S3_BUCKET_PREFIX     folder inside the bucket (default luxe)
+#   OFFSITE_RETENTION_DAYS, BACKUP_MEDIA_KEEP
 #
-# Depends on the `aws` CLI being installed on the VPS. The CLI's small,
-# `apt-get install -y awscli` adds ~30 MB. We deliberately do NOT install
-# it from pip inside the app container — upload runs on the host, not in
-# the container, and tying it to the app would couple deploy cadences.
-#
-# Exit codes:
-#   0  — one or more archives uploaded successfully
-#   1  — nothing to upload (empty backup dir, misconfig)
-#   2  — upload failed; message on stderr, cron should alert
+# Exit codes: 0 uploaded (or off-site copy switched off) · 1 nothing to
+# upload · 2 upload failed (cron alerts). A failed clean-up only warns.
 # =============================================================================
 set -euo pipefail
 
@@ -43,29 +36,44 @@ LOG_PREFIX="[offsite-upload]"
 log()  { printf '%s %s %s\n' "$(date -u +%FT%TZ)" "$LOG_PREFIX" "$*"; }
 fail() { log "FATAL: $*" >&2; exit 2; }
 
-if [ "${S3_BACKUP_ENABLED:-false}" != "true" ]; then
-  log "S3_BACKUP_ENABLED is not 'true'; off-site copy skipped. Set it in"
-  log "/opt/luxe/shared/.env to enable the nightly upload."
-  exit 0
-fi
+enabled="${S3_BACKUP_ENABLED:-false}"
+case "${enabled,,}" in
+  true|1|yes) ;;
+  *) log "S3_BACKUP_ENABLED is not on: off-site copy skipped (backups stay on this server)."
+     exit 0 ;;
+esac
 
-for v in S3_ENDPOINT_URL S3_REGION S3_BUCKET_NAME S3_ACCESS_KEY_ID S3_SECRET_ACCESS_KEY; do
-  if [ -z "${!v:-}" ] || [[ "${!v}" == \<CHANGE_ME* ]] || [[ "${!v}" == \<FILL_IN* ]]; then
+for v in S3_ENDPOINT_URL S3_BUCKET_NAME S3_ACCESS_KEY_ID S3_SECRET_ACCESS_KEY; do
+  value="${!v:-}"
+  if [ -z "$value" ] || [[ "$value" == \<* ]]; then
     fail "$v is not configured in /opt/luxe/shared/.env"
   fi
 done
 
-command -v aws >/dev/null 2>&1 || fail "aws CLI not found; install with: apt-get install -y awscli"
+command -v rclone >/dev/null 2>&1 || fail "rclone not found; install it with: sudo apt-get install -y rclone"
+
+RETENTION_DAYS="${OFFSITE_RETENTION_DAYS:-30}"
+MEDIA_KEEP="${BACKUP_MEDIA_KEEP:-3}"
+[[ "$RETENTION_DAYS" =~ ^[0-9]+$ ]] && [ "$RETENTION_DAYS" -ge 1 ] || fail "OFFSITE_RETENTION_DAYS must be a number of days"
+[[ "$MEDIA_KEEP" =~ ^[0-9]+$ ]] && [ "$MEDIA_KEEP" -ge 1 ] || fail "BACKUP_MEDIA_KEEP must be 1 or more"
+
+# rclone remote "offsite", defined only through the environment of this script.
+export RCLONE_CONFIG_OFFSITE_TYPE=s3
+export RCLONE_CONFIG_OFFSITE_PROVIDER=Other
+export RCLONE_CONFIG_OFFSITE_ENDPOINT="$S3_ENDPOINT_URL"
+export RCLONE_CONFIG_OFFSITE_REGION="${S3_REGION:-auto}"
+export RCLONE_CONFIG_OFFSITE_ACCESS_KEY_ID="$S3_ACCESS_KEY_ID"
+export RCLONE_CONFIG_OFFSITE_SECRET_ACCESS_KEY="$S3_SECRET_ACCESS_KEY"
+# Keys limited to one bucket (B2 / R2) may not list or create buckets.
+export RCLONE_CONFIG_OFFSITE_NO_CHECK_BUCKET=true
+export RCLONE_CONFIG=/dev/null
+RCLONE=(rclone --retries 3 --low-level-retries 5 --contimeout 30s --timeout 5m)
 
 if [ ! -d "$BACKUP_DIR" ]; then
   log "backup dir $BACKUP_DIR does not exist; nothing to upload"
   exit 1
 fi
 
-# Upload exactly the set written by the last backup run: the newest
-# luxe_backup_<ts>.sha256 manifest and every file it lists (database dump,
-# photos, CMS snapshot). Picking by "newest timestamp in any file name" could
-# upload a partial set when two files were written in different seconds.
 manifest=$(ls -1t "$BACKUP_DIR"/luxe_backup_*.sha256 2>/dev/null | head -n 1 || true)
 if [ -z "$manifest" ]; then
   log "no luxe_backup_*.sha256 manifest found in $BACKUP_DIR"
@@ -75,43 +83,58 @@ latest_ts=$(basename "$manifest" | grep -oE '[0-9]{8}_[0-9]{6}' | head -n 1)
 mapfile -t set_files < <(awk '{print $2}' "$manifest" | sed 's/^\*//')
 set_files+=("$(basename "$manifest")")
 
-log "uploading archive set for timestamp $latest_ts"
+prefix="${S3_BUCKET_PREFIX:-luxe}"
+host="${HOSTNAME:-$(hostname -s 2>/dev/null || echo server)}"
+base="offsite:${S3_BUCKET_NAME}/${prefix}/${host}"
+date_folder="${latest_ts:0:4}/${latest_ts:4:2}/${latest_ts:6:2}"
 
-prefix="${S3_BUCKET_PREFIX:-db-nightly}"
-host="${HOSTNAME:-$(hostname -s 2>/dev/null || echo unknown-host)}"
-date_folder="$(date -u -d "${latest_ts:0:8}" +%Y/%m/%d 2>/dev/null || date -u +%Y/%m/%d)"
-s3_path="s3://${S3_BUCKET_NAME}/${prefix}/${host}/${date_folder}"
-
+log "uploading the backup of $latest_ts to ${S3_BUCKET_NAME}/${prefix}/${host}/${date_folder}"
 uploaded=0
 failed=0
 for name in "${set_files[@]}"; do
   f="$BACKUP_DIR/$name"
   [ -f "$f" ] || { log "  missing $name"; failed=$((failed + 1)); continue; }
-  log "  → $(basename "$f")"
-  if AWS_ACCESS_KEY_ID="$S3_ACCESS_KEY_ID" \
-     AWS_SECRET_ACCESS_KEY="$S3_SECRET_ACCESS_KEY" \
-     AWS_DEFAULT_REGION="$S3_REGION" \
-     aws --endpoint-url "$S3_ENDPOINT_URL" \
-         s3 cp "$f" "$s3_path/$(basename "$f")" \
-         --only-show-errors \
-         --storage-class STANDARD_IA; then
+  log "  → $name"
+  if "${RCLONE[@]}" copyto "$f" "$base/$date_folder/$name"; then
     uploaded=$((uploaded + 1))
   else
     failed=$((failed + 1))
-    log "    upload failed for $(basename "$f")"
+    log "    upload failed for $name"
   fi
 done
 
-if [ "$uploaded" -eq 0 ]; then
-  fail "no archives uploaded (failed: $failed)"
-fi
+[ "$uploaded" -gt 0 ] || fail "no file uploaded (failed: $failed)"
+[ "$failed" -eq 0 ] || fail "uploaded $uploaded file(s) but $failed failed"
+log "uploaded $uploaded file(s)"
 
-log "uploaded $uploaded file(s) to $s3_path (failed: $failed)"
+# ---- Clean-up: keep the storage under a free plan's limit -------------------
+listing=$("${RCLONE[@]}" lsf -R --files-only "$base" 2>/dev/null) || {
+  log "WARNING: could not list the off-site copies; old ones were not removed"
+  exit 0
+}
+cutoff=$(date -u -d "-${RETENTION_DAYS} days" +%Y%m%d)
+mapfile -t media_keep < <(printf '%s\n' "$listing" | grep -E '(^|/)luxe_media_[0-9]{8}_[0-9]{6}' \
+  | awk -F/ '{print $NF "\t" $0}' | sort -r | head -n "$MEDIA_KEEP" | cut -f2)
 
-retention_hint="${OFFSITE_RETENTION_DAYS:-}"
-if [ -n "$retention_hint" ]; then
-  log "reminder: configure bucket lifecycle to expire after ${retention_hint}d"
-  log "          aws CLI cannot set this without the bucket's own policy"
-fi
+removed=0
+while IFS= read -r path; do
+  [ -n "$path" ] || continue
+  name="${path##*/}"
+  ts=$(printf '%s' "$name" | grep -oE '[0-9]{8}_[0-9]{6}' | head -n 1 || true)
+  [ -n "$ts" ] || continue                       # not a backup file: leave it
+  if [[ "$name" == luxe_media_* ]]; then
+    keep=0
+    for k in "${media_keep[@]}"; do [ "$k" = "$path" ] && keep=1; done
+    [ "$keep" -eq 1 ] && continue
+  elif [ "${ts:0:8}" -ge "$cutoff" ]; then
+    continue
+  fi
+  if "${RCLONE[@]}" deletefile "$base/$path"; then
+    removed=$((removed + 1))
+  else
+    log "WARNING: could not remove old copy $path"
+  fi
+done <<< "$listing"
 
+log "clean-up: removed $removed old file(s) (database files older than ${RETENTION_DAYS} days, photo archives beyond the newest ${MEDIA_KEEP})"
 exit 0

@@ -39,7 +39,7 @@ export DEBIAN_FRONTEND=noninteractive
 apt-get update -y
 apt-get install -y --no-install-recommends \
   ca-certificates curl gnupg openssl unzip jq ufw \
-  unattended-upgrades fail2ban logrotate tzdata rsync \
+  unattended-upgrades fail2ban logrotate tzdata rsync rclone sqlite3 \
   python3 python3-venv python3-pip
 dpkg-reconfigure --frontend=noninteractive unattended-upgrades || true
 

@@ -30,7 +30,7 @@ Read, in this order: `docs/WORK_SUMMARY_2026-11-11.md` (sections 17–32), `HAND
 
 ## 2. Verify on Windows
 1. Backend: `cd backend; pip install -r requirements.txt; python -m unittest discover -s tests`
-   → expect **329 tests, all passing** (the 4 `@babel/core` tests that fail in the cloud should pass here if Node + babel are installed; report otherwise).
+   → expect **334 tests, all passing** (the 4 `@babel/core` tests that fail in the cloud should pass here if Node + babel are installed; report otherwise).
 2. Lint: `npm run lint` (ruff + TypeScript with no unused code allowed).
 3. Browser tests: `npm install --prefix e2e; npx --prefix e2e playwright install chromium; npm run test:e2e`
    → expect **34 passed**. They start their own server on ports 18000/11420/15173 with an empty database; they never touch real data.

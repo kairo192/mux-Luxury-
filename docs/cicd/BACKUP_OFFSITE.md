@@ -14,7 +14,7 @@ step is what makes this policy worth anything.
                │ && (stop on failure)
                ▼
 ┌─────────────────────────────┐
-│ upload_to_offsite.sh        │  ← picks newest timestamp, S3 STANDARD_IA
+│ upload_to_offsite.sh        │  ← last backup set → S3 (rclone), prunes old copies
 └──────────────┬──────────────┘
                │ && (upload failure still runs verify on what's on disk via ||)
                ▼
@@ -28,32 +28,41 @@ All three live under `infrastructure/backups/`. The cron installer
 
 ## Operator steps on the VPS
 
-1. Pick an S3-compatible bucket. Any of AWS S3, Wasabi, Backblaze B2,
-   Scaleway Object Storage, Hetzner, DigitalOcean Spaces, or self-hosted
-   MinIO works — we only use the S3 HTTP API.
+1. Pick S3-compatible storage. **Free 10 GB: Backblaze B2 or Cloudflare R2**
+   (step by step for B2: `docs/OPERATIONS_GUIDE.md` §5.4). Paid: Wasabi,
+   Scaleway, OVH, AWS, MinIO… Only the standard storage class is used.
+   On B2, set the bucket lifecycle to *Keep only the last version* (deleted
+   files are otherwise only hidden and still use space).
 
 2. In `/opt/luxe/shared/.env`, set:
 
    ```
    S3_BACKUP_ENABLED=true
-   S3_ENDPOINT_URL=https://s3.eu-west-3.amazonaws.com
-   S3_REGION=eu-west-3
+   S3_ENDPOINT_URL=https://s3.eu-central-003.backblazeb2.com
+   S3_REGION=eu-central-003            # R2: auto
    S3_BUCKET_NAME=mus-luxury-backups
    S3_ACCESS_KEY_ID=...
    S3_SECRET_ACCESS_KEY=...
    # optional:
-   S3_BUCKET_PREFIX=db-nightly
-   OFFSITE_RETENTION_DAYS=90
+   S3_BUCKET_PREFIX=luxe
+   OFFSITE_RETENTION_DAYS=30           # database copies; newest BACKUP_MEDIA_KEEP photo archives always kept
    ```
 
-3. Install the `aws` CLI (~30 MB, apt is fine):
+3. Tools (installed by `vps-bootstrap.sh`; on an older server):
 
    ```bash
-   sudo apt-get install -y awscli sqlite3
+   sudo apt-get install -y rclone sqlite3
    ```
 
-   `sqlite3` is for the verify step — it restores into a throwaway temp
-   DB so the live PG is never touched.
+   `rclone` sends the files (configured from the values above, no config
+   file). `sqlite3` is for the verify step — it restores into a throwaway
+   temp DB so the live PG is never touched.
+
+   After each upload the script deletes, **in the bucket**, database files
+   older than `OFFSITE_RETENTION_DAYS` and photo archives beyond the newest
+   `BACKUP_MEDIA_KEEP`, so a free plan never fills up. A failed upload exits 2
+   (cron alerts); a failed clean-up only warns. Test:
+   `backend/tests/test_offsite_upload.py`.
 
 4. Install the cron:
 
@@ -65,38 +74,26 @@ All three live under `infrastructure/backups/`. The cron installer
    `BACKUP_CRON_SCHEDULE` (default `30 2 * * *` = 02:30 UTC). Re-running
    is idempotent — overwriting the file is fine.
 
-5. Fire a manual round to confirm wiring without waiting for the cron:
+5. Fire a manual round to confirm wiring without waiting for the cron
+   (reads the .env safely, then backup → off-site copy → verification):
 
    ```bash
-   sudo -u luxe bash -lc '
-     set -a; . /opt/luxe/shared/.env; set +a
-     cd /opt/luxe/current
-     bash infrastructure/backups/backup_postgres_and_media.sh
-     bash infrastructure/backups/upload_to_offsite.sh
-     bash infrastructure/backups/verify_backup.sh
-   '
+   sudo bash /opt/luxe/current/infrastructure/backups/nightly_backup.sh
    ```
 
    Expected output ends with `OK — luxe_db_YYYYMMDD_HHMMSS.sql.gz.enc is
    verifiable`.
 
-## Bucket lifecycle (configure once, outside this repo)
+## Bucket lifecycle
 
-`upload_to_offsite.sh` writes objects with storage class
-`STANDARD_IA`. The bucket **must** have a lifecycle rule to expire
-them after `OFFSITE_RETENTION_DAYS`; the CLI cannot set the lifecycle
-from the host, so the owner configures it in the provider's console
-once per bucket:
+Old copies are deleted **by the upload script itself** (see step 3), so no
+lifecycle rule is needed to stop the bucket growing. Two provider settings
+still matter:
 
-- **AWS S3**: Bucket → Management → Lifecycle rules → create rule →
-  filter by prefix `db-nightly/`, action "Expire current versions" at
-  90 days.
-- **Wasabi / B2**: equivalent "Delete after N days" lifecycle rule in
-  their console.
-- **MinIO self-hosted**: `mc ilm add` command.
-
-Without the lifecycle, archives accumulate in the bucket and the owner
-pays storage forever.
+- **Backblaze B2**: lifecycle *Keep only the last version of the file*.
+  B2 keeps deleted files as hidden versions otherwise.
+- **AWS S3 / others with versioning on**: leave versioning off, or add a
+  rule that removes non-current versions after a few days.
 
 ## Monitoring integration
 

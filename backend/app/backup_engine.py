@@ -911,10 +911,10 @@ def database_info() -> Dict[str, Any]:
                 warnings.append(f"Dernière sauvegarde il y a {int(age_h)} h : la sauvegarde automatique de nuit ne tourne pas.")
         except Exception:
             pass
-    if os.getenv("S3_BACKUP_ENABLED", "false").strip().lower() != "true":
+    if os.getenv("S3_BACKUP_ENABLED", "false").strip().lower() not in ("true", "1", "yes"):
         warnings.append(
             "Aucune copie hors serveur : les sauvegardes restent sur le même serveur que la boutique. "
-            "Activez S3_BACKUP_ENABLED (stockage S3) pour survivre à la perte du VPS."
+            "Activez S3_BACKUP_ENABLED (stockage S3, 10 Go gratuits chez Backblaze B2 ou Cloudflare R2) pour survivre à la perte du VPS."
         )
 
     return {

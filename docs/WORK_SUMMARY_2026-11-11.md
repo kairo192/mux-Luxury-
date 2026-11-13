@@ -644,11 +644,27 @@ Your `scratch/production.env` was cleaned the same way (50 key lines + their sec
 check passes). The previous file is kept, git-ignored, as `scratch/production.before-cleanup-2026-11-12.env`.
 
 
+## 34. Off-site backup copy on a free plan
+
+The off-site copy could not have run on a free plan: it asked for the *infrequent access* storage class (not
+covered by Cloudflare R2's free tier, not offered by Backblaze B2), never deleted anything in the bucket (10 GB
+fills up), and needed the `aws` program (no longer in Ubuntu 24.04's packages).
+
+| Now | |
+|---|---|
+| Tool | `rclone` (Ubuntu package, installed by `vps-bootstrap.sh`), configured from the `.env` values — no config file |
+| Storage class | Standard (the one free plans cover) |
+| Clean-up in the bucket | Database copies older than `OFFSITE_RETENTION_DAYS` (default now 30) deleted; the newest `BACKUP_MEDIA_KEEP` photo archives always kept whatever their age; other files untouched |
+| Errors | Off-site copy switched off → nothing done; missing/placeholder key, rclone missing or failed upload → exit 2 (cron alerts); failed clean-up → warning |
+| Guide | `OPERATIONS_GUIDE.md` §5.4: Backblaze B2 step by step (incl. "Keep only the last version"), Cloudflare R2, getting a copy back, and the no-account option (Google Drive for desktop on the folder the CMS already fills automatically) |
+| Tests | `test_offsite_upload.py` (5 tests, runs the real script with a stand-in rclone); also run here against a local S3 server (moto): upload, standard class, clean-up as expected |
+
+
 ## Verification
 
 | Check | Result |
 |---|---|
-| Backend tests | 329 run on SQLite and on PostgreSQL 16 (incl. the end-to-end business day, round 18). Only 4 failures, all caused by `@babel/core` missing in the cloud container; those 4 pass with a substitute TypeScript compiler and pass in CI. |
+| Backend tests | 334 run on SQLite and on PostgreSQL 16 (incl. the end-to-end business day, round 18). Only 4 failures, all caused by `@babel/core` missing in the cloud container; those 4 pass with a substitute TypeScript compiler and pass in CI. |
 | CMS TypeScript + build | OK |
 | Rust (`cargo check`) | OK |
 | Browser tests (Playwright) | `e2e/`: 34 shop + CMS tests green on SQLite and PostgreSQL 16 (CI job). Earlier manual checks — notifications, message box queue, bell, update dialog, new-order alert, Arabic layout, category delete + reload, archived tab, database panel, backup, reset: all OK |

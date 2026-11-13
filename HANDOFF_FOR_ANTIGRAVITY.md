@@ -7,7 +7,12 @@
 
 ---
 
-## 0o. ONLY WORKING FEATURES (2026-11-12, latest)
+## 0p. OFF-SITE BACKUP ON A FREE PLAN (2026-11-13, latest)
+- `infrastructure/backups/upload_to_offsite.sh` uses rclone (not the aws CLI), standard storage class, and deletes
+  old copies in the bucket itself (DB files > OFFSITE_RETENTION_DAYS=30; newest BACKUP_MEDIA_KEEP photo archives kept).
+- Free: Backblaze B2 / Cloudflare R2 (10 GB). Owner steps: docs/OPERATIONS_GUIDE.md §5.4. Test: test_offsite_upload.py.
+
+## 0o. ONLY WORKING FEATURES (2026-11-12)
 - Removed everywhere: Chargily, Yalidine / ZR / Maystro APIs, SMTP, pixels, Google Maps API key (the Maps *link* in shop details stays), WhatsApp Cloud sending keys.
   Do not re-add them as "coming soon" keys: build the feature first, then register its keys.
 - Kept: COD + manual delivery, `wa.me` messages, WhatsApp webhook (2 optional keys), S3 off-site backup.

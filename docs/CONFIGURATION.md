@@ -25,7 +25,7 @@ password manager: without it no backup can be restored.
 
 | Feature | Keys |
 |---|---|
-| Off-site copy of the nightly backup (strongly recommended) | `S3_BACKUP_ENABLED=true`, `S3_ENDPOINT_URL`, `S3_REGION`, `S3_BUCKET_NAME`, `S3_ACCESS_KEY_ID`, `S3_SECRET_ACCESS_KEY` |
+| Off-site copy of the nightly backup (strongly recommended; free 10 GB at Backblaze B2 or Cloudflare R2, guide §5.4) | `S3_BACKUP_ENABLED=true`, `S3_ENDPOINT_URL`, `S3_REGION`, `S3_BUCKET_NAME`, `S3_ACCESS_KEY_ID`, `S3_SECRET_ACCESS_KEY` |
 | WhatsApp Cloud API webhook (delivery receipts) | `WHATSAPP_WEBHOOK_VERIFY_TOKEN`, `WHATSAPP_APP_SECRET` |
 | Owner account created at first start instead of the setup screen | `LUXE_SEED_DEMO_ACCOUNTS=1` + `ADMIN_INITIAL_EMAIL`, `ADMIN_INITIAL_FULL_NAME`, `ADMIN_INITIAL_PASSWORD` (12+ characters) |
 | Extra domains allowed to call the API | `CORS_ORIGINS` |

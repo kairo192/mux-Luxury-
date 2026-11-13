@@ -212,16 +212,50 @@ To undo a restore, restore the "Avant restauration" copy.
 
 ### 5.4 Off-site copy — the one setting still to switch on
 Today all backups sit on **the same server** as the shop. If the VPS provider
-loses the machine, the backups are lost with it. Enable the off-site copy:
+loses the machine, the backups are lost with it. Each night the server can also
+send its backup (already encrypted) to separate storage. **Free is enough**: the
+server deletes old copies there by itself (database copies after
+`OFFSITE_RETENTION_DAYS`, default 30 days; only the 3 newest photo archives), so a
+shop this size stays far under 10 GB.
 
-1. Create a storage bucket at any S3-compatible provider (Backblaze B2,
-   Wasabi, Scaleway, OVH…; a few euros per month).
-2. Put the 5 values in the server `.env`: `S3_ENDPOINT_URL`, `S3_REGION`,
-   `S3_BUCKET_NAME`, `S3_ACCESS_KEY_ID`, `S3_SECRET_ACCESS_KEY`, and set
-   `S3_BACKUP_ENABLED=true`.
-3. The next night's backup is copied there automatically, already encrypted.
+| Storage | Free | Notes |
+|---|---|---|
+| **Backblaze B2** (recommended) | 10 GB | Simple; see the steps below |
+| Cloudflare R2 | 10 GB | Region `auto`; endpoint `https://<account-id>.r2.cloudflarestorage.com` |
+| Wasabi, Scaleway, OVH, AWS… | — | Paid, a few euros a month; same settings |
 
-Until this is done, the CMS backup page shows a yellow warning.
+Either free plan may ask for a payment card at sign-up; under 10 GB nothing is charged.
+
+**Backblaze B2, step by step**
+1. Create an account at backblaze.com (B2 Cloud Storage).
+2. **Buckets → Create a Bucket**: a unique name (e.g. `mus-luxury-backups-xyz`), **Private**.
+3. On that bucket, **Lifecycle Settings → "Keep only the last version of the file"**.
+   Without this, deleted copies are only hidden and keep using space.
+4. Note the bucket's **Endpoint**, e.g. `s3.eu-central-003.backblazeb2.com`.
+5. **Application Keys → Add a New Application Key**: access to **this bucket only**,
+   **Read and Write**. Copy the `keyID` and the `applicationKey` (shown once).
+6. In the server `.env` (`/opt/luxe/shared/.env`):
+   ```
+   S3_BACKUP_ENABLED=true
+   S3_ENDPOINT_URL=https://s3.eu-central-003.backblazeb2.com   (your endpoint)
+   S3_REGION=eu-central-003                                     (the part after "s3.")
+   S3_BUCKET_NAME=mus-luxury-backups-xyz
+   S3_ACCESS_KEY_ID=<keyID>
+   S3_SECRET_ACCESS_KEY=<applicationKey>
+   ```
+7. Check: `cd /opt/luxe/current/backend && python3 -m app.settings check /opt/luxe/shared/.env`,
+   then run the backup once: `sudo bash /opt/luxe/current/infrastructure/backups/nightly_backup.sh`.
+   The files appear in **Browse Files** on Backblaze.
+
+**Getting a copy back** (the server is lost): download the newest `luxe_app_….json.gz.enc`
+from the storage website, then in the CMS **Sauvegardes & Sécurité → restore from a file**.
+The `BACKUP_ENCRYPTION_KEY` of the old server is needed (§5.2).
+
+**Without any storage account**: install Google Drive for desktop on the shop PC and
+add the folder `Documents\Mus Luxury\Sauvegardes` to its backup; the copies the CMS
+makes there by itself (§5.1) then go to the free 15 GB of your Google account.
+
+Until the off-site copy is on, the CMS backup page shows a yellow warning.
 
 ---
 

@@ -115,14 +115,17 @@ SETTINGS: List[Setting] = [
     # --------------------------------------------------------------- offsite
     Setting("S3_BACKUP_ENABLED", "offsite", "true = copy each night's backup to S3-compatible storage "
             "(strongly recommended: the VPS can be lost).", default="false", example="false"),
-    Setting("S3_ENDPOINT_URL", "offsite", "Storage address (e.g. Backblaze B2, Wasabi, OVH).",
+    Setting("S3_ENDPOINT_URL", "offsite", "Storage address. Free 10 GB: Backblaze B2 "
+            "(https://s3.<region>.backblazeb2.com) or Cloudflare R2 (https://<account-id>.r2.cloudflarestorage.com).",
             example="https://s3.eu-central-003.backblazeb2.com"),
-    Setting("S3_REGION", "offsite", "Storage region.", example="eu-central-003"),
+    Setting("S3_REGION", "offsite", "Storage region (Backblaze: in the endpoint, e.g. eu-central-003; R2: auto).",
+            example="eu-central-003"),
     Setting("S3_BUCKET_NAME", "offsite", "Bucket name.", example="mus-luxury-backups"),
     Setting("S3_BUCKET_PREFIX", "offsite", "Folder inside the bucket.", default="luxe", example="luxe"),
     Setting("S3_ACCESS_KEY_ID", "offsite", "Storage access key.", secret=True),
     Setting("S3_SECRET_ACCESS_KEY", "offsite", "Storage secret key.", secret=True),
-    Setting("OFFSITE_RETENTION_DAYS", "offsite", "Days off-site copies are kept.", default="90", example="90"),
+    Setting("OFFSITE_RETENTION_DAYS", "offsite", "Days off-site database copies are kept (older ones are deleted "
+            "there; the newest BACKUP_MEDIA_KEEP photo archives are always kept).", default="30", example="30"),
     # -------------------------------------------------------------- whatsapp
     Setting("WHATSAPP_WEBHOOK_VERIFY_TOKEN", "whatsapp", "Webhook check (Meta app settings). Empty = webhook off. "
             "Messages to customers need no key (staff send prepared wa.me messages).", secret=True),
