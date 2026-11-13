@@ -83,6 +83,11 @@ class TestDesktopCmsPackaging(unittest.TestCase):
         self.assertIn('.header("Authorization", format!("Bearer {token}"))', rs)
         self.assertEqual(rs.count("logged_in_updater(&app, &token)?"), 2)
         self.assertNotIn("app.updater()", rs)
+        # ...and never to another host: the download address is checked before any
+        # request (unit test installer_downloads_only_from_the_shop_update_address).
+        self.assertIn("ensure_trusted_download(u)?;", rs)
+        self.assertIn("ensure_trusted_download(&update)?;", rs)
+        self.assertIn('const UPDATE_FILES_HOST: &str = "api.mus-luxury.com";', rs)
         # No private key material is ever committed.
         self.assertNotIn("PRIVATE KEY", pub)
         self.assertFalse((CMS / "src-tauri" / "updater-key").exists())

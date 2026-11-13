@@ -37,6 +37,13 @@ const UPDATER_PUBKEY: Option<&str> = option_env!("LUXE_UPDATER_PUBKEY");
 const UPDATE_ENDPOINT: &str =
     "https://api.mus-luxury.com/api/v1/admin/updates/cms/latest.json";
 
+/// The only place an installer may be downloaded from. The download request
+/// carries the staff login, so a manifest pointing anywhere else (e.g. a
+/// tampered latest.json) is refused BEFORE any request is made: the login is
+/// never sent to another host. (Signature checks only run after a download.)
+const UPDATE_FILES_HOST: &str = "api.mus-luxury.com";
+const UPDATE_FILES_PATH: &str = "/api/v1/admin/updates/cms/";
+
 const PROGRESS_EVENT: &str = "luxe://updater-progress";
 
 pub fn updater_pubkey() -> Option<&'static str> {
@@ -115,6 +122,29 @@ pub fn updater_status(app: AppHandle) -> Value {
     })
 }
 
+/// True only for https://api.mus-luxury.com/api/v1/admin/updates/cms/<file>
+/// (default port, no user info, no other host).
+fn is_trusted_update_url(url: &tauri::Url) -> bool {
+    url.scheme() == "https"
+        && url.host_str() == Some(UPDATE_FILES_HOST)
+        && url.port().is_none()
+        && url.username().is_empty()
+        && url.password().is_none()
+        && url.path().starts_with(UPDATE_FILES_PATH)
+        && url.path().len() > UPDATE_FILES_PATH.len()
+}
+
+fn ensure_trusted_download(update: &Update) -> Result<(), String> {
+    if is_trusted_update_url(&update.download_url) {
+        Ok(())
+    } else {
+        Err(format!(
+            "update refused: its download address is not the shop's update server ({})",
+            update.download_url.host_str().unwrap_or("?")
+        ))
+    }
+}
+
 /// An updater whose requests (manifest AND installer download) carry the
 /// staff login; the server refuses them otherwise.
 fn logged_in_updater(app: &AppHandle, token: &str) -> Result<Updater, String> {
@@ -146,6 +176,9 @@ pub async fn updater_check(
 
     let updater = logged_in_updater(&app, &token)?;
     let found = updater.check().await.map_err(|e| format!("update check failed: {e}"))?;
+    if let Some(u) = &found {
+        ensure_trusted_download(u)?;
+    }
 
     let info = match &found {
         Some(u) => json!({
@@ -193,6 +226,7 @@ pub async fn updater_install(
         .await
         .map_err(|e| format!("update check failed: {e}"))?
         .ok_or_else(|| "the update is no longer available — check again".to_string())?;
+    ensure_trusted_download(&update)?;
     if update.version != shown.version {
         return Err(format!(
             "a newer version ({}) was published meanwhile — check again",
@@ -223,4 +257,31 @@ pub async fn updater_install(
     // On Windows the NSIS installer has already closed the app and will
     // relaunch it; on macOS / Linux we restart ourselves.
     app.restart();
+}
+
+#[cfg(test)]
+mod tests {
+    use super::is_trusted_update_url;
+
+    fn ok(u: &str) -> bool {
+        is_trusted_update_url(&u.parse().unwrap())
+    }
+
+    #[test]
+    fn installer_downloads_only_from_the_shop_update_address() {
+        assert!(ok("https://api.mus-luxury.com/api/v1/admin/updates/cms/MusLuxuryCMS_1.2.0_x64-setup.exe"));
+        for bad in [
+            "http://api.mus-luxury.com/api/v1/admin/updates/cms/MusLuxuryCMS_1.2.0_x64-setup.exe",
+            "https://evil.example/api/v1/admin/updates/cms/MusLuxuryCMS_1.2.0_x64-setup.exe",
+            "https://api.mus-luxury.com.evil.example/api/v1/admin/updates/cms/x.exe",
+            "https://api.mus-luxury.com:8443/api/v1/admin/updates/cms/x.exe",
+            "https://user:pw@api.mus-luxury.com/api/v1/admin/updates/cms/x.exe",
+            "https://api.mus-luxury.com/api/v1/admin/orders",
+            "https://api.mus-luxury.com/api/v1/admin/updates/cms/../../orders",
+            "https://api.mus-luxury.com/api/v1/admin/updates/cms/",
+            "https://mus-luxury.com/downloads/cms/x.exe",
+        ] {
+            assert!(!ok(bad), "{bad} must be refused");
+        }
+    }
 }
