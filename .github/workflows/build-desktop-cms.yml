@@ -5,22 +5,22 @@
 #   - workflow_dispatch / push to main      → unsigned build, uploaded as a
 #                                             build artifact only. Used for
 #                                             smoke testing.
-#   - push of a tag matching v*             → full signed release, published
-#                                             to the matching GitHub release
-#                                             with latest.json for the Tauri
-#                                             Updater.
+#   - push of a tag matching v*             → full signed release: GitHub
+#                                             release (archive) + published on
+#                                             the shop server for auto-update.
 #
-# Secrets required for signed releases (Settings → Secrets → Actions):
-#   TAURI_SIGNING_PRIVATE_KEY           — content of ~/.tauri/mux_luxury.key
-#   TAURI_SIGNING_PRIVATE_KEY_PASSWORD  — password used during `tauri signer generate`
-# Variable (Settings → Secrets and variables → Actions → Variables):
-#   TAURI_UPDATER_PUBKEY                — content of ~/.tauri/mux_luxury.key.pub
+# Update signing (Tauri updater, NOT the Windows publisher certificate):
+#   public key  — committed: apps/desktop-cms/src-tauri/updater-key.pub, baked
+#                 into EVERY build (LUXE_UPDATER_PUBKEY), so even a first,
+#                 unsigned installer accepts the next signed update;
+#   private key — secrets TAURI_SIGNING_PRIVATE_KEY (+ _PASSWORD). Without it a
+#                 tag build is published unsigned and installed apps ignore it.
 #
-# The public key is baked into the app at compile time (LUXE_UPDATER_PUBKEY,
-# read by src-tauri/src/app_services.rs). Builds without it simply have the
-# updater switched off — they never crash. Only the matching public key
-# accepts updates; rotating it forces a reinstall, which is exactly the safety
-# net you want if a signing key leaks.
+# Where installed apps get updates: https://mus-luxury.com/downloads/cms/
+# (latest.json + installer + .sig), uploaded by the publish-to-server job with
+# the deploy SSH secrets (PRODUCTION_SSH_HOST / _USER / _PRIVATE_KEY). The
+# GitHub repository is private, so its release files are kept as an archive
+# only. A stable link for new laptops: https://mus-luxury.com/downloads/cms/MusLuxuryCMS-setup.exe
 #
 # Releasing an update = bump nothing, just push a tag:  git tag v1.0.1 && git push origin v1.0.1
 # The app version is taken from the tag, the installer is signed, latest.json
@@ -64,11 +64,11 @@ jobs:
           cache-dependency-path: apps/desktop-cms/package-lock.json
 
       - name: Install Rust stable
-        uses: dtolnay/rust-toolchain@21dc36fb71dd22e3317045c0c31a3f4249868b17  # stable, 2024-07
+        uses: dtolnay/rust-toolchain@b725eda525362e7cf34af9a7243cac1e3f01a7ec  # stable branch, 2026-11
         with:
           toolchain: stable
 
-      - uses: Swatinem/rust-cache@23bce251a8cd2ffc3c1075eaa2d8d7db7d52bbe4  # v2.7.5
+      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0  # v2.9.3
         with:
           workspaces: "./apps/desktop-cms/src-tauri -> target"
 
@@ -82,13 +82,15 @@ jobs:
         id: sign
         shell: bash
         run: |
-          if [[ "${GITHUB_REF}" == refs/tags/v* ]] && [ -n "${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}" ] && [ -n "${{ vars.TAURI_UPDATER_PUBKEY }}" ]; then
+          # The public key is in the repository: every build accepts signed updates.
+          echo "LUXE_UPDATER_PUBKEY=$(tr -d '\r\n' < src-tauri/updater-key.pub)" >> "$GITHUB_ENV"
+          if [[ "${GITHUB_REF}" == refs/tags/v* ]] && [ -n "${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}" ]; then
             echo "sign=true" >> "$GITHUB_OUTPUT"
             echo "version=${GITHUB_REF_NAME#v}" >> "$GITHUB_OUTPUT"
           else
             echo "sign=false" >> "$GITHUB_OUTPUT"
             if [[ "${GITHUB_REF}" == refs/tags/v* ]]; then
-              echo "::warning::Tag build without TAURI_SIGNING_PRIVATE_KEY secret or TAURI_UPDATER_PUBKEY variable — producing an UNSIGNED build with auto-update disabled."
+              echo "::warning::Tag build without the TAURI_SIGNING_PRIVATE_KEY secret — producing an UNSIGNED build that installed apps will not accept as an update."
             fi
           fi
 
@@ -102,7 +104,6 @@ jobs:
         env:
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
-          LUXE_UPDATER_PUBKEY: ${{ vars.TAURI_UPDATER_PUBKEY }}
           APP_VERSION: ${{ steps.sign.outputs.version }}
         run: |
           npx tauri build --config "{\"version\":\"${APP_VERSION}\",\"bundle\":{\"createUpdaterArtifacts\":true}}"
@@ -114,7 +115,8 @@ jobs:
           node scripts/make-latest-json.mjs \
             --version "${{ steps.sign.outputs.version }}" \
             --tag "${GITHUB_REF_NAME}" \
-            --repo "${GITHUB_REPOSITORY}"
+            --repo "${GITHUB_REPOSITORY}" \
+            --base-url "https://mus-luxury.com/downloads/cms"
         shell: bash
 
       - name: Upload unsigned build artifact
@@ -128,6 +130,15 @@ jobs:
           if-no-files-found: warn
           retention-days: 14
 
+      - name: Keep the release files for the publish-to-server job
+        if: steps.sign.outputs.sign == 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: desktop-cms-release
+          path: apps/desktop-cms/release-assets/*
+          if-no-files-found: error
+          retention-days: 30
+
       - name: Attach installers + updater manifest to the GitHub release
         if: steps.sign.outputs.sign == 'true'
         uses: softprops/action-gh-release@c062e08bd532815e2082a85e87e3ef29c3e6d191  # v2.0.8
@@ -136,3 +147,51 @@ jobs:
           files: |
             apps/desktop-cms/release-assets/*
           fail_on_unmatched_files: true
+
+  # Installed CMS apps read https://mus-luxury.com/downloads/cms/latest.json.
+  publish-to-server:
+    name: Publish installer + update on mus-luxury.com
+    needs: build-windows
+    if: startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check that the release was signed and the deploy SSH secrets exist
+        id: ready
+        env:
+          SIGN_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          HOST: ${{ secrets.PRODUCTION_SSH_HOST }}
+        run: |
+          if [ -z "$SIGN_KEY" ]; then echo "::warning::unsigned release: nothing published for auto-update"; echo "ok=false" >> "$GITHUB_OUTPUT"
+          elif [ -z "$HOST" ]; then echo "::warning::PRODUCTION_SSH_* secrets missing: update not published on the server"; echo "ok=false" >> "$GITHUB_OUTPUT"
+          else echo "ok=true" >> "$GITHUB_OUTPUT"; fi
+
+      - uses: actions/download-artifact@v4
+        if: steps.ready.outputs.ok == 'true'
+        with:
+          name: desktop-cms-release
+          path: release
+
+      - uses: webfactory/ssh-agent@a6f90b1f127823b31d4d4a8d96047790581349bd  # v0.9.0
+        if: steps.ready.outputs.ok == 'true'
+        with:
+          ssh-private-key: ${{ secrets.PRODUCTION_SSH_PRIVATE_KEY }}
+
+      - name: Upload to /opt/luxe/shared/downloads/cms (latest.json last)
+        if: steps.ready.outputs.ok == 'true'
+        env:
+          HOST: ${{ secrets.PRODUCTION_SSH_HOST }}
+          USER: ${{ secrets.PRODUCTION_SSH_USER }}
+        run: |
+          set -euo pipefail
+          mkdir -p ~/.ssh && ssh-keyscan -H "$HOST" >> ~/.ssh/known_hosts
+          DEST=/opt/luxe/shared/downloads/cms
+          installer=$(ls release/*-setup.exe | head -n 1)
+          ssh "$USER@$HOST" "mkdir -p $DEST"
+          # Installer, signature and MSI first; the manifest that points at
+          # them only once they are complete, so no app sees a half upload.
+          for f in release/*; do
+            [ "$(basename "$f")" = latest.json ] || scp "$f" "$USER@$HOST:$DEST/"
+          done
+          scp release/latest.json "$USER@$HOST:$DEST/latest.json.new"
+          ssh "$USER@$HOST" "cd $DEST && cp -f '$(basename "$installer")' MusLuxuryCMS-setup.exe.new && mv -f MusLuxuryCMS-setup.exe.new MusLuxuryCMS-setup.exe && mv -f latest.json.new latest.json && ls -1t MusLuxuryCMS_*-setup.exe | tail -n +4 | xargs -r rm -f"
+          curl -fsS --max-time 20 https://mus-luxury.com/downloads/cms/latest.json | head -c 400

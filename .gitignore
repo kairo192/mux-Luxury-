@@ -94,3 +94,7 @@ Thumbs.db
 *.swo
 backend/uploads/
 infrastructure/nginx/ssl/*.pem
+
+# scratch/ holds generated secrets (production.env, signing keys): never committed.
+scratch/*
+!scratch/README.md

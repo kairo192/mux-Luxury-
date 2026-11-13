@@ -45,5 +45,34 @@ class TestDesktopCmsPackaging(unittest.TestCase):
         self.assertIn("+crt-static", cargo_cfg)
 
 
+    def test_automatic_updates_come_from_the_shop_server_and_are_verified(self):
+        """The repository is private: installed apps cannot download GitHub
+        release files, so updates are served by mus-luxury.com/downloads/cms."""
+        manifest = "https://mus-luxury.com/downloads/cms/latest.json"
+        conf = json.loads((CMS / "src-tauri" / "tauri.conf.json").read_text(encoding="utf-8"))
+        self.assertEqual(conf["plugins"]["updater"]["endpoints"], [manifest])
+        self.assertIn(f'"{manifest}"', (CMS / "src-tauri" / "src" / "app_services.rs").read_text(encoding="utf-8"))
+        self.assertIn(f'"update_manifest": "{manifest}"', (ROOT / "backend" / "app" / "main.py").read_text(encoding="utf-8"))
+        # Public key committed and baked into every build; private key only in CI secrets.
+        pub = (CMS / "src-tauri" / "updater-key.pub").read_text(encoding="utf-8").strip()
+        self.assertRegex(pub, r"^[A-Za-z0-9+/=]{40,}$")
+        workflow = (ROOT / ".github" / "workflows" / "build-desktop-cms.yml").read_text(encoding="utf-8")
+        self.assertIn("src-tauri/updater-key.pub", workflow)
+        self.assertIn('--base-url "https://mus-luxury.com/downloads/cms"', workflow)
+        self.assertIn("publish-to-server:", workflow)
+        # The server serves that folder.
+        nginx = (ROOT / "infrastructure" / "nginx" / "nginx.conf").read_text(encoding="utf-8")
+        self.assertIn("location /downloads/", nginx)
+        compose = (ROOT / "docker-compose.yml").read_text(encoding="utf-8")
+        self.assertIn("/var/lib/luxe/downloads:ro", compose)
+        # No private key material is ever committed.
+        self.assertNotIn("PRIVATE KEY", pub)
+        self.assertFalse((CMS / "src-tauri" / "updater-key").exists())
+
+    def test_publisher_is_kirodev(self):
+        conf = json.loads((CMS / "src-tauri" / "tauri.conf.json").read_text(encoding="utf-8"))
+        self.assertEqual(conf["bundle"]["publisher"], "Kirodev")
+
+
 if __name__ == "__main__":
     unittest.main()

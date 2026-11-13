@@ -38,7 +38,7 @@
       "icons/128x128@2x.png",
       "icons/icon.ico"
     ],
-    "publisher": "Mus Luxury",
+    "publisher": "Kirodev",
     "shortDescription": "Mus Luxury — CMS & caisse",
     "windows": {
       "webviewInstallMode": {
@@ -54,12 +54,13 @@
         ],
         "displayLanguageSelector": false
       }
-    }
+    },
+    "copyright": "© 2026 Kirodev"
   },
   "plugins": {
     "updater": {
       "endpoints": [
-        "https://github.com/kairo192/mux-Luxury-/releases/latest/download/latest.json"
+        "https://mus-luxury.com/downloads/cms/latest.json"
       ],
       "pubkey": "",
       "windows": {

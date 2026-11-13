@@ -118,6 +118,8 @@ fi
 source "$NEW_RELEASE/infrastructure/scripts/compose-project.sh"
 luxe_ensure_compose_project "$SHARED_DIR/.env"
 log "compose project: $COMPOSE_PROJECT_NAME"
+luxe_ensure_downloads_dir "$SHARED_DIR/.env" "$SHARED_DIR"
+log "downloads folder: $LUXE_DOWNLOADS_DIR"
 luxe_check_db_volume || fail "database volume check failed — nothing was changed"
 # Back up the data of the CURRENTLY RUNNING shop (it lives in the Docker
 # containers, not in the release folder). The backup SCRIPT is taken from the

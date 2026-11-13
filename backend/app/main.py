@@ -4362,7 +4362,7 @@ def pos_compat(client_version: Optional[str] = None):
         "supported": supported,
         "deprecated": deprecated,
         "update_channel": "github-releases",
-        "update_manifest": "https://github.com/kairo192/mux-Luxury-/releases/latest/download/latest.json",
+        "update_manifest": "https://mus-luxury.com/downloads/cms/latest.json",
     }
 
 @app.post("/api/v1/admin/products/{product_id}/images", status_code=201)

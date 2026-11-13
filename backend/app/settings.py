@@ -141,6 +141,9 @@ SETTINGS: List[Setting] = [
     # ------------------------------------------------------------ deployment
     Setting("COMPOSE_PROJECT_NAME", "deployment", "Docker project of the shop; added by release-deploy.sh. "
             "Never change it on a running shop (its database volume is <name>_pgdata).", in_template=False),
+    Setting("LUXE_DOWNLOADS_DIR", "deployment", "Folder served at https://mus-luxury.com/downloads/ (desktop CMS "
+            "installer + update files); added by release-deploy.sh.", default="./downloads",
+            example="/opt/luxe/shared/downloads"),
     Setting("STOREFRONT_INTERNAL_URL", "deployment", "Shop container address for Google pages (docker-compose).",
             in_template=False),
 ]
