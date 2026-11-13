@@ -35,14 +35,14 @@ developer                     GitHub                           operator
     │                           │                                 │
     │                           ├─ build-desktop-cms.yml ────────▶│
     │                           │   builds signed .msi/.exe       │
-    │                           │   uploads latest.json to the     │
-    │                           │   v1.3.0 GitHub release          │
+    │                           │   copies installer + .sig +      │
+    │                           │   latest.json to the server      │
     │                           │                                 │
     ▼                           ▼                                 │
                                                                   │
 POS installation                                                  │
-    on next launch pulls                                          │
-    https://github.com/kairo192/mux-Luxury-/releases/latest/download/latest.json
+    while logged in, asks (HTTPS + staff login, else 401)         │
+    https://api.mus-luxury.com/api/v1/admin/updates/cms/latest.json
     verifies signature                                            │
     prompts user: "Update to 1.3.0? [Install later / Install now]"
 ```

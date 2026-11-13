@@ -16,12 +16,13 @@
 #   private key — secrets TAURI_SIGNING_PRIVATE_KEY (+ _PASSWORD). Without it a
 #                 tag build is published unsigned and installed apps ignore it.
 #
-# Where installed apps get updates: https://mus-luxury.com/downloads/cms/
-# (latest.json + installer + .sig), uploaded by the publish-to-server job with
-# the deploy SSH secrets (PRODUCTION_SSH_HOST / _USER / _PRIVATE_KEY). The
-# GitHub repository is private, so its release files are kept as an archive
-# only. Only what the updater needs is put on the server (versioned installer,
-# its .sig, latest.json); there is no public "download the CMS" link.
+# Where installed apps get updates: https://api.mus-luxury.com/api/v1/admin/updates/cms/
+# (latest.json + installer + .sig), for LOGGED-IN staff only: the API refuses
+# any request without a valid CMS session, over HTTPS only. The publish-to-server
+# job copies the files into the server folder the API reads, with the deploy SSH
+# secrets (PRODUCTION_SSH_HOST / _USER / _PRIVATE_KEY). The GitHub repository
+# is private, so its release files are kept as an archive only. Nothing is on
+# the public website and there is no "download the CMS" link.
 #
 # Releasing an update = bump nothing, just push a tag:  git tag v1.0.1 && git push origin v1.0.1
 # The app version is taken from the tag, the installer is signed, latest.json
@@ -117,7 +118,7 @@ jobs:
             --version "${{ steps.sign.outputs.version }}" \
             --tag "${GITHUB_REF_NAME}" \
             --repo "${GITHUB_REPOSITORY}" \
-            --base-url "https://mus-luxury.com/downloads/cms"
+            --base-url "https://api.mus-luxury.com/api/v1/admin/updates/cms"
         shell: bash
 
       - name: Upload unsigned build artifact
@@ -149,7 +150,7 @@ jobs:
             apps/desktop-cms/release-assets/*
           fail_on_unmatched_files: true
 
-  # Installed CMS apps read https://mus-luxury.com/downloads/cms/latest.json.
+  # Installed CMS apps read .../api/v1/admin/updates/cms/latest.json (staff login required).
   publish-to-server:
     name: Publish the signed update on mus-luxury.com
     needs: build-windows
@@ -215,4 +216,11 @@ jobs:
           rm -f MusLuxuryCMS-setup.exe ./*.msi
           ls -1t MusLuxuryCMS_*-setup.exe | tail -n +4 | while read -r f; do rm -f "$f" "$f.sig"; done
           EOS
-          curl -fsS --max-time 20 https://mus-luxury.com/downloads/cms/latest.json | head -c 400
+          # Without a login the API must refuse the files (401): they are for staff only.
+          code=$(curl -s -o /dev/null -w '%{http_code}' --max-time 20 \
+            https://api.mus-luxury.com/api/v1/admin/updates/cms/latest.json || true)
+          case "$code" in
+            401) echo "Published; the update files are refused without a staff login (401), as intended." ;;
+            2*) echo "::error::The update files are readable WITHOUT a login (HTTP $code)."; exit 1 ;;
+            *) echo "::warning::Update address answered HTTP $code; deploy the server version that serves updates." ;;
+          esac

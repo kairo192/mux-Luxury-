@@ -48,7 +48,11 @@ git push origin v1.0.1
 - runs `scripts/make-latest-json.mjs`, which copies the installer to
   `MusLuxuryCMS_1.0.1_x64-setup.exe` (no spaces, so the URL is stable) and
   writes `latest.json`,
-- attaches the installer, `.sig`, MSI and `latest.json` to the GitHub release `v1.0.1`.
+- attaches the installer, `.sig`, MSI and `latest.json` to the GitHub release `v1.0.1` (an archive
+  only: the repository is private, so installed apps cannot read it),
+- copies the versioned installer, its `.sig` and `latest.json` to the server folder
+  `LUXE_DOWNLOADS_DIR/cms` (job `publish-to-server`, over SSH). `latest.json` goes last, so no app
+  ever sees a half-finished upload.
 
 Set the release body afterwards if you want: the manifest's `notes` field
 (shown in the update dialog under "Nouveautés") comes from the `RELEASE_NOTES`
@@ -58,9 +62,12 @@ env var, which defaults to "Mus Luxury CMS v1.0.1".
 
 ## 3. How installed CMS apps update
 
-1. 15 s after start, then every 4 h, the app asks
-   `https://github.com/kairo192/mux-Luxury-/releases/latest/download/latest.json`
-   whether there is a newer version.
+1. 15 s after start, then every 4 h, **while someone is logged in**, the app asks
+   `https://api.mus-luxury.com/api/v1/admin/updates/cms/latest.json` whether there is a newer version.
+   - The update files are **not public** and not on the website: the API gives them only to a
+     request carrying a valid CMS login (any staff role). Without one it answers 401.
+   - Everything travels over **HTTPS** (TLS 1.2/1.3); the updater refuses plain HTTP.
+   - Nobody logged in = no check; the next check runs after login.
 2. If there is one, the cashier gets:
    - a gold **"Mise à jour vX disponible"** chip in the header,
    - an in-app toast with an **Installer et redémarrer** button,
@@ -69,8 +76,9 @@ env var, which defaults to "Mus Luxury CMS v1.0.1".
    in the dialog opened from the version chip. If offline POS sales are still
    waiting to sync, the app warns first; they stay safe in the local queue and
    sync after the restart.
-4. The download is verified against the baked-in public key. A file that is
-   not signed with your private key is refused. The NSIS installer runs in
+4. Before downloading, the app checks again with the current login (a session can expire
+   between the check and the click). The download is then verified against the baked-in public
+   key. A file that is not signed with your private key is refused. The NSIS installer runs in
    passive mode and relaunches the CMS.
 
 The version chip also offers **Rechercher une mise à jour** at any time.

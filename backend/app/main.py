@@ -12,6 +12,7 @@ import re
 import secrets
 import time
 from datetime import datetime, timedelta, timezone
+from pathlib import Path
 from typing import Any, Dict, Iterable, List, Optional
 from fastapi import Depends, FastAPI, File, Header, HTTPException, Query, Request, Response, UploadFile, status
 from fastapi.responses import FileResponse
@@ -4361,9 +4362,51 @@ def pos_compat(client_version: Optional[str] = None):
         "client_version": client_version,
         "supported": supported,
         "deprecated": deprecated,
-        "update_channel": "github-releases",
-        "update_manifest": "https://mus-luxury.com/downloads/cms/latest.json",
+        "update_channel": "shop-server (staff login required)",
+        "update_manifest": CMS_UPDATE_MANIFEST_URL,
     }
+
+
+# ----------------------------------------------------------------------------
+# Desktop CMS updates — for logged-in staff only.
+# The repository is private, so installed apps cannot download from GitHub.
+# The release workflow copies the signed installer, its .sig and latest.json
+# to LUXE_DOWNLOADS_DIR/cms on the server; docker-compose mounts that folder
+# read-only at LUXE_UPDATES_DIR in this container. Nothing is on the public
+# website: every file here needs a valid CMS login (same check as every
+# admin route), travels over HTTPS only, and the app installs it only if its
+# signature matches the public key built into the app.
+# ----------------------------------------------------------------------------
+CMS_UPDATE_BASE_URL = "https://api.mus-luxury.com/api/v1/admin/updates/cms"
+CMS_UPDATE_MANIFEST_URL = f"{CMS_UPDATE_BASE_URL}/latest.json"
+_CMS_UPDATE_FILE = re.compile(r"MusLuxuryCMS_[0-9A-Za-z][0-9A-Za-z._-]*-setup\.exe(?:\.sig)?")
+_NO_STORE = {"Cache-Control": "no-store", "X-Content-Type-Options": "nosniff"}
+
+
+def _cms_updates_dir() -> Path:
+    return Path(os.getenv("LUXE_UPDATES_DIR", "/var/lib/luxe/updates")) / "cms"
+
+
+@app.get("/api/v1/admin/updates/cms/latest.json")
+def cms_update_manifest(admin: dict = Depends(get_current_admin)):
+    """What the installed CMS asks every few hours. 204 = nothing published yet
+    (the updater reads it as "no update")."""
+    path = _cms_updates_dir() / "latest.json"
+    if not path.is_file():
+        return Response(status_code=204, headers=_NO_STORE)
+    return FileResponse(path, media_type="application/json", headers=_NO_STORE)
+
+
+@app.get("/api/v1/admin/updates/cms/{filename}")
+def cms_update_file(filename: str, admin: dict = Depends(get_current_admin)):
+    """A versioned installer or its signature. Only those two kinds of name are
+    served, so nothing else in the folder (or outside it) can be reached."""
+    if not _CMS_UPDATE_FILE.fullmatch(filename):
+        raise HTTPException(status_code=404, detail="Fichier introuvable.")
+    path = _cms_updates_dir() / filename
+    if not path.is_file():
+        raise HTTPException(status_code=404, detail="Fichier introuvable.")
+    return FileResponse(path, media_type="application/octet-stream", filename=filename, headers=_NO_STORE)
 
 @app.post("/api/v1/admin/products/{product_id}/images", status_code=201)
 def admin_add_product_image(

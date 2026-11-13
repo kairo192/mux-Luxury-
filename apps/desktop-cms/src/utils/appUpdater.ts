@@ -3,8 +3,11 @@
 //
 // Thin state machine over the Rust commands in src-tauri/src/app_services.rs:
 //   updater_status  → is this build configured (public key baked in)?
-//   updater_check   → ask the shop server's latest.json (mus-luxury.com/downloads/cms) for a newer version
+//   updater_check   → ask the API (api.mus-luxury.com/api/v1/admin/updates/cms) for a newer version
 //   updater_install → download, verify signature, install, restart
+//
+// The update files are only for logged-in staff: both commands receive the
+// current CMS session token, and nothing is asked while nobody is logged in.
 //
 // Checks run 15 s after start, then every 4 h. A found update raises an
 // in-app toast + a Windows notification once per version per session; the
@@ -12,6 +15,7 @@
 // ============================================================================
 
 import { getTauriInvoke } from "./posHardware";
+import { getAccessToken } from "../api/adminClient";
 
 export type UpdatePhase =
   | "unsupported" // browser / dev server: no native updater
@@ -99,11 +103,21 @@ export async function checkForUpdate(): Promise<string | null> {
   if (!invoke || state.phase === "disabled" || state.phase === "downloading" || state.phase === "installing") {
     return null;
   }
+  const token = getAccessToken();
+  if (!token) {
+    // Updates are for logged-in staff only; the next check runs after login.
+    setState({ phase: "idle", error: null });
+    return null;
+  }
   setState({ phase: "checking", error: null });
   try {
-    const res = await invoke("updater_check");
+    const res = await invoke("updater_check", { token });
     if (res?.configured === false) {
       setState({ phase: "disabled", currentVersion: res.current_version ?? state.currentVersion });
+      return null;
+    }
+    if (res?.needs_login) {
+      setState({ phase: "idle", currentVersion: res.current_version ?? state.currentVersion });
       return null;
     }
     if (res?.available) {
@@ -135,6 +149,11 @@ export async function checkForUpdate(): Promise<string | null> {
 export async function installUpdate(): Promise<void> {
   const invoke = getTauriInvoke();
   if (!invoke || state.phase !== "available") return;
+  const token = getAccessToken();
+  if (!token) {
+    setState({ phase: "error", error: "Connectez-vous pour installer la mise à jour." });
+    return;
+  }
 
   let unlisten: (() => void) | null = null;
   try {
@@ -153,7 +172,7 @@ export async function installUpdate(): Promise<void> {
 
   setState({ phase: "downloading", downloaded: 0, total: null, error: null });
   try {
-    await invoke("updater_install");
+    await invoke("updater_install", { token });
     // On success the process is replaced/restarted and we never get here.
     setState({ phase: "installing" });
   } catch (err: any) {

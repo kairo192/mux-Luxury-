@@ -31,8 +31,9 @@ luxe_ensure_compose_project() {
   export COMPOSE_PROJECT_NAME="$name"
 }
 
-# Folder served at https://mus-luxury.com/downloads/ (desktop CMS installer and
-# signed update files, uploaded by the release workflow). Kept in shared/ so it
+# Folder holding the desktop CMS signed update files (installer, .sig,
+# latest.json), uploaded by the release workflow. Not on the website: the API
+# container mounts it read-only and serves it to logged-in CMS apps only. Kept in shared/ so it
 # survives every release; recorded in the shared .env so manual `docker compose`
 # commands mount the same folder.
 luxe_ensure_downloads_dir() {
@@ -41,7 +42,7 @@ luxe_ensure_downloads_dir() {
     | tail -n 1 | cut -d= -f2- | tr -d "\"' \r\t" || true)
   if [ -z "$dir" ]; then
     dir="$shared_dir/downloads"
-    printf '\n# Desktop CMS installer + update files, served at /downloads/ (added by release-deploy.sh).\nLUXE_DOWNLOADS_DIR=%s\n' \
+    printf '\n# Desktop CMS installer + update files, for logged-in CMS apps only (added by release-deploy.sh).\nLUXE_DOWNLOADS_DIR=%s\n' \
       "$dir" >> "$env_file"
   fi
   mkdir -p "$dir/cms"

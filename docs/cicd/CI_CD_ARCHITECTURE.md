@@ -59,11 +59,13 @@ developer                                                                   VPS
        │
        │ build-desktop-cms.yml on the same v* tag:
        │   builds signed .msi / .exe on a Windows runner
-       │   uploads installers + latest.json to the GitHub release
+       │   archives them on the GitHub release (repository is private)
+       │   copies installer + .sig + latest.json to the VPS over SSH
        │
        ▼
-   POS installations pull latest.json on their next launch, verify the
-   tauri-updater signature, and offer the update.
+   Logged-in CMS apps ask the API for latest.json (HTTPS + staff login;
+   refused without one), verify the tauri-updater signature, and offer
+   the update.
 ```
 
 ## Design choices

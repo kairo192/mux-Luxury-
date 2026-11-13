@@ -54,12 +54,15 @@ services:
       BACKUP_DIR: /var/lib/luxe/backups
       # SEO pages (/produit, /categorie) read the shop's index.html from here
       STOREFRONT_INTERNAL_URL: http://storefront
+      # Desktop CMS update files, served to logged-in CMS apps only
+      LUXE_UPDATES_DIR: /var/lib/luxe/updates
     depends_on:
       db:
         condition: service_healthy
     volumes:
       - luxe_uploads:/var/lib/luxe/uploads
       - luxe_backups:/var/lib/luxe/backups
+      - ${LUXE_DOWNLOADS_DIR:-./downloads}:/var/lib/luxe/updates:ro
     deploy:
       resources:
         limits:
@@ -124,7 +127,6 @@ services:
       - ./infrastructure/nginx/nginx.conf:/etc/nginx/nginx.conf:ro
       - ./infrastructure/nginx/ssl:/etc/nginx/ssl
       - luxe_uploads:/var/lib/luxe/uploads:ro
-      - ${LUXE_DOWNLOADS_DIR:-./downloads}:/var/lib/luxe/downloads:ro
       # Let's Encrypt renewal answers (infrastructure/scripts/certificates.sh)
       - ${ACME_WEBROOT:-/var/www/certbot}:/var/www/certbot:ro
     healthcheck:
