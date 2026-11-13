@@ -151,9 +151,13 @@ jobs:
 
   # Installed CMS apps read https://mus-luxury.com/downloads/cms/latest.json.
   publish-to-server:
-    name: Publish installer + update on mus-luxury.com
+    name: Publish the signed update on mus-luxury.com
     needs: build-windows
     if: startsWith(github.ref, 'refs/tags/v')
+    # One publication at a time (two tags must not interleave their uploads).
+    concurrency:
+      group: publish-desktop-cms-server
+      cancel-in-progress: false
     runs-on: ubuntu-latest
     steps:
       - name: Check that the release was signed and the deploy SSH secrets exist
@@ -166,6 +170,10 @@ jobs:
           elif [ -z "$HOST" ]; then echo "::warning::PRODUCTION_SSH_* secrets missing: update not published on the server"; echo "ok=false" >> "$GITHUB_OUTPUT"
           else echo "ok=true" >> "$GITHUB_OUTPUT"; fi
 
+      - name: Checkout (for the shared downloads-folder helper)
+        if: steps.ready.outputs.ok == 'true'
+        uses: actions/checkout@v4
+
       - uses: actions/download-artifact@v4
         if: steps.ready.outputs.ok == 'true'
         with:
@@ -177,20 +185,34 @@ jobs:
         with:
           ssh-private-key: ${{ secrets.PRODUCTION_SSH_PRIVATE_KEY }}
 
-      - name: Upload to /opt/luxe/shared/downloads/cms (latest.json last)
+      - name: Upload the update (latest.json last)
         if: steps.ready.outputs.ok == 'true'
         env:
           HOST: ${{ secrets.PRODUCTION_SSH_HOST }}
           USER: ${{ secrets.PRODUCTION_SSH_USER }}
+          INSTALL_ROOT: ${{ vars.PRODUCTION_INSTALL_ROOT }}
         run: |
           set -euo pipefail
           mkdir -p ~/.ssh && ssh-keyscan -H "$HOST" >> ~/.ssh/known_hosts
-          DEST=/opt/luxe/shared/downloads/cms
-          ssh "$USER@$HOST" "mkdir -p $DEST"
+          ROOT="${INSTALL_ROOT:-/opt/luxe}"
+          # The SAME folder nginx serves: decided on the server by the function
+          # release-deploy.sh uses (LUXE_DOWNLOADS_DIR from shared/.env, else
+          # <install root>/shared/downloads).
+          # shellcheck disable=SC2029  # the install root is passed on purpose
+          DL=$(cat infrastructure/scripts/compose-project.sh infrastructure/scripts/downloads-dir.sh \
+               | ssh "$USER@$HOST" bash -s -- "$ROOT")
+          DEST="$DL/cms"
           # Installer and its signature first; the manifest that points at
           # them only once they are complete, so no app sees a half upload.
           scp release/*-setup.exe release/*-setup.exe.sig "$USER@$HOST:$DEST/"
           scp release/latest.json "$USER@$HOST:$DEST/latest.json.new"
           # Publish, then keep only the 3 newest versions (and remove any old public copy).
-          ssh "$USER@$HOST" "cd $DEST && mv -f latest.json.new latest.json && rm -f MusLuxuryCMS-setup.exe *.msi && ls -1t MusLuxuryCMS_*-setup.exe | tail -n +4 | while read -r f; do rm -f \"\$f\" \"\$f.sig\"; done"
+          # shellcheck disable=SC2029  # the folder is passed on purpose
+          ssh "$USER@$HOST" bash -s -- "$DEST" <<'EOS'
+          set -euo pipefail
+          cd "$1"
+          mv -f latest.json.new latest.json
+          rm -f MusLuxuryCMS-setup.exe ./*.msi
+          ls -1t MusLuxuryCMS_*-setup.exe | tail -n +4 | while read -r f; do rm -f "$f" "$f.sig"; done
+          EOS
           curl -fsS --max-time 20 https://mus-luxury.com/downloads/cms/latest.json | head -c 400

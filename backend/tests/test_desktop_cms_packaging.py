@@ -74,6 +74,41 @@ class TestDesktopCmsPackaging(unittest.TestCase):
         self.assertNotIn("PRIVATE KEY", pub)
         self.assertFalse((CMS / "src-tauri" / "updater-key").exists())
 
+    def test_publication_uses_the_folder_nginx_serves(self):
+        """The workflow asks the server (same function as release-deploy.sh) instead of
+        assuming /opt/luxe, and two releases never publish at the same time."""
+        import subprocess, shutil, tempfile
+        workflow = (ROOT / ".github" / "workflows" / "build-desktop-cms.yml").read_text(encoding="utf-8")
+        self.assertIn("infrastructure/scripts/downloads-dir.sh", workflow)
+        self.assertIn("group: publish-desktop-cms-server", workflow)
+        self.assertNotIn("DEST=/opt/luxe", workflow)
+        if not shutil.which("bash"):
+            self.skipTest("needs bash")
+        scripts = ROOT / "infrastructure" / "scripts"
+        helper = (scripts / "compose-project.sh").read_text() + (scripts / "downloads-dir.sh").read_text()
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp) / "srv"; (root / "shared").mkdir(parents=True)
+            env = root / "shared" / ".env"
+            env.write_text("APP_ENV=production\n")
+            run = lambda: subprocess.run(["bash", "-s", "--", str(root)], input=helper, capture_output=True,
+                                         text=True, timeout=30)
+            r = run()
+            self.assertEqual(r.returncode, 0, r.stderr)
+            self.assertEqual(r.stdout.strip(), str(root / "shared" / "downloads"))     # default
+            self.assertTrue((root / "shared" / "downloads" / "cms").is_dir())
+            custom = Path(tmp) / "custom-dl"
+            env.write_text(f"APP_ENV=production\nLUXE_DOWNLOADS_DIR={custom}\n")
+            r = run()
+            self.assertEqual(r.stdout.strip(), str(custom))                             # configured override
+            self.assertTrue((custom / "cms").is_dir())
+
+    def test_setup_script_proves_the_signing_key_matches(self):
+        ps1 = (ROOT / "infrastructure" / "scripts" / "setup-github-secrets.ps1").read_text(encoding="utf-8")
+        self.assertIn("Assert-KeyMatchesRepo $signKey $signPass $repoPub", ps1)
+        self.assertIn("tauri signer sign", ps1)
+        # "$name:" inside a PowerShell string is a drive-scoped variable: the script would not start.
+        self.assertEqual(re.findall(r'"[^"\n]*\$(?!env:)[A-Za-z_]\w*:[^"\n]*"', ps1), [])
+
     def test_publisher_is_kirodev(self):
         conf = json.loads((CMS / "src-tauri" / "tauri.conf.json").read_text(encoding="utf-8"))
         self.assertEqual(conf["bundle"]["publisher"], "Kirodev")

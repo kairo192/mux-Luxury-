@@ -60,13 +60,20 @@ to the VPS themselves (`scp`), as `/opt/luxe/shared/.env`, `chmod 600`.
 
 1. **Prepare the VPS** (1 vCPU, 2 GB RAM, 40 GB disk): `infrastructure/scripts/vps-bootstrap.sh` (Docker, rclone,
    sqlite3, firewall, deploy user), then the `.env` above. Guide: `docs/deployment/VPS_DEPLOYMENT.md`.
-   Check it: `cd backend && python3 -m app.settings check /opt/luxe/shared/.env` (values are never printed).
+   Check the file on the PC **before** copying it (values are never printed; Push/Pop-Location keeps the
+   shell in the repository folder): `Push-Location backend; python -m app.settings check <path to production.env>; Pop-Location`.
 2. **GitHub secrets for the deploy**: run `infrastructure/scripts/setup-github-secrets.ps1` (needs `gh auth login`).
-   It creates the deploy SSH key and the Tauri signing key and stores `PRODUCTION_SSH_HOST/USER/PRIVATE_KEY`,
-   `PRODUCTION_URL`, `PRODUCTION_HEALTH_URL`, `TAURI_*`. It was never run on Windows: check that it stops on any
-   failed `gh` write (`Assert-Stored`) and report. Put the deploy key's public half in the deploy user's
+   It creates the deploy SSH key and stores `PRODUCTION_SSH_HOST/USER/PRIVATE_KEY`, `PRODUCTION_URL`,
+   `PRODUCTION_HEALTH_URL`. The app-update signing key ALREADY EXISTS (its public half is committed): the owner
+   received the private key + password; before running, save them as `%USERPROFILE%\.tauri\mux_luxury.key` and
+   `mux_luxury.key.password`. The script signs a test file to prove the key matches the committed public key,
+   then stores `TAURI_SIGNING_PRIVATE_KEY(_PASSWORD)` (or skips them if the owner already added them in GitHub).
+   It was never run on Windows: check that it stops on any failed `gh` write (`Assert-Stored`) and report. Put the deploy key's public half in the deploy user's
    `~/.ssh/authorized_keys` on the VPS. Optional: GitHub Settings → Environments → `production` → required reviewer = owner.
-3. **First release**: GitHub → Releases → new tag `v1.0.0` on `feat/pos-core-cash-register` → Publish. This runs
+3. **First release** — release exactly what you tested on Windows: first push your fixes to
+   `feat/pos-core-cash-register-18lsk6`, open a pull request into `feat/pos-core-cash-register`, wait for green CI
+   (and CodeRabbit), merge it, then check that the default branch's newest commit is that merge.
+   Then GitHub → Releases → new tag `v1.0.0` on `feat/pos-core-cash-register` → Publish. This runs
    `cd-production.yml` (waits for green CI, builds, uploads over SSH, `release-deploy.sh`: backup first, migrations,
    switch, health check, automatic rollback) and `build-desktop-cms.yml` (signed Windows installer + updater file).
    Follow the run; report each step.
