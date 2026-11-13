@@ -88,6 +88,7 @@ class TestDesktopCmsPackaging(unittest.TestCase):
         self.assertIn("ensure_trusted_download(u)?;", rs)
         self.assertIn("ensure_trusted_download(&update)?;", rs)
         self.assertIn('const UPDATE_FILES_HOST: &str = "api.mus-luxury.com";', rs)
+        self.assertIn("client.redirect(reqwest::redirect::Policy::none())", rs)   # no redirect followed
         # No private key material is ever committed.
         self.assertNotIn("PRIVATE KEY", pub)
         self.assertFalse((CMS / "src-tauri" / "updater-key").exists())

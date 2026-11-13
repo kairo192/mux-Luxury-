@@ -16,8 +16,10 @@
 //
 //    The update files are NOT public: the API serves them only with a valid
 //    staff login, so every request carries the CMS session token
-//    ("Authorization: Bearer …"). The plugin refuses anything but HTTPS, and
-//    installs a file only if its signature matches UPDATER_PUBKEY.
+//    ("Authorization: Bearer …"). The manifest address is HTTPS (the plugin
+//    enforces it), the installer address must be the update server over HTTPS
+//    (checked here before any download), redirects are not followed, and a
+//    file is installed only if its signature matches UPDATER_PUBKEY.
 // ============================================================================
 
 use std::sync::Mutex;
@@ -155,6 +157,9 @@ fn logged_in_updater(app: &AppHandle, token: &str) -> Result<Updater, String> {
     app.updater_builder()
         .header("Authorization", format!("Bearer {token}"))
         .map_err(|e| format!("invalid session token: {e}"))?
+        // No redirects: the manifest and the installer come straight from the
+        // update server, never from wherever a redirect would lead.
+        .configure_client(|client| client.redirect(reqwest::redirect::Policy::none()))
         .build()
         .map_err(|e| format!("updater unavailable: {e}"))
 }
