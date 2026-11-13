@@ -27,6 +27,7 @@ Safety rules:
 from __future__ import annotations
 
 import base64
+import contextlib
 import datetime as _dt
 import decimal
 import gzip
@@ -477,11 +478,41 @@ def list_backups() -> List[Dict[str, Any]]:
     return items
 
 
+# A backup being restored is marked with a file in the backup folder, so that
+# ANY process (the nightly `backup_cli create` runs in its own process) leaves
+# it and its photo archive alone until the restore is over. A marker older
+# than PROTECT_MAX_AGE_S (a crashed restore) no longer counts.
+PROTECT_PREFIX = ".restoring_"
+PROTECT_MAX_AGE_S = 6 * 3600
+
+
+@contextlib.contextmanager
+def _protected_from_pruning(name: str):
+    marker = backup_dir() / (PROTECT_PREFIX + name)
+    marker.write_text(_dt.datetime.now(_dt.timezone.utc).isoformat(), encoding="utf-8")
+    try:
+        yield
+    finally:
+        marker.unlink(missing_ok=True)
+
+
+def _names_being_restored() -> Set[str]:
+    now = _dt.datetime.now().timestamp()
+    names = set()
+    for marker in backup_dir().glob(PROTECT_PREFIX + "*"):
+        try:
+            if now - marker.stat().st_mtime < PROTECT_MAX_AGE_S:
+                names.add(marker.name[len(PROTECT_PREFIX):])
+        except OSError:
+            continue
+    return names
+
+
 def prune_backups(keep_min: int = 10, protect: Iterable[str] = ()) -> int:
     """Deletes app backups older than BACKUP_RETENTION_DAYS but always keeps
-    the newest `keep_min`, whatever their age, and those in `protect` (the
-    backup being restored: its photo archive is still needed)."""
-    protected = set(protect)
+    the newest `keep_min`, whatever their age, and those in `protect` or being
+    restored by any process (their photo archive is still needed)."""
+    protected = set(protect) | _names_being_restored()
     cutoff = _dt.datetime.now(_dt.timezone.utc) - _dt.timedelta(days=retention_days())
     removed = 0
     for meta in list_backups()[keep_min:]:
@@ -888,42 +919,48 @@ def restore_backup(name: str, actor_id: Optional[int] = None) -> Dict[str, Any]:
     if not _OP_LOCK.acquire(blocking=False):
         raise BackupError("Une autre opération sur la base de données est déjà en cours.")
     try:
-        # Validate BEFORE touching anything.
-        raw = _read_backup(name)
-        streamed = _is_v2(raw)
-        if streamed:
-            _scan_v2(raw)
-            snap = None
-        else:
-            snap = _parse_v1(raw)
-        media_archive = _media_for_restore(name)
-        # The safety backup prunes old ones: never the one being restored.
-        safety = create_backup("pre-restore", actor_id, protect=(name,))
-        with db_session() as conn:
-            _begin_bulk(conn)
-            try:
-                restored = _replace_all_stream(conn, raw) if streamed else _replace_all(conn, snap)
-                _check_integrity(conn)
-                epoch = _new_epoch(conn)
-                _audit(conn, actor_id, "database_restore", {"backup": name, "safety_backup": safety["name"]})
-                _raw(conn).commit()
-            except Exception:
-                _raw(conn).rollback()
-                raise
-            finally:
-                _end_bulk(conn)
-        result = {"restored": True, "backup": name, "safety_backup": safety["name"], "rows": sum(restored.values()),
-                  "catalog_epoch": epoch, "media_files": None}
-        if media_archive is not None:
-            # After the database commit: photos are only added/overwritten, so a
-            # failure here never leaves the database half-restored; it is reported.
-            try:
-                result["media_files"] = _extract_media(media_archive)
-            except Exception as exc:
-                result["media_error"] = f"Photos non restaurées : {type(exc).__name__}"
-        return result
+        _resolve(name)                 # valid name of an existing backup, before any marker
+        with _protected_from_pruning(name):
+            return _restore_backup_locked(name, actor_id)
     finally:
         _OP_LOCK.release()
+
+
+def _restore_backup_locked(name: str, actor_id: Optional[int]) -> Dict[str, Any]:
+    # Validate BEFORE touching anything.
+    raw = _read_backup(name)
+    streamed = _is_v2(raw)
+    if streamed:
+        _scan_v2(raw)
+        snap = None
+    else:
+        snap = _parse_v1(raw)
+    media_archive = _media_for_restore(name)
+    # The safety backup prunes old ones: never the one being restored.
+    safety = create_backup("pre-restore", actor_id, protect=(name,))
+    with db_session() as conn:
+        _begin_bulk(conn)
+        try:
+            restored = _replace_all_stream(conn, raw) if streamed else _replace_all(conn, snap)
+            _check_integrity(conn)
+            epoch = _new_epoch(conn)
+            _audit(conn, actor_id, "database_restore", {"backup": name, "safety_backup": safety["name"]})
+            _raw(conn).commit()
+        except Exception:
+            _raw(conn).rollback()
+            raise
+        finally:
+            _end_bulk(conn)
+    result = {"restored": True, "backup": name, "safety_backup": safety["name"], "rows": sum(restored.values()),
+              "catalog_epoch": epoch, "media_files": None}
+    if media_archive is not None:
+        # After the database commit: photos are only added/overwritten, so a
+        # failure here never leaves the database half-restored; it is reported.
+        try:
+            result["media_files"] = _extract_media(media_archive)
+        except Exception as exc:
+            result["media_error"] = f"Photos non restaurées : {type(exc).__name__}"
+    return result
 
 
 def reset_database(actor_id: Optional[int] = None, keep_settings: bool = True) -> Dict[str, Any]:

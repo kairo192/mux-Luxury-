@@ -4,6 +4,7 @@ category archive/restore and the "deleted categories come back" regression.
 """
 import os
 import tempfile
+import time
 import unittest
 
 os.environ.setdefault("APP_ENV", "test")
@@ -171,6 +172,30 @@ class TestBackupEngine(unittest.TestCase):
             self.assertEqual(out["media_files"], 1)
             self.assertEqual((uploads / "p.jpg").read_bytes(), b"old-photo")
             self.assertTrue((Path(bk.backup_dir()) / meta["name"]).exists())
+
+    def test_01h_backup_being_restored_survives_pruning_from_another_process(self):
+        """The nightly backup runs in its own process: while a restore is in
+        progress, its pruning must leave the backup being restored (and its
+        photos) alone. A marker left by a crashed restore stops counting."""
+        from pathlib import Path
+        from unittest import mock
+        uploads = Path(tempfile.mkdtemp(prefix="luxe_up_lock_"))
+        (uploads / "x.jpg").write_bytes(b"x")
+        with mock.patch.dict(os.environ, {"UPLOAD_DIR": str(uploads)}):
+            meta = bk.create_backup("manual", include_media=True)
+        files = [Path(bk.backup_dir()) / meta["name"], Path(bk.backup_dir()) / meta["media"]["name"]]
+        with mock.patch.object(bk, "retention_days", return_value=-1):
+            with bk._protected_from_pruning(meta["name"]):
+                bk.prune_backups(keep_min=0)        # what the other process would do
+                self.assertTrue(all(f.exists() for f in files))
+            # A stale marker (crashed restore) no longer protects.
+            marker = Path(bk.backup_dir()) / (bk.PROTECT_PREFIX + meta["name"])
+            marker.write_text("x")
+            old = time.time() - bk.PROTECT_MAX_AGE_S - 60
+            os.utime(marker, (old, old))
+            bk.prune_backups(keep_min=0)
+            self.assertFalse(any(f.exists() for f in files))
+            marker.unlink()
 
     def test_01c_pc_copy_download_and_import_back(self):
         """A copy kept on the owner's PC: encrypted, owner only, audited, and
