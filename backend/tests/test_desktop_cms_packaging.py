@@ -60,6 +60,9 @@ class TestDesktopCmsPackaging(unittest.TestCase):
         self.assertIn("src-tauri/updater-key.pub", workflow)
         self.assertIn('--base-url "https://mus-luxury.com/downloads/cms"', workflow)
         self.assertIn("publish-to-server:", workflow)
+        # Only the updater's files go on the server: no fixed public "download the CMS" link.
+        self.assertNotRegex(workflow, r"(cp|mv|scp)[^\n]*MusLuxuryCMS-setup\.exe")
+        self.assertNotIn("release/*.msi", workflow)
         # The server serves that folder.
         nginx = (ROOT / "infrastructure" / "nginx" / "nginx.conf").read_text(encoding="utf-8")
         self.assertIn("location /downloads/", nginx)

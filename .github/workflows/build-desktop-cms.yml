@@ -20,7 +20,8 @@
 # (latest.json + installer + .sig), uploaded by the publish-to-server job with
 # the deploy SSH secrets (PRODUCTION_SSH_HOST / _USER / _PRIVATE_KEY). The
 # GitHub repository is private, so its release files are kept as an archive
-# only. A stable link for new laptops: https://mus-luxury.com/downloads/cms/MusLuxuryCMS-setup.exe
+# only. Only what the updater needs is put on the server (versioned installer,
+# its .sig, latest.json); there is no public "download the CMS" link.
 #
 # Releasing an update = bump nothing, just push a tag:  git tag v1.0.1 && git push origin v1.0.1
 # The app version is taken from the tag, the installer is signed, latest.json
@@ -185,13 +186,11 @@ jobs:
           set -euo pipefail
           mkdir -p ~/.ssh && ssh-keyscan -H "$HOST" >> ~/.ssh/known_hosts
           DEST=/opt/luxe/shared/downloads/cms
-          installer=$(ls release/*-setup.exe | head -n 1)
           ssh "$USER@$HOST" "mkdir -p $DEST"
-          # Installer, signature and MSI first; the manifest that points at
+          # Installer and its signature first; the manifest that points at
           # them only once they are complete, so no app sees a half upload.
-          for f in release/*; do
-            [ "$(basename "$f")" = latest.json ] || scp "$f" "$USER@$HOST:$DEST/"
-          done
+          scp release/*-setup.exe release/*-setup.exe.sig "$USER@$HOST:$DEST/"
           scp release/latest.json "$USER@$HOST:$DEST/latest.json.new"
-          ssh "$USER@$HOST" "cd $DEST && cp -f '$(basename "$installer")' MusLuxuryCMS-setup.exe.new && mv -f MusLuxuryCMS-setup.exe.new MusLuxuryCMS-setup.exe && mv -f latest.json.new latest.json && ls -1t MusLuxuryCMS_*-setup.exe | tail -n +4 | xargs -r rm -f"
+          # Publish, then keep only the 3 newest versions (and remove any old public copy).
+          ssh "$USER@$HOST" "cd $DEST && mv -f latest.json.new latest.json && rm -f MusLuxuryCMS-setup.exe *.msi && ls -1t MusLuxuryCMS_*-setup.exe | tail -n +4 | while read -r f; do rm -f \"\$f\" \"\$f.sig\"; done"
           curl -fsS --max-time 20 https://mus-luxury.com/downloads/cms/latest.json | head -c 400
