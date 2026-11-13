@@ -1131,8 +1131,8 @@ Create or update:
 - `docs/FINANCIAL_CALCULATIONS.md`
 - `docs/SECURITY.md`
 - `docs/DEPLOYMENT.md`
-- `docs/archive/BACKUP_RESTORE.md`
-- `docs/archive/TEST_REPORT.md`
+- `docs/BACKUP_RESTORE.md`
+- `docs/TEST_REPORT.md`
 
 Document financial formulas, tax assumptions, inventory valuation methods, transaction rules, and accounting mappings.
 
