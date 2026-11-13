@@ -84,6 +84,9 @@ apps/desktop-cms/src-tauri/WixTools/
 apps/desktop-cms/src-tauri/gen/
 desktop-cms/src-tauri/target/
 Cargo.lock
+# The desktop app is a program: its exact dependency versions are kept (and Tauri
+# checks that the Rust and JavaScript packages match).
+!apps/desktop-cms/src-tauri/Cargo.lock
 
 # 8. OS & Editor Files
 .DS_Store
