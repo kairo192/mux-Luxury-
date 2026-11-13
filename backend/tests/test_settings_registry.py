@@ -78,6 +78,33 @@ class TestSettingsRegistry(unittest.TestCase):
         os.unlink(f.name)
         self.assertEqual(rep["unused"], ["CHARGILY_SECRET_KEY", "SMTP_PASSWORD", "YALIDINE_API_TOKEN"])
 
+    def _complete_production_env(self):
+        env = {"APP_ENV": "production"}
+        for s in settings.SETTINGS:
+            if s.required_in_production:
+                env[s.name] = "x" * 40
+        env["DATABASE_URL"] = "postgresql://luxe_app_user:" + "p" * 30 + "@db:5432/luxe_ecommerce"
+        return env
+
+    def test_placeholder_inside_database_url_is_reported(self):
+        env = self._complete_production_env()
+        self.assertTrue(settings.configuration_report(env, production=True)["ok"])
+        env["DATABASE_URL"] = "postgresql://luxe_app_user:<CHANGE_ME_POSTGRES_PASSWORD>@db:5432/luxe_ecommerce"
+        rep = settings.configuration_report(env, production=True)
+        self.assertFalse(rep["ok"])
+        self.assertTrue(any(p.startswith("DATABASE_URL") for p in rep["problems"]))
+
+    def test_offsite_switched_on_without_its_keys_blocks(self):
+        env = self._complete_production_env()
+        rep = settings.configuration_report(env, production=True)
+        self.assertTrue(rep["ok"])                                  # off-site off = warning only
+        self.assertTrue(any(p.startswith("S3_BACKUP_ENABLED") for p in rep["problems"]))
+        env.update({"S3_BACKUP_ENABLED": "true", "S3_ENDPOINT_URL": "https://s3.example", "S3_BUCKET_NAME": "b",
+                    "S3_ACCESS_KEY_ID": "k"})
+        rep = settings.configuration_report(env, production=True)
+        self.assertFalse(rep["ok"])
+        self.assertTrue(any(p.startswith("S3_SECRET_ACCESS_KEY") for p in rep["problems"]))
+
     def test_report_never_contains_secret_values(self):
         env = {s.name: f"value-of-{s.name}" for s in settings.SETTINGS}
         rep = settings.configuration_report(env, production=True)

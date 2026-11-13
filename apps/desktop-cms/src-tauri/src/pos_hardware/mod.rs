@@ -38,7 +38,9 @@ use zpl::{render_batch as zpl_render_batch, BarcodeKind as ZplBarcodeKind, Label
 use serde::{Deserialize, Serialize};
 use std::fs::OpenOptions;
 use std::io::Write;
+use std::net::{TcpStream, ToSocketAddrs};
 use std::path::Path;
+use std::time::Duration;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct PrinterInfo {
@@ -57,6 +59,14 @@ pub struct PrinterTarget {
     pub printer_name: Option<String>,
     #[serde(default)]
     pub device_path: Option<String>,
+    /// Network printer (raw "JetDirect" printing): IP address or name. Takes
+    /// priority over the other fields. Kept apart from `device_path` because
+    /// device names such as `LPT1:` or `COM3:` contain a colon too.
+    #[serde(default)]
+    pub host: Option<String>,
+    /// TCP port of a network printer; 9100 when not given.
+    #[serde(default)]
+    pub port: Option<u16>,
     /// Characters per line. Most 58mm printers are 32; 80mm are 42-48.
     #[serde(default)]
     pub line_width: Option<u8>,
@@ -266,7 +276,38 @@ fn send_to_device_path(path: &str, bytes: &[u8]) -> Result<(), String> {
     Ok(())
 }
 
+/// Raw printing to a network printer (port 9100 on almost every ESC/POS and
+/// Zebra printer): connect with a timeout, write everything, flush.
+fn send_to_network(host: &str, port: u16, bytes: &[u8]) -> Result<(), String> {
+    let addrs: Vec<_> = (host, port)
+        .to_socket_addrs()
+        .map_err(|e| format!("adresse {}:{} introuvable: {}", host, port, e))?
+        .collect();
+    let mut last_err = format!("adresse {}:{} introuvable", host, port);
+    for addr in addrs {
+        match TcpStream::connect_timeout(&addr, Duration::from_secs(4)) {
+            Ok(mut stream) => {
+                stream
+                    .set_write_timeout(Some(Duration::from_secs(10)))
+                    .map_err(|e| format!("imprimante {}:{}: {}", host, port, e))?;
+                stream
+                    .write_all(bytes)
+                    .and_then(|_| stream.flush())
+                    .map_err(|e| format!("envoi à {}:{} échoué: {}", host, port, e))?;
+                return Ok(());
+            }
+            Err(e) => last_err = format!("imprimante {}:{} injoignable: {}", host, port, e),
+        }
+    }
+    Err(last_err)
+}
+
 fn send_bytes(target: &PrinterTarget, bytes: &[u8]) -> Result<(), String> {
+    if let Some(host) = &target.host {
+        if !host.trim().is_empty() {
+            return send_to_network(host.trim(), target.port.unwrap_or(9100), bytes);
+        }
+    }
     if let Some(path) = &target.device_path {
         if !path.trim().is_empty() {
             return send_to_device_path(path, bytes);
@@ -323,6 +364,10 @@ pub struct LabelPrinterTarget {
     pub printer_name: Option<String>,
     #[serde(default)]
     pub device_path: Option<String>,
+    #[serde(default)]
+    pub host: Option<String>,
+    #[serde(default)]
+    pub port: Option<u16>,
     /// "zpl" (default — Zebra & compatibles) or "escpos-text" (fallback for
     /// ESC/POS label printers; prints labels as plain-text slips).
     #[serde(default = "default_label_format")]
@@ -342,6 +387,8 @@ impl LabelPrinterTarget {
         PrinterTarget {
             printer_name: self.printer_name.clone(),
             device_path: self.device_path.clone(),
+            host: self.host.clone(),
+            port: self.port,
             line_width: None,
             drawer_pin: None,
         }
@@ -537,6 +584,33 @@ fn date_from_days(mut n: i64) -> (i32, u32, u32) {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn network_printer_receives_the_bytes() {
+        use std::io::Read;
+        let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+        let port = listener.local_addr().unwrap().port();
+        let server = std::thread::spawn(move || {
+            let (mut s, _) = listener.accept().unwrap();
+            let mut got = Vec::new();
+            s.read_to_end(&mut got).unwrap();
+            got
+        });
+        let target = PrinterTarget { host: Some("127.0.0.1".into()), port: Some(port),
+            device_path: Some("COM3:".into()), ..Default::default() };
+        send_bytes(&target, b"\x1b@ticket").unwrap();
+        assert_eq!(server.join().unwrap(), b"\x1b@ticket");
+    }
+
+    #[test]
+    fn unreachable_network_printer_reports_an_error() {
+        let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+        let port = listener.local_addr().unwrap().port();
+        drop(listener); // nothing listens there any more
+        let target = PrinterTarget { host: Some("127.0.0.1".into()), port: Some(port), ..Default::default() };
+        let err = send_bytes(&target, b"x").unwrap_err();
+        assert!(err.contains("injoignable"), "{}", err);
+    }
 
     #[test]
     fn two_column_layout_pads_between() {

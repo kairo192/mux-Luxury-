@@ -85,6 +85,73 @@ class TestBackupEngine(unittest.TestCase):
         self.assertLess(peak, 8 * 1024 * 1024, f"peak {peak / 1e6:.1f} MB")
         self.assertTrue(bk.verify_backup(meta["name"])["ok"])
 
+    def test_01d_backup_reads_one_consistent_view(self):
+        """A row committed while the backup runs must not appear half-way:
+        every table is read from the view the backup started with."""
+        from unittest import mock
+        before = _count("audit_logs")
+        orig = bk._iter_table
+        state = {"done": False}
+
+        def iter_then_commit_elsewhere(conn, table, *a, **kw):
+            rows = orig(conn, table, *a, **kw)
+            cols = next(rows)                       # the first read has happened
+            if not state["done"] and table != "audit_logs":
+                state["done"] = True
+                with db_session(commit=True) as other:
+                    other.cursor().execute(
+                        "INSERT INTO audit_logs (admin_user_id, action, entity_type, entity_id, details_json) "
+                        "VALUES (?, ?, ?, ?, ?)", (None, "during_backup", "test", "1", "{}"))
+            yield cols
+            yield from rows
+
+        with mock.patch.object(bk, "_iter_table", iter_then_commit_elsewhere):
+            meta = bk.create_backup("manual")
+        self.assertTrue(state["done"])
+        self.assertEqual(_count("audit_logs"), before + 1)       # committed for real
+        self.assertEqual(meta["counts"]["audit_logs"], before)   # but not in this backup
+
+    def test_01e_integrity_check_finds_orphans_on_both_engines(self):
+        """The bulk replace turns FK enforcement off (both engines): the check
+        before commit must still catch a row pointing at nothing."""
+        with db_session() as conn:
+            bk._begin_bulk(conn)
+            try:
+                bk._check_integrity(conn)                          # clean database: passes
+                _, rows = bk._query(conn, "SELECT id FROM permissions ORDER BY id LIMIT 1")
+                try:
+                    bk._exec(conn, "INSERT INTO role_permissions (role_id, permission_id) VALUES (987654, %d)" % rows[0][0])
+                except Exception:
+                    # PostgreSQL role without the right to switch FK checks off:
+                    # they stay on during the replace, so no orphan can exist.
+                    self.skipTest("foreign keys stay enforced for this database role")
+                with self.assertRaises(bk.BackupError) as ctx:
+                    bk._check_integrity(conn)
+                self.assertIn("orphelins", str(ctx.exception))
+            finally:
+                bk._raw(conn).rollback()
+                bk._end_bulk(conn)
+        self.assertEqual(_count("role_permissions WHERE role_id = 987654"), 0)
+
+    def test_01f_restore_brings_back_the_photos_saved_with_the_backup(self):
+        from pathlib import Path
+        from unittest import mock
+        uploads = Path(tempfile.mkdtemp(prefix="luxe_up_test_"))
+        (uploads / "products").mkdir()
+        (uploads / "products" / "sac.jpg").write_bytes(b"photo-bytes")
+        with mock.patch.dict(os.environ, {"UPLOAD_DIR": str(uploads)}):
+            meta = bk.create_backup("manual", include_media=True)
+            self.assertTrue(meta["media"])
+            (uploads / "products" / "sac.jpg").unlink()           # new server: photos missing
+            out = bk.restore_backup(meta["name"])
+            self.assertEqual(out["media_files"], 1)
+            self.assertEqual((uploads / "products" / "sac.jpg").read_bytes(), b"photo-bytes")
+            # A damaged photo archive is refused before anything changes.
+            media = Path(bk.backup_dir()) / meta["media"]["name"]
+            media.write_bytes(media.read_bytes()[:-10] + b"0123456789")
+            with self.assertRaises(bk.BackupError):
+                bk.restore_backup(meta["name"])
+
     def test_01c_pc_copy_download_and_import_back(self):
         """A copy kept on the owner's PC: encrypted, owner only, audited, and
         restorable after being sent back."""

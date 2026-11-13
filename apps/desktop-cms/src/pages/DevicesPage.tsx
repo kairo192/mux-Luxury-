@@ -181,7 +181,10 @@ export const DevicesPage: React.FC = () => {
         const cfg = dev.config || {};
         const target = {
           printer_name: cfg.windows_printer_name || null,
-          device_path: cfg.device_path || (cfg.host ? `${cfg.host}:${cfg.port || 9100}` : null),
+          device_path: cfg.device_path || null,
+          // Network printer: sent over the network by the desktop app (not a file path).
+          host: cfg.host || null,
+          port: cfg.host ? Number(cfg.port) || 9100 : null,
           line_width: Number(cfg.paper_width_mm) === 58 ? 32 : 42,
         };
         const res = dev.device_type === "label_printer"

@@ -263,14 +263,42 @@ class TestStorefrontContent(unittest.TestCase):
         self.assertLessEqual(after["low_stock_only_variants"], after["low_stock_variants"])
 
     # ------------------------------------------- old example content --
+    def test_legacy_demo_cleanup_keeps_a_code_the_owner_edited(self):
+        """Only the maximum discount changed: the owner edited it, it stays on."""
+        from unittest import mock
+        from app.database import db_session
+        from app.seed import LEGACY_CLEANUP_MARKER, remove_legacy_demo_content
+        with db_session(commit=True) as conn:
+            cur = conn.cursor()
+            cur.execute("DELETE FROM store_settings WHERE setting_key = ?", (LEGACY_CLEANUP_MARKER,))
+            cur.execute("DELETE FROM coupons WHERE code IN ('BIENVENUE10', 'ALGERIE500')")
+            cur.execute("INSERT INTO coupons (code, discount_type, discount_value, min_order_dzd, max_discount_dzd, "
+                        "is_active, usage_count) VALUES ('BIENVENUE10', 'percentage', 10, 4000, 3000, 1, 0)")
+        try:
+            with mock.patch.dict(os.environ, {"APP_ENV": "production", "LUXE_SEED_DEMO_PRODUCTS": "0"}):
+                with db_session(commit=True) as conn:
+                    self.assertEqual(remove_legacy_demo_content(conn.cursor())["coupons"], [])
+            with db_session() as conn:
+                cur = conn.cursor()
+                cur.execute("SELECT is_active FROM coupons WHERE code = 'BIENVENUE10'")
+                self.assertEqual(cur.fetchone()["is_active"], 1)
+        finally:
+            with db_session(commit=True) as conn:
+                cur = conn.cursor()
+                cur.execute("DELETE FROM coupons WHERE code = 'BIENVENUE10'")
+                cur.execute("DELETE FROM store_settings WHERE setting_key = ?", (LEGACY_CLEANUP_MARKER,))
+
     def test_legacy_demo_cleanup_runs_once_is_audited_and_keeps_owner_content(self):
         from unittest import mock
         from app.database import db_session
         from app.seed import LEGACY_CLEANUP_MARKER, remove_legacy_demo_content
 
-        ins = ("INSERT INTO banners (position, title_fr, cta_link, image_url, is_active, display_order) "
-               "VALUES (?, ?, ?, ?, 1, 9)")
-        legacy = ("promo_grid", "CHAUSSURES — Jusqu'à -20%", "/categories/chaussures", "/assets/prod_baskets_elegantes.jpg")
+        ins = ("INSERT INTO banners (position, title_fr, title_ar, title_en, subtitle_fr, cta_text_fr, cta_link, "
+               "image_url, is_active, display_order) VALUES (?, ?, ?, ?, ?, ?, ?, ?, 1, 9)")
+        # Exactly as older versions inserted it.
+        legacy = ("promo_grid", "CHAUSSURES — Jusqu'à -20%", "أحذية — تخفيض حتى 20%", "SHOES — Up to 20% Off",
+                  "Baskets & créations urbaines", "Voir la collection", "/categories/chaussures",
+                  "/assets/prod_baskets_elegantes.jpg")
         prod_env = {"APP_ENV": "production", "LUXE_SEED_DEMO_PRODUCTS": "0"}
         with db_session(commit=True) as conn:
             cur = conn.cursor()
@@ -278,13 +306,16 @@ class TestStorefrontContent(unittest.TestCase):
             cur.execute(ins, legacy)
             demo_id = cur.lastrowid
             # Same title but the owner changed the photo: kept.
-            cur.execute(ins, legacy[:3] + ("/uploads/mine.jpg",))
+            cur.execute(ins, legacy[:7] + ("/uploads/mine.jpg",))
             owner_id = cur.lastrowid
+            # Only the Arabic title changed: edited by the owner, kept.
+            cur.execute(ins, legacy[:2] + ("عرض خاص على الأحذية",) + legacy[3:])
+            owner_ar_id = cur.lastrowid
             cur.execute("DELETE FROM coupons WHERE code IN ('BIENVENUE10', 'ALGERIE500')")
-            cur.execute("INSERT INTO coupons (code, discount_type, discount_value, min_order_dzd, is_active, usage_count) "
-                        "VALUES ('BIENVENUE10', 'percentage', 10, 4000, 1, 0)")
-            cur.execute("INSERT INTO coupons (code, discount_type, discount_value, min_order_dzd, is_active, usage_count) "
-                        "VALUES ('ALGERIE500', 'fixed_dzd', 500, 5000, 1, 3)")
+            cur.execute("DELETE FROM coupons WHERE code = 'BIENVENUE10_EDITED'")
+            cols = "(code, discount_type, discount_value, min_order_dzd, max_discount_dzd, is_active, usage_count)"
+            cur.execute(f"INSERT INTO coupons {cols} VALUES ('BIENVENUE10', 'percentage', 10, 4000, 2500, 1, 0)")
+            cur.execute(f"INSERT INTO coupons {cols} VALUES ('ALGERIE500', 'fixed_dzd', 500, 5000, 500, 1, 3)")
         ids = []
         try:
             # 1. Test / demo databases are never cleaned and get no marker.
@@ -302,11 +333,12 @@ class TestStorefrontContent(unittest.TestCase):
             removed = [b["id"] for b in found["banners"]]
             self.assertIn(demo_id, removed)
             self.assertNotIn(owner_id, removed)
+            self.assertNotIn(owner_ar_id, removed)
             self.assertEqual([c["code"] for c in found["coupons"]], ["BIENVENUE10"])
             with db_session() as conn:
                 cur = conn.cursor()
-                cur.execute("SELECT id FROM banners WHERE id IN (?, ?)", (demo_id, owner_id))
-                self.assertEqual([r["id"] for r in cur.fetchall()], [owner_id])
+                cur.execute("SELECT id FROM banners WHERE id IN (?, ?, ?) ORDER BY id", (demo_id, owner_id, owner_ar_id))
+                self.assertEqual([r["id"] for r in cur.fetchall()], [owner_id, owner_ar_id])
                 cur.execute("SELECT code, is_active FROM coupons WHERE code IN ('BIENVENUE10', 'ALGERIE500')")
                 codes = {r["code"]: r["is_active"] for r in cur.fetchall()}
                 self.assertEqual(codes["BIENVENUE10"], 0, "unused example code must be switched off")
@@ -335,7 +367,7 @@ class TestStorefrontContent(unittest.TestCase):
         finally:
             with db_session(commit=True) as conn:
                 cur = conn.cursor()
-                for bid in [demo_id, owner_id] + ids:
+                for bid in [demo_id, owner_id, owner_ar_id] + ids:
                     cur.execute("DELETE FROM banners WHERE id = ?", (bid,))
                 cur.execute("DELETE FROM store_settings WHERE setting_key = ?", (LEGACY_CLEANUP_MARKER,))
 

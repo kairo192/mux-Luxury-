@@ -28,6 +28,9 @@ export interface PrinterInfo {
 export interface PrinterTarget {
   printer_name?: string | null;
   device_path?: string | null;
+  /** Network printer (raw printing, port 9100 by default). */
+  host?: string | null;
+  port?: number | null;
   line_width?: number;  // 32 (58mm) or 42 (80mm) typical
   drawer_pin?: 2 | 5;
 }
@@ -266,6 +269,8 @@ export function buildReceiptLines(sale: PosSalePayload, width = 32): ReceiptLine
 export interface LabelPrinterTarget {
   printer_name?: string | null;
   device_path?: string | null;
+  host?: string | null;
+  port?: number | null;
   format?: "zpl" | "escpos-text";
   width_mm?: number;
   height_mm?: number;

@@ -87,7 +87,10 @@ setup() {
   need_root
   command -v certbot >/dev/null 2>&1 || { apt-get update -y && apt-get install -y certbot; }
   install -d -m 0755 "$WEBROOT"
-  install -m 0755 "$(readlink -f "$0")" "$HOOK_BIN"
+  # Not when already running from the installed copy (install refuses same-file copies).
+  if [ "$(readlink -f "$0")" != "$(readlink -f "$HOOK_BIN" 2>/dev/null || true)" ]; then
+    install -m 0755 "$(readlink -f "$0")" "$HOOK_BIN"
+  fi
   umask 077
   printf 'DOMAIN=%q\nEXTRA_DOMAINS=%q\nINSTALL_ROOT=%q\nWEBROOT=%q\nSSL_DIR=%q\nPROXY_CONTAINER=%q\n' \
     "$DOMAIN" "$EXTRA_DOMAINS" "$INSTALL_ROOT" "$WEBROOT" "$SSL_DIR" "$PROXY_CONTAINER" > "$CONF_FILE"

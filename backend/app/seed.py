@@ -203,13 +203,23 @@ def ensure_operational_rbac(conn) -> None:
 
 # Example content that older versions put in every new database. Matched on
 # ALL its original values, so anything the owner created or edited is kept.
+# Exactly as older versions inserted them (every field the CMS can edit):
+# a row differing in any of them was edited by the owner and is left alone.
 _LEGACY_DEMO_BANNERS = [
-    ("hero", "Votre style, notre passion", "/categories/sacs", "/assets/hero_bag_clean.jpg"),
-    ("promo_grid", "CHAUSSURES — Jusqu'à -20%", "/categories/chaussures", "/assets/prod_baskets_elegantes.jpg"),
+    {"position": "hero", "title_fr": "Votre style, notre passion", "title_ar": "أسلوبك، شغفنا الدائم",
+     "title_en": "Your style, our passion",
+     "subtitle_fr": "Découvrez les meilleures marques et les plus beaux accessoires en Algérie.",
+     "cta_text_fr": "Voir la boutique", "cta_link": "/categories/sacs", "image_url": "/assets/hero_bag_clean.jpg"},
+    {"position": "promo_grid", "title_fr": "CHAUSSURES — Jusqu'à -20%", "title_ar": "أحذية — تخفيض حتى 20%",
+     "title_en": "SHOES — Up to 20% Off", "subtitle_fr": "Baskets & créations urbaines",
+     "cta_text_fr": "Voir la collection", "cta_link": "/categories/chaussures",
+     "image_url": "/assets/prod_baskets_elegantes.jpg"},
 ]
 _LEGACY_DEMO_COUPONS = [
-    ("BIENVENUE10", "percentage", 10, 4000),
-    ("ALGERIE500", "fixed_dzd", 500, 5000),
+    {"code": "BIENVENUE10", "discount_type": "percentage", "discount_value": 10, "min_order_dzd": 4000,
+     "max_discount_dzd": 2500},
+    {"code": "ALGERIE500", "discount_type": "fixed_dzd", "discount_value": 500, "min_order_dzd": 5000,
+     "max_discount_dzd": 500},
 ]
 
 
@@ -255,19 +265,22 @@ LEGACY_CLEANUP_MARKER = "system_legacy_demo_cleanup_v1"
 def find_legacy_demo_content(cur) -> dict:
     """Example rows still present, matched on ALL their original values."""
     banners = []
-    for pos, title, link, img in _LEGACY_DEMO_BANNERS:
+    for b in _LEGACY_DEMO_BANNERS:
+        cols = list(b)
         cur.execute(
-            "SELECT id, title_fr FROM banners WHERE position = ? AND title_fr = ? AND cta_link = ? AND image_url = ?",
-            (pos, title, link, img),
+            "SELECT id, title_fr FROM banners WHERE " + " AND ".join(f"{c} = ?" for c in cols)
+            + " AND COALESCE(subtitle_ar, '') = '' AND COALESCE(subtitle_en, '') = ''",
+            tuple(b[c] for c in cols),
         )
         banners += [{"id": r["id"], "title_fr": r["title_fr"]} for r in cur.fetchall()]
     coupons = []
-    for code, dtype, value, min_order in _LEGACY_DEMO_COUPONS:
+    for c in _LEGACY_DEMO_COUPONS:
+        cols = list(c)
         cur.execute(
-            """SELECT id, code FROM coupons
-               WHERE code = ? AND discount_type = ? AND discount_value = ? AND min_order_dzd = ?
-                 AND COALESCE(usage_count, 0) = 0 AND is_active = 1""",
-            (code, dtype, value, min_order),
+            "SELECT id, code FROM coupons WHERE " + " AND ".join(f"{k} = ?" for k in cols)
+            + """ AND starts_at IS NULL AND ends_at IS NULL AND usage_limit IS NULL
+                  AND COALESCE(usage_count, 0) = 0 AND is_active = 1""",
+            tuple(c[k] for k in cols),
         )
         coupons += [{"id": r["id"], "code": r["code"]} for r in cur.fetchall()]
     return {"banners": banners, "coupons": coupons}

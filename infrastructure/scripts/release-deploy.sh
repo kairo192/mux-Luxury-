@@ -167,8 +167,21 @@ if [ "$HEALTH_OK" -ne 1 ]; then
     mv -Tf  "${CURRENT_LINK}.new" "$CURRENT_LINK"
     # --build: the images of the release that just failed carry the same
     # names; rebuild the previous release's code (layers are cached).
-    (cd "$CURRENT_LINK" && docker compose up -d --build --remove-orphans) || true
-    log "rolled back to $PREVIOUS_RELEASE"
+    if ! (cd "$CURRENT_LINK" && docker compose up -d --build --remove-orphans); then
+      log "ROLLBACK FAILED: the previous release could not be rebuilt/started — manual intervention needed"
+      exit 2
+    fi
+    ROLLBACK_OK=0
+    DEADLINE=$(( $(date +%s) + HEALTH_TIMEOUT_SEC ))
+    while [ "$(date +%s)" -lt "$DEADLINE" ]; do
+      if curl -fsS --max-time 5 "$HEALTH_URL" >/dev/null 2>&1; then ROLLBACK_OK=1; break; fi
+      sleep 3
+    done
+    if [ "$ROLLBACK_OK" -ne 1 ]; then
+      log "ROLLBACK FAILED: $PREVIOUS_RELEASE started but is not healthy — manual intervention needed"
+      exit 2
+    fi
+    log "rolled back to $PREVIOUS_RELEASE (healthy)"
   else
     log "no previous release to roll back to — manual intervention needed"
   fi

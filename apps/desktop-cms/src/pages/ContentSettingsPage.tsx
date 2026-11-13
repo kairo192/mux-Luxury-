@@ -35,6 +35,10 @@ export function ContentSettingsPage({ active, canEdit, categories, products }: C
   // auto-reload) must not wipe what has not been saved yet.
   const settingsDirtyRef = useRef(false);
   const pageDirtyRef = useRef(false);
+  // Edit counters: a save only marks the form clean if nothing was typed while
+  // it was being sent; otherwise the reload after it keeps the newer typing.
+  const settingsRevRef = useRef(0);
+  const pageRevRef = useRef(0);
   const [couponCode, setCouponCode] = useState("");
   const [couponType, setCouponType] = useState<"percentage" | "fixed_dzd">("percentage");
   const [couponValue, setCouponValue] = useState(10);
@@ -114,6 +118,7 @@ export function ContentSettingsPage({ active, canEdit, categories, products }: C
         return;
       }
     }
+    const savedRev = settingsRevRef.current;
     try {
       await DesktopCmsApi.updateStoreSettings({
         store_phone: storePhoneInput.trim(),
@@ -125,7 +130,7 @@ export function ContentSettingsPage({ active, canEdit, categories, products }: C
         instagram_url: instagramInput.trim(),
         tiktok_url: tiktokInput.trim(),
       });
-      settingsDirtyRef.current = false;
+      if (settingsRevRef.current === savedRev) settingsDirtyRef.current = false;
       const okMsg = "Paramètres de la boutique Mus Luxury enregistrés et synchronisés.";
       notifyClientSuccess("Paramètres boutique enregistrés", okMsg);
       await load();
@@ -180,6 +185,7 @@ export function ContentSettingsPage({ active, canEdit, categories, products }: C
       );
       return;
     }
+    const savedRev = pageRevRef.current;
     try {
       await DesktopCmsApi.upsertStaticPage(pageSlug, {
         title_fr: pageDraft.title_fr.trim(),
@@ -190,7 +196,7 @@ export function ContentSettingsPage({ active, canEdit, categories, products }: C
         content_en: pageDraft.content_en.trim(),
         is_published: true,
       });
-      pageDirtyRef.current = false;
+      if (pageRevRef.current === savedRev) pageDirtyRef.current = false;
       const okMsg = `Page statique "/pages/${pageSlug}" enregistrée et publiée.`;
       notifyClientSuccess("Page statique publiée", okMsg);
       await load();
@@ -203,7 +209,7 @@ export function ContentSettingsPage({ active, canEdit, categories, products }: C
     <div className="space-y-6 text-xs">
       {canEdit && <HomepageContentPanel categories={categories} products={products} />}
 
-      <form onSubmit={handleSaveStoreSettings} onChange={() => { settingsDirtyRef.current = true; }} className="bg-white p-6 rounded-2xl border border-[#D4AF62]/40 space-y-4">
+      <form onSubmit={handleSaveStoreSettings} onChange={() => { settingsDirtyRef.current = true; settingsRevRef.current += 1; }} className="bg-white p-6 rounded-2xl border border-[#D4AF62]/40 space-y-4">
         <div>
           <h3 className="text-base font-serif font-bold text-[#063D2E]">Coordonnées de la boutique</h3>
           <p className="text-gray-500">Affichées partout sur la boutique en ligne (en-tête, pied de page, boutons WhatsApp, page produit).</p>
@@ -283,7 +289,9 @@ export function ContentSettingsPage({ active, canEdit, categories, products }: C
           {coupons.length > 0 && (
             <div className="pt-3 border-t space-y-1.5">
               <p className="font-bold text-[#063D2E]">Codes Promo Enregistrés ({coupons.length})</p>
-              {coupons.slice(0, 6).map((cpn: any) => (
+              {/* Every code stays reachable (active ones first), in a scrolling list. */}
+              <div className="max-h-64 overflow-y-auto space-y-1.5 pr-1">
+              {[...coupons].sort((a: any, b: any) => Number(b.is_active) - Number(a.is_active)).map((cpn: any) => (
                 <div key={cpn.id} className="flex items-center justify-between bg-[#F8F6F0] px-3 py-1.5 rounded-lg border">
                   <span>
                     <strong className="font-mono text-[#063D2E]">{cpn.code}</strong> ({cpn.discount_value}{cpn.discount_type === "percentage" ? "%" : " DA"}) • Utilisations: {cpn.usage_count}{cpn.usage_limit ? `/${cpn.usage_limit}` : ""}{cpn.orders_count !== undefined ? ` • ${cpn.orders_count} commande(s) gardée(s), ${Number(cpn.discount_given_dzd || 0).toLocaleString("fr-FR")} DA de remise` : ""}
@@ -297,11 +305,12 @@ export function ContentSettingsPage({ active, canEdit, categories, products }: C
                   )}
                 </div>
               ))}
+              </div>
             </div>
           )}
         </form>
 
-        <form onSubmit={handleSaveStaticPage} onChange={() => { pageDirtyRef.current = true; }} className="bg-white p-6 rounded-2xl border border-[#D4AF62]/40 space-y-3">
+        <form onSubmit={handleSaveStaticPage} onChange={() => { pageDirtyRef.current = true; pageRevRef.current += 1; }} className="bg-white p-6 rounded-2xl border border-[#D4AF62]/40 space-y-3">
           <div>
             <h3 className="text-base font-serif font-bold text-[#063D2E]">Pages d'information</h3>
             <p className="text-gray-500">Ouvertes depuis le pied de page de la boutique. Sans texte arabe / anglais, le texte français est affiché.</p>

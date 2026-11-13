@@ -97,39 +97,37 @@ still matter:
 
 ## Monitoring integration
 
-Uptime Kuma already monitors the shop (see
-`infrastructure/monitoring/docker-compose.monitoring.yml`). Point it
-at the backup log with a "Keyword" monitor:
+`nightly_backup.sh` prints `[nightly-backup] OK — backup, off-site copy and
+verification done` only when **all three** steps succeeded (a failed upload
+stops the chain). Monitor that, not the verify line alone:
 
-- URL: `file:///opt/luxe/logs/backup.log` (if the Kuma container
-  bind-mounts `/opt/luxe/logs`) OR a lightweight `curl`-based pull.
-- Keyword: `verify-backup] OK` (positive match).
-- Interval: 24h, after the scheduled backup hour.
-
-Alternative: emit a "heartbeat" to a Kuma push monitor at the end of
-`verify_backup.sh`. Add this line at the bottom of the script:
-
-```bash
-# curl -fsS --max-time 10 "https://kuma.example.com/api/push/<token>?status=up&msg=OK" >/dev/null || true
-```
-
-The line is commented out in the shipped script because the push token
-is per-shop and must not be committed.
+- **Push monitor (recommended)**: create a Kuma *Push* monitor (heartbeat
+  interval 25 h) and put its URL in `BACKUP_HEARTBEAT_URL` in
+  `/opt/luxe/shared/.env`. The chain calls it only after a fully successful
+  night; Kuma alerts when a night is missed or fails.
+- **Keyword monitor**: on `/opt/luxe/logs/backup.log`, keyword
+  `[nightly-backup] OK`, checked daily after the backup hour.
 
 ## Restore procedure (for the operator, DR)
 
-The actual restore uses `infrastructure/backups/restore_backup.sh`
-(already in the repo). The `verify_backup.sh` step is an automated
-rehearsal that proves the archive is restorable; it does NOT touch the
-live DB. If a real restore is needed:
+The actual restore uses `infrastructure/backups/restore_backup.sh`. The
+`verify_backup.sh` step is an automated rehearsal that proves the archive is
+restorable; it does NOT touch the live DB. If a real restore is needed (on a
+new server: same `S3_*` values in `/opt/luxe/shared/.env`, `rclone` installed):
 
-1. Download the archive from the bucket:
+1. List and download from the bucket with the same settings the upload uses:
 
    ```bash
-   aws --endpoint-url "$S3_ENDPOINT_URL" \
-       s3 cp s3://mus-luxury-backups/db-nightly/<host>/<YYYY/MM/DD>/luxe_db_<ts>.sql.gz.enc \
-       /var/lib/luxe/backups/
+   cd /opt/luxe/current
+   sudo bash -c 'source infrastructure/scripts/env-file.sh && luxe_load_env /opt/luxe/shared/.env &&
+     bash infrastructure/backups/upload_to_offsite.sh list'
+   # e.g. <host>/2026/11/13/luxe_db_20261113_023000.sql.gz.enc   and   <host>/media/luxe_media_….tar.gz.enc
+   sudo bash -c 'source infrastructure/scripts/env-file.sh && luxe_load_env /opt/luxe/shared/.env &&
+     bash infrastructure/backups/upload_to_offsite.sh download <host>/2026/11/13/luxe_db_20261113_023000.sql.gz.enc'
    ```
+
+   Files land in `BACKUP_DIR` (`/var/lib/luxe/backups`). For a restore from
+   the CMS instead, download the `luxe_app_….json.gz.enc` of the same night.
 
 2. Follow `docs/cicd/ROLLBACK.md` — it has the full restore-DB-and-flip
    procedure wired for the symlink release layout.
@@ -142,7 +140,7 @@ live DB. If a real restore is needed:
   region has an outage, the only backup copy is the local one on the
   VPS disk.
 - Customer media verification — the current chain verifies the DB dump.
-  Media (`luxe_media_*.tar.gz*`) is uploaded with the same prefix but
+  Media (`luxe_media_*.tar.gz.enc`) is uploaded once to `<host>/media/` but
   not restored during verify. A lost media archive is recoverable from
   the bucket; a corrupt one shows up as a 0-byte download at restore
   time.

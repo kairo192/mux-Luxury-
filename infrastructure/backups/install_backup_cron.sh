@@ -45,7 +45,8 @@ if [ ! -f "$ENV_FILE" ]; then
 fi
 
 # Default schedule if the env file does not pin one. 02:30 UTC = ~03:30 Algiers.
-schedule=$(grep -E '^BACKUP_CRON_SCHEDULE=' "$ENV_FILE" | tail -n 1 | cut -d= -f2- | tr -d '"' | tr -d "'" )
+# (|| true: no such line is normal — grep's "no match" must not stop the script.)
+schedule=$(grep -E '^BACKUP_CRON_SCHEDULE=' "$ENV_FILE" | tail -n 1 | cut -d= -f2- | tr -d '"' | tr -d "'" || true)
 [ -n "$schedule" ] || schedule='30 2 * * *'
 
 mkdir -p "$LOG_DIR"

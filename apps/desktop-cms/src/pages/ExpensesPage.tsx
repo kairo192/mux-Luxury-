@@ -67,12 +67,22 @@ export const ExpensesPage: React.FC = () => {
 
   // An expense recorded "à régler" is paid now (cash box or bank).
   const payPending = async (exp: ExpenseItem) => {
+    const amount = `${Number(exp.amount_dzd || 0).toLocaleString()} DA`;
+    // 1. How it was paid (two answers: cash box or bank)…
     const cash = await confirmClientAction({
       title: "Payer la dépense",
-      message: `${exp.description} — ${Number(exp.amount_dzd || 0).toLocaleString()} DA. Payée en espèces (caisse) ? Choisissez « Banque » pour un virement ou un chèque.`,
+      message: `${exp.description} — ${amount}. Payée en espèces (caisse) ? Choisissez « Banque » pour un virement ou un chèque.`,
       confirmLabel: "Espèces (caisse)",
       cancelLabel: "Banque",
     });
+    // 2. …then a real yes/no: closing or « Annuler » records nothing.
+    const go = await confirmClientAction({
+      title: "Confirmer le paiement",
+      message: `Enregistrer le paiement de ${amount} pour « ${exp.description} » ${cash ? "en espèces (sortie de caisse)" : "par la banque"} ?`,
+      confirmLabel: "Enregistrer le paiement",
+      cancelLabel: "Annuler",
+    });
+    if (!go) return;
     try {
       await DesktopCmsApi.payExpense(exp.id, cash ? "cash" : "bank_transfer");
       notifyClientSuccess("Dépense payée", `${exp.description} : ${Number(exp.amount_dzd || 0).toLocaleString()} DA (${cash ? "caisse" : "banque"}).`);

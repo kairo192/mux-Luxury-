@@ -7,7 +7,12 @@
 
 ---
 
-## 0p. OFF-SITE BACKUP ON A FREE PLAN (2026-11-13, latest)
+## 0q. CODERABBIT REVIEW FIXED (2026-11-13, latest)
+- PR #1 (into feat/pos-core-cash-register): 26 CodeRabbit findings verified and fixed — list in WORK_SUMMARY §35.
+- Network printers: PrinterTarget has `host`/`port` (TCP 9100); never put `host:port` in device_path.
+- Please test on Windows: setup-github-secrets.ps1 (Assert-Stored after each gh call) and a network printer test print.
+
+## 0p. OFF-SITE BACKUP ON A FREE PLAN (2026-11-13)
 - `infrastructure/backups/upload_to_offsite.sh` uses rclone (not the aws CLI), standard storage class, and deletes
   old copies in the bucket itself (DB files > OFFSITE_RETENTION_DAYS=30; newest BACKUP_MEDIA_KEEP photo archives kept).
 - Free: Backblaze B2 / Cloudflare R2 (10 GB). Owner steps: docs/OPERATIONS_GUIDE.md §5.4. Test: test_offsite_upload.py.

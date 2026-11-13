@@ -56,12 +56,16 @@ test.describe("CMS operations", () => {
 
   test("orders search finds an order by phone typed with spaces", async ({ page }) => {
     const w = watch(page);
-    const phone = "0773" + String(Date.now()).slice(-6);
-    const r = await (await fetch(`${process.env.E2E_API_URL}/api/v1/orders`, {
+    const order = async (phone: string, name: string) => (await (await fetch(`${process.env.E2E_API_URL}/api/v1/orders`, {
       method: "POST", headers: { "Content-Type": "application/json", "Idempotency-Key": `srch-${phone}` },
-      body: JSON.stringify({ full_name: "Nadia Recherche", phone, wilaya_code: "16", commune: "Alger Centre",
+      body: JSON.stringify({ full_name: name, phone, wilaya_code: "16", commune: "Alger Centre",
         delivery_address: "3 rue de la Recherche, Alger", delivery_method: "home", items: [{ variant_id: bag.variantId, quantity: 1 }] }),
-    })).json();
+    })).json());
+    const phone = "0773" + String(Date.now()).slice(-6);
+    const r = await order(phone, "Nadia Recherche");
+    // A second order of this test, so "clear the search" has more than one to show
+    // even when the test runs on its own.
+    const other = await order("0774" + String(Date.now()).slice(-6), "Samir Autre");
     await cmsLogin(page);
     await cmsOpen(page, "Commandes");
     const search = page.locator("main input[type=search]");
@@ -71,6 +75,7 @@ test.describe("CMS operations", () => {
     await expect(cards).toHaveCount(1);
     await expect(cards.first()).toHaveAttribute("data-order-ref", r.order_reference);
     await search.fill("");
+    await expect(page.locator(`[data-order-ref="${other.order_reference}"]`)).toBeVisible();
     await expect.poll(() => cards.count()).toBeGreaterThan(1);
     w.expectClean();
   });
@@ -139,9 +144,20 @@ test.describe("CMS operations", () => {
     await cmsLogin(page);
     await cmsOpen(page, "Dépenses");
     const row = page.locator("tr", { hasText: exp.description }).first();
+    const dialog = page.locator('[aria-labelledby="active-confirm-title"]');
+    // 1st try: cash, then « Annuler » on the final confirmation → nothing recorded.
     await row.getByRole("button", { name: "Payer" }).click();
-    await page.waitForTimeout(400);
-    if (await page.locator('[aria-labelledby="active-confirm-title"]').count()) await confirmDialog(page);
+    await confirmDialog(page);                                   // « Espèces (caisse) »
+    await expect(dialog).toContainText("Confirmer le paiement");
+    await expect(dialog).toContainText("en espèces");
+    await dialog.getByRole("button", { name: "Annuler" }).click();
+    await page.waitForTimeout(600);
+    expect((await treasury()).cash).toBe(t0.cash);
+    // 2nd try: cash, then « Enregistrer le paiement ».
+    await row.getByRole("button", { name: "Payer" }).click();
+    await confirmDialog(page);
+    await expect(dialog).toContainText("Confirmer le paiement");
+    await confirmDialog(page);
     await expect.poll(async () => (await treasury()).cash - t0.cash).toBe(-4200);
     w.expectClean();
   });

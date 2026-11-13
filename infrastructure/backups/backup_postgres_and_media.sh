@@ -167,7 +167,13 @@ else
 fi
 
 FILES=("$(basename "$DB_ARCHIVE")")
-[ -n "$MEDIA_ARCHIVE" ] && FILES+=("$(basename "$MEDIA_ARCHIVE")")
+if [ -n "$MEDIA_ARCHIVE" ]; then
+  FILES+=("$(basename "$MEDIA_ARCHIVE")")
+elif [ -n "$LAST_MEDIA" ] && [ -f "$LAST_MEDIA" ]; then
+  # Photos unchanged (or skipped): list the archive that still covers them, so
+  # the off-site copy picks it up if an earlier upload of it failed.
+  FILES+=("$(basename "$LAST_MEDIA")")
+fi
 [ -n "$APP_SNAPSHOT" ] && FILES+=("$APP_SNAPSHOT")
 (cd "$BACKUP_DIR" && sha256sum "${FILES[@]}" > "$(basename "$SHA_FILE")")
 

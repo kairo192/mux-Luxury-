@@ -41,6 +41,10 @@ $deployKey = Join-Path $sshDir "mus_luxury_deploy"
 function Step($t) { Write-Host "`n== $t" -ForegroundColor Yellow }
 function Ok($t) { Write-Host "   OK  $t" -ForegroundColor Green }
 function Warn($t) { Write-Host "   !!  $t" -ForegroundColor Red }
+# A failed native command (gh) does not stop the script by itself: check each one.
+function Assert-Stored($what) {
+  if ($LASTEXITCODE -ne 0) { throw "GitHub did not store $what (gh exit code $LASTEXITCODE). Nothing secret was printed; fix the cause and re-run." }
+}
 
 function Restrict-ToCurrentUser($path) {
   # Remove inherited permissions: only the current Windows user can read it.
@@ -95,14 +99,22 @@ $ghReady = $false
 if ($gh) { gh auth status 2>$null | Out-Null; $ghReady = ($LASTEXITCODE -eq 0) }
 if ($ghReady) {
   Get-Content $signKey -Raw | gh secret set TAURI_SIGNING_PRIVATE_KEY --repo $Repo
+  Assert-Stored TAURI_SIGNING_PRIVATE_KEY
   Get-Content $signPass -Raw | gh secret set TAURI_SIGNING_PRIVATE_KEY_PASSWORD --repo $Repo
+  Assert-Stored TAURI_SIGNING_PRIVATE_KEY_PASSWORD
   gh variable set TAURI_UPDATER_PUBKEY --repo $Repo --body ((Get-Content $signPub -Raw).Trim())
+  Assert-Stored TAURI_UPDATER_PUBKEY
   Get-Content $deployKey -Raw | gh secret set PRODUCTION_SSH_PRIVATE_KEY --repo $Repo
+  Assert-Stored PRODUCTION_SSH_PRIVATE_KEY
   gh secret set PRODUCTION_SSH_USER --repo $Repo --body $DeployUser
+  Assert-Stored PRODUCTION_SSH_USER
   gh variable set PRODUCTION_URL --repo $Repo --body "https://$Domain"
+  Assert-Stored PRODUCTION_URL
   gh variable set PRODUCTION_HEALTH_URL --repo $Repo --body "https://api.$Domain/api/v1/health"
+  Assert-Stored PRODUCTION_HEALTH_URL
   if ($VpsHost) {
     gh secret set PRODUCTION_SSH_HOST --repo $Repo --body $VpsHost
+    Assert-Stored PRODUCTION_SSH_HOST
     Ok "all secrets and variables stored (VPS host: $VpsHost)"
   } else {
     Warn "PRODUCTION_SSH_HOST not set: re-run with -VpsHost <IP of your VPS> once you have it."

@@ -112,6 +112,8 @@ SETTINGS: List[Setting] = [
             example="3"),
     Setting("BACKUP_MIN_FREE_PCT", "files", "Under this % of free disk, photo archives are skipped.", default="15",
             example="15"),
+    Setting("BACKUP_HEARTBEAT_URL", "files", "Optional Uptime Kuma push URL, called only after a night where backup, "
+            "off-site copy and verification all succeeded (Kuma alerts when it stops).", secret=True),
     # --------------------------------------------------------------- offsite
     Setting("S3_BACKUP_ENABLED", "offsite", "true = copy each night's backup to S3-compatible storage "
             "(strongly recommended: the VPS can be lost).", default="false", example="false"),
@@ -180,10 +182,14 @@ def get_int(name: str, low: int, high: int, env: Optional[Dict[str, str]] = None
 
 
 _PLACEHOLDER = re.compile(r"^(<|replace|change|fill|your_|todo)", re.IGNORECASE)
+# A template marker anywhere in the value, e.g. the password inside
+# DATABASE_URL=postgresql://user:<CHANGE_ME_POSTGRES_PASSWORD>@db/...
+_EMBEDDED_PLACEHOLDER = re.compile(r"<\s*(change_me|fill_in|replace)[^>]*>", re.IGNORECASE)
 
 
 def is_placeholder(value: str) -> bool:
-    return bool(_PLACEHOLDER.match((value or "").strip()))
+    v = (value or "").strip()
+    return bool(_PLACEHOLDER.match(v) or _EMBEDDED_PLACEHOLDER.search(v))
 
 
 def configuration_report(env: Optional[Dict[str, str]] = None, production: Optional[bool] = None) -> dict:
@@ -225,7 +231,9 @@ def configuration_report(env: Optional[Dict[str, str]] = None, production: Optio
                 problems.append(f"{k}: needed because S3_BACKUP_ENABLED is on")
     return {
         "production": production,
-        "ok": not any("required in production" in p for p in problems),
+        # Blocking: a key production needs, or a key a switched-on feature needs.
+        # (Off-site copy simply switched off is a warning only.)
+        "ok": not any(("required in production" in p) or ("needed because" in p) for p in problems),
         "problems": problems,
         "groups": groups,
         # Keys in an .env file that the code does not use (check_file only:

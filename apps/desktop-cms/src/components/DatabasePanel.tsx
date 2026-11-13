@@ -30,7 +30,7 @@ import {
 } from "lucide-react";
 import { useT } from "../i18n";
 import { DesktopCmsApi } from "../api/adminClient";
-import { notifyClientError, notifyClientSuccess } from "../utils/clientNotifier";
+import { notifyClientError, notifyClientSuccess, notifyClientWarning } from "../utils/clientNotifier";
 import { serverDate } from "../utils/serverDate";
 import { copyBackupToPc, listPcCopies, pcCopiesAvailable, sendPcCopyToServer, type PcCopies } from "../utils/backupCopies";
 
@@ -181,6 +181,7 @@ export function DatabasePanel({ active, isOwner }: { active: boolean; isOwner: b
       } else {
         const res: any = await DesktopCmsApi.restoreDatabaseBackup(danger.backup.name, password, confirmWord);
         notifyClientSuccess(t("db.restore_done_title"), t("db.restore_done_body", { backup: res?.safety_backup ?? "" }), true);
+        if (res?.media_error) notifyClientWarning(t("db.restore_media_failed_title"), t("db.restore_media_failed_body"), true);
       }
       setDanger(null);
       // Everything on screen (catalog, orders, POS cache) is now stale.

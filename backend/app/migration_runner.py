@@ -153,15 +153,12 @@ def ensure_baseline(conn, is_postgres: bool) -> None:
     """If an older schema (001 initial) was applied before this runner existed,
     mark the baseline as applied so we don't try to re-run it."""
     cur = conn.cursor()
-    cur.execute(
-        "SELECT 1 FROM information_schema.tables WHERE table_name = 'schema_migrations'"
-        if is_postgres else
-        "SELECT name FROM sqlite_master WHERE type='table' AND name='schema_migrations'"
-    )
-    row = cur.fetchone()
-    has_table = bool(row)
     _ensure_tracking_table(conn, is_postgres)
-    if has_table:
+    # Done once the baseline record exists — not merely the tracking table: a
+    # first start interrupted while creating the base tables must be able to
+    # finish on the next start.
+    cur.execute("SELECT 1 FROM schema_migrations WHERE version = '000'")
+    if cur.fetchone():
         return
     schema_path = PG_SCHEMA_PATH if is_postgres else SCHEMA_PATH
     try:
@@ -170,14 +167,17 @@ def ensure_baseline(conn, is_postgres: bool) -> None:
         checksum = hashlib.sha256(body.encode("utf-8")).hexdigest()
     except OSError:
         return
-    # A brand-new, empty database: create the base tables first, otherwise
-    # every later migration fails on a missing table ("no such table").
+    # A new (or half-created) database: create the missing base tables first,
+    # otherwise every later migration fails on a missing table. The base
+    # schema only uses CREATE ... IF NOT EXISTS, so running it again is safe.
+    base_tables = set(re.findall(r"CREATE TABLE IF NOT EXISTS\s+(\w+)", body, re.IGNORECASE))
     cur.execute(
-        "SELECT 1 FROM information_schema.tables WHERE table_name = 'products'"
+        "SELECT table_name FROM information_schema.tables WHERE table_schema = 'public'"
         if is_postgres else
-        "SELECT name FROM sqlite_master WHERE type='table' AND name='products'"
+        "SELECT name FROM sqlite_master WHERE type='table'"
     )
-    if not cur.fetchone():
+    existing = {(r[0] if not isinstance(r, dict) else next(iter(r.values()))) for r in cur.fetchall()}
+    if base_tables - existing:
         conn.executescript(body)
     if is_postgres:
         conn.execute(

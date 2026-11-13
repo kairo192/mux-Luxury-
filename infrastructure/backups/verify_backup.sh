@@ -113,7 +113,7 @@ case "$method" in
     trap 'PGPASSWORD="${POSTGRES_PASSWORD:-}" dropdb -h "${POSTGRES_HOST:-db}" -U "${POSTGRES_USER:-luxe_app_user}" "$tmp_db" >/dev/null 2>&1 || true; rm -rf "$work_dir"' EXIT
     PGPASSWORD="${POSTGRES_PASSWORD:-}" psql -h "${POSTGRES_HOST:-db}" \
       -U "${POSTGRES_USER:-luxe_app_user}" "$tmp_db" \
-      -q -f "$work_sql" \
+      -v ON_ERROR_STOP=1 -q -f "$work_sql" \
       || fail "psql restore failed"
     wilayas=$(PGPASSWORD="${POSTGRES_PASSWORD:-}" psql -h "${POSTGRES_HOST:-db}" \
       -U "${POSTGRES_USER:-luxe_app_user}" "$tmp_db" \

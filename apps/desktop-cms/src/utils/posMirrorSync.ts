@@ -68,6 +68,15 @@ async function chunkedUpsert<T>(
   return total;
 }
 
+/** Empties the local catalogue before a full reload. Returns an error message
+ *  when a step failed: the sync must then stop BEFORE recording the new
+ *  catalogue generation, or products removed on the server would stay. */
+async function resetMirror(): Promise<string | null> {
+  if (!(await mirrorClear())) return "Réinitialisation du miroir échouée";
+  if (!(await mirrorInit())) return "Initialisation du miroir échouée";
+  return null;
+}
+
 export async function syncCatalog(force = false): Promise<SyncReport> {
   const start = Date.now();
   const report = (p: Partial<SyncReport>): SyncReport => ({
@@ -90,17 +99,19 @@ export async function syncCatalog(force = false): Promise<SyncReport> {
     if (useDelta && status?.last_cursor) {
       payload = await DesktopCmsApi.catalogDeltas(status.last_cursor);
       const known = readEpoch();
-      if (typeof payload?.catalog_epoch === "string" && known && payload.catalog_epoch !== known) {
-        // Database was reset / restored on the server: start over.
-        await mirrorClear();
-        await mirrorInit();
+      // Different catalogue generation (database reset / restored on the
+      // server), or none recorded yet (till upgraded from an older version):
+      // the local catalogue cannot be trusted, start over from a snapshot.
+      if (typeof payload?.catalog_epoch === "string" && payload.catalog_epoch !== known) {
+        const failed = await resetMirror();
+        if (failed) return report({ error: failed });
         payload = await DesktopCmsApi.catalogSnapshot();
         mode = "snapshot";
       }
     } else {
       if (force) {
-        await mirrorClear();
-        await mirrorInit();
+        const failed = await resetMirror();
+        if (failed) return report({ error: failed });
       }
       payload = await DesktopCmsApi.catalogSnapshot();
     }

@@ -298,6 +298,18 @@ def _iter_table(conn, table: str, batch: int = 500):
         cur.close()
 
 
+def _begin_consistent_read(conn) -> None:
+    """Every table of a backup is read from ONE view of the database, so an
+    order committed while the backup runs is either fully in it (with its
+    customer and lines) or not at all."""
+    conn.commit()                 # start from no open transaction
+    if _is_pg(conn):
+        # First statement of the new transaction: all later reads share its snapshot.
+        conn.execute("SET TRANSACTION ISOLATION LEVEL REPEATABLE READ")
+    else:
+        conn.execute("BEGIN")     # SQLite: the read snapshot is held until the transaction ends
+
+
 def write_snapshot(conn, out_path: Path) -> Dict[str, Any]:
     """Writes the whole store database as gzip-compressed JSON Lines:
 
@@ -385,7 +397,11 @@ def create_backup(kind: str = "manual", actor_id: Optional[int] = None, include_
     tmp = backup_dir() / (name_plain + ".part")
     try:
         with db_session() as conn:
-            snap = write_snapshot(conn, tmp)
+            _begin_consistent_read(conn)
+            try:
+                snap = write_snapshot(conn, tmp)
+            finally:
+                conn.rollback()           # read-only: just end the transaction
     except Exception:
         tmp.unlink(missing_ok=True)
         raise
@@ -671,11 +687,41 @@ def _end_bulk(conn) -> None:
         _raw(conn).execute("PRAGMA foreign_keys = ON")
 
 
-def _check_integrity(conn) -> None:
+_PG_FOREIGN_KEYS = """
+SELECT c.conrelid::regclass::text AS child_table, c.confrelid::regclass::text AS parent_table,
+       ARRAY(SELECT a.attname FROM unnest(c.conkey) WITH ORDINALITY AS k(num, pos)
+             JOIN pg_attribute a ON a.attrelid = c.conrelid AND a.attnum = k.num ORDER BY k.pos) AS child_cols,
+       ARRAY(SELECT a.attname FROM unnest(c.confkey) WITH ORDINALITY AS k(num, pos)
+             JOIN pg_attribute a ON a.attrelid = c.confrelid AND a.attnum = k.num ORDER BY k.pos) AS parent_cols
+  FROM pg_constraint c
+ WHERE c.contype = 'f' AND c.connamespace = 'public'::regnamespace"""
+
+
+def _orphan_rows(conn) -> int:
+    """Rows whose foreign key points at nothing. SQLite has a pragma for it;
+    on PostgreSQL the bulk replace runs with FK triggers off
+    (session_replication_role = replica), so every FK is checked here."""
     if not _is_pg(conn):
         _, bad = _query(conn, "PRAGMA foreign_key_check")
-        if bad:
-            raise BackupError(f"Contrôle d'intégrité échoué ({len(bad)} liens orphelins) : opération annulée.")
+        return len(bad)
+    _, fks = _query(conn, _PG_FOREIGN_KEYS)
+    total = 0
+    for child, parent, child_cols, parent_cols in fks:
+        child_cols, parent_cols = list(child_cols), list(parent_cols)
+        if not child_cols or len(child_cols) != len(parent_cols):
+            continue
+        not_null = " AND ".join(f"c.{_q(col)} IS NOT NULL" for col in child_cols)
+        match = " AND ".join(f"p.{_q(pc)} = c.{_q(cc)}" for cc, pc in zip(child_cols, parent_cols))
+        _, rows = _query(conn, f"SELECT COUNT(*) FROM {_q(child)} c WHERE {not_null} "
+                               f"AND NOT EXISTS (SELECT 1 FROM {_q(parent)} p WHERE {match})")
+        total += int(rows[0][0])
+    return total
+
+
+def _check_integrity(conn) -> None:
+    bad = _orphan_rows(conn)
+    if bad:
+        raise BackupError(f"Contrôle d'intégrité échoué ({bad} liens orphelins) : opération annulée.")
 
 
 def _reset_sequences(conn, tables: Iterable[str], restart: bool) -> None:
@@ -795,6 +841,44 @@ def _audit(conn, actor_id: Optional[int], action: str, details: Dict[str, Any]) 
     )
 
 
+MEDIA_NAME_RE = re.compile(r"^luxe_media_[a-z\-]+_\d{8}_\d{6}(_[0-9a-f]{4})?\.tar\.gz$")
+
+
+def _media_for_restore(name: str) -> Optional[Path]:
+    """The photo archive saved with this backup ("+ photos"), checked BEFORE
+    anything is changed. None when the backup has no photos (or the archive is
+    no longer on disk: the database restore then keeps the current photos)."""
+    media = (_meta_for(backup_dir() / name).get("media") or {})
+    mname = media.get("name") or ""
+    if not MEDIA_NAME_RE.match(mname):
+        return None
+    path = backup_dir() / mname
+    if not path.is_file():
+        return None
+    if media.get("sha256") and _sha256_file(path) != media["sha256"]:
+        raise BackupError("L'archive des photos de cette sauvegarde est endommagée : rien n'a été modifié.")
+    return path
+
+
+def _extract_media(archive: Path) -> int:
+    """Puts the photos back in the upload folder (adds and overwrites, never
+    deletes). Only plain files and folders inside it are accepted."""
+    dest = upload_dir()
+    dest.mkdir(parents=True, exist_ok=True)
+    with tarfile.open(archive, "r:gz") as tar:
+        members = []
+        for m in tar.getmembers():
+            parts = Path(m.name).parts
+            if not (m.isfile() or m.isdir()) or m.name.startswith(("/", "\\")) or ".." in parts:
+                continue
+            members.append(m)
+        if hasattr(tarfile, "data_filter"):
+            tar.extractall(dest, members=members, filter="data")
+        else:  # pragma: no cover - Python without the extraction filters
+            tar.extractall(dest, members=members)
+    return sum(1 for m in members if m.isfile())
+
+
 def restore_backup(name: str, actor_id: Optional[int] = None) -> Dict[str, Any]:
     if not _OP_LOCK.acquire(blocking=False):
         raise BackupError("Une autre opération sur la base de données est déjà en cours.")
@@ -807,6 +891,7 @@ def restore_backup(name: str, actor_id: Optional[int] = None) -> Dict[str, Any]:
             snap = None
         else:
             snap = _parse_v1(raw)
+        media_archive = _media_for_restore(name)
         safety = create_backup("pre-restore", actor_id)
         with db_session() as conn:
             _begin_bulk(conn)
@@ -821,7 +906,16 @@ def restore_backup(name: str, actor_id: Optional[int] = None) -> Dict[str, Any]:
                 raise
             finally:
                 _end_bulk(conn)
-        return {"restored": True, "backup": name, "safety_backup": safety["name"], "rows": sum(restored.values()), "catalog_epoch": epoch}
+        result = {"restored": True, "backup": name, "safety_backup": safety["name"], "rows": sum(restored.values()),
+                  "catalog_epoch": epoch, "media_files": None}
+        if media_archive is not None:
+            # After the database commit: photos are only added/overwritten, so a
+            # failure here never leaves the database half-restored; it is reported.
+            try:
+                result["media_files"] = _extract_media(media_archive)
+            except Exception as exc:
+                result["media_error"] = f"Photos non restaurées : {type(exc).__name__}"
+        return result
     finally:
         _OP_LOCK.release()
 

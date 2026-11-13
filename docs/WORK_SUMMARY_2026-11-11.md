@@ -660,11 +660,28 @@ fills up), and needed the `aws` program (no longer in Ubuntu 24.04's packages).
 | Tests | `test_offsite_upload.py` (5 tests, runs the real script with a stand-in rclone); also run here against a local S3 server (moto): upload, standard class, clean-up as expected |
 
 
+## 35. CodeRabbit review (PR #1): 26 findings checked, 26 fixed
+
+Each finding was checked against the code first; all 26 were real. Fixed, with a test where one can run here:
+
+| Area | What was wrong → now |
+|---|---|
+| Deploy scripts | `compose-project.sh` and `install_backup_cron.sh` stopped (`set -e` + `pipefail`) when a key was absent instead of using the default — a first deploy would stop. `certificates.sh setup` failed when run from its installed copy. A rollback whose rebuild failed was logged as successful → now exit 2 unless the previous release is healthy |
+| Backups | `verify_backup.sh` could pass a dump with SQL errors (`ON_ERROR_STOP`). Each backup now reads all tables from **one** consistent view (an order committed meanwhile is entirely in it or not at all; test). PostgreSQL restore checks every foreign key before commit (FK triggers are off during the replace). Restoring a backup made "+ photos" now puts the photos back (checksum checked first; CMS warns if it fails). Unchanged photos stay in each night's list, so an earlier failed upload is retried; photo archives go once to `<host>/media/` |
+| Off-site copy | Unencrypted files are refused (never stored readable at the provider). `upload_to_offsite.sh list` / `download <path>` to get a copy back with the same settings; guide corrected (no aws CLI, right folder). `[nightly-backup] OK` printed only when backup + upload + verify all succeeded; optional `BACKUP_HEARTBEAT_URL` (Kuma push) |
+| Configuration check | `<CHANGE_ME…>` inside `DATABASE_URL` is now detected; off-site switched on without its keys now fails the check (blocks the deploy) |
+| First start | An interrupted creation of the base tables is finished on the next start (baseline record, not the tracking table, decides; test) |
+| Example-content clean-up | Matches every editable field of the old examples: a banner whose Arabic title alone was edited, or a code whose maximum discount alone changed, is kept (tests) |
+| CMS | Typing during a save is no longer lost; every promo code is reachable (scrolling list); paying an expense has a real « Annuler »; the till catalogue reloads when its generation is unknown and stops if clearing it fails; **network receipt/label printers** print over TCP (port 9100) from the desktop app (Rust tests with a local socket) |
+| Browser tests | The two tests that relied on earlier tests now set up what they need |
+| GitHub secrets script | Stops on the first `gh` write that fails (not run here: no PowerShell) |
+
+
 ## Verification
 
 | Check | Result |
 |---|---|
-| Backend tests | 334 run on SQLite and on PostgreSQL 16 (incl. the end-to-end business day, round 18). Only 4 failures, all caused by `@babel/core` missing in the cloud container; those 4 pass with a substitute TypeScript compiler and pass in CI. |
+| Backend tests | 344 run on SQLite and on PostgreSQL 16 (incl. the end-to-end business day, round 18). Only 4 failures, all caused by `@babel/core` missing in the cloud container; those 4 pass with a substitute TypeScript compiler and pass in CI. |
 | CMS TypeScript + build | OK |
 | Rust (`cargo check`) | OK |
 | Browser tests (Playwright) | `e2e/`: 34 shop + CMS tests green on SQLite and PostgreSQL 16 (CI job). Earlier manual checks — notifications, message box queue, bell, update dialog, new-order alert, Arabic layout, category delete + reload, archived tab, database panel, backup, reset: all OK |

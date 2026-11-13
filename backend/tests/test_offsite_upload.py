@@ -38,11 +38,17 @@ FAKE_RCLONE = textwrap.dedent('''\
         return root / "store" / remote[len("offsite:"):]
     cmd = args[0]
     if cmd == "copyto":
-        dst = local(args[2]); dst.parent.mkdir(parents=True, exist_ok=True)
-        shutil.copyfile(args[1], dst)
+        src = local(args[1]) if args[1].startswith("offsite:") else Path(args[1])
+        dst = local(args[2]) if args[2].startswith("offsite:") else Path(args[2])
+        dst.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copyfile(src, dst)
     elif cmd == "lsf":
         base = local(args[1])
-        for p in sorted(base.rglob("*")):
+        if base.is_file():
+            print(base.name)
+        elif not base.exists():
+            sys.exit(3)
+        for p in sorted(base.rglob("*")) if base.is_dir() else []:
             if p.is_file():
                 print(p.relative_to(base).as_posix())
     elif cmd == "deletefile":
@@ -89,9 +95,9 @@ class TestOffsiteUpload(unittest.TestCase):
         p.write_bytes(b"x")
         return p.relative_to(self.base).as_posix()
 
-    def _make_local_backup(self):
+    def _make_local_backup(self, extra=()):
         ts = dt.datetime.now(dt.timezone.utc).strftime("%Y%m%d_%H%M%S")
-        names = [f"luxe_db_{ts}.sql.gz.enc", f"luxe_app_{ts}.json.gz.enc"]
+        names = [f"luxe_db_{ts}.sql.gz.enc", f"luxe_app_{ts}.json.gz.enc", *extra]
         for n in names:
             (self.backups / n).write_text(n)
         (self.backups / f"luxe_backup_{ts}.sha256").write_text("".join(f"0000  {n}\n" for n in names))
@@ -132,6 +138,45 @@ class TestOffsiteUpload(unittest.TestCase):
         files = self._remote_files()
         self.assertNotIn(db, files)
         self.assertEqual([m for m in media if m in files], media[1:])
+
+    def test_photo_archive_sent_once_into_media_folder(self):
+        media = "luxe_media_20261101_020000.tar.gz.enc"
+        self._make_local_backup(extra=(media,))
+        r = self._run()
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        self.assertIn(f"media/{media}", self._remote_files())
+        # next night: photos unchanged, the same archive is listed again
+        r = self._run()
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        self.assertIn("already there", r.stdout)
+        self.assertEqual(sum(1 for f in self._remote_files() if f.endswith(media)), 1)
+        copies = [line for line in (self.remote / "_calls.log").read_text().splitlines()
+                  if " copyto " in f" {line} " and media in line]
+        self.assertEqual(len(copies), 1)
+
+    def test_unencrypted_backup_is_never_uploaded(self):
+        self._make_local_backup(extra=("luxe_db_20261113_020000.sql.gz",))
+        r = self._run()
+        self.assertEqual(r.returncode, 2)
+        self.assertIn("not encrypted", r.stderr)
+        self.assertFalse(self.base.exists() and any(self.base.rglob("*")))
+
+    def test_list_and_download_get_a_copy_back(self):
+        uploaded = self._make_local_backup()
+        self.assertEqual(self._run().returncode, 0)
+        db = next(n for n in uploaded if n.startswith("luxe_db_"))
+        r = subprocess.run(["bash", str(SCRIPT), "list"], env=self._env(S3_BACKUP_ENABLED="false"),
+                           capture_output=True, text=True, timeout=60)
+        self.assertEqual(r.returncode, 0, r.stderr)
+        path = next(line for line in r.stdout.splitlines() if line.endswith(db))
+        restore_dir = self.tmp / "new-server"
+        r = subprocess.run(["bash", str(SCRIPT), "download", path],
+                           env=self._env(BACKUP_DIR=str(restore_dir)), capture_output=True, text=True, timeout=60)
+        self.assertEqual(r.returncode, 0, r.stderr)
+        self.assertEqual((restore_dir / db).read_text(), db)
+        r = subprocess.run(["bash", str(SCRIPT), "download", "../etc/passwd"], env=self._env(),
+                           capture_output=True, text=True, timeout=60)
+        self.assertEqual(r.returncode, 2)
 
     def test_switched_off_does_nothing(self):
         self._make_local_backup()

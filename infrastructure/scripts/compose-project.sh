@@ -21,7 +21,7 @@
 luxe_ensure_compose_project() {
   local env_file="$1" name
   name=$(grep -E '^[[:space:]]*COMPOSE_PROJECT_NAME[[:space:]]*=' "$env_file" 2>/dev/null \
-    | tail -n 1 | cut -d= -f2- | tr -d "\"' \r\t")
+    | tail -n 1 | cut -d= -f2- | tr -d "\"' \r\t" || true)   # no such line: use the fallback below
   if [ -z "$name" ]; then
     name=$(docker inspect -f '{{ index .Config.Labels "com.docker.compose.project" }}' luxe_postgres 2>/dev/null || true)
     [ -n "$name" ] || name="luxe"

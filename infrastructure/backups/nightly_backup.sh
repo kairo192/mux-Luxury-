@@ -15,3 +15,8 @@ export BACKUP_DIR="${BACKUP_DIR:-/var/lib/luxe/backups}"
 bash infrastructure/backups/backup_postgres_and_media.sh
 bash infrastructure/backups/upload_to_offsite.sh
 bash infrastructure/backups/verify_backup.sh
+# Reached only when every step above succeeded (set -e): the line to monitor.
+echo "[nightly-backup] OK — backup, off-site copy and verification done"
+if [ -n "${BACKUP_HEARTBEAT_URL:-}" ]; then
+  curl -fsS --max-time 10 "$BACKUP_HEARTBEAT_URL" >/dev/null || echo "[nightly-backup] heartbeat not delivered" >&2
+fi

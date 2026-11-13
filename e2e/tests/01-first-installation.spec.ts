@@ -1,5 +1,5 @@
 import { test, expect } from "@playwright/test";
-import { API, CMS, SHOP, OWNER, CASHIER, publicApi, watch, cmsLogin, cmsOpen, lastNotice } from "../support/helpers";
+import { API, CMS, SHOP, OWNER, CASHIER, publicApi, watch, cmsLogin, cmsOpen, lastNotice, ensureAccount } from "../support/helpers";
 
 // A brand-new production installation: empty database, no demo data.
 test.describe("first installation", () => {
@@ -20,6 +20,8 @@ test.describe("first installation", () => {
   });
 
   test("the setup wizard cannot be used a second time", async () => {
+    // Also when this test runs on its own: the owner must exist first.
+    await ensureAccount(OWNER.email);
     const r = await fetch(`${API}/api/v1/admin/auth/initialize-owner`, {
       method: "POST", headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ full_name: "Intrus", email: "intrus@example.com", password: "Intrus-2026-xx" }),
