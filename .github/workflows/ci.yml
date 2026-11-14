@@ -347,6 +347,10 @@ jobs:
     continue-on-error: false
     steps:
       - uses: actions/checkout@v4
+        with:
+          # gitleaks scans every commit of a push (first^..last): it needs the
+          # history, not only the newest commit (default depth 1).
+          fetch-depth: 0
       - uses: actions/setup-python@v5
         with:
           python-version: "3.11"
