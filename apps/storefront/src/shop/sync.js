@@ -70,7 +70,8 @@ async function syncStorefrontWithBackend() {
         }),
       }));
     }
-    if (prodRes && Array.isArray(prodRes.items)) {
+    const productsArrived = Boolean(prodRes && Array.isArray(prodRes.items));
+    if (productsArrived) {
       const rawProd = JSON.stringify(prodRes.items);
       if (rawProd !== lastProdJson) {
         lastProdJson = rawProd;
@@ -164,12 +165,17 @@ async function syncStorefrontWithBackend() {
         applyOpeningHours();
       }
     }
-    if (dataChanged || !state.isCatalogLoaded) {
+    // "Loaded" only once the products really arrived: after a failed first
+    // request the shared product link waits for the next successful sync
+    // instead of being sent to the shop page.
+    if (productsArrived && (dataChanged || !state.isCatalogLoaded)) {
       state.isCatalogLoaded = true;
+      renderStorefront();
+    } else if (dataChanged) {
       renderStorefront();
     }
     // A shared product link opened before the catalog was loaded.
-    if (state.pendingProductSlug) {
+    if (state.pendingProductSlug && state.isCatalogLoaded) {
       const slug = state.pendingProductSlug;
       state.pendingProductSlug = null;
       openProductBySlug(slug);

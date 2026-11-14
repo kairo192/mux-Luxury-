@@ -62,7 +62,7 @@ If SSH itself times out:
 
 While SSH is down, no deploy and no backup can happen. If this lasts more
 than 30 minutes, boot a spare VPS from the latest off-site backup
-(`../OPERATIONS_GUIDE.md` §5.3) and change DNS.
+(`../OPERATIONS_GUIDE.md` §5.4, "Getting a copy back") and change DNS.
 
 ## 5. Data corruption / bad write
 

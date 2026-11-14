@@ -117,6 +117,13 @@ function onRouteEvent() {
   handleRoute();
 }
 
+// Filters such as a shoe size belong to one category: opening another one
+// starts with no filter, so nothing stays applied without its control.
+function setActiveCategory(slug) {
+  if (state.activeCategorySlug !== slug) state.dynamicFilterSelections = {};
+  state.activeCategorySlug = slug;
+}
+
 function handleRoute() {
   lastRoutedUrl = currentUrl();
   const hash = currentRouteHash();
@@ -125,6 +132,9 @@ function handleRoute() {
     openProductBySlug(decodeURIComponent(hash.slice("#/produit/".length)).trim());
     return;
   }
+  // Leaving a product link that was waiting for the catalog: it must not
+  // open later on top of the page chosen since.
+  state.pendingProductSlug = null;
   applyRouteMeta(hash);
   if (isProductModalOpen()) {
     hideProductModal();
@@ -155,7 +165,7 @@ function handleRoute() {
 
   if (hash.startsWith("#/category/")) {
     const slug = hash.replace("#/category/", "").trim();
-    state.activeCategorySlug = slug;
+    setActiveCategory(slug);
     state.onlyFavorites = false;
     if (homeSec) homeSec.classList.add("hidden");
     if (catalogSec) catalogSec.classList.remove("hidden");
@@ -174,7 +184,7 @@ function handleRoute() {
   }
 
   if (hash === "#/boutique") {
-    state.activeCategorySlug = "all";
+    setActiveCategory("all");
     state.onlyFavorites = false;
     if (homeSec) homeSec.classList.add("hidden");
     if (catalogSec) catalogSec.classList.remove("hidden");
@@ -194,7 +204,7 @@ function handleRoute() {
   }
 
   // Default: #/home
-  state.activeCategorySlug = "all";
+  setActiveCategory("all");
   state.onlyFavorites = false;
   if (homeSec) homeSec.classList.remove("hidden");
   if (catalogSec) catalogSec.classList.remove("hidden");
@@ -736,6 +746,7 @@ function renderCatalogProducts() {
 // ========================================================================
 
 Object.assign(window, {
+  setActiveCategory,
   currentRouteHash,
   currentUrl,
   navigateTo,

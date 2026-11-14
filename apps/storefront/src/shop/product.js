@@ -190,6 +190,14 @@ function changePdpQty(delta) {
   const maxStock = isSplit ? totalStock : (variant ? variant.stock : 1);
 
   const next = state.activePdpQty + delta;
+  if (!isSplit && delta > 0 && next > maxStock && next <= totalStock && prod.variants.length > 1) {
+    // This colour / size has no more, but the others do: switch to
+    // "several variants" so the customer can pick one of each.
+    state.activePdpQty = next;
+    setPdpMultiVariantMode("split");
+    showToast(L("Répartissez les pièces entre les déclinaisons disponibles.", "وزّعوا القطع على الخيارات المتوفرة.", "Spread the pieces across the available options."));
+    return;
+  }
   if (next >= 1 && next <= Math.max(1, maxStock)) {
     state.activePdpQty = next;
     if (next === 1) {
@@ -223,6 +231,13 @@ function renderPdpModalContent() {
   const cat = state.categories.find((c) => c.id === prod.category_id);
   const variant = prod.variants.find((v) => v.id === state.activePdpVariantId) || prod.variants[0];
   const effectivePrice = variant && variant.price ? variant.price : prod.selling_price_dzd;
+  // Items total: in split mode each allocated piece at ITS variant's price.
+  const merchTotal = state.activePdpMultiVariantMode === "split" && state.activePdpQty > 1
+    ? Object.entries(state.activePdpAllocations).reduce((sum, [vid, q]) => {
+        const v = prod.variants.find((x) => x.id === Number(vid));
+        return sum + (v && v.price ? v.price : prod.selling_price_dzd) * (Number(q) || 0);
+      }, 0)
+    : effectivePrice * state.activePdpQty;
   const varStock = variant ? variant.stock : 0;
   const tr = I18N[state.lang] || I18N.fr;
   const activeImage = (variant && variant.img) ? variant.img : prod.image;
@@ -259,7 +274,7 @@ function renderPdpModalContent() {
                 return `
                   <button
                     type="button"
-                    onclick="selectPdpAxisValue('${axisAttr.key}', ${jsArg(val)})"
+                    onclick="selectPdpAxisValue(${jsArg(decodeHtml(axisAttr.key))}, ${jsArg(val)})"
                     class="group flex items-center gap-2 px-3 py-1.5 rounded-full border text-xs font-semibold transition ${
                       isSel
                         ? "border-gold-reflective bg-emerald-deep text-gold-light shadow-gold-ring"
@@ -293,7 +308,7 @@ function renderPdpModalContent() {
                 return `
                   <button
                     type="button"
-                    onclick="selectPdpAxisValue('${axisAttr.key}', ${jsArg(val)})"
+                    onclick="selectPdpAxisValue(${jsArg(decodeHtml(axisAttr.key))}, ${jsArg(val)})"
                     class="min-w-[44px] px-3.5 py-2 rounded-xl text-xs font-bold border transition ${
                       isSel
                         ? "bg-emerald-deep text-gold-reflective border-gold-reflective shadow-sm"
@@ -365,7 +380,7 @@ function renderPdpModalContent() {
           ${gallery
             .map(
               (g) => `
-            <button type="button" onclick="switchPdpImage('${g}')" class="w-16 h-16 rounded-xl overflow-hidden border-2 border-gold-reflective/40 hover:border-emerald-deep flex-shrink-0">
+            <button type="button" onclick="switchPdpImage(${jsArg(decodeHtml(g))})" class="w-16 h-16 rounded-xl overflow-hidden border-2 border-gold-reflective/40 hover:border-emerald-deep flex-shrink-0">
               <img src="${g}" alt="Miniature" class="w-full h-full object-cover" />
             </button>
           `
@@ -538,7 +553,7 @@ function renderPdpModalContent() {
             </button>
           </div>
           <a
-            href="https://wa.me/${waNumber()}?text=${encodeURIComponent(decodeHtml(`Bonjour Mus Luxury, je souhaite commander : ${prodName(prod)} (${variant ? variant.title : ""}) - Qté: ${state.activePdpQty} - Prix: ${formatDZD(effectivePrice * state.activePdpQty)}`) + "\n" + window.location.origin + "/produit/" + encodeURIComponent(decodeHtml(prod.slug)))}"
+            href="https://wa.me/${waNumber()}?text=${encodeURIComponent(decodeHtml(`Bonjour Mus Luxury, je souhaite commander : ${prodName(prod)} (${variant ? variant.title : ""}) - Qté: ${state.activePdpQty} - Prix: ${formatDZD(merchTotal)}`) + "\n" + window.location.origin + "/produit/" + encodeURIComponent(decodeHtml(prod.slug)))}"
             target="_blank"
             rel="noopener noreferrer"
             class="w-full py-2.5 px-4 rounded-xl bg-emerald-50 hover:bg-emerald-100 text-emerald-900 border border-emerald-300 font-bold text-xs flex items-center justify-center gap-2 transition"
@@ -573,7 +588,7 @@ function renderPdpModalContent() {
                 <div class="font-bold text-[11px]">${L("À Domicile", "إلى المنزل", "Home")}</div>
                 <div class="text-[10px] ${state.activePdpDeliveryMethod === "home" ? "text-gold-light/85" : "text-gray-500"}">${L("Livraison chez vous", "التوصيل إلى بيتكم", "Delivered to you")}</div>
               </div>
-              <span class="font-extrabold text-xs ${state.activePdpDeliveryMethod === "home" ? "text-gold-reflective" : "text-emerald-deep"}">${deliveryFeeText(selWilaya, "home", effectivePrice * state.activePdpQty)}</span>
+              <span class="font-extrabold text-xs ${state.activePdpDeliveryMethod === "home" ? "text-gold-reflective" : "text-emerald-deep"}">${deliveryFeeText(selWilaya, "home", merchTotal)}</span>
             </button>
             <button
               type="button"
@@ -588,12 +603,12 @@ function renderPdpModalContent() {
                 <div class="font-bold text-[11px]">Stop-Desk</div>
                 <div class="text-[10px] ${state.activePdpDeliveryMethod === "stop_desk" ? "text-gold-light/85" : "text-gray-500"}">${L("Bureau relais", "مكتب الاستلام", "Pick-up office")}</div>
               </div>
-              <span class="font-extrabold text-xs ${state.activePdpDeliveryMethod === "stop_desk" ? "text-gold-reflective" : "text-emerald-deep"}">${deliveryFeeText(selWilaya, "stop_desk", effectivePrice * state.activePdpQty)}</span>
+              <span class="font-extrabold text-xs ${state.activePdpDeliveryMethod === "stop_desk" ? "text-gold-reflective" : "text-emerald-deep"}">${deliveryFeeText(selWilaya, "stop_desk", merchTotal)}</span>
             </button>
           </div>
           <div class="flex items-center justify-between pt-1.5 border-t border-emerald-deep/15 text-[11px]">
             <span class="text-charcoal/80">${L("Total estimé", "المجموع التقديري", "Estimated total")} (${state.activePdpQty} ${L("article" + (state.activePdpQty > 1 ? "s" : ""), "قطعة", "item" + (state.activePdpQty > 1 ? "s" : ""))} + ${state.activePdpDeliveryMethod === "stop_desk" ? "Stop-Desk" : L("Domicile", "المنزل", "Home")}) :</span>
-            <strong class="text-sm font-extrabold text-emerald-deep">${formatDZD(effectivePrice * state.activePdpQty + deliveryFeeFor(selWilaya, state.activePdpDeliveryMethod, effectivePrice * state.activePdpQty))}${feesKnown(selWilaya) ? "" : " + livraison"}</strong>
+            <strong class="text-sm font-extrabold text-emerald-deep">${formatDZD(merchTotal + deliveryFeeFor(selWilaya, state.activePdpDeliveryMethod, merchTotal))}${feesKnown(selWilaya) ? "" : " + livraison"}</strong>
           </div>
         </div>
 
@@ -632,12 +647,20 @@ function addPdpToCart(buyNow) {
       return;
     }
 
-    let totalAdded = 0;
-    for (const [vIdStr, qty] of Object.entries(state.activePdpAllocations)) {
-      if (qty > 0) {
-        addToCartInternal(prod.id, Number(vIdStr), qty, false);
-        totalAdded += qty;
+    // Check every line first: either the whole selection goes into the
+    // cart, or nothing does and the window stays open.
+    const lines = Object.entries(state.activePdpAllocations).filter(([, q]) => q > 0);
+    for (const [vIdStr, qty] of lines) {
+      const v = prod.variants.find((x) => x.id === Number(vIdStr));
+      const inCart = (state.cart.find((c) => c.variantId === Number(vIdStr)) || {}).quantity || 0;
+      if (!v || v.stock <= 0 || inCart + qty > v.stock) {
+        showToast(`${L("Quantité disponible pour", "الكمية المتوفرة لـ", "Available quantity for")} ${v ? v.title : ""} : ${v ? Math.max(0, v.stock - inCart) : 0}`, "error");
+        return;
       }
+    }
+    let totalAdded = 0;
+    for (const [vIdStr, qty] of lines) {
+      if (addToCartInternal(prod.id, Number(vIdStr), qty, false)) totalAdded += qty;
     }
     showToast(L(`${totalAdded} articles (${prodName(prod)}) répartis ajoutés au panier !`, `تمت إضافة ${totalAdded} قطع (${prodName(prod)}) إلى السلة`, `${totalAdded} items (${prodName(prod)}) added to the cart`));
     closeProductDetailModal();

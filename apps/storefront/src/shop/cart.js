@@ -10,17 +10,17 @@ function quickAddToCart(prodId, variantId) {
 
 function addToCartInternal(prodId, variantId, qty, notify = true) {
   const prod = state.products.find((p) => p.id === prodId);
-  if (!prod) return;
+  if (!prod) return false;
   const variant = prod.variants.find((v) => v.id === variantId);
   if (!variant || variant.stock <= 0) {
     if (notify) showToast("Cette variante est momentanément indisponible", "error");
-    return;
+    return false;
   }
   const existing = state.cart.find((item) => item.variantId === variantId);
   const currentQty = existing ? existing.quantity : 0;
   if (currentQty + qty > variant.stock) {
     if (notify) showToast(`Quantité disponible pour ${variant.title} : ${variant.stock}`, "error");
-    return;
+    return false;
   }
   if (existing) {
     existing.quantity += qty;
@@ -31,6 +31,7 @@ function addToCartInternal(prodId, variantId, qty, notify = true) {
   state.lastConfirmedOrder = null;
   renderStorefront();
   if (notify) showToast(`${prodName(prod)} (${variant.title}) ${L("ajouté au panier", "أُضيف إلى السلة", "added to the cart")}`);
+  return true;
 }
 
 function updateCartItemQty(variantId, delta) {
@@ -288,9 +289,9 @@ async function submitGuestCheckoutOrder() {
   } catch (err) {
     // The first attempt actually reached the shop (e.g. the answer was
     // lost): the server reports the existing order — show it as placed.
-    const dupRef = String((err && err.message) || "").match(/déjà enregistrée \(référence ([A-Za-z0-9-]+)\)/);
+    const dupRef = err && err.existingOrderRef;
     if (dupRef) {
-      orderRef = dupRef[1];
+      orderRef = dupRef;
     } else {
       state.placingOrder = false;
       showToast(String((err && err.message) || "Erreur lors de l'enregistrement de votre commande."), "error");
@@ -332,7 +333,13 @@ async function submitGuestCheckoutOrder() {
   };
 
   state.orders.unshift(newOrder);
-  state.cart = [];
+  // Take out only what this order contained: an article added while the
+  // order was being sent stays in the cart.
+  for (const it of orderItems) {
+    const line = state.cart.find((c) => c.variantId === it.variant_id);
+    if (line) line.quantity -= it.quantity;
+  }
+  state.cart = state.cart.filter((c) => c.quantity > 0);
   saveCartToStorage();
   state.appliedCoupon = null;
   state.lastConfirmedOrder = newOrder;
@@ -405,7 +412,18 @@ function renderCartDrawerContent() {
     .map((item) => {
       const prod = state.products.find((p) => p.id === item.productId);
       const variant = prod ? prod.variants.find((v) => v.id === item.variantId) : null;
-      if (!prod || !variant) return "";
+      if (!prod || !variant) {
+        // No longer sold: keep the line visible with a way to remove it, so it
+        // never blocks the order out of sight.
+        return `
+        <div class="flex items-center gap-3 bg-red-50 p-3 rounded-xl border border-red-200">
+          <div class="flex-1 min-w-0">
+            <p class="font-bold text-xs text-red-800">${prod ? prodName(prod) : L("Article", "منتج", "Item")} — ${L("plus disponible", "لم يعد متوفرًا", "no longer available")}</p>
+            <p class="text-[11px] text-red-700">${L("Retirez-le pour valider la commande.", "احذفوه لإتمام الطلب.", "Remove it to place the order.")}</p>
+          </div>
+          <button type="button" onclick="removeCartLine(${Number(item.variantId)})" class="px-3 py-1.5 rounded-lg bg-white border border-red-300 text-red-700 font-bold text-[11px]">${L("Retirer", "حذف", "Remove")}</button>
+        </div>`;
+      }
       const unitPrice = variant.price || prod.selling_price_dzd;
       return `
         <div class="flex items-center gap-3 bg-white p-3 rounded-xl border border-gold-reflective/25 shadow-sm">
@@ -436,7 +454,17 @@ function renderCartDrawerContent() {
   const remainingForFree = freeShipThreshold ? Math.max(0, freeShipThreshold - subtotal) : 0;
   const freeShipPct = freeShipThreshold ? Math.min(100, Math.round((subtotal / freeShipThreshold) * 100)) : 0;
 
+  // What the customer already typed survives a re-render (quantity change,
+  // tariff chosen in the tariff window).
+  const typed = {};
+  for (const id of ["chk-name", "chk-phone", "chk-address", "chk-coupon"]) {
+    const el = document.getElementById(id);
+    if (el) typed[id] = el.value;
+  }
+  const typedCommune = document.getElementById("chk-commune")?.value;
+
   container.innerHTML = `
+    ${freeShipThreshold > 0 ? `
     <div class="p-3.5 rounded-xl bg-emerald-deep text-white border border-gold-reflective/40 space-y-2 shadow-sm">
       <div class="flex items-center justify-between text-[11px]">
         <span class="font-semibold text-gold-light">
@@ -451,7 +479,7 @@ function renderCartDrawerContent() {
       <div class="w-full h-2 rounded-full bg-emerald-forest overflow-hidden border border-gold-reflective/25">
         <div class="h-full gold-cta transition-all duration-500" style="width: ${freeShipPct}%"></div>
       </div>
-    </div>
+    </div>` : ""}
 
     <div class="space-y-2.5">
       <h4 class="font-bold text-xs uppercase tracking-wider text-emerald-deep">${L("Articles", "المنتجات", "Items")} (${state.cart.length})</h4>
@@ -486,7 +514,7 @@ function renderCartDrawerContent() {
           <div>
             <label for="chk-commune" class="block font-bold mb-1">${L("Commune", "البلدية", "Commune")} *</label>
             <select id="chk-commune" data-wilaya="${defaultWilaya.code}" class="w-full px-3 py-2.5 rounded-xl border border-gray-300 bg-white focus:outline-none focus:border-emerald-deep">
-              ${defaultWilaya.communes.map((c) => `<option value="${c}">${c}</option>`).join("")}
+              ${defaultWilaya.communes.map((c) => `<option value="${escapeHtml(c)}">${escapeHtml(c)}</option>`).join("")}
             </select>
           </div>
         </div>
@@ -575,14 +603,30 @@ function renderCartDrawerContent() {
       </button>
     </div>
   `;
+  for (const [id, value] of Object.entries(typed)) {
+    const el = document.getElementById(id);
+    if (el && value) el.value = value;
+  }
   // Apply live prices and the wilaya's available methods straight away.
   if (document.getElementById("chk-wilaya")) updateCheckoutCalculation();
+  const communeSel = document.getElementById("chk-commune");
+  if (communeSel && typedCommune && Array.from(communeSel.options).some((o) => o.value === typedCommune)) {
+    communeSel.value = typedCommune;
+  }
+}
+
+function removeCartLine(variantId) {
+  state.cart = state.cart.filter((i) => i.variantId !== variantId);
+  saveCartToStorage();
+  renderStorefront();
+  renderCartDrawerContent();
 }
 
 // ========================================================================
 
 Object.assign(window, {
   quickAddToCart,
+  removeCartLine,
   addToCartInternal,
   updateCartItemQty,
   openCartDrawer,

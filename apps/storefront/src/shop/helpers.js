@@ -42,9 +42,27 @@ async function fetchPublicJson(path, options = {}, timeoutMs = 15000) {
         await new Promise((r) => setTimeout(r, attempt * 250));
         continue;
       }
-      const data = await res.json().catch(() => ({}));
+      // A body that stops arriving (timeout, cut connection) is an error that
+      // reaches the retry below — never an empty "success". An empty body is {}.
+      const text = await res.text();
+      let data = {};
+      if (text) {
+        try {
+          data = JSON.parse(text);
+        } catch (_e) {
+          if (res.ok) throw new Error("Réponse illisible de la boutique. Réessayez dans un instant.");
+        }
+      }
       if (!res.ok) {
-        throw new Error(formatStorefrontError(data, res.status));
+        const e = new Error(formatStorefrontError(data, res.status));
+        e.status = res.status;
+        // An order the shop already recorded (the first answer was lost):
+        // its reference travels as data, whatever the shop's language.
+        const raw = (data && typeof data.detail === "string") ? data.detail : "";
+        const dup = res.status === 409 && raw.toLowerCase().indexOf("stock") === -1
+          ? raw.match(/(?:existing reference:|référence)\s*([A-Za-z0-9-]+)/) : null;
+        if (dup) e.existingOrderRef = dup[1];
+        throw e;
       }
       return data;
     } catch (err) {

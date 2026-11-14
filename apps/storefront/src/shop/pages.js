@@ -113,7 +113,10 @@ async function lookupGuestOrderStatus() {
 const STATIC_PAGES_CONTENT = {
   about: {
     title: "La Maison Mus Luxury — Ouled Yaïch",
-    body: `
+    // A getter: the phone / WhatsApp number is read when the page opens, so
+    // a number changed in the CMS since the shop loaded is the one shown.
+    get body() {
+      return `
       <p><strong>Mus Luxury</strong> sélectionne pour vous des pièces de maroquinerie, chaussures, châles, coffrets de maquillage, lunettes et montres alliant coupe contemporaine et finitions soignées.</p>
       <p>Nous livrons dans les <strong>69 Wilayas d'Algérie</strong> (à domicile ou en bureau Stop-Desk) avec paiement simple et sécurisé à la réception de votre colis.</p>
       <div class="p-4 rounded-xl bg-cream border border-gold-reflective/40 space-y-2 mt-3 text-xs">
@@ -122,7 +125,8 @@ const STATIC_PAGES_CONTENT = {
         <p><strong>Instagram officiel :</strong> <a href="https://www.instagram.com/musluxury09?rpxt=emk3bjBhdjV5d2Ux" target="_blank" rel="noopener noreferrer" class="text-emerald-deep underline font-semibold">@musluxury09</a></p>
         <p><strong>TikTok officiel :</strong> <a href="https://www.tiktok.com/@musluxury.092?_r=1&_t=ZS-9B2mO0gpA7V" target="_blank" rel="noopener noreferrer" class="text-emerald-deep underline font-semibold">@musluxury.092</a></p>
       </div>
-    `
+    `;
+    },
   },
   faq: {
     title: "Questions Fréquentes (FAQ)",

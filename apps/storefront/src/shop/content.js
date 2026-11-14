@@ -244,7 +244,8 @@ function renderHomeContent() {
   const cats = document.getElementById("home-categories");
   if (cats) cats.classList.toggle("hidden", !sectionVisible("categories_grid") || !state.categories.length);
   const catalog = document.getElementById("catalog-section");
-  if (catalog && currentRouteHash() === "#/home" && !sectionVisible("featured_products")) catalog.classList.add("hidden");
+  // On the home page the product list follows the CMS switch both ways.
+  if (catalog && currentRouteHash() === "#/home") catalog.classList.toggle("hidden", !sectionVisible("featured_products"));
   updatePriceFilterRange();
 }
 
