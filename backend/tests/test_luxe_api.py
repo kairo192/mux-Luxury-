@@ -1335,12 +1335,9 @@ console.log("ALL_TSX_COMPILED_OK");
         self.assertGreaterEqual(len(methods), 34)
 
         src_dir = os.path.join(repo_root, "apps", "desktop-cms", "src")
-        ui_parts = [__import__("pathlib").Path(os.path.join(src_dir, "App.tsx")).read_text(encoding="utf-8")]
-        for sub in ("pages", "components", "utils"):
-            sub_dir = os.path.join(src_dir, sub)
-            if os.path.isdir(sub_dir):
-                for p in __import__("pathlib").Path(sub_dir).glob("*.[tj]s*"):
-                    ui_parts.append(p.read_text(encoding="utf-8"))
+        # Every screen file, including the parts split out of big pages (src/app/, pages/pos/, …).
+        ui_parts = [p.read_text(encoding="utf-8") for p in __import__("pathlib").Path(src_dir).rglob("*.[tj]s*")
+                    if p.name != "adminClient.ts"]
         ui_text = "".join(ui_parts)
         missing = [m for m in methods if f"DesktopCmsApi.{m}" not in ui_text]
         self.assertEqual(missing, [], f"Unwired DesktopCmsApi methods in Desktop CMS UI: {missing}")
@@ -1925,6 +1922,8 @@ console.log("CLIENT_NOTIFIER_ALL_TESTS_PASSED");
                 self.assertIn("catch", fn_body, f"Async handler {fn_name} in {rel} is missing a catch block")
 
         app_tsx = (repo_root / "apps" / "desktop-cms" / "src" / "App.tsx").read_text(encoding="utf-8")
+        # App's notification centre, header and login screens live in src/app/ since the split.
+        app_tsx += "".join(p.read_text(encoding="utf-8") for p in (repo_root / "apps" / "desktop-cms" / "src" / "app").glob("*.tsx"))
         self.assertIn("renderClientNotificationCenter", app_tsx)
         self.assertIn("role=\"dialog\"", app_tsx)
         self.assertIn("aria-modal=\"true\"", app_tsx)
