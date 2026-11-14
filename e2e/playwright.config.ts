@@ -45,7 +45,10 @@ export default defineConfig({
       reuseExistingServer: false,
     },
     {
-      command: `npx vite --port ${port(SHOP)} --strictPort`,
+      // E2E_SHOP_BUILT=1: test the production bundle (vite build + preview) instead of the dev server.
+      command: process.env.E2E_SHOP_BUILT
+        ? `npx vite build && npx vite preview --port ${port(SHOP)} --strictPort`
+        : `npx vite --port ${port(SHOP)} --strictPort`,
       cwd: "../apps/storefront",
       url: SHOP,
       env: { LUXE_API_URL: API },

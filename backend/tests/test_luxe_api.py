@@ -31,6 +31,15 @@ from app.seed import seed_initial_data
 from app.security import reset_rate_limits
 
 
+
+def storefront_source(repo_root) -> str:
+    """The shop's code: index.html plus its scripts and styles (split out of the page into src/)."""
+    from pathlib import Path as _P
+    sf = _P(repo_root) / "apps" / "storefront"
+    parts = [(sf / "index.html").read_text(encoding="utf-8")]
+    parts += [p.read_text(encoding="utf-8") for p in sorted((sf / "src").rglob("*")) if p.suffix in (".js", ".css")]
+    return "\n".join(parts)
+
 def _real_image(fmt: str = "PNG", size=(16, 16)) -> bytes:
     """A small real picture: uploads are decoded and re-encoded, so a bare
     file signature followed by junk is (rightly) refused."""
@@ -1317,11 +1326,7 @@ console.log("ALL_TSX_COMPILED_OK");
         self.assertIn("ALL_TSX_COMPILED_OK", res.stdout)
 
         # 2. Enforce Strict Architecture Separation: Public Website must NEVER contain Web CMS or Admin Login
-        for pub_file in [
-            os.path.join(repo_root, "apps", "storefront", "index.html"),
-        ]:
-            with open(pub_file, "r", encoding="utf-8") as pf:
-                content = pf.read()
+        for pub_file, content in [("apps/storefront (index.html + src/)", storefront_source(repo_root))]:
             self.assertNotIn("/admin/auth/login", content, f"Public website file {pub_file} must not contain admin login")
             self.assertNotIn("DesktopCmsApi", content, f"Public website file {pub_file} must not import DesktopCmsApi")
 
@@ -1663,8 +1668,7 @@ console.log("ALL_TSX_COMPILED_OK");
         repo_root = os.path.dirname(os.path.dirname(os.path.dirname(__file__)))
 
         # 1. Verify apps/storefront/index.html has zero fake orders (Yasmine Khelifi / LUX-25847-DZ) and empty initial cart/orders
-        with open(os.path.join(repo_root, "apps", "storefront", "index.html"), "r", encoding="utf-8") as f:
-            shtml = f.read()
+        shtml = storefront_source(repo_root)
         self.assertNotIn("Yasmine Khelifi", shtml)
         self.assertNotIn("LUX-25847-DZ", shtml)
         self.assertIn("cart: []", shtml)
@@ -1952,7 +1956,7 @@ console.log("CLIENT_NOTIFIER_ALL_TESTS_PASSED");
                     self.assertNotIn(bad, text, f"Forbidden sandbox path token {bad!r} found in {p}")
 
         # 2. Verify every /assets/... image referenced in apps/storefront/index.html physically exists in apps/storefront/public/assets/
-        shtml = (repo_root / "apps" / "storefront" / "index.html").read_text(encoding="utf-8")
+        shtml = storefront_source(repo_root)
         referenced_assets = set(_re.findall(r"/assets/([a-zA-Z0-9_.\-]+\.(?:png|jpg|jpeg|webp))", shtml))
         self.assertGreaterEqual(len(referenced_assets), 19)
         for asset_name in referenced_assets:
@@ -1973,7 +1977,7 @@ console.log("CLIENT_NOTIFIER_ALL_TESTS_PASSED");
         pkg = _json.loads((repo_root / "apps" / "desktop-cms" / "package.json").read_text(encoding="utf-8"))
         self.assertIn("@tauri-apps/plugin-store", pkg["dependencies"])
 
-        shtml = (repo_root / "apps" / "storefront" / "index.html").read_text(encoding="utf-8")
+        shtml = storefront_source(repo_root)
         # Customer storefront must NEVER render editable Wilaya tariff inputs
         self.assertNotIn("updateWilayaRateLive", shtml)
         # Customer storefront must wire live backend endpoints for coupons, tracking, and static pages
@@ -2085,7 +2089,7 @@ console.log("CLIENT_NOTIFIER_ALL_TESTS_PASSED");
         from pathlib import Path
         repo_root = Path(__file__).resolve().parents[2]
 
-        shtml = (repo_root / "apps" / "storefront" / "index.html").read_text(encoding="utf-8")
+        shtml = storefront_source(repo_root)
 
         # 1. Verify Storefront Customer Message Box Modal & DOM XSS Escaping in index.html
         self.assertIn("id=\"store-message-box-modal\"", shtml)
@@ -2649,7 +2653,7 @@ flushOfflineMutationQueue(async () => true).then((res) => {
 
         # Verify the live shop includes cart quantity controls (remove at 0), brand display and the commune selector
         repo_root = Path(__file__).resolve().parents[2]
-        sf_code = (repo_root / "apps" / "storefront" / "index.html").read_text(encoding="utf-8")
+        sf_code = storefront_source(repo_root)
         self.assertIn("function updateCartItemQty", sf_code)
         self.assertIn("state.cart.splice", sf_code)
         self.assertIn("p.brand && p.brand.name", sf_code)

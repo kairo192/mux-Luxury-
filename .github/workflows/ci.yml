@@ -307,6 +307,9 @@ jobs:
           fi
       - name: Run end-to-end tests
         working-directory: ./e2e
+        # The shop is tested as it is shipped: the production bundle (vite build + preview).
+        env:
+          E2E_SHOP_BUILT: "1"
         run: npx playwright test
       - name: Keep the report when something fails
         if: failure()

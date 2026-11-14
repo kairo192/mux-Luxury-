@@ -43,7 +43,7 @@ luxe-ecommerce/
 │   ├── scripts/                  # Operator tools (production .env generator, owner reset…); dev/ = benchmarks
 │   └── tests/                    # 362 automated backend tests (SQLite + PostgreSQL 16)
 ├── apps/
-│   ├── storefront/               # Online shop: one index.html (vanilla JS, FR/AR/EN) + Vite/Tailwind (guest COD, 69 wilayas)
+│   ├── storefront/               # Online shop: index.html (markup) + src/shop/*.js (vanilla JS, FR/AR/EN) + Vite/Tailwind
 │   └── desktop-cms/              # Tauri 2.0 + Rust Windows Desktop CMS & POS (wincred token storage)
 ├── e2e/                          # Browser tests of the shop + CMS together (Playwright), see e2e/README.md
 ├── infrastructure/               # Nginx reverse proxy, automated backup & deploy scripts

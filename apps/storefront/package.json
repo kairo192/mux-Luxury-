@@ -15,5 +15,5 @@
     "typescript": "^5.5.3",
     "vite": "^7.3.8"
   },
-  "description": "Mus Luxury online shop: a single index.html (vanilla JS) styled by Tailwind."
+  "description": "Mus Luxury online shop: index.html + vanilla JS modules (src/shop/) styled by Tailwind."
 }

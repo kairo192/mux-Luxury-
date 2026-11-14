@@ -1,0 +1,84 @@
+/* Shop styles that Tailwind classes do not cover (moved from index.html). */
+body {
+  font-family: 'Montserrat', 'Cairo', sans-serif;
+  background-color: #F8F6F0;
+  color: #202923;
+  overflow-x: hidden;
+  -webkit-font-smoothing: antialiased;
+}
+[dir="rtl"] body {
+  font-family: 'Cairo', 'Montserrat', sans-serif;
+}
+.font-luxury {
+  font-family: 'Playfair Display', Georgia, serif;
+}
+.gold-cta {
+  background: linear-gradient(135deg, #D4AF62 0%, #E5C883 50%, #C49B48 100%);
+}
+.gold-cta:hover {
+  background: linear-gradient(135deg, #DFBC70 0%, #EED597 50%, #CEA654 100%);
+}
+.hero-luxury-bg {
+  background: radial-gradient(circle at 75% 35%, #0B543E 0%, #063D2E 48%, #02291F 100%);
+}
+.cat-card-bg {
+  background: linear-gradient(180deg, #063D2E 0%, #02291F 100%);
+}
+.no-scrollbar::-webkit-scrollbar {
+  display: none;
+}
+.no-scrollbar {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}
+.zoom-stage {
+  overflow: hidden;
+}
+.zoom-stage img {
+  transition: transform 0.4s cubic-bezier(0.16, 1, 0.3, 1);
+  cursor: zoom-in;
+}
+.zoom-stage.zoomed img {
+  transform: scale(1.65);
+  cursor: zoom-out;
+}
+/* Strict Baseline & Card Grid Alignment Across All Viewports */
+.product-card-grid {
+  display: grid;
+  align-items: stretch;
+}
+.product-card {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  backface-visibility: hidden;
+  transform: translateZ(0);
+}
+.product-card-media {
+  aspect-ratio: 4 / 3.6;
+  width: 100%;
+  flex-shrink: 0;
+}
+@media (max-width: 639px) {
+  .product-card-media {
+    aspect-ratio: 1 / 1.02;
+  }
+}
+.cat-nav-mask {
+  mask-image: linear-gradient(to right, transparent 0%, black 2%, black 98%, transparent 100%);
+  -webkit-mask-image: linear-gradient(to right, transparent 0%, black 2%, black 98%, transparent 100%);
+}
+/* Mobile Filter Drawer Overlay when active on <1024px */
+@media (max-width: 1023px) {
+  #catalog-filters-sidebar.mobile-drawer-open {
+    display: block !important;
+    position: fixed;
+    inset: 0;
+    z-index: 60;
+    max-height: 100vh;
+    overflow-y: auto;
+    border-radius: 0;
+    padding: 1.25rem 1rem 5rem 1rem;
+    background-color: #FFFFFF;
+  }
+}
