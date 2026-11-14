@@ -509,7 +509,15 @@ def admin_receive_purchase_order(
         po = cur.fetchone()
         if not po:
             raise HTTPException(status_code=404, detail="Bon de commande introuvable")
-        if po["status"] == "received":
+        # The status change is the FIRST write, guarded by the old status: of
+        # two requests sent together, the second changes no row and stops here
+        # (stock, supplier balance and ledger are written once).
+        cur.execute(
+            "UPDATE purchase_orders SET status = 'received', received_at = CURRENT_TIMESTAMP, updated_at = CURRENT_TIMESTAMP "
+            "WHERE id = ? AND status <> 'received'",
+            (po_id,),
+        )
+        if cur.rowcount != 1:
             raise HTTPException(status_code=400, detail="Ce bon de commande a déjà été réceptionné en stock")
 
         cur.execute("SELECT * FROM purchase_order_items WHERE purchase_order_id = ?", (po_id,))
@@ -585,7 +593,6 @@ def admin_receive_purchase_order(
             cur.execute("UPDATE purchase_order_items SET quantity_received = quantity_ordered WHERE id = ?", (it["id"],))
 
         # Update purchase order status
-        cur.execute("UPDATE purchase_orders SET status = 'received', received_at = CURRENT_TIMESTAMP, updated_at = CURRENT_TIMESTAMP WHERE id = ?", (po_id,))
         # Update supplier debt
         cur.execute("UPDATE suppliers SET balance_dzd = balance_dzd + ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?", (po["total_cost_dzd"], po["supplier_id"]))
 
@@ -625,16 +632,20 @@ def admin_pay_purchase_order(
 
         pay_amount = int(po["total_cost_dzd"]) - int(po["paid_amount_dzd"])
         cur.execute(
-            "UPDATE purchase_orders SET payment_status = 'paid', paid_amount_dzd = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?",
+            "UPDATE purchase_orders SET payment_status = 'paid', paid_amount_dzd = ?, updated_at = CURRENT_TIMESTAMP "
+            "WHERE id = ? AND payment_status <> 'paid'",
             (po["total_cost_dzd"], po_id)
         )
+        if cur.rowcount != 1:  # paid by a request sent at the same moment
+            raise HTTPException(status_code=400, detail="Ce bon de commande est déjà payé")
         cur.execute(
             "UPDATE suppliers SET balance_dzd = balance_dzd - ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?",
             (pay_amount, po["supplier_id"])
         )
 
-        # Cash Movement (Outflow)
-        acc_type = "bank_account" if payment_method == "bank_transfer" else "cash_box"
+        # Cash Movement (Outflow) — one mapping for treasury and ledger:
+        # cash from the cash box, cheque / transfer from the bank.
+        acc_type = _account_for_method(payment_method)
         cur.execute(
             """INSERT INTO cash_movements (account_type, movement_type, amount_dzd, source_type, source_reference, description, recorded_by)
                VALUES (?, 'outflow', ?, 'purchase_payment', ?, ?, ?)""",
@@ -643,8 +654,7 @@ def admin_pay_purchase_order(
 
         # Double-entry ledger: Debit 4010 (Fournisseurs) / Credit 5300 (Caisse) or 5120 (Banque)
         today_str = _shop_today()
-        credit_acc = "5120" if payment_method == "bank_transfer" else "5300"
-        credit_name = "Banque" if payment_method == "bank_transfer" else "Caisse Boutique"
+        credit_acc, credit_name = _ledger_account(acc_type)
         cur.execute(
             """INSERT INTO accounting_ledger (entry_number, journal_code, entry_date, account_code, account_name, label, debit_dzd, credit_dzd, source_document)
                VALUES (?, 'CAI', ?, '4010', 'Dettes Fournisseurs', ?, ?, 0, ?)""",
@@ -658,6 +668,31 @@ def admin_pay_purchase_order(
 
         return {"paid": True, "purchase_order_id": po_id, "paid_amount_dzd": pay_amount}
 
+
+
+def _ledger_account(account_type: str) -> tuple:
+    """Ledger account matching a treasury account (one mapping for both)."""
+    return ("5120", "Banque") if account_type == "bank_account" else ("5300", "Caisse Boutique")
+
+
+def _post_expense_payment(cur, expense_id: int, description: str, amount: int, payment_method: str,
+                          entry_date: str, user_id: int) -> None:
+    """Money leaves the cash box or the bank for an expense: treasury outflow
+    plus the balanced ledger entries (debit 6100 / credit cash or bank)."""
+    acc_type = _account_for_method(payment_method)
+    _record_cash_movement(cur, account=acc_type, movement="outflow", amount=amount, source_type="expense_payment",
+                          reference=f"EXP-{expense_id}", description=f"Dépense: {description}", user_id=user_id)
+    credit_acc, credit_name = _ledger_account(acc_type)
+    cur.execute(
+        """INSERT INTO accounting_ledger (entry_number, journal_code, entry_date, account_code, account_name, label, debit_dzd, credit_dzd, source_document)
+           VALUES (?, 'OD', ?, '6100', 'Charges et Dépenses d''Exploitation', ?, ?, 0, ?)""",
+        (f"EXP-{expense_id}-D", entry_date, description, amount, f"EXP-{expense_id}"),
+    )
+    cur.execute(
+        """INSERT INTO accounting_ledger (entry_number, journal_code, entry_date, account_code, account_name, label, debit_dzd, credit_dzd, source_document)
+           VALUES (?, 'OD', ?, ?, ?, ?, 0, ?, ?)""",
+        (f"EXP-{expense_id}-C", entry_date, credit_acc, credit_name, description, amount, f"EXP-{expense_id}"),
+    )
 
 
 # --- OPERATING EXPENSES (DÉPENSES & FRAIS GÉNÉRAUX) ---
@@ -704,26 +739,8 @@ def admin_create_expense(
 
         # If paid, immediately register cash outflow and ledger entry
         if payload.payment_status == "paid":
-            acc_type = _account_for_method(payload.payment_method)
-            cur.execute(
-                """INSERT INTO cash_movements (account_type, movement_type, amount_dzd, source_type, source_reference, description, recorded_by)
-                   VALUES (?, 'outflow', ?, 'expense_payment', ?, ?, ?)""",
-                (acc_type, payload.amount_dzd, f"EXP-{exp_id}", f"Dépense: {payload.description}", int(admin["sub"]))
-            )
-
-            # Balanced Ledger: Debit 6100 (Charges d'exploitation) / Credit 5300 (Caisse)
-            credit_acc = "5120" if payload.payment_method == "bank_transfer" else "5300"
-            credit_name = "Banque" if payload.payment_method == "bank_transfer" else "Caisse Boutique"
-            cur.execute(
-                """INSERT INTO accounting_ledger (entry_number, journal_code, entry_date, account_code, account_name, label, debit_dzd, credit_dzd, source_document)
-                   VALUES (?, 'OD', ?, '6100', 'Charges et Dépenses d''Exploitation', ?, ?, 0, ?)""",
-                (f"EXP-{exp_id}-D", exp_date, payload.description, payload.amount_dzd, f"EXP-{exp_id}")
-            )
-            cur.execute(
-                """INSERT INTO accounting_ledger (entry_number, journal_code, entry_date, account_code, account_name, label, debit_dzd, credit_dzd, source_document)
-               VALUES (?, 'OD', ?, ?, ?, ?, 0, ?, ?)""",
-                (f"EXP-{exp_id}-C", exp_date, credit_acc, credit_name, payload.description, payload.amount_dzd, f"EXP-{exp_id}")
-            )
+            _post_expense_payment(cur, exp_id, payload.description, int(payload.amount_dzd),
+                                  payload.payment_method, exp_date, int(admin["sub"]))
 
         log_audit(conn, int(admin["sub"]), "create_expense", "expense", str(exp_id), {
             "description": payload.description,
@@ -746,13 +763,31 @@ def admin_delete_expense(
         if not exp:
             raise HTTPException(status_code=404, detail="Dépense introuvable")
         cur.execute("DELETE FROM expenses WHERE id = ?", (expense_id,))
+        if cur.rowcount != 1:  # removed by a request sent at the same moment
+            raise HTTPException(status_code=404, detail="Dépense introuvable")
         if exp["payment_status"] == "paid":
             # The money was taken out of the treasury when it was paid: put
-            # it back with a visible correcting entry (history is kept).
-            _record_cash_movement(cur, account=_account_for_method(exp["payment_method"]), movement="inflow",
+            # it back with a visible correcting entry (history is kept), and
+            # reverse the ledger entries the same way (originals stay).
+            acc_type = _account_for_method(exp["payment_method"])
+            _record_cash_movement(cur, account=acc_type, movement="inflow",
                                   amount=int(exp["amount_dzd"]), source_type="expense_cancelled",
                                   reference=f"EXP-{expense_id}", description=f"Annulation dépense: {exp['description']}",
                                   user_id=int(admin["sub"]))
+            cash_acc, cash_name = _ledger_account(acc_type)
+            label = f"Annulation dépense: {exp['description']}"
+            amount = int(exp["amount_dzd"])
+            today_str = _shop_today()
+            cur.execute(
+                """INSERT INTO accounting_ledger (entry_number, journal_code, entry_date, account_code, account_name, label, debit_dzd, credit_dzd, source_document)
+                   VALUES (?, 'OD', ?, ?, ?, ?, ?, 0, ?)""",
+                (f"EXP-{expense_id}-RD", today_str, cash_acc, cash_name, label, amount, f"EXP-{expense_id}"),
+            )
+            cur.execute(
+                """INSERT INTO accounting_ledger (entry_number, journal_code, entry_date, account_code, account_name, label, debit_dzd, credit_dzd, source_document)
+                   VALUES (?, 'OD', ?, '6100', 'Charges et Dépenses d''Exploitation', ?, 0, ?, ?)""",
+                (f"EXP-{expense_id}-RC", today_str, label, amount, f"EXP-{expense_id}"),
+            )
         log_audit(conn, int(admin["sub"]), "delete_expense", "expense", str(expense_id), {"description": exp["description"]})
         return {"deleted": True, "expense_id": expense_id}
 
@@ -774,11 +809,15 @@ def admin_pay_expense(
             raise HTTPException(status_code=404, detail="Dépense introuvable")
         if exp["payment_status"] == "paid":
             raise HTTPException(status_code=400, detail="Cette dépense est déjà payée.")
-        cur.execute("UPDATE expenses SET payment_status = 'paid', payment_method = ? WHERE id = ?", (payment_method, expense_id))
-        _record_cash_movement(cur, account=_account_for_method(payment_method), movement="outflow",
-                              amount=int(exp["amount_dzd"]), source_type="expense_payment",
-                              reference=f"EXP-{expense_id}", description=f"Dépense: {exp['description']}",
-                              user_id=int(admin["sub"]))
+        cur.execute(
+            "UPDATE expenses SET payment_status = 'paid', payment_method = ? WHERE id = ? AND payment_status <> 'paid'",
+            (payment_method, expense_id),
+        )
+        if cur.rowcount != 1:  # paid by a request sent at the same moment
+            raise HTTPException(status_code=400, detail="Cette dépense est déjà payée.")
+        # Same treasury movement AND ledger entries as an expense recorded as paid.
+        _post_expense_payment(cur, expense_id, exp["description"], int(exp["amount_dzd"]),
+                              payment_method, _shop_today(), int(admin["sub"]))
         log_audit(conn, int(admin["sub"]), "pay_expense", "expense", str(expense_id), {"amount_dzd": int(exp["amount_dzd"])})
         cur.execute("SELECT * FROM expenses WHERE id = ?", (expense_id,))
         return dict(cur.fetchone())
@@ -819,7 +858,7 @@ def admin_get_treasury_summary(admin: dict = Depends(require_permission("finance
 
         # Inventory Value at Purchase Cost
         cur.execute(
-            """SELECT COALESCE(SUM(pv.stock_qty * COALESCE(p.purchase_cost_dzd, 0)), 0) AS s
+            f"""SELECT COALESCE(SUM(pv.stock_qty * {_UNIT_COST_SQL}), 0) AS s
                FROM product_variants pv
                JOIN products p ON p.id = pv.product_id
                WHERE p.deleted_at IS NULL"""

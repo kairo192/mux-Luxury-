@@ -41,24 +41,35 @@ def admin_delta_sync(
     the Desktop CMS calls this endpoint to immediately fetch all new guest orders,
     updated stock quantities, and inventory movements recorded by the 24/7 VPS while the PC was off.
     """
+    # Full order records (names, phones, addresses) only for accounts that may
+    # manage orders; everyone with dashboard access still gets stock and moves.
+    can_see_orders = "orders:write" in admin.get("perms", [])
     with db_session() as conn:
         cur = conn.cursor()
-        cur.execute("SELECT * FROM orders WHERE id > ? ORDER BY id DESC", (since_order_id,))
-        new_orders = [dict(r) for r in cur.fetchall()]
-        items_by_order = _children_by_parent(cur, "order_items", "order_id", [o["id"] for o in new_orders])
-        for od in new_orders:
-            od["items"] = items_by_order.get(od["id"], [])
-
-        cur.execute("SELECT * FROM inventory_movements WHERE id > ? ORDER BY id DESC", (since_movement_id,))
-        new_movements = [dict(m) for m in cur.fetchall()]
-
-        cur.execute("SELECT id, sku, stock_qty, price_override_dzd FROM product_variants ORDER BY id ASC")
-        variant_stocks = [dict(v) for v in cur.fetchall()]
-
+        # Watermarks first, and every delta read bounded by them: a row written
+        # while this runs is left for the next sync instead of being skipped.
         cur.execute("SELECT COALESCE(MAX(id), 0) AS max_oid FROM orders")
         latest_order_id = cur.fetchone()["max_oid"]
         cur.execute("SELECT COALESCE(MAX(id), 0) AS max_mid FROM inventory_movements")
         latest_movement_id = cur.fetchone()["max_mid"]
+
+        new_orders: list = []
+        if can_see_orders:
+            cur.execute("SELECT * FROM orders WHERE id > ? AND id <= ? ORDER BY id DESC",
+                        (since_order_id, latest_order_id))
+            new_orders = [dict(r) for r in cur.fetchall()]
+            items_by_order = _children_by_parent(cur, "order_items", "order_id", [o["id"] for o in new_orders])
+            for od in new_orders:
+                od["items"] = items_by_order.get(od["id"], [])
+        else:
+            latest_order_id = since_order_id
+
+        cur.execute("SELECT * FROM inventory_movements WHERE id > ? AND id <= ? ORDER BY id DESC",
+                    (since_movement_id, latest_movement_id))
+        new_movements = [dict(m) for m in cur.fetchall()]
+
+        cur.execute("SELECT id, sku, stock_qty, price_override_dzd FROM product_variants ORDER BY id ASC")
+        variant_stocks = [dict(v) for v in cur.fetchall()]
 
         return {
             "server_timestamp": int(time.time()),
@@ -377,19 +388,23 @@ def _catalog_epoch(conn) -> str:
 
 
 
+def _sync_cursor_now() -> str:
+    return datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%SZ")
+
+
 @router.get("/api/v1/admin/pos/catalog/snapshot")
 def pos_catalog_snapshot(admin: dict = Depends(require_permission("pos:read"))):
     """Full catalog dump — call this once, then prefer `/catalog/deltas`.
 
-    The cursor returned is `now + 1s`. Snapshot captures everything through
-    the current second; the next delta starts at the next second, so no row
-    is double-fetched and no row is missed at the boundary (the trigger
-    stamps updated_at in whole seconds)."""
+    The cursor returned is the second in which this read STARTED, and the
+    next delta includes that second (`>=`). A row changed while this runs is
+    sent again rather than missed (updated_at is stamped in whole seconds; the
+    offline catalog simply overwrites a row it already has)."""
+    cursor = _sync_cursor_now()
     with db_session() as conn:
         products = _pos_catalog_products_rows(conn, since_iso=None)
         variants = _pos_catalog_variants_rows(conn, since_iso=None)
         epoch = _catalog_epoch(conn)
-    cursor = (datetime.utcnow() + timedelta(seconds=1)).strftime("%Y-%m-%dT%H:%M:%SZ")
     return {
         "generated_at": datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%SZ"),
         "cursor": cursor,
@@ -417,11 +432,11 @@ def pos_catalog_deltas(
     since_s = since.strip()
     if not since_s:
         raise HTTPException(status_code=400, detail="`since` is required")
+    cursor = _sync_cursor_now()  # taken BEFORE the reads; see pos_catalog_snapshot
     with db_session() as conn:
         products = _pos_catalog_products_rows(conn, since_iso=since_s)
         variants = _pos_catalog_variants_rows(conn, since_iso=since_s)
         epoch = _catalog_epoch(conn)
-    cursor = (datetime.utcnow() + timedelta(seconds=1)).strftime("%Y-%m-%dT%H:%M:%SZ")
     return {
         "generated_at": datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%SZ"),
         "cursor": cursor,
@@ -800,6 +815,21 @@ def pos_refund_sale(
             if refund_lines:
                 refund_lines[-1][3] += diff
 
+        # The credit note keeps the ticket's tax: the refunded share of it (the
+        # last refund takes exactly what is left), and the discount is what
+        # brings list price + tax down to the money given back.
+        orig_tax = int(orig["tax_dzd"] or 0)
+        cur.execute(
+            "SELECT COALESCE(SUM(tax_dzd), 0) AS t FROM pos_sales WHERE sale_type = 'refund' AND reverses_sale_id = ?",
+            (sale_id,),
+        )
+        tax_left = max(0, orig_tax - int(cur.fetchone()["t"]))
+        if empties_ticket:
+            refund_tax = tax_left
+        else:
+            refund_tax = min(tax_left, round(orig_tax * refund_total / paid_total)) if paid_total > 0 else 0
+        refund_discount = refund_subtotal + refund_tax - refund_total
+
         ref = ""
         refund_id = None
         for _attempt in range(3):
@@ -809,9 +839,9 @@ def pos_refund_sale(
                     """INSERT INTO pos_sales
                        (sale_reference, register_session_id, cashier_admin_id, customer_id, sale_type,
                         reverses_sale_id, subtotal_dzd, discount_dzd, tax_dzd, total_dzd, status, notes)
-                       VALUES (?, ?, ?, ?, 'refund', ?, ?, ?, 0, ?, 'completed', ?)""",
+                       VALUES (?, ?, ?, ?, 'refund', ?, ?, ?, ?, ?, 'completed', ?)""",
                     (ref, int(session["id"]), int(admin["sub"]), orig["customer_id"], sale_id,
-                     refund_subtotal, refund_subtotal - refund_total, refund_total, payload.notes),
+                     refund_subtotal, refund_discount, refund_tax, refund_total, payload.notes),
                 )
                 refund_id = cur.lastrowid
                 break
@@ -1330,11 +1360,45 @@ def _process_offline_sale(conn, op: PosSyncOperation, cashier_id: int) -> dict:
                               amount=int(pm.amount_dzd), source_type="pos_sale", reference=sale_ref,
                               description=f"Vente magasin {sale_ref} (hors ligne)", user_id=cashier_id)
 
+    if reg is not None:
+        _reconcile_closed_register(conn, reg, sale_ref, cashier_id)
+
     log_audit(conn, cashier_id, "pos_sale_offline_sync", "pos_sale", str(sale_id), {
         "client_txn_id": txn, "sale_reference": sale_ref, "total_dzd": total_dzd,
     })
     return {"client_txn_id": txn, "status": "created", "sale_reference": sale_ref, "sale_id": int(sale_id), "total_dzd": total_dzd}
 
+
+
+def _reconcile_closed_register(conn, session_id: int, sale_ref: str, user_id: int) -> None:
+    """An offline sale that reaches the server after its register was closed:
+    the drawer counted at closing already held that cash, so closing booked it
+    as a surplus. Recompute the closed register's totals and expected cash with
+    the sale, and move only the CHANGE in its variance through the cash box
+    (the sale's own payment is already booked), so the money counts once."""
+    cur = conn.cursor()
+    cur.execute("SELECT * FROM cash_register_sessions WHERE id = ?", (session_id,))
+    sess = cur.fetchone()
+    if not sess or sess["status"] != "closed" or sess["counted_cash_dzd"] is None:
+        return
+    totals = _register_runtime_totals(conn, session_id)
+    expected = int(sess["opening_float_dzd"]) + totals["net_cash_dzd"]
+    variance = int(sess["counted_cash_dzd"]) - expected
+    cur.execute(
+        """UPDATE cash_register_sessions
+           SET expected_cash_dzd = ?, variance_dzd = ?,
+               total_sales_dzd = ?, total_refunds_dzd = ?, sales_count = ?
+           WHERE id = ?""",
+        (expected, variance, totals["sales_total_dzd"], totals["refunds_total_dzd"], totals["sales_count"], session_id),
+    )
+    change = variance - int(sess["variance_dzd"] or 0)
+    if change != 0:
+        _record_cash_movement(
+            cur, account="cash_box", movement="inflow" if change > 0 else "outflow", amount=abs(change),
+            source_type="register_variance", reference=f"CAISSE-{session_id}",
+            description=f"Écart de caisse corrigé : vente {sale_ref} synchronisée après la clôture",
+            user_id=user_id,
+        )
 
 
 @router.post("/api/v1/admin/pos/sync")
@@ -1345,7 +1409,10 @@ def pos_offline_sync(payload: PosSyncInput, admin: dict = Depends(require_permis
             with db_session(commit=True) as conn:
                 if not conn.in_transaction:
                     conn.execute("BEGIN IMMEDIATE")
-                results.append(_process_offline_sale(conn, op, int(admin["sub"])))
+                result = _process_offline_sale(conn, op, int(admin["sub"]))
+            # Reported only once the commit has succeeded (a failed commit
+            # lands in `failed` below, never as `created` too).
+            results.append(result)
         except HTTPException as he:
             results.append({"client_txn_id": op.client_txn_id, "status": "conflict", "reason": "server_rejected", "error": he.detail})
         except Exception as exc:  # noqa: BLE001

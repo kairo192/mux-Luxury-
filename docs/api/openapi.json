@@ -2588,7 +2588,7 @@
   "title": "Mus Luxury (LUXE) E-Commerce API",
   "version": "1.0.0"
  },
- "openapi": "3.0.2",
+ "openapi": "3.1.0",
  "paths": {
   "/api/v1/admin/accounting/export.csv": {
    "get": {
@@ -6362,7 +6362,7 @@
   },
   "/api/v1/admin/pos/catalog/snapshot": {
    "get": {
-    "description": "Full catalog dump — call this once, then prefer `/catalog/deltas`.\n\nThe cursor returned is `now + 1s`. Snapshot captures everything through\nthe current second; the next delta starts at the next second, so no row\nis double-fetched and no row is missed at the boundary (the trigger\nstamps updated_at in whole seconds).",
+    "description": "Full catalog dump — call this once, then prefer `/catalog/deltas`.\n\nThe cursor returned is the second in which this read STARTED, and the\nnext delta includes that second (`>=`). A row changed while this runs is\nsent again rather than missed (updated_at is stamped in whole seconds; the\noffline catalog simply overwrites a row it already has).",
     "operationId": "pos_catalog_snapshot_api_v1_admin_pos_catalog_snapshot_get",
     "parameters": [
      {

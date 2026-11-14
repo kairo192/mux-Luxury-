@@ -177,7 +177,8 @@ def update_order_status(
 
         # A cancelled order gives its promo-code use back (a limited code is not
         # used up by orders that never happened). A returned parcel keeps it.
-        if payload.status == "cancelled":
+        # Only once: cancelling an already-cancelled order again gives nothing back.
+        if payload.status == "cancelled" and prev_status != "cancelled":
             code_used = dict(ord_row).get("coupon_code")
             if code_used:
                 cur.execute(

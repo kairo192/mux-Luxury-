@@ -64,9 +64,20 @@ async def receive_whatsapp_webhook(request: Request):
     cfg = get_whatsapp_config()
     if not cfg["app_secret"]:
         raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail="WhatsApp webhook app secret is not configured")
-    raw_body = await request.body()
-    if len(raw_body) > MAX_WEBHOOK_BODY_BYTES:
-        raise HTTPException(status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE, detail="Webhook payload exceeds 64 KB limit")
+    # Read at most 64 KB: stop as soon as the body passes the limit instead of
+    # buffering whatever size an unsigned sender chose.
+    too_large = HTTPException(status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE, detail="Webhook payload exceeds 64 KB limit")
+    declared = request.headers.get("content-length", "")
+    if declared.isdigit() and int(declared) > MAX_WEBHOOK_BODY_BYTES:
+        raise too_large
+    chunks: list = []
+    received = 0
+    async for chunk in request.stream():
+        received += len(chunk)
+        if received > MAX_WEBHOOK_BODY_BYTES:
+            raise too_large
+        chunks.append(chunk)
+    raw_body = b"".join(chunks)
     sig_header = request.headers.get("X-Hub-Signature-256")
     if not verify_whatsapp_webhook_signature(raw_body, sig_header):
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid or missing X-Hub-Signature-256 webhook signature")

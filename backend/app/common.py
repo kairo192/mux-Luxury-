@@ -147,50 +147,57 @@ def serialize_products_batch(conn, product_rows: List[dict], include_private: bo
                 "attributes": attrs_by_cat.get(cid, [])
             }
 
-    # 3. Product attribute values batch query
+    # 3-6. Attribute values, variants and images, in chunks of 500 ids so a long
+    # unpaged listing never passes the database's bound-parameter limit.
+    priv = 1 if include_private else 0
     pav_by_pid = {}
-    placeholders_p = ",".join("?" for _ in pids)
-    cur.execute(
-        f"""SELECT pav.product_id, ca.attr_key, pav.value_text
-            FROM product_attribute_values pav
-            JOIN category_attributes ca ON ca.id = pav.attribute_id
-            WHERE pav.product_id IN ({placeholders_p}) AND (? = 1 OR ca.is_visible_on_storefront = 1)
-            ORDER BY ca.display_order ASC""",
-        [*pids, 1 if include_private else 0]
-    )
-    for r in cur.fetchall():
-        pav_by_pid.setdefault(r["product_id"], {})[r["attr_key"]] = r["value_text"]
+    all_variants = []
+    images_by_pid = {}
+    for chunk in _id_chunks(pids):
+        ph = ",".join("?" for _ in chunk)
+        cur.execute(
+            f"""SELECT pav.product_id, ca.attr_key, pav.value_text
+                FROM product_attribute_values pav
+                JOIN category_attributes ca ON ca.id = pav.attribute_id
+                WHERE pav.product_id IN ({ph}) AND (? = 1 OR ca.is_visible_on_storefront = 1)
+                ORDER BY ca.display_order ASC""",
+            [*chunk, priv]
+        )
+        for r in cur.fetchall():
+            pav_by_pid.setdefault(r["product_id"], {})[r["attr_key"]] = r["value_text"]
 
-    # 4. Product variants batch query
-    cur.execute(
-        f"SELECT * FROM product_variants WHERE product_id IN ({placeholders_p}) AND (? = 1 OR is_active = 1) ORDER BY id ASC",
-        [*pids, 1 if include_private else 0]
-    )
-    all_variants = [dict(v) for v in cur.fetchall()]
-    var_ids = [v["id"] for v in all_variants]
+        cur.execute(
+            f"SELECT * FROM product_variants WHERE product_id IN ({ph}) AND (? = 1 OR is_active = 1) ORDER BY id ASC",
+            [*chunk, priv]
+        )
+        all_variants.extend(dict(v) for v in cur.fetchall())
 
-    # 5. Variant attribute values batch query
+        cur.execute(
+            f"SELECT id, product_id, variant_id, image_url, alt_text, display_order FROM product_images WHERE product_id IN ({ph}) ORDER BY display_order ASC, id ASC",
+            chunk
+        )
+        for img in cur.fetchall():
+            images_by_pid.setdefault(img["product_id"], []).append(dict(img))
+
     vav_by_vid = {}
-    if var_ids:
-        placeholders_v = ",".join("?" for _ in var_ids)
+    for chunk in _id_chunks([v["id"] for v in all_variants]):
+        ph = ",".join("?" for _ in chunk)
         cur.execute(
             f"""SELECT vav.variant_id, ca.attr_key, vav.option_value
                 FROM variant_attribute_values vav
                 JOIN category_attributes ca ON ca.id = vav.attribute_id
-                WHERE vav.variant_id IN ({placeholders_v})""",
-            var_ids
+                WHERE vav.variant_id IN ({ph})""",
+            chunk
         )
         for r in cur.fetchall():
             vav_by_vid.setdefault(r["variant_id"], {})[r["attr_key"]] = r["option_value"]
 
-    # 6. Product images batch query
-    images_by_pid = {}
-    cur.execute(
-        f"SELECT id, product_id, variant_id, image_url, alt_text, display_order FROM product_images WHERE product_id IN ({placeholders_p}) ORDER BY display_order ASC, id ASC",
-        pids
-    )
-    for img in cur.fetchall():
-        images_by_pid.setdefault(img["product_id"], []).append(dict(img))
+    variants_by_pid: Dict[int, List[dict]] = {}
+    for v in all_variants:
+        if not include_private:
+            # The purchase cost is the shop's private margin data.
+            v.pop("purchase_cost_dzd", None)
+        variants_by_pid.setdefault(v["product_id"], []).append(v)
 
     # Assemble output products
     out = []
@@ -200,7 +207,7 @@ def serialize_products_batch(conn, product_rows: List[dict], include_private: bo
         p["category"] = cats_by_id.get(p.get("category_id"))
         p["attributes"] = pav_by_pid.get(pid, {})
 
-        p_vars = [v for v in all_variants if v["product_id"] == pid]
+        p_vars = variants_by_pid.get(pid, [])
         total_stock = 0
         for v in p_vars:
             v["attributes"] = vav_by_vid.get(v["id"], {})

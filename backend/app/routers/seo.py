@@ -36,7 +36,9 @@ def seo_render_page(kind: str, slug: str, request: Request):
         with db_session() as conn:
             cur = conn.cursor()
             cur.execute(
-                "SELECT p.* FROM products p WHERE p.slug = ? AND p.status = 'published' AND p.deleted_at IS NULL",
+                "SELECT p.* FROM products p JOIN categories c ON c.id = p.category_id "
+                "WHERE p.slug = ? AND p.status = 'published' AND p.deleted_at IS NULL "
+                "AND c.is_active = 1 AND c.deleted_at IS NULL",
                 (slug,),
             )
             row = cur.fetchone()
@@ -87,8 +89,9 @@ def seo_sitemap(request: Request):
         )
         cats = [dict(r) for r in cur.fetchall()]
         cur.execute(
-            "SELECT slug, created_at, updated_at FROM products WHERE status = 'published' AND deleted_at IS NULL "
-            "ORDER BY id DESC LIMIT 45000"
+            "SELECT p.slug, p.created_at, p.updated_at FROM products p JOIN categories c ON c.id = p.category_id "
+            "WHERE p.status = 'published' AND p.deleted_at IS NULL AND c.is_active = 1 AND c.deleted_at IS NULL "
+            "ORDER BY p.id DESC LIMIT 45000"
         )
         prods = [dict(r) for r in cur.fetchall()]
     return Response(

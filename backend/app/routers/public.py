@@ -395,10 +395,14 @@ def create_guest_order(
         resolved_lines = []
         for item in consolidated_items:
             cur.execute(
+                # Same visibility as the shop's product pages: a product that is
+                # deleted or in a hidden category cannot be ordered either.
                 """SELECT pv.*, p.name_fr AS product_name, p.selling_price_dzd, p.status AS product_status
                    FROM product_variants pv
                    JOIN products p ON p.id = pv.product_id
-                   WHERE pv.id = ? AND pv.is_active = 1""",
+                   JOIN categories c ON c.id = p.category_id
+                   WHERE pv.id = ? AND pv.is_active = 1 AND p.deleted_at IS NULL
+                     AND c.is_active = 1 AND c.deleted_at IS NULL""",
                 (item.variant_id,)
             )
             v = cur.fetchone()

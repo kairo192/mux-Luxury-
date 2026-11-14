@@ -66,14 +66,22 @@ def admin_dashboard(admin: dict = Depends(require_permission("dashboard:read")))
         for r in cur.fetchall():
             orders_by_status[r["status"]] = r["cnt"]
 
-        cur.execute("SELECT * FROM orders ORDER BY id DESC LIMIT 10")
-        recent_orders = [dict(r) for r in cur.fetchall()]
-        items_by_order = _children_by_parent(cur, "order_items", "order_id", [o["id"] for o in recent_orders])
-        for od in recent_orders:
-            od["items"] = items_by_order.get(od["id"], [])
+        # Customer records and the audit trail only for the roles that may
+        # open them elsewhere (orders:write / settings:write, as on their own
+        # pages); the counters above stay visible to every dashboard user.
+        perms = admin.get("perms", [])
+        recent_orders: List[dict] = []
+        if "orders:write" in perms:
+            cur.execute("SELECT * FROM orders ORDER BY id DESC LIMIT 10")
+            recent_orders = [dict(r) for r in cur.fetchall()]
+            items_by_order = _children_by_parent(cur, "order_items", "order_id", [o["id"] for o in recent_orders])
+            for od in recent_orders:
+                od["items"] = items_by_order.get(od["id"], [])
 
-        cur.execute("SELECT * FROM audit_logs ORDER BY id DESC LIMIT 10")
-        recent_activity = [dict(r) for r in cur.fetchall()]
+        recent_activity: List[dict] = []
+        if "settings:write" in perms:
+            cur.execute("SELECT * FROM audit_logs ORDER BY id DESC LIMIT 10")
+            recent_activity = [dict(r) for r in cur.fetchall()]
 
         cur.execute("SELECT * FROM backup_records ORDER BY id DESC LIMIT 1")
         last_bkp_row = cur.fetchone()
@@ -662,7 +670,9 @@ def _sales_report_data(conn, date_from: str, date_to: str) -> dict:
 # ============================================================================
 
 
-def _treasury_report_data(conn, date_from: str, date_to: str) -> dict:
+def _treasury_report_data(conn, date_from: str, date_to: str, detail_limit: Optional[int] = 2000) -> dict:
+    """Totals always cover the whole period; `detail_limit` only caps the
+    detail list shown on screen (None = every row, for the CSV export)."""
     cur = conn.cursor()
     start, end = _utc_range_for_days(date_from, date_to)  # shop days -> UTC [start, end)
 
@@ -709,7 +719,7 @@ def _treasury_report_data(conn, date_from: str, date_to: str) -> dict:
            FROM cash_movements cm
            LEFT JOIN admin_users au ON au.id = cm.recorded_by
            WHERE cm.created_at >= ? AND cm.created_at < ?
-           ORDER BY cm.id DESC LIMIT 2000""",
+           ORDER BY cm.id DESC""" + ("" if detail_limit is None else f" LIMIT {int(detail_limit)}"),
         (start, end),
     )
     items = [dict(r) for r in cur.fetchall()]
@@ -719,7 +729,7 @@ def _treasury_report_data(conn, date_from: str, date_to: str) -> dict:
     return {
         "period": {"from": date_from, "to": date_to},
         "totals": {
-            "count": len(items),
+            "count": sum(int(r["c"]) for r in rows),
             "inflow_dzd": total_in,
             "outflow_dzd": total_out,
             "net_dzd": total_in - total_out,
@@ -761,7 +771,7 @@ def admin_treasury_report_csv(
     if date_from > date_to:
         raise HTTPException(status_code=422, detail="from doit être <= to")
     with db_session() as conn:
-        data = _treasury_report_data(conn, date_from, date_to)
+        data = _treasury_report_data(conn, date_from, date_to, detail_limit=None)
 
     t = data["totals"]
     rows = [[_csv_date(it["created_at"]), _fr(it["account_type"]), _fr(it["movement_type"]), _fr(it["source_type"]),
@@ -781,7 +791,10 @@ def admin_treasury_report_csv(
 # ============================================================================
 
 
-def _inventory_movements_data(conn, date_from: str, date_to: str, variant_id: Optional[int] = None) -> dict:
+def _inventory_movements_data(conn, date_from: str, date_to: str, variant_id: Optional[int] = None,
+                              detail_limit: Optional[int] = 2000) -> dict:
+    """Totals cover the whole period; `detail_limit` caps only the list
+    (None = every row, for the CSV export)."""
     cur = conn.cursor()
     start, end = _utc_range_for_days(date_from, date_to)  # shop days -> UTC [start, end)
     params: List[Any] = [start, end]
@@ -799,8 +812,7 @@ def _inventory_movements_data(conn, date_from: str, date_to: str, variant_id: Op
             JOIN products p ON p.id = pv.product_id
             LEFT JOIN admin_users au ON au.id = im.admin_user_id
             WHERE {where_sql}
-            ORDER BY im.id DESC
-            LIMIT 2000""",
+            ORDER BY im.id DESC""" + ("" if detail_limit is None else f" LIMIT {int(detail_limit)}"),
         tuple(params),
     )
     items = [dict(r) for r in cur.fetchall()]
@@ -820,13 +832,22 @@ def _inventory_movements_data(conn, date_from: str, date_to: str, variant_id: Op
     by_reason = [{"reason": r["reason"], "count": int(r["c"]),
                   "net_change": int(r["net"]), "gross_units": int(r["gross"])} for r in cur.fetchall()]
 
-    total_units_in = sum(it["change_qty"] for it in items if it["change_qty"] > 0)
-    total_units_out = sum(-it["change_qty"] for it in items if it["change_qty"] < 0)
+    cur.execute(
+        f"""SELECT COUNT(*) AS c,
+                   COALESCE(SUM(CASE WHEN change_qty > 0 THEN change_qty ELSE 0 END), 0) AS units_in,
+                   COALESCE(SUM(CASE WHEN change_qty < 0 THEN -change_qty ELSE 0 END), 0) AS units_out
+            FROM inventory_movements im
+            WHERE {where_sql}""",
+        tuple(params),
+    )
+    agg = cur.fetchone()
+    total_units_in = int(agg["units_in"])
+    total_units_out = int(agg["units_out"])
     return {
         "period": {"from": date_from, "to": date_to},
         "variant_id": variant_id,
         "totals": {
-            "count": len(items),
+            "count": int(agg["c"]),
             "units_in": total_units_in,
             "units_out": total_units_out,
             "net_change": total_units_in - total_units_out,
@@ -865,7 +886,7 @@ def admin_inventory_movements_report_csv(
     if date_from > date_to:
         raise HTTPException(status_code=422, detail="from doit être <= to")
     with db_session() as conn:
-        data = _inventory_movements_data(conn, date_from, date_to, variant_id)
+        data = _inventory_movements_data(conn, date_from, date_to, variant_id, detail_limit=None)
 
     t = data["totals"]
     rows = [[_csv_date(it["created_at"]), it["sku"], it["product_name"], it["variant_title"],
@@ -882,7 +903,9 @@ def admin_inventory_movements_report_csv(
 # ============================================================================
 
 
-def _expenses_report_data(conn, date_from: str, date_to: str) -> dict:
+def _expenses_report_data(conn, date_from: str, date_to: str, detail_limit: Optional[int] = 200) -> dict:
+    """Totals cover the whole period; `detail_limit` caps only the list
+    (None = every row, for the CSV export)."""
     cur = conn.cursor()
     # Per-category totals
     cur.execute(
@@ -912,20 +935,23 @@ def _expenses_report_data(conn, date_from: str, date_to: str) -> dict:
         """SELECT id, description, category, amount_dzd, expense_date, payment_method,
                   recipient, receipt_reference, payment_status, created_at
            FROM expenses WHERE expense_date BETWEEN ? AND ?
-           ORDER BY expense_date DESC, id DESC LIMIT 200""",
+           ORDER BY expense_date DESC, id DESC""" + ("" if detail_limit is None else f" LIMIT {int(detail_limit)}"),
         (date_from, date_to),
     )
     items = [dict(r) for r in cur.fetchall()]
 
     total = sum(c["total_dzd"] for c in by_cat.values())
-    pending = sum(
-        int(it["amount_dzd"]) for it in items if it.get("payment_status") == "pending"
+    cur.execute(
+        """SELECT COALESCE(SUM(amount_dzd), 0) AS s FROM expenses
+           WHERE expense_date BETWEEN ? AND ? AND payment_status = 'pending'""",
+        (date_from, date_to),
     )
+    pending = int(cur.fetchone()["s"])
     return {
         "period": {"from": date_from, "to": date_to},
         "totals": {
             "total_dzd": total,
-            "count": len(items),
+            "count": sum(c["count"] for c in by_cat.values()),
             "pending_dzd": pending,
             "categories_count": len(by_cat),
         },
@@ -962,7 +988,7 @@ def admin_expense_report_csv(
     if date_from > date_to:
         raise HTTPException(status_code=422, detail="from doit être <= to")
     with db_session() as conn:
-        data = _expenses_report_data(conn, date_from, date_to)
+        data = _expenses_report_data(conn, date_from, date_to, detail_limit=None)
 
     rows = [[it["expense_date"], _fr(it["category"]), it["description"], it.get("recipient") or "",
              _fr(it["payment_method"]), _fr(it["payment_status"]), it["amount_dzd"], it.get("receipt_reference") or ""]

@@ -246,6 +246,17 @@ def admin_update_store_settings(
                 status_code=status.HTTP_403_FORBIDDEN,
                 detail=f"Le réglage système '{k}' ne peut pas être modifié ici"
             )
+        if k == "pos_tax_rate_percent":
+            # Same rule as the fiscal settings screen: a whole number, 0 to 100 %.
+            try:
+                rate = int(str(v).strip())
+            except ValueError:
+                rate = -1
+            if not 0 <= rate <= 100:
+                raise HTTPException(
+                    status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                    detail="Le taux de TVA doit être compris entre 0 et 100 %",
+                )
         _ensure_safe_url_or_text(json.dumps(v, ensure_ascii=False) if isinstance(v, (dict, list)) else str(v), k)
     with db_session(commit=True) as conn:
         cur = conn.cursor()

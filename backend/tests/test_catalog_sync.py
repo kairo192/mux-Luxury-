@@ -11,6 +11,7 @@ catalog so the shop keeps selling with no internet. We verify:
 import os
 import tempfile
 import time
+from datetime import datetime, timezone
 import unittest
 import uuid
 
@@ -97,6 +98,9 @@ class TestCatalogSync(unittest.TestCase):
         self.assertFalse(v["deleted"])
 
     def test_02_delta_right_after_snapshot_is_empty(self):
+        # The cursor includes its own second, so step past the second in
+        # which setUp wrote the fixtures.
+        time.sleep(1.1)
         snap = self.client.get(
             "/api/v1/admin/pos/catalog/snapshot",
             headers=self.headers,
@@ -135,6 +139,30 @@ class TestCatalogSync(unittest.TestCase):
         # Starting stock 4 + delta 7 = 11.
         self.assertEqual(matching[0]["stock_qty"], 11)
         self.assertFalse(matching[0]["deleted"])
+
+    def test_04_cursor_is_taken_before_the_read(self):
+        # A row changed while the snapshot is being read must come back in the
+        # next delta: the cursor is the second the read started, never later.
+        started = datetime.now(timezone.utc).replace(microsecond=0)
+        snap = self.client.get(
+            "/api/v1/admin/pos/catalog/snapshot",
+            headers=self.headers,
+        ).json()
+        finished = datetime.now(timezone.utc).replace(microsecond=0)
+        cursor = datetime.strptime(snap["cursor"], "%Y-%m-%dT%H:%M:%SZ").replace(tzinfo=timezone.utc)
+        self.assertGreaterEqual(cursor, started)
+        self.assertLessEqual(cursor, finished)  # never a second that has not started yet
+        r = self.client.post(
+            f"/api/v1/admin/variants/{self.variant_id}/adjust-stock",
+            headers=self.headers,
+            json={"change_qty": 1, "reason": "same-second change"},
+        )
+        self.assertEqual(r.status_code, 200, r.text)
+        delta = self.client.get(
+            f"/api/v1/admin/pos/catalog/deltas?since={snap['cursor']}",
+            headers=self.headers,
+        ).json()
+        self.assertIn(self.variant_id, [v["id"] for v in delta["variants"]])
 
 
 if __name__ == "__main__":

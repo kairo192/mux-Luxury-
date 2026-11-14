@@ -150,20 +150,28 @@ def initialize_primary_owner(payload: OwnerInitializeInput, request: Request):
     client_ip = get_real_client_ip(request)
     check_rate_limit(f"init_owner:{client_ip}", max_requests=3, window_seconds=300)
 
+    already_done = HTTPException(
+        status_code=status.HTTP_403_FORBIDDEN,
+        detail="Le compte propriétaire existe déjà : la première configuration n'est plus possible."
+    )
     with db_session(commit=True) as conn:
         cur = conn.cursor()
-        # Check if already initialized
-        cur.execute("SELECT setting_value FROM store_settings WHERE setting_key = 'system_initialized'")
-        init_row = cur.fetchone()
-        is_init = init_row and init_row["setting_value"] == "true"
+        # Claim the one-time marker FIRST, in this transaction. Two requests sent
+        # at the same moment cannot both pass: the second waits on the marker's
+        # row and then changes nothing (0 rows), on SQLite and PostgreSQL alike.
+        # If anything below fails, the rollback releases the claim.
+        cur.execute(
+            """INSERT INTO store_settings (setting_key, setting_value, updated_at)
+               VALUES ('system_initialized', 'true', CURRENT_TIMESTAMP)
+               ON CONFLICT(setting_key) DO UPDATE SET setting_value = 'true', updated_at = CURRENT_TIMESTAMP
+               WHERE store_settings.setting_value <> 'true'"""
+        )
+        is_init = cur.rowcount != 1
         if not is_init:
             cur.execute("SELECT COUNT(*) AS cnt FROM admin_users WHERE role_id = (SELECT id FROM roles WHERE name = 'super_admin')")
             is_init = cur.fetchone()["cnt"] > 0
         if is_init:
-            raise HTTPException(
-                status_code=status.HTTP_403_FORBIDDEN,
-                detail="Le compte propriétaire existe déjà : la première configuration n'est plus possible."
-            )
+            raise already_done
 
         cur.execute("SELECT id FROM roles WHERE name = 'super_admin'")
         role_row = cur.fetchone()
@@ -186,13 +194,6 @@ def initialize_primary_owner(payload: OwnerInitializeInput, request: Request):
         # No "emergency code": nothing could ever use one (the WhatsApp
         # recovery flow was removed). A forgotten password is reset on the
         # server: `python -m app.admin_cli reset-password --email ...`.
-
-        # Mark system as permanently initialized in database
-        cur.execute(
-            """INSERT INTO store_settings (setting_key, setting_value, updated_at)
-               VALUES ('system_initialized', 'true', CURRENT_TIMESTAMP)
-               ON CONFLICT(setting_key) DO UPDATE SET setting_value = 'true', updated_at = CURRENT_TIMESTAMP"""
-        )
 
         cur.execute(
             """SELECT p.code FROM permissions p

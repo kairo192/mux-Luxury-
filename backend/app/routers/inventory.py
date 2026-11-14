@@ -476,6 +476,8 @@ def admin_cancel_count(count_id: int, admin: dict = Depends(require_permission("
             raise HTTPException(status_code=404, detail="Inventaire introuvable")
         if c["status"] != "open":
             raise HTTPException(status_code=409, detail="Inventaire déjà appliqué")
-        cur.execute("UPDATE inventory_counts SET status = 'cancelled' WHERE id = ?", (count_id,))
+        cur.execute("UPDATE inventory_counts SET status = 'cancelled' WHERE id = ? AND status = 'open'", (count_id,))
+        if cur.rowcount != 1:  # applied by a request that finished in between
+            raise HTTPException(status_code=409, detail="Inventaire déjà appliqué")
         log_audit(conn, int(admin["sub"]), "cancel_inventory_count", "inventory_count", str(count_id), {"reference": c["reference"]})
         return _count_payload(conn, count_id)

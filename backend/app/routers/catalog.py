@@ -603,9 +603,11 @@ def create_dynamic_product(
         # Validate every variant (axis membership + option values) and catch duplicates
         # inside the same payload before touching the database, so clients get a clean 409/422.
         cat_attrs_full = load_category_attributes_with_options(conn, payload.category_id)
+        product_barcode = _unique_barcode(conn, payload.barcode)
         validated_variants = []
         seen_skus = set()
         seen_signatures = set()
+        seen_barcodes = set()  # two variants of this new product: never the same code
         for v in payload.variants:
             v_sku = normalize_variant_sku(v.sku)
             if not v_sku:
@@ -620,7 +622,12 @@ def create_dynamic_product(
                 raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Duplicate variant combination in payload")
             seen_signatures.add(sig)
             assert_variant_sku_available(conn, v_sku)
-            validated_variants.append((v, v_sku, v_attrs, sig))
+            v_barcode = _unique_barcode(conn, v.barcode)
+            if v_barcode and v_barcode in seen_barcodes:
+                raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=f"Le code-barres '{v_barcode}' apparaît deux fois")
+            if v_barcode:
+                seen_barcodes.add(v_barcode)
+            validated_variants.append((v, v_sku, v_attrs, sig, v_barcode))
 
         cur.execute(
             """INSERT INTO products
@@ -631,7 +638,7 @@ def create_dynamic_product(
                 weight_grams, dimensions_cm, tags)
                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
             (
-                payload.category_id, payload.brand_id, payload.slug, payload.sku, payload.barcode,
+                payload.category_id, payload.brand_id, payload.slug, payload.sku, product_barcode,
                 payload.name_fr, payload.name_ar, payload.name_en, payload.description_fr,
                 payload.description_ar, payload.description_en, payload.main_image_url,
                 payload.purchase_cost_dzd, payload.selling_price_dzd,
@@ -650,14 +657,14 @@ def create_dynamic_product(
                     (prod_id, cat_attrs[akey]["id"], str(aval))
                 )
 
-        for v, v_sku, v_attrs, sig in validated_variants:
+        for v, v_sku, v_attrs, sig, v_barcode in validated_variants:
             cur.execute(
                 """INSERT INTO product_variants
                    (product_id, sku, barcode, title, price_override_dzd, stock_qty, image_url,
                     purchase_cost_dzd, weight_grams, low_stock_threshold, is_active, combination_signature)
                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
                 (
-                    prod_id, v_sku, v.barcode, v.title, v.price_override_dzd, v.stock_qty,
+                    prod_id, v_sku, v_barcode, v.title, v.price_override_dzd, v.stock_qty,
                     (v.image_url or "").strip() or None, v.purchase_cost_dzd, v.weight_grams,
                     v.low_stock_threshold, 1, sig,
                 )
@@ -696,15 +703,22 @@ def generate_product_variants_matrix(
                 raise HTTPException(status_code=400, detail=f"Aucune valeur choisie pour '{k}'")
 
         # Reject axis values that are not part of the category's configured options.
+        # The matrix is built from the CLEANED values (trimmed, as registered),
+        # once each, so " Noir " and "Noir" are the same variant.
         cat_attrs_full = load_category_attributes_with_options(conn, prod["category_id"])
+        value_lists = []
         for k in axis_keys:
+            cleaned_values: List[str] = []
             for raw_val in payload.axes[k]:
                 cleaned_axis_value = validate_variant_attributes(
                     cat_attrs_full, {k: raw_val}, allow_custom_values=True
                 )
                 ensure_variant_attribute_options(conn, cat_attrs_full, cleaned_axis_value)
+                val = cleaned_axis_value.get(k, raw_val)
+                if val not in cleaned_values:
+                    cleaned_values.append(val)
+            value_lists.append(cleaned_values)
 
-        value_lists = [payload.axes[k] for k in axis_keys]
         created = []
         skipped_duplicates = 0
         for combo in itertools.product(*value_lists):
@@ -790,6 +804,7 @@ def admin_create_variant(
         assert_variant_sku_available(conn, sku)
         sig = build_variant_signature(attrs, sku)
         assert_variant_signature_available(conn, product_id, sig)
+        barcode = _unique_barcode(conn, payload.barcode, own_product_id=product_id)
 
         title = (payload.title or "").strip() or (" / ".join(attrs[k] for k in sorted(attrs)) if attrs else "Standard")
         cur.execute(
@@ -798,7 +813,7 @@ def admin_create_variant(
                 purchase_cost_dzd, weight_grams, low_stock_threshold, is_active, combination_signature)
                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
             (
-                product_id, sku, payload.barcode, title, payload.price_override_dzd, payload.stock_qty,
+                product_id, sku, barcode, title, payload.price_override_dzd, payload.stock_qty,
                 (payload.image_url or "").strip() or None, payload.purchase_cost_dzd,
                 payload.weight_grams, payload.low_stock_threshold, 1 if payload.is_active else 0, sig,
             )
@@ -845,7 +860,8 @@ def admin_update_variant(
             assert_variant_sku_available(conn, sku, exclude_variant_id=variant_id)
             fields["sku"] = sku
         if payload.barcode is not None:
-            fields["barcode"] = payload.barcode.strip() or None
+            fields["barcode"] = _unique_barcode(conn, payload.barcode, exclude_variant_id=variant_id,
+                                                own_product_id=variant["product_id"])
         if payload.title is not None:
             title = payload.title.strip()
             if not title:
@@ -865,6 +881,7 @@ def admin_update_variant(
             fields["low_stock_threshold"] = payload.low_stock_threshold
         if payload.is_active is not None:
             fields["is_active"] = 1 if payload.is_active else 0
+            fields["archived_with_product"] = 0  # a choice made on the variant itself
 
         previous_stock = int(variant["stock_qty"])
         stock_change = 0
@@ -925,18 +942,31 @@ def admin_delete_variant(
         if not variant:
             raise HTTPException(status_code=404, detail="Déclinaison introuvable")
 
-        cur.execute("SELECT COUNT(*) AS cnt FROM order_items WHERE variant_id = ?", (variant_id,))
-        used_in_orders = int(cur.fetchone()["cnt"] or 0)
-        if used_in_orders > 0:
+        # Any history keeps the variant (deactivated instead): online orders,
+        # till sales, purchase lines, stock counts, and stock movements other
+        # than the opening stock written when it was created (deleting would
+        # erase losses and corrections from the reports, or fail on the keys).
+        cur.execute(
+            """SELECT (SELECT COUNT(*) FROM order_items WHERE variant_id = ?) AS order_lines,
+                      (SELECT COUNT(*) FROM pos_sale_items WHERE variant_id = ?) AS till_lines,
+                      (SELECT COUNT(*) FROM purchase_order_items WHERE variant_id = ?) AS purchase_lines,
+                      (SELECT COUNT(*) FROM inventory_count_items WHERE variant_id = ?) AS count_lines,
+                      (SELECT COUNT(*) FROM inventory_movements
+                        WHERE variant_id = ? AND reason <> 'variant_created') AS movements""",
+            (variant_id,) * 5,
+        )
+        refs = {k: int(v or 0) for k, v in dict(cur.fetchone()).items()}
+        if any(refs.values()):
             cur.execute("UPDATE product_variants SET is_active = 0 WHERE id = ?", (variant_id,))
             log_audit(conn, int(admin["sub"]), "deactivate_variant", "product_variant", str(variant_id), {
-                "sku": variant["sku"], "order_lines": used_in_orders,
+                "sku": variant["sku"], **refs,
             })
             return {
                 "deleted": False,
                 "deactivated": True,
                 "variant_id": variant_id,
-                "reason": f"Variant is referenced by {used_in_orders} historical order line(s) and was deactivated instead of deleted.",
+                "reason": "Cette déclinaison a un historique (ventes, achats ou mouvements de stock) : "
+                          "elle a été désactivée au lieu d'être supprimée.",
             }
 
         cur.execute("DELETE FROM variant_attribute_values WHERE variant_id = ?", (variant_id,))
@@ -986,6 +1016,7 @@ def admin_bulk_update_variants(
                 fields["price_override_dzd"] = payload.set_price_override_dzd
             if payload.is_active is not None:
                 fields["is_active"] = 1 if payload.is_active else 0
+                fields["archived_with_product"] = 0
 
             if not fields:
                 continue
@@ -1143,6 +1174,12 @@ def admin_update_attribute_option(
             )
             for variant_id in affected_variants:
                 recompute_variant_signature(conn, variant_id)
+            # Product-level values of the same attribute follow the rename too,
+            # so the shop's filter on the new value still finds those products.
+            cur.execute(
+                "UPDATE product_attribute_values SET value_text = ? WHERE attribute_id = ? AND value_text = ?",
+                (new_value, option["attribute_id"], option["value"]),
+            )
         cur.execute(
             """UPDATE category_attribute_options
                SET value = ?, label_fr = ?, label_ar = ?, label_en = ?, color_hex = ?, display_order = ?
@@ -1291,6 +1328,68 @@ class ProductConcurrencyUpdate(BaseModel):
     dynamic_attributes: Optional[Dict[str, Any]] = None
 
 
+def _assert_publishable(cur, product_id: int, category_id: int) -> None:
+    """Same rule as creating a published product: every required (non-axis)
+    characteristic of the category has a saved value."""
+    cur.execute(
+        """SELECT ca.label_fr FROM category_attributes ca
+           WHERE ca.category_id = ? AND ca.is_required = 1 AND ca.is_variant_axis = 0
+             AND NOT EXISTS (SELECT 1 FROM product_attribute_values pav
+                              WHERE pav.product_id = ? AND pav.attribute_id = ca.id
+                                AND TRIM(COALESCE(pav.value_text, '')) <> '')
+           ORDER BY ca.display_order ASC, ca.id ASC""",
+        (category_id, product_id),
+    )
+    missing = [r["label_fr"] for r in cur.fetchall()]
+    if missing:
+        cur.execute("SELECT sku FROM products WHERE id = ?", (product_id,))
+        row = cur.fetchone()
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail=f"Publication impossible ({row['sku'] if row else product_id}) : caractéristiques obligatoires manquantes : {', '.join(missing)}",
+        )
+
+
+def _move_product_to_category(cur, product_id: int, new_category_id: int) -> None:
+    """A product changing category keeps only characteristics the new category
+    has (matched by key); the others are removed. Variants built on the old
+    category's choices (colour, size…) cannot be translated automatically, so
+    the change is refused while such variants exist."""
+    cur.execute(
+        """SELECT COUNT(*) AS cnt FROM variant_attribute_values vav
+           JOIN product_variants pv ON pv.id = vav.variant_id
+           JOIN category_attributes ca ON ca.id = vav.attribute_id
+           WHERE pv.product_id = ? AND ca.category_id != ?""",
+        (product_id, new_category_id),
+    )
+    if int(cur.fetchone()["cnt"] or 0) > 0:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Ce produit a des déclinaisons construites sur les choix de sa catégorie actuelle : "
+                   "supprimez-les (ou créez le produit dans la nouvelle catégorie) avant de changer de catégorie.",
+        )
+    cur.execute("SELECT id, attr_key FROM category_attributes WHERE category_id = ?", (new_category_id,))
+    new_ids = {r["attr_key"]: r["id"] for r in cur.fetchall()}
+    cur.execute(
+        """SELECT pav.attribute_id, pav.value_text, ca.attr_key FROM product_attribute_values pav
+           JOIN category_attributes ca ON ca.id = pav.attribute_id
+           WHERE pav.product_id = ? AND ca.category_id != ?""",
+        (product_id, new_category_id),
+    )
+    old_values = [dict(r) for r in cur.fetchall()]
+    for v in old_values:
+        cur.execute("DELETE FROM product_attribute_values WHERE product_id = ? AND attribute_id = ?",
+                    (product_id, v["attribute_id"]))
+        target = new_ids.get(v["attr_key"])
+        if target is not None:
+            cur.execute(
+                """INSERT INTO product_attribute_values (product_id, attribute_id, value_text)
+                   VALUES (?, ?, ?)
+                   ON CONFLICT(product_id, attribute_id) DO NOTHING""",
+                (product_id, target, v["value_text"]),
+            )
+
+
 @router.put("/api/v1/admin/products/{product_id}")
 def update_product_with_conflict_detection(
     product_id: int,
@@ -1327,6 +1426,12 @@ def update_product_with_conflict_detection(
                     status_code=status.HTTP_409_CONFLICT,
                     detail=f"L'adresse '{payload.slug}' est déjà utilisée par un autre produit"
                 )
+        target_cat_id = payload.category_id or prod["category_id"]
+        if payload.category_id and payload.category_id != prod["category_id"]:
+            _move_product_to_category(cur, product_id, payload.category_id)
+        # "" still clears the code (as before); a code is checked first.
+        new_barcode = (payload.barcode if payload.barcode is None or not payload.barcode.strip()
+                       else _unique_barcode(conn, payload.barcode, own_product_id=product_id, for_product=True))
         new_version = current_version + 1
         cur.execute(
             """UPDATE products
@@ -1370,7 +1475,7 @@ def update_product_with_conflict_detection(
                 payload.discount_percent,
                 payload.sku,
                 payload.slug,
-                payload.barcode,
+                new_barcode,
                 payload.brand_id,
                 payload.category_id,
                 payload.main_image_url,
@@ -1387,8 +1492,14 @@ def update_product_with_conflict_detection(
                 current_version,
             )
         )
+        if cur.rowcount != 1:
+            # Another save won between the version check and this write: write
+            # nothing else (attributes, audit) and let the CMS reload.
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail="Ce produit a été modifié entre-temps. Rechargez la fiche avant d'enregistrer."
+            )
         if payload.dynamic_attributes is not None:
-            target_cat_id = payload.category_id or prod["category_id"]
             cur.execute("SELECT * FROM category_attributes WHERE category_id = ?", (target_cat_id,))
             cat_attrs = {r["attr_key"]: dict(r) for r in cur.fetchall()}
             for akey, aval in payload.dynamic_attributes.items():
@@ -1399,6 +1510,8 @@ def update_product_with_conflict_detection(
                            ON CONFLICT(product_id, attribute_id) DO UPDATE SET value_text = excluded.value_text""",
                         (product_id, cat_attrs[akey]["id"], str(aval))
                     )
+        if payload.status == "published" and prod["status"] != "published":
+            _assert_publishable(cur, product_id, target_cat_id)
         log_audit(conn, int(admin["sub"]), "update_product_synced", "product", str(product_id), {"new_version": new_version})
         cur.execute("SELECT * FROM products WHERE id = ?", (product_id,))
         return serialize_product(conn, dict(cur.fetchone()), include_private=True)
@@ -1554,7 +1667,7 @@ def admin_safe_delete_or_archive_product(
                 "UPDATE products SET status = 'archived', deleted_at = CURRENT_TIMESTAMP, updated_at = CURRENT_TIMESTAMP WHERE id = ?",
                 (product_id,),
             )
-            cur.execute("UPDATE product_variants SET is_active = 0 WHERE product_id = ?", (product_id,))
+            _switch_off_variants_with_product(cur, product_id)
             log_audit(conn, int(admin["sub"]), "archive_product", "product", str(product_id), {
                 "sku": prod["sku"], "history": history, "reason": reason,
             })
@@ -1613,6 +1726,29 @@ def admin_safe_delete_or_archive_product(
         }
 
 
+def _switch_off_variants_with_product(cur, product_id: int) -> None:
+    """Archiving a product switches its active variants off and marks them, so
+    bringing the product back restores exactly those."""
+    cur.execute(
+        "UPDATE product_variants SET is_active = 0, archived_with_product = 1 WHERE product_id = ? AND is_active = 1",
+        (product_id,),
+    )
+
+
+def _restore_variants_with_product(cur, product_id: int) -> None:
+    cur.execute("SELECT COUNT(*) AS cnt FROM product_variants WHERE product_id = ? AND archived_with_product = 1",
+                (product_id,))
+    if int(cur.fetchone()["cnt"] or 0) > 0:
+        cur.execute(
+            "UPDATE product_variants SET is_active = 1, archived_with_product = 0 WHERE product_id = ? AND archived_with_product = 1",
+            (product_id,),
+        )
+    else:
+        # Archived before the marker existed: nothing tells the variants apart,
+        # so they all come back (the previous behaviour).
+        cur.execute("UPDATE product_variants SET is_active = 1 WHERE product_id = ? AND is_active = 0", (product_id,))
+
+
 @router.post("/api/v1/admin/products/bulk-status")
 def admin_bulk_update_product_status(
     payload: BulkProductStatusInput,
@@ -1631,20 +1767,24 @@ def admin_bulk_update_product_status(
                     (pid,),
                 )
                 updated += cur.rowcount
-                cur.execute("UPDATE product_variants SET is_active = 0 WHERE product_id = ?", (pid,))
+                _switch_off_variants_with_product(cur, pid)
             else:
                 # Published / draft: really bring an archived product back
                 # (the archive also hid it with deleted_at and switched its
-                # variants off — otherwise it would stay invisible).
+                # variants off — otherwise it would stay invisible). Only the
+                # variants the archive switched off come back: one switched off
+                # on its own (or kept because it has sales history) stays off.
+                cur.execute("SELECT status, deleted_at, category_id FROM products WHERE id = ?", (pid,))
+                before = cur.fetchone()
+                if before and payload.status == "published" and before["status"] != "published":
+                    _assert_publishable(cur, pid, before["category_id"])
                 cur.execute(
                     "UPDATE products SET status = ?, deleted_at = NULL, updated_at = CURRENT_TIMESTAMP WHERE id = ?",
                     (payload.status, pid),
                 )
                 updated += cur.rowcount
-                cur.execute(
-                    "UPDATE product_variants SET is_active = 1 WHERE product_id = ? AND is_active = 0",
-                    (pid,),
-                )
+                if before and (before["status"] == "archived" or before["deleted_at"]):
+                    _restore_variants_with_product(cur, pid)
         log_audit(conn, int(admin["sub"]), "bulk_product_status", "product", "bulk", {"count": updated, "status": payload.status})
         return {"updated_count": updated, "status": payload.status}
 
@@ -1948,14 +2088,24 @@ def validate_barcode(code: str) -> dict:
 
 
 
-def _barcode_in_use(conn, code: str, exclude_variant_id: Optional[int] = None) -> Optional[str]:
-    """Returns a human description of where `code` is already used, or None if free."""
+def _barcode_in_use(conn, code: str, exclude_variant_id: Optional[int] = None,
+                    own_product_id: Optional[int] = None, for_product: bool = False) -> Optional[str]:
+    """Returns a human description of where `code` is already used, or None if free.
+
+    A code may be shared inside ONE article: a product and its own variants (a
+    scan still finds that article). `own_product_id` is the article being
+    written; `for_product=True` when the code goes on the product itself (then
+    any of its variants may carry it), else on the variant `exclude_variant_id`
+    (then its product may carry it, but no other variant)."""
     cur = conn.cursor()
-    cur.execute("SELECT id, sku FROM products WHERE barcode = ? AND deleted_at IS NULL", (code,))
+    cur.execute("SELECT id, sku FROM products WHERE barcode = ? AND deleted_at IS NULL AND id != ?",
+                (code, own_product_id if own_product_id is not None else -1))
     p = cur.fetchone()
     if p:
         return f"produit SKU {p['sku']}"
-    if exclude_variant_id is not None:
+    if for_product and own_product_id is not None:
+        cur.execute("SELECT id, sku FROM product_variants WHERE barcode = ? AND product_id != ?", (code, own_product_id))
+    elif exclude_variant_id is not None:
         cur.execute("SELECT id, sku FROM product_variants WHERE barcode = ? AND id != ?", (code, exclude_variant_id))
     else:
         cur.execute("SELECT id, sku FROM product_variants WHERE barcode = ?", (code,))
@@ -1963,6 +2113,22 @@ def _barcode_in_use(conn, code: str, exclude_variant_id: Optional[int] = None) -
     if v:
         return f"variante SKU {v['sku']}"
     return None
+
+
+
+def _unique_barcode(conn, raw: Optional[str], exclude_variant_id: Optional[int] = None,
+                    own_product_id: Optional[int] = None, for_product: bool = False) -> Optional[str]:
+    """Trims a barcode typed in a product / variant form and refuses one that is
+    already on another article (409): the till takes the first match of a scan,
+    so a duplicate would ring up the wrong article. Empty → None."""
+    code = (raw or "").strip()
+    if not code:
+        return None
+    conflict = _barcode_in_use(conn, code, exclude_variant_id=exclude_variant_id,
+                               own_product_id=own_product_id, for_product=for_product)
+    if conflict:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=f"Code-barres déjà utilisé par {conflict}")
+    return code
 
 
 
