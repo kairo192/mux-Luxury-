@@ -29,7 +29,9 @@ export function buildReceiptBlocks(receipt: any): { blocks: ReceiptBlock[]; pape
     const qty = Number(it.quantity ?? 0);
     const lineTotal = Number(it.line_total_dzd ?? (Number(it.unit_price_dzd ?? 0) * qty));
     blocks.push({ left: name, right: fmt(lineTotal) });
-    if (qty > 1 || it.unit_price_dzd) blocks.push({ left: `  ${qty} × ${fmt(it.unit_price_dzd)}`, size: "sm" });
+    // Unit price only when known: never print "2 × 0 DA" next to a real total.
+    if (it.unit_price_dzd != null) blocks.push({ left: `  ${qty} × ${fmt(it.unit_price_dzd)}`, size: "sm" });
+    else if (qty > 1) blocks.push({ left: `  Qté ${qty}`, size: "sm" });
   }
   blocks.push({ rule: true });
   if (receipt.subtotal_dzd != null) blocks.push({ left: "Sous-total", right: fmt(receipt.subtotal_dzd) });

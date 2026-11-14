@@ -1,5 +1,7 @@
+import { useRef } from "react";
 import { AlertTriangle, Archive, ShoppingBag, Trash2, X } from "lucide-react";
 import { mediaUrl } from "../api/adminClient";
+import { useModalFocus } from "../utils/useModalFocus";
 
 interface Props {
   productToDelete: any | null;
@@ -12,19 +14,25 @@ interface Props {
 
 /** Delete-or-archive choice for a product (opened from Produits). */
 export function DeleteProductModal({ productToDelete, deletingProduct, error, setProductToDelete, setError, handleConfirmDeleteProduct }: Props) {
+  const dialogRef = useRef<HTMLDivElement | null>(null);
+  const cancelRef = useRef<HTMLButtonElement | null>(null);
+  useModalFocus(dialogRef, Boolean(productToDelete), cancelRef);
   if (!productToDelete) return null;
   return (
     <div className="fixed inset-0 z-50 bg-black/75 backdrop-blur-sm flex items-center justify-center p-4">
       <div
+        ref={dialogRef}
         role="dialog"
         aria-modal="true"
+        aria-labelledby="delete-product-title"
+        tabIndex={-1}
         className="bg-white text-[#202923] rounded-2xl max-w-lg w-full overflow-hidden shadow-2xl border-2 border-[#D4AF62]"
       >
         <div className="px-6 py-4 bg-[#063D2E] text-white flex items-center justify-between border-b border-[#D4AF62]/40">
           <div className="flex items-center gap-2">
             <AlertTriangle className="w-5 h-5 text-[#D4AF62]" />
             <div>
-              <h3 className="text-base font-serif font-bold text-[#D4AF62]">
+              <h3 id="delete-product-title" className="text-base font-serif font-bold text-[#D4AF62]">
                 Suppression / Archivage du Produit
               </h3>
               <p className="text-[11px] text-[#E8D4A5]">Gestion du catalogue — Maison Mus Luxury</p>
@@ -137,6 +145,7 @@ export function DeleteProductModal({ productToDelete, deletingProduct, error, se
 
           <div className="flex justify-end pt-2 border-t border-gray-100">
             <button
+              ref={cancelRef}
               type="button"
               disabled={deletingProduct}
               onClick={() => { setProductToDelete(null); setError(""); }}

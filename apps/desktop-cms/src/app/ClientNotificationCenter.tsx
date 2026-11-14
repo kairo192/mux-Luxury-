@@ -1,7 +1,8 @@
-import React from "react";
+import React, { useRef } from "react";
 import { AlertTriangle, CheckCircle2, ShieldAlert, X } from "lucide-react";
 import { useT } from "../i18n";
 import { ToastStack } from "../components/ToastStack";
+import { useModalFocus } from "../utils/useModalFocus";
 import type { ClientConfirmRequest, ClientNotificationItem } from "../utils/clientNotifier";
 
 interface Props {
@@ -17,6 +18,12 @@ interface Props {
 export function ClientNotificationCenter({ messageQueue, setMessageQueue, closeMessageBox, activeConfirm, messageBoxOkButtonRef, confirmCancelButtonRef }: Props) {
   const t = useT();
   const activeMessageBox = messageQueue[0] ?? null;
+  const messageBoxRef = useRef<HTMLDivElement | null>(null);
+  const confirmRef = useRef<HTMLDivElement | null>(null);
+  // Focus stays inside the topmost of the two and comes back where it was;
+  // App still picks the button that gets focus first (OK / Annuler).
+  useModalFocus(messageBoxRef, Boolean(activeMessageBox), messageBoxOkButtonRef);
+  useModalFocus(confirmRef, Boolean(activeConfirm), confirmCancelButtonRef);
   return (
     <>
       {/* Non-blocking toasts: bottom corner, newest nearest the corner */}
@@ -26,6 +33,8 @@ export function ClientNotificationCenter({ messageQueue, setMessageQueue, closeM
       {activeMessageBox && (
         <div className="animate-backdrop fixed inset-0 z-[75] bg-black/70 backdrop-blur-sm flex items-center justify-center p-4">
           <div
+            ref={messageBoxRef}
+            tabIndex={-1}
             role="dialog"
             aria-modal="true"
             aria-labelledby="active-message-box-title"
@@ -116,6 +125,8 @@ export function ClientNotificationCenter({ messageQueue, setMessageQueue, closeM
       {activeConfirm && (
         <div className="animate-backdrop fixed inset-0 z-[80] bg-black/75 backdrop-blur-sm flex items-center justify-center p-4">
           <div
+            ref={confirmRef}
+            tabIndex={-1}
             role="dialog"
             aria-modal="true"
             aria-labelledby="active-confirm-title"

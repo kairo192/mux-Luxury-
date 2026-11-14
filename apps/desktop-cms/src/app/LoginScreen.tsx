@@ -82,7 +82,11 @@ export function LoginScreen({ overlays, successMsg, error, loginEmail, setLoginE
                   VPS Cloud (mus-luxury.com)
                 </button>
               </div>
+              <label htmlFor="cms-api-server-url" className="block text-[11px] font-bold text-[#E8D4A5]">
+                Serveur API
+              </label>
               <input
+                id="cms-api-server-url"
                 type="text"
                 value={serverUrl}
                 onChange={(e) => {

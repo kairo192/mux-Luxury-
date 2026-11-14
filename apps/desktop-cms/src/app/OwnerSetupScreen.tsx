@@ -47,11 +47,11 @@ export function OwnerSetupScreen({ overlays, error, ownerName, setOwnerName, own
         <div className="grid grid-cols-2 gap-3 text-xs">
           <div>
             <label htmlFor="owner-password" className="block font-bold mb-1">Mot de passe (≥ 10 car.)</label>
-            <input id="owner-password" type="password" value={ownerPassword} onChange={(e) => setOwnerPassword(e.target.value)} required className="w-full px-3 py-2 rounded bg-[#02291F] border border-[#D4AF62]/40" />
+            <input id="owner-password" type="password" autoComplete="new-password" value={ownerPassword} onChange={(e) => setOwnerPassword(e.target.value)} required className="w-full px-3 py-2 rounded bg-[#02291F] border border-[#D4AF62]/40" />
           </div>
           <div>
             <label htmlFor="owner-confirm" className="block font-bold mb-1">Confirmer mot de passe</label>
-            <input id="owner-confirm" type="password" value={ownerConfirm} onChange={(e) => setOwnerConfirm(e.target.value)} required className="w-full px-3 py-2 rounded bg-[#02291F] border border-[#D4AF62]/40" />
+            <input id="owner-confirm" type="password" autoComplete="new-password" value={ownerConfirm} onChange={(e) => setOwnerConfirm(e.target.value)} required className="w-full px-3 py-2 rounded bg-[#02291F] border border-[#D4AF62]/40" />
           </div>
         </div>
         <div className="p-3 rounded-xl bg-[#02291F]/80 border border-[#D4AF62]/30 space-y-1 text-xs">

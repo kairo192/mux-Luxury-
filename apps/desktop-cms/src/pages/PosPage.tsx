@@ -491,6 +491,7 @@ export const PosPage: React.FC<{ onInventoryUpdated?: () => void }> = ({ onInven
             quantity: l.quantity,
             product_name: l.product_name,
             variant_title: l.variant_title,
+            unit_price_dzd: l.unit_price_dzd,
             line_total_dzd: l.unit_price_dzd * l.quantity - Math.min(l.line_discount_dzd, l.unit_price_dzd * l.quantity),
           })),
           payments: [{ id: 1, method: payMethod, amount_dzd: total, change_dzd: change }],

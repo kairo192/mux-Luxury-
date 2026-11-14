@@ -88,7 +88,9 @@ export function AppHeader({ user, updateState, setUpdateDialogOpen, netTelemetry
         <button
           type="button"
           onClick={() => {
-            DesktopCmsApi.logout();
+            // logout() clears the token synchronously before its request goes
+            // out; a failed revocation must not keep the user signed in here.
+            DesktopCmsApi.logout().catch(() => undefined);
             setUser(null);
           }}
           className="px-3.5 py-1.5 rounded-xl bg-red-900/80 hover:bg-red-800 text-white font-bold transition shadow-sm active:scale-95"

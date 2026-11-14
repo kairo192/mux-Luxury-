@@ -43,10 +43,19 @@ test("products: the delete / archive dialog opens and cancels", async ({ page })
   await cmsOpen(page, "Produits");
   const row = page.locator("main tr, main div").filter({ hasText: "Pochette Découpe" })
     .filter({ has: page.getByRole("button", { name: "Supprimer" }) }).last();
-  await row.getByRole("button", { name: "Supprimer" }).click();
-  await expect(page.getByText("Suppression / Archivage du Produit")).toBeVisible();
-  await page.getByRole("button", { name: "Annuler" }).last().click();
-  await expect(page.getByText("Suppression / Archivage du Produit")).toHaveCount(0);
+  const opener = row.getByRole("button", { name: "Supprimer" });
+  await opener.click();
+  const dialog = page.getByRole("dialog", { name: "Suppression / Archivage du Produit" });
+  await expect(dialog).toBeVisible();
+  // Keyboard focus starts on the safe choice and never leaves the dialog.
+  await expect(dialog.getByRole("button", { name: "Annuler" })).toBeFocused();
+  for (let i = 0; i < 6; i++) {
+    await page.keyboard.press("Tab");
+    expect(await dialog.evaluate((d) => d.contains(document.activeElement))).toBe(true);
+  }
+  await dialog.getByRole("button", { name: "Annuler" }).click();
+  await expect(dialog).toHaveCount(0);
+  await expect(opener).toBeFocused();           // back on the button that opened it
   w.expectClean();
 });
 
@@ -58,10 +67,21 @@ test("till: register history, customer and close-register sheets", async ({ page
   await cmsOpen(page, "Point de vente");
   const main = page.locator("main");
 
+  // Hold the history list until the sheet is closed, then let it arrive: a late
+  // answer must not reopen the sheet.
+  let release!: () => void;
+  const held = new Promise<void>((r) => { release = r; });
+  await page.route("**/admin/pos/register/sessions*", async (route) => { await held; await route.continue(); });
+  const listDone = page.waitForResponse("**/admin/pos/register/sessions*");
   await main.getByRole("button", { name: /Historique/ }).first().click();
   await expect(page.getByText("Historique des caisses")).toBeVisible();
-  await page.keyboard.press("Escape");          // even before the list arrives, it stays closed
+  await page.keyboard.press("Escape");
   await expect(page.getByText("Historique des caisses")).toHaveCount(0);
+  release();
+  await listDone;
+  await page.waitForTimeout(300);               // let React apply the late answer
+  await expect(page.getByText("Historique des caisses")).toHaveCount(0);
+  await page.unroute("**/admin/pos/register/sessions*");
 
   await main.getByRole("button", { name: /Rattacher un client/ }).click();
   await expect(page.getByRole("heading", { name: "Rattacher un client" })).toBeVisible();

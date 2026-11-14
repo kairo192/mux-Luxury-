@@ -276,11 +276,14 @@ export const DesktopCmsApi = {
     return data;
   },
   logout: async () => {
-    try {
-      await adminFetch("/admin/auth/logout", { method: "POST" });
-    } finally {
-      setAccessToken(null);
-    }
+    // Forget the token FIRST, so nothing sent after this moment (for example a
+    // login to another server typed on the login screen) can carry it. The
+    // server-side revocation then uses the copy taken here, sent to the server
+    // that issued it (the address is read now, before anyone can change it).
+    const token = getAccessToken();
+    setAccessToken(null);
+    if (!token) return;
+    await adminFetch("/admin/auth/logout", { method: "POST", headers: { Authorization: `Bearer ${token}` } });
   },
   // Password-recovery endpoints removed. Owner-side password reset is now a
   // server-side CLI operation only (backend/scripts/emergency_reset_owner.py).
