@@ -377,11 +377,19 @@ function handleStoreSearch(val) {
   searchDebounceTimer = setTimeout(() => {
     // Compared with pre-escaped catalog names, so escape the query too.
     state.searchQuery = escapeHtml(val.trim()).toLowerCase();
+    showCatalogForSearch();
     renderCatalogProducts();
   }, 200);
 }
 
+// From a page without the product list (La Maison), a search opens the shop
+// so its results are visible; the query is kept.
+function showCatalogForSearch() {
+  if (state.searchQuery && currentRouteHash() === "#/maison") navigateTo("#/boutique");
+}
+
 function triggerSearchBtn() {
+  showCatalogForSearch();
   scrollToCatalog();
   renderCatalogProducts();
 }
@@ -438,8 +446,10 @@ function resetCatalogFilters() {
   document.getElementById("filter-max-price").value = String(catalogMaxPrice());
   document.getElementById("filter-price-display").textContent = formatDZD(catalogMaxPrice());
   document.getElementById("filter-instock-only").checked = false;
-  document.getElementById("store-home-sections").classList.remove("hidden");
-  renderStorefront();
+  // The address changes with the view (a reload or a shared link shows the
+  // same thing); the router decides which sections are visible.
+  if (currentRouteHash() === "#/boutique") renderStorefront();
+  else navigateTo("#/boutique");
 }
 
 function toggleDynamicAttrFilter(attrKey, optionVal) {
@@ -625,7 +635,8 @@ function renderCatalogProducts() {
   } else if (state.sortBy === "popularity") {
     list.sort((a, b) => (b.sales_count || 0) - (a.sales_count || 0));
   } else {
-    list.sort((a, b) => a.id - b.id);
+    // "Plus récents": newest product first.
+    list.sort((a, b) => b.id - a.id);
   }
 
   document.getElementById("catalog-count-pill").textContent = `${list.length} article${list.length > 1 ? "s" : ""}`;

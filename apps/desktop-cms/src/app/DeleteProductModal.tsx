@@ -16,7 +16,7 @@ interface Props {
 export function DeleteProductModal({ productToDelete, deletingProduct, error, setProductToDelete, setError, handleConfirmDeleteProduct }: Props) {
   const dialogRef = useRef<HTMLDivElement | null>(null);
   const cancelRef = useRef<HTMLButtonElement | null>(null);
-  useModalFocus(dialogRef, Boolean(productToDelete), cancelRef);
+  useModalFocus(dialogRef, Boolean(productToDelete), cancelRef, 50); // z-50
   if (!productToDelete) return null;
   return (
     <div className="fixed inset-0 z-50 bg-black/75 backdrop-blur-sm flex items-center justify-center p-4">

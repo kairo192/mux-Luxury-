@@ -6362,7 +6362,7 @@
   },
   "/api/v1/admin/pos/catalog/snapshot": {
    "get": {
-    "description": "Full catalog dump — call this once, then prefer `/catalog/deltas`.\n\nThe cursor returned is the second in which this read STARTED, and the\nnext delta includes that second (`>=`). A row changed while this runs is\nsent again rather than missed (updated_at is stamped in whole seconds; the\noffline catalog simply overwrites a row it already has).",
+    "description": "Full catalog dump — call this once, then prefer `/catalog/deltas`.\n\nThe cursor returned is taken BEFORE the read and trails the clock by\nSYNC_CURSOR_MARGIN, and the next delta includes it (`>=`). A row changed\nwhile this runs, or committed late, is sent again rather than missed (the\noffline catalog simply overwrites a row it already has).",
     "operationId": "pos_catalog_snapshot_api_v1_admin_pos_catalog_snapshot_get",
     "parameters": [
      {

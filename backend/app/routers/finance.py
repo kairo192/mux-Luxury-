@@ -762,9 +762,12 @@ def admin_delete_expense(
         exp = cur.fetchone()
         if not exp:
             raise HTTPException(status_code=404, detail="Dépense introuvable")
-        cur.execute("DELETE FROM expenses WHERE id = ?", (expense_id,))
-        if cur.rowcount != 1:  # removed by a request sent at the same moment
-            raise HTTPException(status_code=404, detail="Dépense introuvable")
+        # Delete the row only in the state just read: if it was paid (or
+        # removed) in between, nothing is deleted and the request stops, so the
+        # reversal below always matches what was really removed.
+        cur.execute("DELETE FROM expenses WHERE id = ? AND payment_status = ?", (expense_id, exp["payment_status"]))
+        if cur.rowcount != 1:
+            raise HTTPException(status_code=409, detail="Cette dépense vient d'être modifiée. Rechargez la liste.")
         if exp["payment_status"] == "paid":
             # The money was taken out of the treasury when it was paid: put
             # it back with a visible correcting entry (history is kept), and

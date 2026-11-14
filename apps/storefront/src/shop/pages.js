@@ -21,7 +21,13 @@ function closeOrderTrackingModal() {
   document.getElementById("order-tracking-modal").classList.add("hidden");
 }
 
+// Each lookup / page opening takes a number; an answer that arrives after a
+// newer one started is dropped (it no longer matches what is on screen).
+let trackingLookupSeq = 0;
+let staticPageSeq = 0;
+
 async function lookupGuestOrderStatus() {
+  const seq = ++trackingLookupSeq;
   const ref = (document.getElementById("track-order-ref").value || "").trim().toUpperCase().replace(/^#/, "");
   const phone = (document.getElementById("track-order-phone").value || "").trim().replace(/[\s\-\.]/g, "");
   const resEl = document.getElementById("track-order-result");
@@ -48,6 +54,7 @@ async function lookupGuestOrderStatus() {
       };
     }
   } catch (_e) {}
+  if (seq !== trackingLookupSeq) return;
   // The shop's answer is the truth; the copy kept in this browser is only
   // used when the shop cannot be reached at all.
   if (!found && !serverAnswered) {
@@ -121,7 +128,7 @@ const STATIC_PAGES_CONTENT = {
       <p>Nous livrons dans les <strong>69 Wilayas d'Algérie</strong> (à domicile ou en bureau Stop-Desk) avec paiement simple et sécurisé à la réception de votre colis.</p>
       <div class="p-4 rounded-xl bg-cream border border-gold-reflective/40 space-y-2 mt-3 text-xs">
         <p><strong>Adresse Boutique :</strong> <a href="https://www.google.com/maps/search/?api=1&query=FVX6%2BGCJ+Mus+luxury%2C+Ouled+Ya%C3%AFch" target="_blank" rel="noopener noreferrer" class="text-emerald-deep underline font-bold">FVX6+GCJ Mus luxury, Ouled Yaïch (Blida — 09)</a></p>
-        <p><strong>Téléphone &amp; WhatsApp :</strong> <a href="https://wa.me/${waNumber()}" target="_blank" rel="noopener noreferrer" class="font-mono font-bold text-emerald-deep underline">${storePhoneDisplay()}</a></p>
+        <p><strong>Téléphone &amp; WhatsApp :</strong> <a href="https://wa.me/${waNumber()}" target="_blank" rel="noopener noreferrer" class="font-mono font-bold text-emerald-deep underline">${escapeHtml(storePhoneDisplay())}</a></p>
         <p><strong>Instagram officiel :</strong> <a href="https://www.instagram.com/musluxury09?rpxt=emk3bjBhdjV5d2Ux" target="_blank" rel="noopener noreferrer" class="text-emerald-deep underline font-semibold">@musluxury09</a></p>
         <p><strong>TikTok officiel :</strong> <a href="https://www.tiktok.com/@musluxury.092?_r=1&_t=ZS-9B2mO0gpA7V" target="_blank" rel="noopener noreferrer" class="text-emerald-deep underline font-semibold">@musluxury.092</a></p>
       </div>
@@ -153,6 +160,7 @@ const STATIC_PAGES_CONTENT = {
 };
 
 async function openStaticPageModal(pageKey) {
+  const seq = ++staticPageSeq;
   const p = STATIC_PAGES_CONTENT[pageKey] || STATIC_PAGES_CONTENT.about;
   document.getElementById("static-page-title").textContent = p.title;
   document.getElementById("static-page-body").innerHTML = p.body;
@@ -161,6 +169,7 @@ async function openStaticPageModal(pageKey) {
     const pgRes = await fetch(`/api/v1/pages/${encodeURIComponent(pageKey)}`, { headers: { "X-Request-ID": "sf_" + Date.now().toString(36) } });
     if (pgRes.ok) {
       const pgData = await pgRes.json();
+      if (seq !== staticPageSeq) return; // another page was opened meanwhile
       // The customer's language when the owner wrote it, French otherwise.
       const lang = state.lang || "fr";
       const title = (pgData["title_" + lang] || "").trim() || pgData.title_fr;

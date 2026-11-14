@@ -365,6 +365,9 @@ _ADDITIVE_COLUMNS = [
     # 1 = switched off by archiving its product (restored with it); a variant
     # switched off on its own stays off when the product comes back.
     ("product_variants", "archived_with_product", "INTEGER NOT NULL DEFAULT 0"),
+    # 1 = archived by a version that marks its variants (so "no variant marked"
+    # really means "restore none"); 0 = archived before, restore them all.
+    ("products", "variants_marked_on_archive", "INTEGER NOT NULL DEFAULT 0"),
     ("products", "weight_grams", "INTEGER"),
     ("products", "dimensions_cm", "VARCHAR(60)"),
     ("products", "tags", "VARCHAR(400)"),

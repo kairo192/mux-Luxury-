@@ -957,7 +957,9 @@ def admin_delete_variant(
         )
         refs = {k: int(v or 0) for k, v in dict(cur.fetchone()).items()}
         if any(refs.values()):
-            cur.execute("UPDATE product_variants SET is_active = 0 WHERE id = ?", (variant_id,))
+            # Off for good: a later restore of an archived product must not
+            # bring it back (the archive marker is cleared).
+            cur.execute("UPDATE product_variants SET is_active = 0, archived_with_product = 0 WHERE id = ?", (variant_id,))
             log_audit(conn, int(admin["sub"]), "deactivate_variant", "product_variant", str(variant_id), {
                 "sku": variant["sku"], **refs,
             })
@@ -1510,7 +1512,9 @@ def update_product_with_conflict_detection(
                            ON CONFLICT(product_id, attribute_id) DO UPDATE SET value_text = excluded.value_text""",
                         (product_id, cat_attrs[akey]["id"], str(aval))
                     )
-        if payload.status == "published" and prod["status"] != "published":
+        # Checked on the saved result (after a category move and attribute
+        # changes), whenever the product is or stays published.
+        if (payload.status or prod["status"]) == "published":
             _assert_publishable(cur, product_id, target_cat_id)
         log_audit(conn, int(admin["sub"]), "update_product_synced", "product", str(product_id), {"new_version": new_version})
         cur.execute("SELECT * FROM products WHERE id = ?", (product_id,))
@@ -1728,25 +1732,28 @@ def admin_safe_delete_or_archive_product(
 
 def _switch_off_variants_with_product(cur, product_id: int) -> None:
     """Archiving a product switches its active variants off and marks them, so
-    bringing the product back restores exactly those."""
+    bringing the product back restores exactly those. The product records that
+    its variants were marked (so zero marked variants means "restore none")."""
     cur.execute(
         "UPDATE product_variants SET is_active = 0, archived_with_product = 1 WHERE product_id = ? AND is_active = 1",
         (product_id,),
     )
+    cur.execute("UPDATE products SET variants_marked_on_archive = 1 WHERE id = ?", (product_id,))
 
 
 def _restore_variants_with_product(cur, product_id: int) -> None:
-    cur.execute("SELECT COUNT(*) AS cnt FROM product_variants WHERE product_id = ? AND archived_with_product = 1",
-                (product_id,))
-    if int(cur.fetchone()["cnt"] or 0) > 0:
+    cur.execute("SELECT variants_marked_on_archive FROM products WHERE id = ?", (product_id,))
+    row = cur.fetchone()
+    if row and int(row["variants_marked_on_archive"] or 0):
         cur.execute(
             "UPDATE product_variants SET is_active = 1, archived_with_product = 0 WHERE product_id = ? AND archived_with_product = 1",
             (product_id,),
         )
     else:
-        # Archived before the marker existed: nothing tells the variants apart,
-        # so they all come back (the previous behaviour).
+        # Archived before the markers existed: nothing tells the variants
+        # apart, so they all come back (the previous behaviour).
         cur.execute("UPDATE product_variants SET is_active = 1 WHERE product_id = ? AND is_active = 0", (product_id,))
+    cur.execute("UPDATE products SET variants_marked_on_archive = 0 WHERE id = ?", (product_id,))
 
 
 @router.post("/api/v1/admin/products/bulk-status")
@@ -1774,10 +1781,14 @@ def admin_bulk_update_product_status(
                 # variants off — otherwise it would stay invisible). Only the
                 # variants the archive switched off come back: one switched off
                 # on its own (or kept because it has sales history) stays off.
-                cur.execute("SELECT status, deleted_at, category_id FROM products WHERE id = ?", (pid,))
+                cur.execute("SELECT status, deleted_at, category_id, barcode FROM products WHERE id = ?", (pid,))
                 before = cur.fetchone()
                 if before and payload.status == "published" and before["status"] != "published":
                     _assert_publishable(cur, pid, before["category_id"])
+                if before and before["deleted_at"] and (before["barcode"] or "").strip():
+                    # While archived, its code was free and may have been given
+                    # to another article since: refuse two live owners.
+                    _unique_barcode(conn, before["barcode"], own_product_id=pid, for_product=True)
                 cur.execute(
                     "UPDATE products SET status = ?, deleted_at = NULL, updated_at = CURRENT_TIMESTAMP WHERE id = ?",
                     (payload.status, pid),

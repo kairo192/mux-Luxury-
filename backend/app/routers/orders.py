@@ -175,6 +175,22 @@ def update_order_status(
                     detail=f"Une commande {_fr(prev_status).lower()} ne peut plus changer de statut"
                 )
 
+        # Claim the change FIRST, on the state just read: of two requests sent
+        # together (double click, two PCs), the second matches no row and stops
+        # here, so the promo code, the stock and the cash move only once. On
+        # PostgreSQL the second waits for the first to commit, then sees the
+        # new state.
+        cur.execute(
+            "UPDATE orders SET status = ?, updated_at = CURRENT_TIMESTAMP "
+            "WHERE id = ? AND status = ? AND stock_deducted = ?",
+            (payload.status, order_id, prev_status, stock_deducted),
+        )
+        if cur.rowcount != 1:
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail="Cette commande vient d'être modifiée sur un autre poste. Rechargez la liste.",
+            )
+
         # A cancelled order gives its promo-code use back (a limited code is not
         # used up by orders that never happened). A returned parcel keeps it.
         # Only once: cancelling an already-cancelled order again gives nothing back.

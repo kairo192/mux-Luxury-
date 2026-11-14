@@ -22,8 +22,9 @@ export function ClientNotificationCenter({ messageQueue, setMessageQueue, closeM
   const confirmRef = useRef<HTMLDivElement | null>(null);
   // Focus stays inside the topmost of the two and comes back where it was;
   // App still picks the button that gets focus first (OK / Annuler).
-  useModalFocus(messageBoxRef, Boolean(activeMessageBox), messageBoxOkButtonRef);
-  useModalFocus(confirmRef, Boolean(activeConfirm), confirmCancelButtonRef);
+  // Layers follow the z-index: the confirmation (z-80) sits above the message (z-75).
+  useModalFocus(messageBoxRef, Boolean(activeMessageBox), messageBoxOkButtonRef, 75);
+  useModalFocus(confirmRef, Boolean(activeConfirm), confirmCancelButtonRef, 80);
   return (
     <>
       {/* Non-blocking toasts: bottom corner, newest nearest the corner */}

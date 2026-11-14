@@ -238,6 +238,11 @@ function renderPdpModalContent() {
         return sum + (v && v.price ? v.price : prod.selling_price_dzd) * (Number(q) || 0);
       }, 0)
     : effectivePrice * state.activePdpQty;
+  // What the WhatsApp message asks for: each chosen variant with its count.
+  const waChoiceText = state.activePdpMultiVariantMode === "split" && state.activePdpQty > 1
+    ? Object.entries(state.activePdpAllocations).filter(([, q]) => q > 0)
+        .map(([vid, q]) => `${q}× ${(prod.variants.find((x) => x.id === Number(vid)) || {}).title || ""}`).join(", ")
+    : (variant ? variant.title : "");
   const varStock = variant ? variant.stock : 0;
   const tr = I18N[state.lang] || I18N.fr;
   const activeImage = (variant && variant.img) ? variant.img : prod.image;
@@ -553,13 +558,13 @@ function renderPdpModalContent() {
             </button>
           </div>
           <a
-            href="https://wa.me/${waNumber()}?text=${encodeURIComponent(decodeHtml(`Bonjour Mus Luxury, je souhaite commander : ${prodName(prod)} (${variant ? variant.title : ""}) - Qté: ${state.activePdpQty} - Prix: ${formatDZD(merchTotal)}`) + "\n" + window.location.origin + "/produit/" + encodeURIComponent(decodeHtml(prod.slug)))}"
+            href="https://wa.me/${waNumber()}?text=${encodeURIComponent(decodeHtml(`Bonjour Mus Luxury, je souhaite commander : ${prodName(prod)} (${waChoiceText}) - Qté: ${state.activePdpQty} - Prix: ${formatDZD(merchTotal)}`) + "\n" + window.location.origin + "/produit/" + encodeURIComponent(decodeHtml(prod.slug)))}"
             target="_blank"
             rel="noopener noreferrer"
             class="w-full py-2.5 px-4 rounded-xl bg-emerald-50 hover:bg-emerald-100 text-emerald-900 border border-emerald-300 font-bold text-xs flex items-center justify-center gap-2 transition"
           >
             <svg class="w-4 h-4 text-emerald-600" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5z"></path></svg>
-            <span>Commander ou poser une question sur WhatsApp (${storePhoneDisplay()})</span>
+            <span>Commander ou poser une question sur WhatsApp (${escapeHtml(storePhoneDisplay())})</span>
           </a>
         </div>
 

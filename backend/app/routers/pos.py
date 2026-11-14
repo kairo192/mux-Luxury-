@@ -8,7 +8,7 @@ from datetime import datetime, timedelta, timezone
 from typing import Any, Dict, List, Optional
 from fastapi import Depends, Header, HTTPException, Query, status
 from pydantic import BaseModel, Field, validator
-from ..database import db_session
+from ..database import PostgresCompatConnection, db_session
 from ..deps import (
     log_audit,
     require_permission,
@@ -388,17 +388,25 @@ def _catalog_epoch(conn) -> str:
 
 
 
+# A row's updated_at is stamped when its transaction STARTS writing (on
+# PostgreSQL, CURRENT_TIMESTAMP is the transaction start), but it becomes
+# visible only at commit. The cursor therefore trails the clock by this margin:
+# each delta re-sends the last minute (the offline catalog overwrites rows it
+# already has), so a change committed a few seconds late is never skipped.
+SYNC_CURSOR_MARGIN = timedelta(seconds=60)
+
+
 def _sync_cursor_now() -> str:
-    return datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%SZ")
+    return (datetime.utcnow() - SYNC_CURSOR_MARGIN).strftime("%Y-%m-%dT%H:%M:%SZ")
 
 
 @router.get("/api/v1/admin/pos/catalog/snapshot")
 def pos_catalog_snapshot(admin: dict = Depends(require_permission("pos:read"))):
     """Full catalog dump — call this once, then prefer `/catalog/deltas`.
 
-    The cursor returned is the second in which this read STARTED, and the
-    next delta includes that second (`>=`). A row changed while this runs is
-    sent again rather than missed (updated_at is stamped in whole seconds; the
+    The cursor returned is taken BEFORE the read and trails the clock by
+    SYNC_CURSOR_MARGIN, and the next delta includes it (`>=`). A row changed
+    while this runs, or committed late, is sent again rather than missed (the
     offline catalog simply overwrites a row it already has)."""
     cursor = _sync_cursor_now()
     with db_session() as conn:
@@ -1377,7 +1385,12 @@ def _reconcile_closed_register(conn, session_id: int, sale_ref: str, user_id: in
     the sale, and move only the CHANGE in its variance through the cash box
     (the sale's own payment is already booked), so the money counts once."""
     cur = conn.cursor()
-    cur.execute("SELECT * FROM cash_register_sessions WHERE id = ?", (session_id,))
+    # Two sales synced at the same moment must not both recompute from totals
+    # that miss the other one: on PostgreSQL the session row is locked first
+    # (the second waits, then reads the first's sale). SQLite has no FOR
+    # UPDATE; its BEGIN IMMEDIATE already lets one writer through at a time.
+    lock = " FOR UPDATE" if isinstance(conn, PostgresCompatConnection) else ""
+    cur.execute("SELECT * FROM cash_register_sessions WHERE id = ?" + lock, (session_id,))
     sess = cur.fetchone()
     if not sess or sess["status"] != "closed" or sess["counted_cash_dzd"] is None:
         return

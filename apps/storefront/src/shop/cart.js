@@ -254,6 +254,7 @@ async function submitGuestCheckoutOrder() {
 
   const discount = computeCouponDiscount(subtotal);
   let orderRef = null;
+  let recordedItems = orderItems; // what the shop recorded for this order
 
   // One anti-duplicate key per order: a double click or an automatic
   // retry re-sends the SAME key, and the server refuses a second order.
@@ -262,6 +263,9 @@ async function submitGuestCheckoutOrder() {
   if (!state.checkoutIdemKey) {
     const rnd = (window.crypto && crypto.randomUUID) ? crypto.randomUUID() : `${Date.now()}-${Math.random().toString(36).slice(2)}`;
     state.checkoutIdemKey = `storefront-${rnd}`;
+    // What was first sent with this key: if the shop answers later that the
+    // key's order already exists, THIS is what it recorded.
+    state.checkoutIdemItems = orderItems.map((it) => ({ ...it }));
   }
 
   try {
@@ -292,7 +296,16 @@ async function submitGuestCheckoutOrder() {
     const dupRef = err && err.existingOrderRef;
     if (dupRef) {
       orderRef = dupRef;
+      recordedItems = state.checkoutIdemItems || orderItems;
     } else {
+      // The shop answered and refused (stock, details…): no order exists
+      // under this key, so the next attempt starts fresh. Without an answer
+      // (connection lost, server error) the key is kept: a retry cannot
+      // create a second order.
+      if (err && err.status >= 400 && err.status < 500) {
+        state.checkoutIdemKey = null;
+        state.checkoutIdemItems = null;
+      }
       state.placingOrder = false;
       showToast(String((err && err.message) || "Erreur lors de l'enregistrement de votre commande."), "error");
       return;
@@ -305,12 +318,14 @@ async function submitGuestCheckoutOrder() {
     return;
   }
   state.checkoutIdemKey = null;
-
-  for (const line of orderItems) {
-    const prod = state.products.find((p) => p.id === line.product_id);
-    const variant = prod.variants.find((v) => v.id === line.variant_id);
-    variant.stock -= line.quantity;
-  }
+  state.checkoutIdemItems = null;
+  const sameAsRecorded = JSON.stringify(recordedItems.map((i) => [i.variant_id, i.quantity]))
+    === JSON.stringify(orderItems.map((i) => [i.variant_id, i.quantity]));
+  // Stock: re-read from the shop (never subtract from a list that may
+  // already include this order); a product removed meanwhile is fine.
+  syncStorefrontWithBackend();
+  const recSubtotal = recordedItems.reduce((sum, i) => sum + i.unit_price_dzd * i.quantity, 0);
+  const recDiscount = sameAsRecorded ? discount : computeCouponDiscount(recSubtotal);
 
   const newOrder = {
     id: state.orders.length + 502,
@@ -322,20 +337,20 @@ async function submitGuestCheckoutOrder() {
     commune,
     address,
     delivery_method: method,
-    subtotal_dzd: serverTotals ? serverTotals.subtotal_dzd : subtotal,
-    discount_dzd: serverTotals ? serverTotals.discount_dzd : discount,
+    subtotal_dzd: serverTotals ? serverTotals.subtotal_dzd : recSubtotal,
+    discount_dzd: serverTotals ? serverTotals.discount_dzd : recDiscount,
     // Show what the server recorded (free delivery, coupon, prices) —
     // the amount the courier will collect.
-    delivery_fee_dzd: serverTotals ? serverTotals.delivery_fee_dzd : deliveryFeeFor(wObj, method, subtotal),
-    total_dzd: serverTotals ? serverTotals.total_dzd : subtotal - discount + deliveryFeeFor(wObj, method, subtotal),
+    delivery_fee_dzd: serverTotals ? serverTotals.delivery_fee_dzd : deliveryFeeFor(wObj, method, recSubtotal),
+    total_dzd: serverTotals ? serverTotals.total_dzd : recSubtotal - recDiscount + deliveryFeeFor(wObj, method, recSubtotal),
     status: "Nouvelle — En attente de confirmation téléphonique",
-    items: orderItems
+    items: recordedItems
   };
 
   state.orders.unshift(newOrder);
   // Take out only what this order contained: an article added while the
   // order was being sent stays in the cart.
-  for (const it of orderItems) {
+  for (const it of recordedItems) {
     const line = state.cart.find((c) => c.variantId === it.variant_id);
     if (line) line.quantity -= it.quantity;
   }
@@ -346,6 +361,13 @@ async function submitGuestCheckoutOrder() {
   renderStorefront();
   renderCartDrawerContent();
   showToast(`${L("Commande", "الطلب", "Order")} ${ltr("#" + orderRef)} ${L("enregistrée", "مسجّل", "placed")}`);
+  if (!sameAsRecorded) {
+    showToast(L(
+      "Votre première demande était déjà enregistrée : seuls ses articles sont commandés. Les autres restent dans le panier.",
+      "طلبكم الأول كان مسجّلًا من قبل: تم طلب منتجاته فقط، والباقي ما زال في السلة.",
+      "Your first request was already recorded: only its items are ordered. The others stay in your cart."
+    ));
+  }
 }
 
 function resetConfirmedOrder() {
@@ -599,7 +621,7 @@ function renderCartDrawerContent() {
         ${L("Confirmer la commande (Paiement à la livraison)", "تأكيد الطلب (الدفع عند الاستلام)", "Confirm order (cash on delivery)")}
       </button>
       <button type="button" onclick="openWhatsAppCartConcierge()" class="w-full py-2.5 rounded-xl bg-emerald-50 hover:bg-emerald-100 text-emerald-900 border border-emerald-300 font-bold text-xs flex items-center justify-center gap-2 transition">
-        <svg class="w-4 h-4 text-emerald-700 flex-shrink-0" viewBox="0 0 24 24" fill="currentColor"><path d="M12.04 2c-5.46 0-9.91 4.45-9.91 9.91 0 1.75.46 3.45 1.32 4.95L2.05 22l5.25-1.38c1.45.79 3.08 1.21 4.74 1.21 5.46 0 9.91-4.45 9.91-9.91 0-2.65-1.03-5.14-2.9-7.01A9.816 9.816 0 0 0 12.04 2m.01 1.67c2.2 0 4.26.86 5.82 2.42a8.225 8.225 0 0 1 2.41 5.83c0 4.54-3.7 8.24-8.24 8.24-1.48 0-2.93-.4-4.2-1.15l-.3-.18-3.12.82.83-3.04-.2-.31a8.196 8.196 0 0 1-1.26-4.38c0-4.54 3.7-8.24 8.24-8.24m4.52 11.66c-.25-.13-1.47-.72-1.7-.81-.23-.08-.39-.13-.56.13-.17.25-.64.81-.79.97-.14.17-.29.19-.54.06-.25-.13-1.06-.39-2.03-1.25-.75-.67-1.26-1.5-1.41-1.75-.15-.25-.02-.39.11-.51.11-.11.25-.29.37-.44.13-.14.17-.25.25-.42.08-.17.04-.31-.02-.44-.06-.13-.56-1.34-.76-1.84-.2-.49-.4-.42-.56-.43h-.48c-.17 0-.44.06-.67.31-.23.25-.88.86-.88 2.1s.9 2.43 1.03 2.6c.13.17 1.77 2.7 4.29 3.79.6.26 1.07.41 1.44.53.6.19 1.15.16 1.58.1.48-.07 1.47-.6 1.68-1.18.21-.58.21-1.07.15-1.18-.06-.1-.23-.17-.48-.29z"/></svg><span>${L("Commander en 1 clic via Conciergerie WhatsApp", "اطلبوا بنقرة واحدة عبر واتساب", "Order in 1 click on WhatsApp")} (<bdi>${storePhoneDisplay()}</bdi>)</span>
+        <svg class="w-4 h-4 text-emerald-700 flex-shrink-0" viewBox="0 0 24 24" fill="currentColor"><path d="M12.04 2c-5.46 0-9.91 4.45-9.91 9.91 0 1.75.46 3.45 1.32 4.95L2.05 22l5.25-1.38c1.45.79 3.08 1.21 4.74 1.21 5.46 0 9.91-4.45 9.91-9.91 0-2.65-1.03-5.14-2.9-7.01A9.816 9.816 0 0 0 12.04 2m.01 1.67c2.2 0 4.26.86 5.82 2.42a8.225 8.225 0 0 1 2.41 5.83c0 4.54-3.7 8.24-8.24 8.24-1.48 0-2.93-.4-4.2-1.15l-.3-.18-3.12.82.83-3.04-.2-.31a8.196 8.196 0 0 1-1.26-4.38c0-4.54 3.7-8.24 8.24-8.24m4.52 11.66c-.25-.13-1.47-.72-1.7-.81-.23-.08-.39-.13-.56.13-.17.25-.64.81-.79.97-.14.17-.29.19-.54.06-.25-.13-1.06-.39-2.03-1.25-.75-.67-1.26-1.5-1.41-1.75-.15-.25-.02-.39.11-.51.11-.11.25-.29.37-.44.13-.14.17-.25.25-.42.08-.17.04-.31-.02-.44-.06-.13-.56-1.34-.76-1.84-.2-.49-.4-.42-.56-.43h-.48c-.17 0-.44.06-.67.31-.23.25-.88.86-.88 2.1s.9 2.43 1.03 2.6c.13.17 1.77 2.7 4.29 3.79.6.26 1.07.41 1.44.53.6.19 1.15.16 1.58.1.48-.07 1.47-.6 1.68-1.18.21-.58.21-1.07.15-1.18-.06-.1-.23-.17-.48-.29z"/></svg><span>${L("Commander en 1 clic via Conciergerie WhatsApp", "اطلبوا بنقرة واحدة عبر واتساب", "Order in 1 click on WhatsApp")} (<bdi>${escapeHtml(storePhoneDisplay())}</bdi>)</span>
       </button>
     </div>
   `;

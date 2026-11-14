@@ -1,4 +1,5 @@
 """docs/api/openapi.json and docs/api/ENDPOINTS.md are generated from the code: they must match it."""
+import json
 import subprocess
 import sys
 import unittest
@@ -19,6 +20,30 @@ class TestApiDocs(unittest.TestCase):
                                if "/api/v1/admin/" in line and "| public |" in line})
         self.assertEqual(public_admin, ["/api/v1/admin/auth/initialize-owner", "/api/v1/admin/auth/login",
                                         "/api/v1/admin/auth/setup-status"])
+
+    def test_every_schema_reference_resolves(self):
+        spec = json.loads((BACKEND.parent / "docs" / "api" / "openapi.json").read_text(encoding="utf-8"))
+        refs = set()
+
+        def walk(node):
+            if isinstance(node, dict):
+                if isinstance(node.get("$ref"), str):
+                    refs.add(node["$ref"])
+                for v in node.values():
+                    walk(v)
+            elif isinstance(node, list):
+                for v in node:
+                    walk(v)
+
+        walk(spec)
+        missing = []
+        for ref in sorted(refs):
+            target = spec
+            for part in ref.lstrip("#/").split("/"):
+                target = target.get(part) if isinstance(target, dict) else None
+            if target is None:
+                missing.append(ref)
+        self.assertEqual(missing, [])
 
 
 if __name__ == "__main__":

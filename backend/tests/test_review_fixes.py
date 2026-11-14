@@ -179,6 +179,51 @@ class TestReviewFixes(unittest.TestCase):
             self.client.put("/api/v1/admin/settings", headers=self.headers,
                             json={"settings": {"pos_tax_rate_percent": "0"}})
 
+    def test_restoring_a_product_whose_variants_were_all_off_restores_none(self):
+        prod = self._ok_product(variants=[{"color": "Noir"}])
+        vid = prod["variants"][0]["id"]
+        r = self.client.put(f"/api/v1/admin/variants/{vid}", headers=self.headers, json={"is_active": False})
+        self.assertEqual(r.status_code, 200, r.text)
+        for status in ("archived", "published"):
+            r = self.client.post("/api/v1/admin/products/bulk-status", headers=self.headers,
+                                 json={"product_ids": [prod["id"]], "status": status})
+            self.assertEqual(r.status_code, 200, r.text)
+        admin = self.client.get(f"/api/v1/admin/products?q={prod['sku']}", headers=self.headers).json()["items"][0]
+        self.assertFalse(admin["variants"][0]["is_active"])
+
+    def test_restoring_refuses_a_barcode_taken_while_archived(self):
+        code = f"RVB{self.suffix.upper()}"
+        first = self._ok_product(tag="A", barcode=code)
+        r = self.client.post("/api/v1/admin/products/bulk-status", headers=self.headers,
+                             json={"product_ids": [first["id"]], "status": "archived"})
+        self.assertEqual(r.status_code, 200, r.text)
+        self._ok_product(tag="B", barcode=code)  # the code was free while A was archived
+        r = self.client.post("/api/v1/admin/products/bulk-status", headers=self.headers,
+                             json={"product_ids": [first["id"]], "status": "published"})
+        self.assertEqual(r.status_code, 409, r.text)
+
+    def test_a_product_cannot_be_published_without_its_required_characteristics(self):
+        r = self.client.post("/api/v1/admin/category-attributes", headers=self.headers, json={
+            "category_id": self.category_id, "attr_key": "matiere", "label_fr": "Matière",
+            "input_type": "short_text", "is_variant_axis": False, "is_required": True,
+        })
+        self.assertEqual(r.status_code, 201, r.text)
+        sku = f"RV-D-{self.suffix.upper()}"
+        draft = self.client.post("/api/v1/admin/products", headers=self.headers, json={
+            "category_id": self.category_id, "slug": f"review-d-{self.suffix}", "sku": sku,
+            "name_fr": f"Brouillon {self.suffix}", "selling_price_dzd": 5000, "status": "draft",
+            "variants": [{"sku": f"{sku}-0", "title": "Noir", "stock_qty": 1, "attributes": {"color": "Noir"}}],
+        })
+        self.assertEqual(draft.status_code, 201, draft.text)  # a draft may be incomplete
+        body = draft.json()
+        update = {"expected_version": body["version"], "name_fr": body["name_fr"],
+                  "selling_price_dzd": body["selling_price_dzd"], "status": "published"}
+        r = self.client.put(f"/api/v1/admin/products/{body['id']}", headers=self.headers, json=update)
+        self.assertEqual(r.status_code, 422, r.text)
+        update["dynamic_attributes"] = {"matiere": "Cuir"}
+        r = self.client.put(f"/api/v1/admin/products/{body['id']}", headers=self.headers, json=update)
+        self.assertEqual(r.status_code, 200, r.text)
+
 
 if __name__ == "__main__":
     unittest.main()

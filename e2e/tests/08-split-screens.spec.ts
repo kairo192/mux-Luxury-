@@ -72,14 +72,16 @@ test("till: register history, customer and close-register sheets", async ({ page
   let release!: () => void;
   const held = new Promise<void>((r) => { release = r; });
   await page.route("**/admin/pos/register/sessions*", async (route) => { await held; await route.continue(); });
-  const listDone = page.waitForResponse("**/admin/pos/register/sessions*");
+  // "requestfinished": the whole body has arrived (not just the headers).
+  const listDone = page.waitForEvent("requestfinished", (r) => r.url().includes("/admin/pos/register/sessions"));
   await main.getByRole("button", { name: /Historique/ }).first().click();
   await expect(page.getByText("Historique des caisses")).toBeVisible();
   await page.keyboard.press("Escape");
   await expect(page.getByText("Historique des caisses")).toHaveCount(0);
   release();
   await listDone;
-  await page.waitForTimeout(300);               // let React apply the late answer
+  // Let the page's own handler run and React render: two animation frames.
+  await page.evaluate(() => new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(() => r(null)))));
   await expect(page.getByText("Historique des caisses")).toHaveCount(0);
   await page.unroute("**/admin/pos/register/sessions*");
 

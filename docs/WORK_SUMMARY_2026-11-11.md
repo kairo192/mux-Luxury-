@@ -693,7 +693,8 @@ with regression tests in `backend/tests/test_review_fixes.py`, `test_catalog_syn
 | Money | Paying a pending expense writes the ledger entries; cancelling a paid one reverses them; cheque/card payments go to the bank in both treasury and ledger; receiving / paying a purchase order or an expense cannot be applied twice by two clicks; stock value uses variant costs; report totals and CSV exports cover the whole period (no 200 / 2 000-row cut) |
 | Shop | An order whose first answer was lost is recognised in every language; an unavailable cart line can be removed; an article added while an order is being sent stays in the cart; typed delivery details survive a quantity change; split selection works when each variant has one piece; filters reset when changing category |
 | CMS | Dialogs keep keyboard focus inside and give it back; offline receipts no longer print "2 × 0 DA"; labelled fields |
-| API docs | Generated with the same FastAPI version as CI and the server image (0.99, OpenAPI 3.1) |
+| API docs | Generated with the same FastAPI version as CI and the server image (0.99, OpenAPI 3.1); a test checks every schema reference resolves |
+| Second pass | Two clicks / two PCs: an order status change, an expense deletion and an offline sale on a closed register are applied once (claimed on the state read; register row locked on PostgreSQL). Archive restores exactly what it switched off, even when nothing was (`products.variants_marked_on_archive`), and refuses a barcode taken meanwhile; a published product is checked on every save. The till's catalogue cursor trails the clock by 60 s so a late commit is never skipped. Shop: the order confirmation shows what the shop recorded when an earlier attempt already went through; the store phone is escaped; "Plus récents" sorts newest first; a search from La Maison opens the shop; late answers (page, tracking) no longer replace newer ones. CMS: focus follows the dialog on top |
 
 ## Verification
 
