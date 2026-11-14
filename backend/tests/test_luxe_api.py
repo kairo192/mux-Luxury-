@@ -2300,23 +2300,24 @@ flushOfflineMutationQueue(async () => true).then((res) => {
         from pathlib import Path
         repo_root = Path(__file__).resolve().parents[2]
 
+        # The 8 deliverables of the original brief, at their current place (docs/README.md).
         required_docs = [
-            "docs/PRODUCTION_ACCEPTANCE_REPORT.md",
-            "docs/ARCHITECTURE.md",
-            "docs/API_CONTRACT.md",
-            "docs/SECURITY.md",
-            "docs/DEPLOYMENT.md",
+            "docs/archive/PRODUCTION_ACCEPTANCE_REPORT.md",
+            "docs/architecture/SYSTEM_ARCHITECTURE.md",
+            "docs/api/API_CONTRACT.md",
+            "docs/security/SECURITY_HARDENING.md",
+            "docs/deployment/VPS_DEPLOYMENT.md",
             "docs/TESTING.md",
-            "docs/BACKUP_AND_RECOVERY.md",
-            "docs/PRODUCTION_AUDIT.md",
-            "docs/openapi.json",
+            "docs/OPERATIONS_GUIDE.md",
+            "docs/archive/PRODUCTION_AUDIT.md",
+            "docs/api/openapi.json",
         ]
         for rel in required_docs:
             p = repo_root / rel
             self.assertTrue(p.is_file(), f"Missing required Master Prompt deliverable: {rel}")
             self.assertGreater(p.stat().st_size, 1200, f"Deliverable {rel} is too short ({p.stat().st_size} bytes)")
 
-        openapi_data = _json.loads((repo_root / "docs" / "openapi.json").read_text(encoding="utf-8"))
+        openapi_data = _json.loads((repo_root / "docs" / "api" / "openapi.json").read_text(encoding="utf-8"))
         self.assertIn("/api/v1/orders", openapi_data["paths"])
         self.assertIn("/api/v1/admin/audit-logs", openapi_data["paths"])
         self.assertIn("/api/v1/ready", openapi_data["paths"])

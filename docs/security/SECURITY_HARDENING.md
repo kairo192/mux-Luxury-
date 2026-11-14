@@ -99,8 +99,8 @@ add_header X-Frame-Options "DENY" always;
 add_header X-Content-Type-Options "nosniff" always;
 add_header X-XSS-Protection "1; mode=block" always;
 add_header Referrer-Policy "strict-origin-when-cross-origin" always;
-add_header Permissions-Policy "camera=(), microphone=(), geolocation=(), payment=()" always;
-add_header Content-Security-Policy "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com data:; img-src 'self' data: blob: https://mus-luxury.com https://api.mus-luxury.com; connect-src 'self' https://api.mus-luxury.com; frame-ancestors 'none'; base-uri 'self'; form-action 'self';" always;
+add_header Permissions-Policy "geolocation=(), microphone=(), camera=(), payment=()" always;
+add_header Content-Security-Policy "default-src 'self'; img-src 'self' data: https:; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; script-src 'self' 'unsafe-inline'; connect-src 'self' https://api.mus-luxury.com https://mus-luxury.com; object-src 'none'; frame-ancestors 'none'; base-uri 'self'; form-action 'self';" always;
 ```
 
 ---
@@ -110,4 +110,18 @@ add_header Content-Security-Policy "default-src 'self'; script-src 'self'; style
 1. **Magic-Byte Image Validation:** All uploaded product images must match true `JPEG` (`FF D8 FF`), `PNG` (`89 50 4E 47`), or `WEBP` headers. Polyglot PHP/HTML scripts masked with image extensions are rejected.
 2. **Path Traversal Shield:** Upload filenames are generated with cryptographically random hex strings (`secrets.token_hex(16)`). Original user-provided filenames are completely discarded.
 3. **CSV Formula Injection:** Data export routines escape formulas starting with `=`, `+`, `-`, or `@` by prepending a single quote (`'`).
+4. **No script runs from the uploads folder:** Nginx serves `/uploads/` as plain files and refuses
+   executable extensions there (`infrastructure/nginx/nginx.conf`):
+   ```nginx
+   location /uploads/ {
+       alias /var/lib/luxe/uploads/;
+       location ~* \.(php|py|pl|sh|cgi|exe|bat|js)$ {
+           deny all;
+       }
+   }
+   ```
+
+The policy values above are copied from `infrastructure/nginx/nginx.conf`, which is the reference.
+`script-src` keeps `'unsafe-inline'` because the shop's HTML calls its code from `onclick="…"`
+attributes; the code itself is a bundled file and no runtime CDN is used (no `'unsafe-eval'`).
 

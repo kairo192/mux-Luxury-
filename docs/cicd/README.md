@@ -15,7 +15,7 @@ you're about to do.
 | Roll back a bad release                 | `ROLLBACK.md`                     |
 | Ship a Desktop CMS update               | `POS_UPDATE_STRATEGY.md`          |
 | Recover from an incident                | `INCIDENT_RECOVERY.md`            |
-| Restore a backup                        | `../BACKUP_AND_RECOVERY.md`       |
+| Restore a backup                        | `../OPERATIONS_GUIDE.md` §5.3     |
 
 The whole pipeline can be exercised from a phone; nothing in it requires a
 local laptop with build tools once the VPS is bootstrapped.

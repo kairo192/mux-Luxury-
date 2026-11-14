@@ -1,6 +1,6 @@
 # Mus Luxury (LUXE) — Complete API Contract & Endpoint Inventory
 
-Machine-readable OpenAPI 3.0 specification: `docs/openapi.json` (also served at `/api/v1/openapi.json`).
+Machine-readable OpenAPI 3.0 specification: `docs/api/openapi.json` (also served at `/api/v1/openapi.json`).
 
 ## 1. Public Storefront Endpoints (No Authentication Required)
 | Method | Route | Consumer | Rate Limit | Request / Query Schema | Response Contract & Security Rules | Verified By |
