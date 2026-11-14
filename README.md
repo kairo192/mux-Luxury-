@@ -26,6 +26,7 @@ Production-oriented e-commerce platform built for **Mus Luxury (`LUXE`)** target
 ```text
 luxe-ecommerce/
 ├── .github/workflows/            # CI/CD (ci.yml, cd-production.yml, build-desktop-cms.yml)
+├── .agent/skills/                # AI assistants' skills (design, security audit) — not part of the shop, see .agent/README.md
 ├── .env.example                  # Environment template (zero secrets committed)
 ├── docker-compose.yml            # Production stack (PostgreSQL 16 + FastAPI + Storefront + Nginx ~608MB RAM)
 ├── backend/                      # Python 3.11 + FastAPI + PostgreSQL/SQLite REST API (/api/v1/)

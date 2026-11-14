@@ -23,6 +23,7 @@ Start with the first table. The guides there are kept up to date with the code.
 
 | Folder | Content |
 |---|---|
+| [../.agent/](../.agent/README.md) | The AI assistants' skills (design guidelines, security-audit checklists): not part of the shop, never shipped |
 | [handoff/](handoff/) | Notes and prompts for the AI assistants working on the PC (Antigravity, Claude) |
 | [specs/](specs/) | The owner's original requests and specifications, kept as written: file names they ask for are those of the time (e.g. `BACKUP_RESTORE.md`, `TEST_REPORT.md`, since moved to `archive/`). For the current version of any document, use the table above |
 | [archive/](archive/) | Older documents replaced by the guides above — kept for history, may be out of date |
