@@ -33,7 +33,7 @@ def _python_reads():
     names = set()
     pat = re.compile(r"""(?:os\.getenv|os\.environ\.get|environ\[|_int_env|_env_bool|_seed_password)\(\s*["']([A-Z][A-Z0-9_]+)["']""")
     reg = re.compile(r"""app_settings\.(?:get|get_int|raw)\(\s*["']([A-Z][A-Z0-9_]+)["']""")
-    for f in APP.glob("*.py"):
+    for f in APP.rglob("*.py"):
         text = f.read_text(encoding="utf-8")
         names |= set(pat.findall(text)) | set(reg.findall(text))
     return names

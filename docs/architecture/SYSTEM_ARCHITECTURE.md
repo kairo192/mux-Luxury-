@@ -59,6 +59,31 @@ All services, CORS origins, and mobile web clients resolve strictly against offi
 
 ---
 
+## 2b. Where the backend code lives (`backend/app/`)
+
+| File | What it holds |
+|---|---|
+| `main.py` | The FastAPI application: CORS, compression, security headers, the shop's short cache, startup. It includes the routers below and nothing else. |
+| `routers/public.py` | Public shop API: catalog, store info, pages, delivery zones, guest orders and tracking, health checks, uploaded images |
+| `routers/auth.py` | Staff login and sessions, users, roles, protected actions |
+| `routers/catalog.py` | Products, variants, categories and their attributes, brands, images, uploads, barcodes |
+| `routers/content.py` | Banners, home page blocks, pages, settings, delivery zones, fiscal settings, messages |
+| `routers/orders.py` | Online orders, coupons, cash-on-delivery risk, customers |
+| `routers/pos.py` | Till: register, sales, refunds, catalog mirror for offline use, devices, offline sync |
+| `routers/inventory.py` | Stock movements, adjustments, counts, write-offs |
+| `routers/finance.py` | Purchases, suppliers, expenses, treasury, accounting |
+| `routers/reports.py` | Dashboards, sales / stock / expense reports, audit log |
+| `routers/system.py` | Database administration (owner) and desktop CMS updates (staff login) |
+| `routers/seo.py`, `routers/webhooks.py` | Product/category pages for search engines and link previews; incoming webhooks |
+| `common.py` | Helpers, constants and serializers used by several routers (batched loading of products and categories, shop time zone, audit names) |
+| `deps.py` | Login and permission checks (`get_current_admin`, `require_permission`) and the audit log writer |
+| `settings.py`, `security.py`, `database.py`, `migration_runner.py`, `backup_engine.py`, `seo.py`, `seed.py` | Configuration, passwords and tokens, the SQLite/PostgreSQL connection, migrations, backups, page metadata, first-start data |
+
+A new endpoint goes in the router of its area (`@router.get(...)`); a helper used by one router stays in
+that router, one used by several goes in `common.py`. Routers never import each other.
+
+---
+
 ## 3. Database Architecture (41 Relational Tables)
 
 The storage tier maintains 100% schema parity across **PostgreSQL 16** (production) and **SQLite 3** (local development and automated test suites). Foreign keys, constraints, and optimistic locking (`version`) prevent inconsistent states or negative inventory.

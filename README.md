@@ -30,7 +30,10 @@ luxe-ecommerce/
 ├── docker-compose.yml            # Production stack (PostgreSQL 16 + FastAPI + Storefront + Nginx ~608MB RAM)
 ├── backend/                      # Python 3.11 + FastAPI + PostgreSQL/SQLite REST API (/api/v1/)
 │   ├── app/
-│   │   ├── main.py               # Public storefront & RBAC-protected admin endpoints
+│   │   ├── main.py               # The FastAPI app: middleware, startup, includes the routers
+│   │   ├── routers/              # The API, one file per area (public, auth, catalog, orders, pos…)
+│   │   ├── common.py / deps.py   # Shared helpers and serializers / login & permission checks
+│   │   ├── settings.py           # Every .env key (checked at startup, templates generated from it)
 │   │   ├── security.py           # PBKDF2 (600,000 iter), JWT instant revocation, HMAC signing, rate limits
 │   │   ├── database.py           # Dual SQLite / PostgreSQL 16 connection & transaction adapter
 │   │   └── seed.py               # 14 dynamic categories, attributes, products & 69 Algerian Wilayas
@@ -38,7 +41,7 @@ luxe-ecommerce/
 │   │   ├── 001_initial_schema.sql          # SQLite schema (41 relational tables)
 │   │   └── 001_initial_schema_postgres.sql # PostgreSQL 16 schema (100% parity)
 │   ├── scripts/                  # Operator tools (production .env generator, owner reset…); dev/ = benchmarks
-│   └── tests/                    # 346 automated backend tests (SQLite + PostgreSQL 16)
+│   └── tests/                    # 362 automated backend tests (SQLite + PostgreSQL 16)
 ├── apps/
 │   ├── storefront/               # Online shop: one index.html (vanilla JS, FR/AR/EN) + Vite/Tailwind (guest COD, 69 wilayas)
 │   └── desktop-cms/              # Tauri 2.0 + Rust Windows Desktop CMS & POS (wincred token storage)

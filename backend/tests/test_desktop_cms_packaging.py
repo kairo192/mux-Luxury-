@@ -53,8 +53,8 @@ class TestDesktopCmsPackaging(unittest.TestCase):
         conf = json.loads((CMS / "src-tauri" / "tauri.conf.json").read_text(encoding="utf-8"))
         self.assertEqual(conf["plugins"]["updater"]["endpoints"], [manifest])
         self.assertIn(f'"{manifest}"', (CMS / "src-tauri" / "src" / "app_services.rs").read_text(encoding="utf-8"))
-        main = (ROOT / "backend" / "app" / "main.py").read_text(encoding="utf-8")
-        self.assertIn(f'CMS_UPDATE_BASE_URL = "{base}"', main)
+        common = (ROOT / "backend" / "app" / "common.py").read_text(encoding="utf-8")
+        self.assertIn(f'CMS_UPDATE_BASE_URL = "{base}"', common)
         # HTTPS only: the updater must never be allowed plain HTTP.
         self.assertNotIn("dangerousInsecureTransportProtocol", json.dumps(conf))
         # Public key committed and baked into every build; private key only in CI secrets.
