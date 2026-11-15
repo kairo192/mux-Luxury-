@@ -113,12 +113,13 @@ class TestDesktopCmsPackaging(unittest.TestCase):
                                          text=True, timeout=30)
             r = run()
             self.assertEqual(r.returncode, 0, r.stderr)
-            self.assertEqual(r.stdout.strip(), str(root / "shared" / "downloads"))     # default
+            # Compare as paths: bash joins with "/", Windows paths use "\" (same folder).
+            self.assertEqual(Path(r.stdout.strip()), root / "shared" / "downloads")    # default
             self.assertTrue((root / "shared" / "downloads" / "cms").is_dir())
             custom = Path(tmp) / "custom-dl"
             env.write_text(f"APP_ENV=production\nLUXE_DOWNLOADS_DIR={custom}\n")
             r = run()
-            self.assertEqual(r.stdout.strip(), str(custom))                             # configured override
+            self.assertEqual(Path(r.stdout.strip()), custom)                            # configured override
             self.assertTrue((custom / "cms").is_dir())
 
     def test_setup_script_proves_the_signing_key_matches(self):
