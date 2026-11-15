@@ -220,16 +220,18 @@ jobs:
           # The server deploy (cd-production.yml, same tag) may still be running, so
           # wait up to 10 minutes for the update address; anything else fails the job.
           url=https://api.mus-luxury.com/api/v1/admin/updates/cms/latest.json
+          # Strict limit: each request and each pause is cut to the time left.
           deadline=$((SECONDS + 600))
           code=000
-          while [ "$SECONDS" -lt "$deadline" ]; do
-            code=$(curl -s -o /dev/null -w '%{http_code}' --max-time 20 "$url" || true)
+          while left=$((deadline - SECONDS)); [ "$left" -gt 0 ]; do
+            code=$(curl -s -o /dev/null -w '%{http_code}' --max-time "$(( left < 20 ? left : 20 ))" "$url" || true)
             case "$code" in
               401) echo "Published; the update files are refused without a staff login (401), as intended."; exit 0 ;;
               2*) echo "::error::The update files are readable WITHOUT a login (HTTP $code)."; exit 1 ;;
             esac
             echo "Update address answered HTTP $code; waiting for the server deploy..."
-            sleep 30
+            left=$((deadline - SECONDS))
+            if [ "$left" -gt 0 ]; then sleep "$(( left < 30 ? left : 30 ))"; fi
           done
           echo "::error::The update address did not answer 401 within 10 minutes (last: HTTP $code). The files are on the server, but"
           echo "::error::installed apps cannot reach them until the server runs this version: deploy it, then re-run this job."

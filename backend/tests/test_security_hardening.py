@@ -50,6 +50,15 @@ from app.whatsapp import get_whatsapp_config
 from scripts.generate_secrets import generate_all_secrets
 
 
+
+def storefront_source(repo_root) -> str:
+    """The shop's code: index.html plus its scripts and styles (split out of the page into src/)."""
+    from pathlib import Path as _P
+    sf = _P(repo_root) / "apps" / "storefront"
+    parts = [(sf / "index.html").read_text(encoding="utf-8")]
+    parts += [p.read_text(encoding="utf-8") for p in sorted((sf / "src").rglob("*")) if p.suffix in (".js", ".css")]
+    return "\n".join(parts)
+
 class TestLuxeSecurityHardeningHandoff(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
@@ -119,7 +128,7 @@ class TestLuxeSecurityHardeningHandoff(unittest.TestCase):
     def test_h1_h3_h4_h6_high_severity_controls(self):
         # H-1: the live shop sends ONE Idempotency-Key per order (re-used on a
         # double click / retry, cleared on success) — never a per-click key.
-        sf_txt = (self.repo_root / "apps" / "storefront" / "index.html").read_text(encoding="utf-8")
+        sf_txt = storefront_source(self.repo_root)
         self.assertIn('"Idempotency-Key": state.checkoutIdemKey', sf_txt)
         self.assertIn("state.checkoutIdemKey = null", sf_txt)
         self.assertNotIn("storefront-${phone}-${Date.now()}", sf_txt)

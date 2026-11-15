@@ -676,6 +676,25 @@ Each finding was checked against the code first; all 26 were real. Fixed, with a
 | Browser tests | The two tests that relied on earlier tests now set up what they need |
 | GitHub secrets script | Stops on the first `gh` write that fails (not run here: no PowerShell) |
 
+## 36. CodeRabbit review of the restructuring (PR #5)
+
+The router split moved code without changing it, so CodeRabbit re-read most of the backend, CMS and
+shop and found long-standing bugs. Each was checked against the code first; the real ones are fixed,
+with regression tests in `backend/tests/test_review_fixes.py`, `test_catalog_sync.py` and e2e `08`.
+
+| Area | What was wrong → now |
+|---|---|
+| Private data | Variant purchase costs were visible in the public catalogue → removed. Staff without order access (cashier, read-only) received full customer orders through the dashboard and `/admin/sync/delta`, and the audit trail through the dashboard → only for `orders:write` / `settings:write` |
+| First owner | Two setup requests sent together could both create an owner → the one-time marker is claimed first, in the same transaction (SQLite and PostgreSQL) |
+| CMS logout | The login screen appeared before the token was forgotten (a login to another server could carry it) → token cleared first |
+| Shop XSS | A gallery URL or a delivery commune containing markup could run in the shop → escaped |
+| Catalogue | Barcodes are unique on every write path (a scan can no longer ring up the wrong article); a product save that lost a race now answers 409 instead of half-saving; a variant with till sales, purchases or stock history is switched off, not deleted; re-publishing an archived product brings back only the variants the archive switched off (new column `archived_with_product`); changing a product's category keeps matching characteristics and refuses while variants use the old ones; publishing checks required characteristics; renaming an option renames product values too; a product in a hidden category can no longer be ordered or appear in the sitemap |
+| Till | An offline sale synced after its register was closed now corrects that register's totals and variance (cash counted once); a refund credit note keeps its VAT; the offline catalogue sync cursor no longer skips a change made during the sync |
+| Money | Paying a pending expense writes the ledger entries; cancelling a paid one reverses them; cheque/card payments go to the bank in both treasury and ledger; receiving / paying a purchase order or an expense cannot be applied twice by two clicks; stock value uses variant costs; report totals and CSV exports cover the whole period (no 200 / 2 000-row cut) |
+| Shop | An order whose first answer was lost is recognised in every language; an unavailable cart line can be removed; an article added while an order is being sent stays in the cart; typed delivery details survive a quantity change; split selection works when each variant has one piece; filters reset when changing category |
+| CMS | Dialogs keep keyboard focus inside and give it back; offline receipts no longer print "2 × 0 DA"; labelled fields |
+| API docs | Generated with the same FastAPI version as CI and the server image (0.99, OpenAPI 3.1); a test checks every schema reference resolves |
+| Second pass | Two clicks / two PCs: an order status change, an expense deletion and an offline sale on a closed register are applied once (claimed on the state read; register row locked on PostgreSQL). Archive restores exactly what it switched off, even when nothing was (`products.variants_marked_on_archive`), and refuses a barcode taken meanwhile; a published product is checked on every save. The till's catalogue cursor trails the clock by 60 s so a late commit is never skipped. Shop: the order confirmation shows what the shop recorded when an earlier attempt already went through; the store phone is escaped; "Plus récents" sorts newest first; a search from La Maison opens the shop; late answers (page, tracking) no longer replace newer ones. CMS: a request retried after a logout and a change of server goes back to the server it started on (e2e test: held request → logout → new server → no old token reaches it); focus follows the dialog on top |
 
 ## Verification
 

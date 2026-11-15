@@ -7,7 +7,6 @@ Queries are counted on SQLite (it reports every statement run); the results
 themselves are checked on both engines, including the 30-day sales of the
 low-stock report.
 """
-import contextlib
 import os
 import tempfile
 import unittest
@@ -25,7 +24,7 @@ os.environ.setdefault("SECRET_KEY", "test_only_ephemeral_secret_key_for_unit_tes
 
 from fastapi.testclient import TestClient
 
-import app.main as main
+from app import database
 from app.main import app
 from app.seed import seed_initial_data
 from app.security import reset_rate_limits
@@ -50,16 +49,16 @@ class TestQueryBatching(unittest.TestCase):
         """Runs GET path and returns how many statements read `table` (0 when the
         engine cannot report its statements; the counts then compare equal)."""
         statements = []
-        real = main.db_session
+        real = database.get_connection
 
-        @contextlib.contextmanager
-        def traced(commit=False):
-            with real(commit) as conn:
-                if TRACED:
-                    conn.set_trace_callback(statements.append)
-                yield conn
+        def traced():
+            conn = real()
+            if TRACED:
+                conn.set_trace_callback(statements.append)
+            return conn
 
-        with mock.patch.object(main, "db_session", traced):
+        # Every route opens its connection through app.database.get_connection.
+        with mock.patch.object(database, "get_connection", traced):
             r = self.client.get(path, headers=self.h)
         self.assertEqual(r.status_code, 200, r.text)
         return sum(1 for s in statements if f" {table} " in f" {s} ".replace("\n", " ")), r.json()

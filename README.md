@@ -26,11 +26,15 @@ Production-oriented e-commerce platform built for **Mus Luxury (`LUXE`)** target
 ```text
 luxe-ecommerce/
 ├── .github/workflows/            # CI/CD (ci.yml, cd-production.yml, build-desktop-cms.yml)
+├── .agent/skills/                # AI assistants' skills (design, security audit) — not part of the shop, see .agent/README.md
 ├── .env.example                  # Environment template (zero secrets committed)
 ├── docker-compose.yml            # Production stack (PostgreSQL 16 + FastAPI + Storefront + Nginx ~608MB RAM)
 ├── backend/                      # Python 3.11 + FastAPI + PostgreSQL/SQLite REST API (/api/v1/)
 │   ├── app/
-│   │   ├── main.py               # Public storefront & RBAC-protected admin endpoints
+│   │   ├── main.py               # The FastAPI app: middleware, startup, includes the routers
+│   │   ├── routers/              # The API, one file per area (public, auth, catalog, orders, pos…)
+│   │   ├── common.py / deps.py   # Shared helpers and serializers / login & permission checks
+│   │   ├── settings.py           # Every .env key (checked at startup, templates generated from it)
 │   │   ├── security.py           # PBKDF2 (600,000 iter), JWT instant revocation, HMAC signing, rate limits
 │   │   ├── database.py           # Dual SQLite / PostgreSQL 16 connection & transaction adapter
 │   │   └── seed.py               # 14 dynamic categories, attributes, products & 69 Algerian Wilayas
@@ -38,9 +42,9 @@ luxe-ecommerce/
 │   │   ├── 001_initial_schema.sql          # SQLite schema (41 relational tables)
 │   │   └── 001_initial_schema_postgres.sql # PostgreSQL 16 schema (100% parity)
 │   ├── scripts/                  # Operator tools (production .env generator, owner reset…); dev/ = benchmarks
-│   └── tests/                    # 346 automated backend tests (SQLite + PostgreSQL 16)
+│   └── tests/                    # 386 automated backend tests (SQLite + PostgreSQL 16)
 ├── apps/
-│   ├── storefront/               # Online shop: one index.html (vanilla JS, FR/AR/EN) + Vite/Tailwind (guest COD, 69 wilayas)
+│   ├── storefront/               # Online shop: index.html (markup) + src/shop/*.js (vanilla JS, FR/AR/EN) + Vite/Tailwind
 │   └── desktop-cms/              # Tauri 2.0 + Rust Windows Desktop CMS & POS (wincred token storage)
 ├── e2e/                          # Browser tests of the shop + CMS together (Playwright), see e2e/README.md
 ├── infrastructure/               # Nginx reverse proxy, automated backup & deploy scripts
@@ -92,7 +96,7 @@ Because you are managing the project from a smartphone:
 3. **Run the tests** (all run in CI on every push, see `.github/workflows/ci.yml`):
    ```bash
    npm run lint          # ruff (backend) + TypeScript (CMS, no unused code allowed)
-   npm run test:backend  # 300 backend tests (SQLite; CI also runs them on PostgreSQL 16)
+   npm run test:backend  # 386 backend tests (SQLite; CI also runs them on PostgreSQL 16)
    npm run test:e2e      # 28 browser tests: shop + CMS together on a fresh production-mode API
    ```
    Local development: `cd backend && uvicorn app.main:app --reload --port 8000`,

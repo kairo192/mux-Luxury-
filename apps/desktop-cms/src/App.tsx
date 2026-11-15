@@ -1,6 +1,6 @@
 import { readDraft, writeDraft } from "./utils/draftStorage";
 import { formatServerDateTime } from "./utils/serverDate";
-import { useT, LanguageToggle } from "./i18n";
+import { useT } from "./i18n";
 import { CmsSidebar } from "./components/CmsSidebar";
 import {
   ClientNotificationItem,
@@ -23,8 +23,6 @@ import {
   subscribeUpdateState,
   type UpdateState,
 } from "./utils/appUpdater";
-import { ToastStack } from "./components/ToastStack";
-import { NotificationBell } from "./components/NotificationBell";
 import { UpdateDialog } from "./components/UpdateDialog";
 import { DatabasePanel } from "./components/DatabasePanel";
 import {
@@ -33,23 +31,13 @@ import {
   subscribeNetworkTelemetry,
 } from "./utils/networkQueue";
 import React, { useEffect, useRef, useState } from "react";
-import {
-  ShoppingBag,
-  ShieldCheck,
-  AlertTriangle,
-  CheckCircle2,
-  Sparkles,
-  Trash2,
-  Archive,
-  ShieldAlert,
-  X,
-} from "lucide-react";
+import { ShieldCheck } from "lucide-react";
 import { orderStatusLabel } from "./utils/orderStatus";
 import { openExternalUrl } from "./utils/openExternal";
 import { useEscapeToClose } from "./utils/useEscapeToClose";
 import { canOpenTab } from "./utils/tabAccess";
 import { copyNewestBackupIfMissing, pcCopiesAvailable } from "./utils/backupCopies";
-import { DesktopCmsApi, restoreSessionFromOsKeychain, getApiBaseUrl, configureApiBaseUrl, mediaUrl } from "./api/adminClient";
+import { DesktopCmsApi, restoreSessionFromOsKeychain, getApiBaseUrl } from "./api/adminClient";
 import { CategoryBuilderPage } from "./pages/CategoryBuilderPage";
 import { DeliveryWilayasPage } from "./pages/DeliveryWilayasPage";
 import { DeliveryNoteModal } from "./components/DeliveryNoteModal";
@@ -79,6 +67,11 @@ import { ExpensesPage } from "./pages/ExpensesPage";
 import { TreasuryPage } from "./pages/TreasuryPage";
 import { AccountingPage } from "./pages/AccountingPage";
 import { ProductEditor } from "./components/ProductEditor";
+import { ClientNotificationCenter } from "./app/ClientNotificationCenter";
+import { DeleteProductModal } from "./app/DeleteProductModal";
+import { OwnerSetupScreen } from "./app/OwnerSetupScreen";
+import { LoginScreen } from "./app/LoginScreen";
+import { AppHeader } from "./app/AppHeader";
 
 type CmsTab =
   | "dashboard"
@@ -397,6 +390,8 @@ export default function App() {
         setProdCategoryId(catData.items[0].id);
       }
     } catch (err: any) {
+      // A late answer for a session that has already ended: nothing to show.
+      if (err?.code === "STALE_SESSION_RESPONSE") return;
       if (err?.code === "SESSION_EXPIRED" || err?.message === "SESSION_EXPIRED") {
         setUser(null);
         const msg = "Par mesure de sécurité, votre session a expiré. Vos brouillons locaux sont conservés — veuillez vous reconnecter.";
@@ -647,6 +642,19 @@ export default function App() {
         setProductToDelete(null);
       }
       await loadAllWorkspaceData();
+      // The dialog gave focus back to the row's « Supprimer » button, which the
+      // refreshed list no longer has: keep keyboard users on the product list.
+      // The list re-renders a moment later, so watch briefly (1.5 s).
+      const started = Date.now();
+      const keepFocusOnList = () => {
+        const active = document.activeElement;
+        if (!active || active === document.body || !active.isConnected) {
+          document.querySelector<HTMLElement>("[data-products-search]")?.focus();
+          return;
+        }
+        if (Date.now() - started < 1500) window.setTimeout(keepFocusOnList, 50);
+      };
+      window.setTimeout(keepFocusOnList, 0);
     } catch (err: any) {
       const tr = notifyClientError(err, "Suppression du produit impossible");
       setError(tr.message);
@@ -866,299 +874,21 @@ export default function App() {
 
   function renderClientNotificationCenter() {
     return (
-      <>
-        {/* Non-blocking toasts: bottom corner, newest nearest the corner */}
-        <ToastStack />
-
-        {/* Modal Client Message Box (Boîte de Message Client) — queued */}
-        {activeMessageBox && (
-          <div className="animate-backdrop fixed inset-0 z-[75] bg-black/70 backdrop-blur-sm flex items-center justify-center p-4">
-            <div
-              role="dialog"
-              aria-modal="true"
-              aria-labelledby="active-message-box-title"
-              aria-describedby="active-message-box-body"
-              className="animate-modal bg-white text-[#202923] rounded-2xl max-w-lg w-full overflow-hidden shadow-2xl border-2 border-[#D4AF62]"
-            >
-              <div
-                className={`px-5 py-3.5 flex items-center justify-between gap-3 ${
-                  activeMessageBox.type === "error"
-                    ? "bg-gradient-to-r from-red-950 to-red-800 text-white"
-                    : activeMessageBox.type === "warning"
-                    ? "bg-gradient-to-r from-amber-900 to-amber-700 text-white"
-                    : "bg-gradient-to-r from-[#02291F] to-[#063D2E] text-white"
-                }`}
-              >
-                <div className="flex items-center gap-2.5 min-w-0">
-                  <span className="w-8 h-8 rounded-full bg-white/15 flex items-center justify-center shrink-0">
-                    {activeMessageBox.type === "error" && <ShieldAlert className="w-4 h-4 text-rose-200" />}
-                    {activeMessageBox.type === "warning" && <AlertTriangle className="w-4 h-4 text-amber-200" />}
-                    {(activeMessageBox.type === "info" || activeMessageBox.type === "success") && (
-                      <CheckCircle2 className="w-4 h-4 text-[#D4AF62]" />
-                    )}
-                  </span>
-                  <span className="text-sm font-extrabold text-[#E8D4A5] truncate">
-                    {activeMessageBox.type === "error"
-                      ? t("msgbox.title.error")
-                      : activeMessageBox.type === "warning"
-                      ? t("msgbox.title.warning")
-                      : t("msgbox.title.info")}
-                  </span>
-                </div>
-                <div className="flex items-center gap-2 shrink-0">
-                  {messageQueue.length > 1 && (
-                    <span className="px-2 py-0.5 rounded-full bg-black/25 text-[10px] font-bold text-white/90">
-                      {t("msgbox.counter", { i: 1, n: messageQueue.length })}
-                    </span>
-                  )}
-                  <button
-                    type="button"
-                    onClick={closeMessageBox}
-                    aria-label={t("common.close") || "Fermer"}
-                    className="w-7 h-7 rounded-full bg-black/25 text-white font-bold text-xs flex items-center justify-center hover:bg-black/40 transition"
-                  >
-                    <X className="w-4 h-4" />
-                  </button>
-                </div>
-              </div>
-              <div className="p-6 space-y-4 text-xs">
-                <h4 id="active-message-box-title" className="text-base font-serif font-bold text-[#063D2E]">
-                  {activeMessageBox.title}
-                </h4>
-                <p
-                  id="active-message-box-body"
-                  className="text-sm text-gray-700 leading-relaxed whitespace-pre-line bg-[#F8F6F0] p-3.5 rounded-xl border border-[#D4AF62]/30"
-                >
-                  {activeMessageBox.message}
-                </p>
-                <div className="flex flex-wrap items-center gap-3 pt-1">
-                  <span className="text-[10px] text-gray-400 font-mono">
-                    {activeMessageBox.timestamp} • {t("msgbox.keyboard_hint")}
-                  </span>
-                  <div className="ms-auto flex gap-2 whitespace-nowrap">
-                    {messageQueue.length > 1 && (
-                      <button
-                        type="button"
-                        onClick={() => setMessageQueue([])}
-                        className="px-4 py-2.5 rounded-xl border border-gray-300 text-gray-600 font-bold hover:bg-gray-100 transition"
-                      >
-                        {t("msgbox.dismiss_all")}
-                      </button>
-                    )}
-                    <button
-                      ref={messageBoxOkButtonRef}
-                      type="button"
-                      onClick={closeMessageBox}
-                      className="px-6 py-2.5 rounded-xl bg-[#063D2E] hover:bg-[#02291F] text-[#D4AF62] font-extrabold text-xs shadow focus:outline-none focus:ring-2 focus:ring-[#D4AF62] focus:ring-offset-2"
-                    >
-                      {messageQueue.length > 1 ? t("msgbox.next") : t("msgbox.ok") || "Compris (Fermer)"}
-                    </button>
-                  </div>
-                </div>
-              </div>
-            </div>
-          </div>
-        )}
-
-        {/* Modal Confirmation Dialog */}
-        {activeConfirm && (
-          <div className="animate-backdrop fixed inset-0 z-[80] bg-black/75 backdrop-blur-sm flex items-center justify-center p-4">
-            <div
-              role="dialog"
-              aria-modal="true"
-              aria-labelledby="active-confirm-title"
-              className="bg-white text-[#202923] rounded-2xl max-w-md w-full overflow-hidden shadow-2xl border-2 border-[#D4AF62]"
-            >
-              <div
-                className={`px-5 py-3.5 flex items-center justify-between ${
-                  activeConfirm.danger ? "bg-red-900 text-white" : "bg-[#063D2E] text-white"
-                }`}
-              >
-                <div className="flex items-center gap-2">
-                  <ShieldAlert className="w-5 h-5 text-[#D4AF62]" />
-                  <span id="active-confirm-title" className="text-base font-extrabold text-[#D4AF62]">
-                    {activeConfirm.title}
-                  </span>
-                </div>
-                <button
-                  type="button"
-                  onClick={() => activeConfirm.resolve(false)}
-                  aria-label={t("common.close") || "Fermer"}
-                  className="w-7 h-7 rounded-full bg-black/25 text-white font-bold text-xs flex items-center justify-center hover:bg-black/40 transition"
-                >
-                  <X className="w-4 h-4" />
-                </button>
-              </div>
-              <div className="p-6 space-y-4 text-xs">
-                <p className="text-sm text-gray-700 leading-relaxed whitespace-pre-line bg-[#F8F6F0] p-3.5 rounded-xl border border-[#D4AF62]/30">
-                  {activeConfirm.message}
-                </p>
-                <div className="flex justify-end gap-3 pt-2">
-                  <button
-                    ref={confirmCancelButtonRef}
-                    type="button"
-                    onClick={() => activeConfirm.resolve(false)}
-                    className="px-5 py-2.5 rounded-xl border border-gray-300 text-gray-700 font-bold hover:bg-gray-100 transition focus:outline-none focus:ring-2 focus:ring-[#D4AF62]"
-                  >
-                    {activeConfirm.cancelLabel || t("common.cancel")}
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => activeConfirm.resolve(true)}
-                    className={`px-6 py-2.5 rounded-xl font-extrabold text-xs shadow transition ${
-                      activeConfirm.danger
-                        ? "bg-red-600 hover:bg-red-700 text-white"
-                        : "bg-[#063D2E] hover:bg-[#02291F] text-[#D4AF62]"
-                    }`}
-                  >
-                    {activeConfirm.confirmLabel || t("common.confirm")}
-                  </button>
-                </div>
-              </div>
-            </div>
-          </div>
-        )}
-      </>
+      <ClientNotificationCenter
+        messageQueue={messageQueue} setMessageQueue={setMessageQueue} closeMessageBox={closeMessageBox}
+        activeConfirm={activeConfirm} messageBoxOkButtonRef={messageBoxOkButtonRef}
+        confirmCancelButtonRef={confirmCancelButtonRef}
+      />
     );
   }
 
   function renderDeleteProductModal() {
-    if (!productToDelete) return null;
     return (
-      <div className="fixed inset-0 z-50 bg-black/75 backdrop-blur-sm flex items-center justify-center p-4">
-        <div
-          role="dialog"
-          aria-modal="true"
-          className="bg-white text-[#202923] rounded-2xl max-w-lg w-full overflow-hidden shadow-2xl border-2 border-[#D4AF62]"
-        >
-          <div className="px-6 py-4 bg-[#063D2E] text-white flex items-center justify-between border-b border-[#D4AF62]/40">
-            <div className="flex items-center gap-2">
-              <AlertTriangle className="w-5 h-5 text-[#D4AF62]" />
-              <div>
-                <h3 className="text-base font-serif font-bold text-[#D4AF62]">
-                  Suppression / Archivage du Produit
-                </h3>
-                <p className="text-[11px] text-[#E8D4A5]">Gestion du catalogue — Maison Mus Luxury</p>
-              </div>
-            </div>
-            <button aria-label="Fermer"
-              type="button"
-              onClick={() => { setProductToDelete(null); setError(""); }}
-              disabled={deletingProduct}
-              className="w-8 h-8 rounded-full bg-white/10 hover:bg-white/20 text-white font-bold flex items-center justify-center transition"
-            >
-              <X className="w-4 h-4" />
-            </button>
-          </div>
-
-          <div className="p-6 space-y-5 text-xs">
-            {error && (
-              <div className="p-3 bg-red-100 border border-red-300 text-red-800 rounded-xl text-xs font-semibold flex items-center gap-2">
-                <AlertTriangle className="w-4 h-4 text-red-800 shrink-0" />
-                <span>{error}</span>
-              </div>
-            )}
-            {/* Product info banner */}
-            <div className="p-4 rounded-xl bg-[#F8F6F0] border border-[#D4AF62]/30 flex items-center gap-4">
-              <div className="w-16 h-16 rounded-xl bg-[#063D2E]/10 border border-[#D4AF62]/40 flex items-center justify-center overflow-hidden shrink-0">
-                {productToDelete.main_image_url || productToDelete.image_url ? (
-                  <img
-                    src={mediaUrl(productToDelete.main_image_url || productToDelete.image_url)}
-                    alt=""
-                    className="w-full h-full object-cover"
-                  />
-                ) : (
-                  <ShoppingBag className="w-7 h-7 text-[#063D2E]/40" />
-                )}
-              </div>
-              <div className="space-y-1">
-                <span className="px-2 py-0.5 rounded-full bg-[#063D2E] text-[#D4AF62] text-[10px] font-mono font-bold">
-                  SKU: {productToDelete.sku}
-                </span>
-                <h4 className="text-base font-serif font-bold text-[#063D2E]">{productToDelete.name_fr}</h4>
-                <div className="text-[11px] text-gray-600 flex gap-3 font-mono">
-                  <span>
-                    Prix de vente: <strong>{Number(productToDelete.selling_price_dzd || 0).toLocaleString()} DA</strong>
-                  </span>
-                  <span>
-                    Stock: <strong>{productToDelete.total_stock ?? 0} unités</strong>
-                  </span>
-                  <span>
-                    Statut: <strong>{({ archived: "Archivé (hors vitrine)", published: "Publié (en vente)", draft: "Brouillon" } as Record<string, string>)[productToDelete.status] || productToDelete.status}</strong>
-                  </span>
-                </div>
-              </div>
-            </div>
-
-            <p className="text-gray-700 leading-relaxed font-semibold">
-              Veuillez sélectionner l'action à exécuter pour cet article :
-            </p>
-
-            {/* Action buttons */}
-            <div className="space-y-3">
-              {/* Permanent Hard Delete */}
-              <div className="p-3.5 rounded-xl border border-red-200 bg-red-50/70 space-y-2">
-                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-                  <div>
-                    <strong className="text-red-900 block font-bold text-xs">
-                      Option 1 : Suppression Définitive de la Base
-                    </strong>
-                    <span className="text-[11px] text-red-700 leading-relaxed block mt-0.5">
-                      Seulement pour un article jamais vendu ni acheté (créé par erreur). S'il a déjà été vendu
-                      (en ligne ou en magasin) ou acheté à un fournisseur, il est archivé à la place : les factures,
-                      rapports et comptes fournisseurs restent exacts. Aucune commande n'est jamais effacée.
-                    </span>
-
-                  </div>
-                  <button
-                    type="button"
-                    disabled={deletingProduct}
-                    onClick={() => handleConfirmDeleteProduct(true)}
-                    className="inline-flex items-center gap-1.5 px-4 py-2.5 rounded-xl bg-red-700 hover:bg-red-800 disabled:opacity-50 text-white font-extrabold whitespace-nowrap shadow-xs shrink-0"
-                  >
-                    <Trash2 className="w-4 h-4 text-white" />
-                    <span>{deletingProduct ? "Suppression..." : "Supprimer Définitivement"}</span>
-                  </button>
-                </div>
-              </div>
-
-              {/* Safe Soft Archive */}
-              <div className="p-3.5 rounded-xl border border-amber-200 bg-amber-50/70 space-y-2">
-                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-                  <div>
-                    <strong className="text-amber-900 block font-bold text-xs">
-                      Option 2 : Archivage Sécurisé (Recommandé)
-                    </strong>
-                    <span className="text-[11px] text-amber-800 leading-relaxed block mt-0.5">
-                      Masque le produit de la vitrine tout en préservant l'intégrité des factures et de la comptabilité. Vous pouvez le réactiver à tout moment.
-                    </span>
-                  </div>
-                  <button
-                    type="button"
-                    disabled={deletingProduct}
-                    onClick={() => handleConfirmDeleteProduct(false)}
-                    className="inline-flex items-center gap-1.5 px-4 py-2.5 rounded-xl bg-amber-600 hover:bg-amber-700 disabled:opacity-50 text-white font-extrabold whitespace-nowrap shadow-xs shrink-0"
-                  >
-                    <Archive className="w-4 h-4 text-white" />
-                    <span>{deletingProduct ? "Archivage..." : "Archiver la Pièce"}</span>
-                  </button>
-                </div>
-              </div>
-            </div>
-
-            <div className="flex justify-end pt-2 border-t border-gray-100">
-              <button
-                type="button"
-                disabled={deletingProduct}
-                onClick={() => { setProductToDelete(null); setError(""); }}
-                className="px-5 py-2 rounded-xl bg-gray-100 hover:bg-gray-200 text-gray-700 font-bold"
-              >
-                Annuler
-              </button>
-            </div>
-          </div>
-        </div>
-      </div>
+      <DeleteProductModal
+        productToDelete={productToDelete} deletingProduct={deletingProduct} error={error}
+        setProductToDelete={setProductToDelete} setError={setError}
+        handleConfirmDeleteProduct={handleConfirmDeleteProduct}
+      />
     );
   }
 
@@ -1168,142 +898,26 @@ export default function App() {
 
   if (requiresOwnerSetup) {
     return (
-      <div className="min-h-screen bg-[#02291F] text-white flex items-center justify-center p-6">
-        {renderClientNotificationCenter()}
-      {renderDeleteProductModal()}
-        <form onSubmit={handleFirstTimeSetup} className="max-w-lg w-full bg-[#063D2E] p-8 rounded-2xl border-2 border-[#D4AF62] space-y-4 shadow-2xl">
-          <div className="text-center">
-            <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-[#D4AF62] text-[#02291F] text-[10px] font-extrabold uppercase tracking-wide">
-              <Sparkles className="w-3 h-3 text-[#02291F]" />
-              <span>Première Ouverture — Configuration Initiale</span>
-            </span>
-            <h1 className="text-2xl font-serif text-white font-bold mt-2">Accès Propriétaire &amp; Direction</h1>
-            <p className="text-xs text-[#E8D4A5] mt-1">
-              Configurez vos accès et vos numéros de secours. Après enregistrement sécurisé, vos accès seront verrouillés.
-            </p>
-          </div>
-          {error && <div className="p-3 rounded bg-red-900/90 text-xs text-red-100">{error}</div>}
-          <div className="grid grid-cols-2 gap-3 text-xs">
-            <div>
-              <label htmlFor="owner-name" className="block font-bold mb-1">Nom Complet</label>
-              <input id="owner-name" value={ownerName} onChange={(e) => setOwnerName(e.target.value)} required placeholder="Nom et Prénom" className="w-full px-3 py-2 rounded bg-[#02291F] border border-[#D4AF62]/40" />
-            </div>
-            <div>
-              <label htmlFor="owner-email" className="block font-bold mb-1">Email / Identifiant</label>
-              <input id="owner-email" type="email" value={ownerEmail} onChange={(e) => setOwnerEmail(e.target.value)} required placeholder="administrateur@domaine.dz" className="w-full px-3 py-2 rounded bg-[#02291F] border border-[#D4AF62]/40" />
-            </div>
-          </div>
-          <div className="grid grid-cols-2 gap-3 text-xs">
-            <div>
-              <label htmlFor="owner-password" className="block font-bold mb-1">Mot de passe (≥ 10 car.)</label>
-              <input id="owner-password" type="password" value={ownerPassword} onChange={(e) => setOwnerPassword(e.target.value)} required className="w-full px-3 py-2 rounded bg-[#02291F] border border-[#D4AF62]/40" />
-            </div>
-            <div>
-              <label htmlFor="owner-confirm" className="block font-bold mb-1">Confirmer mot de passe</label>
-              <input id="owner-confirm" type="password" value={ownerConfirm} onChange={(e) => setOwnerConfirm(e.target.value)} required className="w-full px-3 py-2 rounded bg-[#02291F] border border-[#D4AF62]/40" />
-            </div>
-          </div>
-          <div className="p-3 rounded-xl bg-[#02291F]/80 border border-[#D4AF62]/30 space-y-1 text-xs">
-            <p className="font-bold text-[#D4AF62]">Numéro de contact :</p>
-            <label htmlFor="owner-phone" className="block text-[11px] mb-0.5">Téléphone propriétaire</label>
-            <input id="owner-phone" value={emergencyPhone} onChange={(e) => setEmergencyPhone(e.target.value)} required placeholder="+213 5XX XX XX XX" className="w-full px-2.5 py-1.5 rounded bg-[#063D2E] border border-[#D4AF62]/40 font-mono text-xs" />
-            <p className="text-[10px] text-white/50 pt-1">
-              Mot de passe oublié ? Réinitialisation via la console serveur par l'administrateur système.
-            </p>
-          </div>
-          <button type="submit" className="w-full py-3 rounded-xl bg-[#D4AF62] text-[#02291F] font-extrabold text-sm shadow-xl hover:brightness-105 transition">
-            Enregistrer et Sécuriser l'Accès Administrateur
-          </button>
-        </form>
-      </div>
+      <OwnerSetupScreen
+        overlays={<>{renderClientNotificationCenter()}{renderDeleteProductModal()}</>}
+        error={error}
+        ownerName={ownerName} setOwnerName={setOwnerName} ownerEmail={ownerEmail} setOwnerEmail={setOwnerEmail}
+        ownerPassword={ownerPassword} setOwnerPassword={setOwnerPassword} ownerConfirm={ownerConfirm} setOwnerConfirm={setOwnerConfirm}
+        emergencyPhone={emergencyPhone} setEmergencyPhone={setEmergencyPhone}
+        handleFirstTimeSetup={handleFirstTimeSetup}
+      />
     );
   }
 
   if (!user) {
     return (
-      <div className="min-h-screen bg-[#02291F] text-white flex items-center justify-center p-6 relative">
-        <div className="absolute top-5 right-5 z-20">
-          <LanguageToggle />
-        </div>
-        {renderClientNotificationCenter()}
-        {renderDeleteProductModal()}
-        <div className="max-w-md w-full bg-[#063D2E] p-8 rounded-2xl border border-[#D4AF62]/40 space-y-4 shadow-2xl">
-          <form onSubmit={handleLogin} className="space-y-4">
-            <div className="text-center">
-              <h1 className="text-2xl font-serif text-[#D4AF62] font-bold">Mus Luxury — Desktop CMS</h1>
-              <p className="text-xs text-[#E8D4A5] mt-1">Connexion Administrateur Sécurisée — Maison Mus Luxury</p>
-            </div>
-            {successMsg && <div className="p-3 rounded bg-emerald-800 text-xs text-white">{successMsg}</div>}
-            {error && <div className="p-3 rounded bg-red-900/90 text-xs text-red-100">{error}</div>}
-            <div>
-              <label htmlFor="login-email" className="block text-xs font-bold mb-1">Email / Identifiant</label>
-              <input id="login-email" type="email" value={loginEmail} onChange={(e) => setLoginEmail(e.target.value)} required placeholder="administrateur@mus-luxury.com" className="w-full px-3 py-2 rounded bg-[#02291F] border border-[#D4AF62]/40 text-sm" />
-            </div>
-            <div>
-              <label htmlFor="login-password" className="block text-xs font-bold mb-1">Mot de passe</label>
-              <input id="login-password" type="password" value={loginPassword} onChange={(e) => setLoginPassword(e.target.value)} required className="w-full px-3 py-2 rounded bg-[#02291F] border border-[#D4AF62]/40 text-sm" />
-            </div>
-            <button type="submit" className="w-full py-3 rounded-xl bg-[#D4AF62] text-[#02291F] font-extrabold text-sm hover:brightness-105 transition shadow">
-              Se connecter au CMS Desktop
-            </button>
-          </form>
-
-          {/* Serveur Endpoint Selector */}
-          <div className="pt-3 border-t border-[#D4AF62]/20">
-            <button
-              type="button"
-              onClick={() => setShowServerConfig(!showServerConfig)}
-              className="text-[11px] text-[#E8D4A5]/70 hover:text-[#D4AF62] transition flex items-center justify-between w-full"
-            >
-              <span>Serveur API : <code className="text-[#D4AF62]">{serverUrl}</code></span>
-              <span>{showServerConfig ? "▲ Masquer" : "⚙ Modifier"}</span>
-            </button>
-            {showServerConfig && (
-              <div className="mt-2.5 p-3 rounded-xl bg-[#02291F] border border-[#D4AF62]/30 space-y-2 text-xs">
-                <div className="flex gap-2">
-                  <button
-                    type="button"
-                    onClick={() => {
-                      const u = "http://127.0.0.1:8000/api/v1";
-                      configureApiBaseUrl(u);
-                      setServerUrl(u);
-                    }}
-                    className={`px-2.5 py-1 rounded text-[11px] font-bold transition ${serverUrl.includes("127.0.0.1") || serverUrl.includes("localhost") ? "bg-[#D4AF62] text-[#02291F]" : "bg-white/10 text-white hover:bg-white/20"}`}
-                  >
-                    Serveur Local (127.0.0.1:8000)
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      const u = "https://api.mus-luxury.com/api/v1";
-                      configureApiBaseUrl(u);
-                      setServerUrl(u);
-                    }}
-                    className={`px-2.5 py-1 rounded text-[11px] font-bold transition ${serverUrl.includes("mus-luxury.com") ? "bg-[#D4AF62] text-[#02291F]" : "bg-white/10 text-white hover:bg-white/20"}`}
-                  >
-                    VPS Cloud (mus-luxury.com)
-                  </button>
-                </div>
-                <input
-                  type="text"
-                  value={serverUrl}
-                  onChange={(e) => {
-                    setServerUrl(e.target.value);
-                    configureApiBaseUrl(e.target.value);
-                  }}
-                  className="w-full px-2.5 py-1.5 rounded bg-[#063D2E] border border-[#D4AF62]/40 text-xs font-mono text-white"
-                  placeholder="https://api.mus-luxury.com/api/v1"
-                />
-              </div>
-            )}
-          </div>
-
-          <p className="pt-4 text-[11px] text-white/50 text-center">
-            Mot de passe oublié ? La réinitialisation est une opération serveur
-            effectuée par l'administrateur système sur le VPS.
-          </p>
-        </div>
-      </div>
+      <LoginScreen
+        overlays={<>{renderClientNotificationCenter()}{renderDeleteProductModal()}</>}
+        successMsg={successMsg} error={error}
+        loginEmail={loginEmail} setLoginEmail={setLoginEmail} loginPassword={loginPassword} setLoginPassword={setLoginPassword}
+        handleLogin={handleLogin} showServerConfig={showServerConfig} setShowServerConfig={setShowServerConfig}
+        serverUrl={serverUrl} setServerUrl={setServerUrl}
+      />
     );
   }
 
@@ -1322,86 +936,8 @@ export default function App() {
       <UpdateDialog open={updateDialogOpen} onClose={() => setUpdateDialogOpen(false)} />
       {renderDeleteProductModal()}
       {/* Top Header */}
-      <header className="relative z-40 shrink-0 bg-gradient-to-r from-[#011C15] via-[#063D2E] to-[#02291F] text-[#D4AF62] px-6 py-3.5 flex flex-wrap justify-between items-center gap-4 border-b border-[#D4AF62]/30 shadow-md">
-        <div className="flex items-center gap-3.5">
-          <div className="w-10 h-10 rounded-2xl bg-gradient-to-br from-[#D4AF62] via-[#E8D4A5] to-[#C59E50] p-0.5 shadow-luxe-gold flex items-center justify-center shrink-0">
-            <div className="w-full h-full rounded-[14px] bg-[#02291F] flex items-center justify-center">
-              <span className="font-serif font-black text-sm text-[#D4AF62] tracking-wider">ML</span>
-            </div>
-          </div>
-          <div>
-            <div className="flex items-center gap-2">
-              <span className="font-serif font-bold text-lg text-white tracking-wide">MAISON MUS LUXURY</span>
-              <button
-                type="button"
-                onClick={() => setUpdateDialogOpen(true)}
-                title={t("update.title")}
-                className={`inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full backdrop-blur-md border text-[10px] font-bold transition ${
-                  updateState?.phase === "available"
-                    ? "bg-[#D4AF62] border-[#D4AF62] text-[#02291F] hover:bg-[#E8D4A5]"
-                    : "bg-white/10 border-[#D4AF62]/40 text-[#E8D4A5] hover:bg-white/20"
-                }`}
-              >
-                {updateState?.phase === "available" && (
-                  <span className="relative flex h-1.5 w-1.5">
-                    <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-[#02291F] opacity-60"></span>
-                    <span className="relative inline-flex rounded-full h-1.5 w-1.5 bg-[#02291F]"></span>
-                  </span>
-                )}
-                {updateState?.phase === "available"
-                  ? `${t("update.chip")} v${updateState.availableVersion}`
-                  : `CMS${updateState?.currentVersion ? ` v${updateState.currentVersion}` : ""} • Haute Couture`}
-              </button>
-            </div>
-            <p className="text-[11px] text-[#E8D4A5]/80">
-              {user?.full_name || "Direction Générale"} • {user?.role === "super_admin" ? "Direction Générale" : "Gérant Boutique"}
-            </p>
-          </div>
-        </div>
-
-        <div className="flex items-center gap-3 text-xs">
-          <div
-            className={`flex items-center gap-2 px-3 py-1.5 rounded-full text-[11px] font-bold border transition-all ${
-              netTelemetry.online
-                ? "bg-emerald-950/80 text-emerald-300 border-emerald-500/40 shadow-sm"
-                : "bg-red-950/80 text-red-200 border-red-400"
-            }`}
-          >
-            <span className="relative flex h-2 w-2">
-              {netTelemetry.online && (
-                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
-              )}
-              <span className={`relative inline-flex rounded-full h-2 w-2 ${netTelemetry.online ? "bg-emerald-500" : "bg-red-500"}`}></span>
-            </span>
-            <span>{netTelemetry.online ? t("status.online") : t("status.offline")}</span>
-          </div>
-
-          <NotificationBell />
-
-          <LanguageToggle />
-
-          <button
-            type="button"
-            onClick={handleDeltaSync}
-            className="flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl bg-white/10 hover:bg-white/20 text-[#E8D4A5] border border-[#D4AF62]/40 font-bold transition shadow-sm active:scale-95"
-            title={t("common.refresh")}
-          >
-            <span>↻</span>
-            <span>{t("common.refresh")}</span>
-          </button>
-
-          <button
-            type="button"
-            onClick={() => {
-              DesktopCmsApi.logout();
-              setUser(null);
-            }}
-            className="px-3.5 py-1.5 rounded-xl bg-red-900/80 hover:bg-red-800 text-white font-bold transition shadow-sm active:scale-95"
-          >
-            {t("topbar.logout")}
-          </button>
-        </div>
-      </header>
+      <AppHeader user={user} updateState={updateState} setUpdateDialogOpen={setUpdateDialogOpen}
+        netTelemetry={netTelemetry} handleDeltaSync={handleDeltaSync} setUser={setUser} />
 
       {/* Sidebar + scrolling workspace */}
       <div className="flex flex-1 min-h-0">

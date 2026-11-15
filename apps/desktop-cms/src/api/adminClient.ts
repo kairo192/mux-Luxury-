@@ -157,6 +157,9 @@ async function adminFetch(path: string, options: RequestInit = {}, timeoutMs = d
     headers["Authorization"] = `Bearer ${activeToken}`;
   }
 
+  // The address is fixed when the request starts, like its token: a retry
+  // after a logout and a change of server never carries this token elsewhere.
+  const url = `${apiBaseUrl}${path}`;
   const canRetry = method === "GET" || Boolean(headers["Idempotency-Key"]);
   const maxAttempts = canRetry ? 3 : 1;
 
@@ -166,7 +169,7 @@ async function adminFetch(path: string, options: RequestInit = {}, timeoutMs = d
     const startMs = Date.now();
 
     try {
-      const res = await fetch(`${apiBaseUrl}${path}`, {
+      const res = await fetch(url, {
         // The CMS must always see live data: never answer from the WebView's
         // HTTP cache (public endpoints are cacheable for the storefront, which
         // made deleted categories "come back" after a reload).
@@ -189,7 +192,12 @@ async function adminFetch(path: string, options: RequestInit = {}, timeoutMs = d
 
       if (res.status === 401) {
         const isAuthEndpoint = path.includes("/admin/auth/login");
-        if (!isAuthEndpoint) {
+        // Forget the session only if THIS request carried the current token:
+        // a late 401 for an older token (e.g. the logout of the previous
+        // session arriving after a new login) must not log the new one out.
+        const current = getAccessToken();
+        const forCurrentSession = Boolean(current) && headers["Authorization"] === `Bearer ${current}`;
+        if (!isAuthEndpoint && forCurrentSession) {
           setAccessToken(null);
         }
         const tr401 = sanitizeAndTranslateError(data, 401, path, "Authentification requise");
@@ -197,7 +205,10 @@ async function adminFetch(path: string, options: RequestInit = {}, timeoutMs = d
           status: 401,
           title: tr401.title,
           userMessage: tr401.message,
-          code: isAuthEndpoint ? tr401.code : "SESSION_EXPIRED",
+          // SESSION_EXPIRED (which sends the screen back to the login) only
+          // for the session in use; a late answer for an older session is
+          // reported as stale and changes nothing.
+          code: isAuthEndpoint ? tr401.code : (forCurrentSession ? "SESSION_EXPIRED" : "STALE_SESSION_RESPONSE"),
         });
       }
 
@@ -276,11 +287,14 @@ export const DesktopCmsApi = {
     return data;
   },
   logout: async () => {
-    try {
-      await adminFetch("/admin/auth/logout", { method: "POST" });
-    } finally {
-      setAccessToken(null);
-    }
+    // Forget the token FIRST, so nothing sent after this moment (for example a
+    // login to another server typed on the login screen) can carry it. The
+    // server-side revocation then uses the copy taken here, sent to the server
+    // that issued it (the address is read now, before anyone can change it).
+    const token = getAccessToken();
+    setAccessToken(null);
+    if (!token) return;
+    await adminFetch("/admin/auth/logout", { method: "POST", headers: { Authorization: `Bearer ${token}` } });
   },
   // Password-recovery endpoints removed. Owner-side password reset is now a
   // server-side CLI operation only (backend/scripts/emergency_reset_owner.py).

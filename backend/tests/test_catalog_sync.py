@@ -11,6 +11,7 @@ catalog so the shop keeps selling with no internet. We verify:
 import os
 import tempfile
 import time
+from datetime import datetime, timedelta, timezone
 import unittest
 import uuid
 
@@ -96,7 +97,10 @@ class TestCatalogSync(unittest.TestCase):
         self.assertEqual(v["stock_qty"], 4)
         self.assertFalse(v["deleted"])
 
-    def test_02_delta_right_after_snapshot_is_empty(self):
+    def test_02_delta_only_repeats_the_safety_margin(self):
+        # The cursor trails the clock by SYNC_CURSOR_MARGIN, so a delta right
+        # after a snapshot may repeat recent rows, but nothing older than that.
+        from app.routers.pos import SYNC_CURSOR_MARGIN
         snap = self.client.get(
             "/api/v1/admin/pos/catalog/snapshot",
             headers=self.headers,
@@ -105,8 +109,10 @@ class TestCatalogSync(unittest.TestCase):
             f"/api/v1/admin/pos/catalog/deltas?since={snap['cursor']}",
             headers=self.headers,
         ).json()
-        # Nothing changed between the snapshot's cursor and the delta read.
-        self.assertEqual(delta["stats"]["variants"], 0)
+        oldest = (datetime.now(timezone.utc) - SYNC_CURSOR_MARGIN - timedelta(seconds=2)).replace(tzinfo=None)
+        for v in delta["variants"]:
+            stamp = datetime.fromisoformat(str(v["updated_at"]).replace("T", " ").split(".")[0].rstrip("Z"))
+            self.assertGreaterEqual(stamp, oldest, v)
 
     def test_03_stock_change_appears_in_next_delta(self):
         snap = self.client.get(
@@ -135,6 +141,31 @@ class TestCatalogSync(unittest.TestCase):
         # Starting stock 4 + delta 7 = 11.
         self.assertEqual(matching[0]["stock_qty"], 11)
         self.assertFalse(matching[0]["deleted"])
+
+    def test_04_cursor_is_taken_before_the_read(self):
+        # A row changed while the snapshot is being read must come back in the
+        # next delta: the cursor is the second the read started, never later.
+        started = datetime.now(timezone.utc).replace(microsecond=0)
+        snap = self.client.get(
+            "/api/v1/admin/pos/catalog/snapshot",
+            headers=self.headers,
+        ).json()
+        from app.routers.pos import SYNC_CURSOR_MARGIN
+        finished = datetime.now(timezone.utc).replace(microsecond=0)
+        cursor = datetime.strptime(snap["cursor"], "%Y-%m-%dT%H:%M:%SZ").replace(tzinfo=timezone.utc)
+        self.assertGreaterEqual(cursor, started - SYNC_CURSOR_MARGIN)
+        self.assertLessEqual(cursor, finished - SYNC_CURSOR_MARGIN)  # taken before the read, minus the margin
+        r = self.client.post(
+            f"/api/v1/admin/variants/{self.variant_id}/adjust-stock",
+            headers=self.headers,
+            json={"change_qty": 1, "reason": "same-second change"},
+        )
+        self.assertEqual(r.status_code, 200, r.text)
+        delta = self.client.get(
+            f"/api/v1/admin/pos/catalog/deltas?since={snap['cursor']}",
+            headers=self.headers,
+        ).json()
+        self.assertIn(self.variant_id, [v["id"] for v in delta["variants"]])
 
 
 if __name__ == "__main__":

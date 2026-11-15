@@ -1,0 +1,4 @@
+# CodeRabbit: review the shop's code, not the AI assistants' skill files.
+reviews:
+  path_filters:
+    - "!.agent/**"

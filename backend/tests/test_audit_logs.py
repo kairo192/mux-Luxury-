@@ -96,7 +96,7 @@ class TestAuditLogs(unittest.TestCase):
         import re
         from pathlib import Path
         from app.main import _AUDIT_ACTION_FR, _AUDIT_ENTITY_FR
-        src = "\n".join(p.read_text(encoding="utf-8") for p in (Path(__file__).resolve().parents[1] / "app").glob("*.py"))
+        src = "\n".join(p.read_text(encoding="utf-8") for p in (Path(__file__).resolve().parents[1] / "app").rglob("*.py"))
         calls = re.findall(r'log_audit\([^,]+,[^,]+,\s*"([a-z_]+)",\s*"([a-z_]+)"', src)
         self.assertGreater(len(calls), 40)
         missing = sorted({a for a, _ in calls if a not in _AUDIT_ACTION_FR} | {e for _, e in calls if e not in _AUDIT_ENTITY_FR})

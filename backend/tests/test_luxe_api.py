@@ -31,6 +31,15 @@ from app.seed import seed_initial_data
 from app.security import reset_rate_limits
 
 
+
+def storefront_source(repo_root) -> str:
+    """The shop's code: index.html plus its scripts and styles (split out of the page into src/)."""
+    from pathlib import Path as _P
+    sf = _P(repo_root) / "apps" / "storefront"
+    parts = [(sf / "index.html").read_text(encoding="utf-8")]
+    parts += [p.read_text(encoding="utf-8") for p in sorted((sf / "src").rglob("*")) if p.suffix in (".js", ".css")]
+    return "\n".join(parts)
+
 def _real_image(fmt: str = "PNG", size=(16, 16)) -> bytes:
     """A small real picture: uploads are decoded and re-encoded, so a bare
     file signature followed by junk is (rightly) refused."""
@@ -1317,11 +1326,7 @@ console.log("ALL_TSX_COMPILED_OK");
         self.assertIn("ALL_TSX_COMPILED_OK", res.stdout)
 
         # 2. Enforce Strict Architecture Separation: Public Website must NEVER contain Web CMS or Admin Login
-        for pub_file in [
-            os.path.join(repo_root, "apps", "storefront", "index.html"),
-        ]:
-            with open(pub_file, "r", encoding="utf-8") as pf:
-                content = pf.read()
+        for pub_file, content in [("apps/storefront (index.html + src/)", storefront_source(repo_root))]:
             self.assertNotIn("/admin/auth/login", content, f"Public website file {pub_file} must not contain admin login")
             self.assertNotIn("DesktopCmsApi", content, f"Public website file {pub_file} must not import DesktopCmsApi")
 
@@ -1335,12 +1340,9 @@ console.log("ALL_TSX_COMPILED_OK");
         self.assertGreaterEqual(len(methods), 34)
 
         src_dir = os.path.join(repo_root, "apps", "desktop-cms", "src")
-        ui_parts = [__import__("pathlib").Path(os.path.join(src_dir, "App.tsx")).read_text(encoding="utf-8")]
-        for sub in ("pages", "components", "utils"):
-            sub_dir = os.path.join(src_dir, sub)
-            if os.path.isdir(sub_dir):
-                for p in __import__("pathlib").Path(sub_dir).glob("*.[tj]s*"):
-                    ui_parts.append(p.read_text(encoding="utf-8"))
+        # Every screen file, including the parts split out of big pages (src/app/, pages/pos/, …).
+        ui_parts = [p.read_text(encoding="utf-8") for p in __import__("pathlib").Path(src_dir).rglob("*.[tj]s*")
+                    if p.name != "adminClient.ts"]
         ui_text = "".join(ui_parts)
         missing = [m for m in methods if f"DesktopCmsApi.{m}" not in ui_text]
         self.assertEqual(missing, [], f"Unwired DesktopCmsApi methods in Desktop CMS UI: {missing}")
@@ -1666,8 +1668,7 @@ console.log("ALL_TSX_COMPILED_OK");
         repo_root = os.path.dirname(os.path.dirname(os.path.dirname(__file__)))
 
         # 1. Verify apps/storefront/index.html has zero fake orders (Yasmine Khelifi / LUX-25847-DZ) and empty initial cart/orders
-        with open(os.path.join(repo_root, "apps", "storefront", "index.html"), "r", encoding="utf-8") as f:
-            shtml = f.read()
+        shtml = storefront_source(repo_root)
         self.assertNotIn("Yasmine Khelifi", shtml)
         self.assertNotIn("LUX-25847-DZ", shtml)
         self.assertIn("cart: []", shtml)
@@ -1925,6 +1926,8 @@ console.log("CLIENT_NOTIFIER_ALL_TESTS_PASSED");
                 self.assertIn("catch", fn_body, f"Async handler {fn_name} in {rel} is missing a catch block")
 
         app_tsx = (repo_root / "apps" / "desktop-cms" / "src" / "App.tsx").read_text(encoding="utf-8")
+        # App's notification centre, header and login screens live in src/app/ since the split.
+        app_tsx += "".join(p.read_text(encoding="utf-8") for p in (repo_root / "apps" / "desktop-cms" / "src" / "app").glob("*.tsx"))
         self.assertIn("renderClientNotificationCenter", app_tsx)
         self.assertIn("role=\"dialog\"", app_tsx)
         self.assertIn("aria-modal=\"true\"", app_tsx)
@@ -1953,7 +1956,7 @@ console.log("CLIENT_NOTIFIER_ALL_TESTS_PASSED");
                     self.assertNotIn(bad, text, f"Forbidden sandbox path token {bad!r} found in {p}")
 
         # 2. Verify every /assets/... image referenced in apps/storefront/index.html physically exists in apps/storefront/public/assets/
-        shtml = (repo_root / "apps" / "storefront" / "index.html").read_text(encoding="utf-8")
+        shtml = storefront_source(repo_root)
         referenced_assets = set(_re.findall(r"/assets/([a-zA-Z0-9_.\-]+\.(?:png|jpg|jpeg|webp))", shtml))
         self.assertGreaterEqual(len(referenced_assets), 19)
         for asset_name in referenced_assets:
@@ -1974,7 +1977,7 @@ console.log("CLIENT_NOTIFIER_ALL_TESTS_PASSED");
         pkg = _json.loads((repo_root / "apps" / "desktop-cms" / "package.json").read_text(encoding="utf-8"))
         self.assertIn("@tauri-apps/plugin-store", pkg["dependencies"])
 
-        shtml = (repo_root / "apps" / "storefront" / "index.html").read_text(encoding="utf-8")
+        shtml = storefront_source(repo_root)
         # Customer storefront must NEVER render editable Wilaya tariff inputs
         self.assertNotIn("updateWilayaRateLive", shtml)
         # Customer storefront must wire live backend endpoints for coupons, tracking, and static pages
@@ -2086,7 +2089,7 @@ console.log("CLIENT_NOTIFIER_ALL_TESTS_PASSED");
         from pathlib import Path
         repo_root = Path(__file__).resolve().parents[2]
 
-        shtml = (repo_root / "apps" / "storefront" / "index.html").read_text(encoding="utf-8")
+        shtml = storefront_source(repo_root)
 
         # 1. Verify Storefront Customer Message Box Modal & DOM XSS Escaping in index.html
         self.assertIn("id=\"store-message-box-modal\"", shtml)
@@ -2297,23 +2300,24 @@ flushOfflineMutationQueue(async () => true).then((res) => {
         from pathlib import Path
         repo_root = Path(__file__).resolve().parents[2]
 
+        # The 8 deliverables of the original brief, at their current place (docs/README.md).
         required_docs = [
-            "docs/PRODUCTION_ACCEPTANCE_REPORT.md",
-            "docs/ARCHITECTURE.md",
-            "docs/API_CONTRACT.md",
-            "docs/SECURITY.md",
-            "docs/DEPLOYMENT.md",
+            "docs/archive/PRODUCTION_ACCEPTANCE_REPORT.md",
+            "docs/architecture/SYSTEM_ARCHITECTURE.md",
+            "docs/api/API_CONTRACT.md",
+            "docs/security/SECURITY_HARDENING.md",
+            "docs/deployment/VPS_DEPLOYMENT.md",
             "docs/TESTING.md",
-            "docs/BACKUP_AND_RECOVERY.md",
-            "docs/PRODUCTION_AUDIT.md",
-            "docs/openapi.json",
+            "docs/OPERATIONS_GUIDE.md",
+            "docs/archive/PRODUCTION_AUDIT.md",
+            "docs/api/openapi.json",
         ]
         for rel in required_docs:
             p = repo_root / rel
             self.assertTrue(p.is_file(), f"Missing required Master Prompt deliverable: {rel}")
             self.assertGreater(p.stat().st_size, 1200, f"Deliverable {rel} is too short ({p.stat().st_size} bytes)")
 
-        openapi_data = _json.loads((repo_root / "docs" / "openapi.json").read_text(encoding="utf-8"))
+        openapi_data = _json.loads((repo_root / "docs" / "api" / "openapi.json").read_text(encoding="utf-8"))
         self.assertIn("/api/v1/orders", openapi_data["paths"])
         self.assertIn("/api/v1/admin/audit-logs", openapi_data["paths"])
         self.assertIn("/api/v1/ready", openapi_data["paths"])
@@ -2650,7 +2654,7 @@ flushOfflineMutationQueue(async () => true).then((res) => {
 
         # Verify the live shop includes cart quantity controls (remove at 0), brand display and the commune selector
         repo_root = Path(__file__).resolve().parents[2]
-        sf_code = (repo_root / "apps" / "storefront" / "index.html").read_text(encoding="utf-8")
+        sf_code = storefront_source(repo_root)
         self.assertIn("function updateCartItemQty", sf_code)
         self.assertIn("state.cart.splice", sf_code)
         self.assertIn("p.brand && p.brand.name", sf_code)
@@ -2745,9 +2749,13 @@ flushOfflineMutationQueue(async () => true).then((res) => {
             # (backend/luxe_store.sqlite3) that a fresh CI machine does not have.
             import sqlite3
             db_file = Path(tmpdir) / "shop.sqlite3"
-            with sqlite3.connect(db_file) as db:
-                db.execute("CREATE TABLE products (id INTEGER PRIMARY KEY, name TEXT)")
-                db.execute("INSERT INTO products (name) VALUES ('Sac test')")
+            db = sqlite3.connect(db_file)
+            try:
+                with db:  # commits; close() below releases the file (Windows cannot delete open files)
+                    db.execute("CREATE TABLE products (id INTEGER PRIMARY KEY, name TEXT)")
+                    db.execute("INSERT INTO products (name) VALUES ('Sac test')")
+            finally:
+                db.close()
             env["LUXE_SQLITE_PATH"] = str(db_file)
             res = subprocess.run(["bash", str(bkp_script)], cwd=str(repo_root), env=env, capture_output=True, text=True)
             self.assertEqual(res.returncode, 0, res.stderr)

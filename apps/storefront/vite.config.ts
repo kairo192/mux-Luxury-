@@ -1,6 +1,6 @@
 import { defineConfig } from "vite";
 
-// The shop is a single index.html (no React). In development the API runs on
+// The shop is index.html + vanilla JS (src/shop/, no React). In development the API runs on
 // :8000; product/category pages and the sitemap go through the API exactly
 // like in production (see infrastructure/nginx/nginx.conf), so link previews
 // and schema.org tags can be checked locally. Start the API with

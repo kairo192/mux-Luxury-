@@ -218,6 +218,7 @@ export function ProductsPage(props: ProductsPageProps) {
             <div className="relative">
               <Search className="w-3.5 h-3.5 absolute left-3 top-2.5 text-gray-400" />
               <input
+                data-products-search
                 value={prodSearch}
                 onChange={(e) => setProdSearch(e.target.value)}
                 placeholder={t("catalog.search_placeholder")}

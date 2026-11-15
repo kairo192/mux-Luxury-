@@ -23,3 +23,5 @@ node_modules/
 dist/
 target/
 *.log
+# AI assistants' skill files (not part of the shop)
+.agent/

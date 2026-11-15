@@ -134,7 +134,8 @@ CREATE TABLE IF NOT EXISTS products (
     tags VARCHAR(400),
     deleted_at TIMESTAMP,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    variants_marked_on_archive INTEGER NOT NULL DEFAULT 0
 );
 
 CREATE TABLE IF NOT EXISTS product_images (
@@ -167,6 +168,7 @@ CREATE TABLE IF NOT EXISTS product_variants (
     weight_grams INTEGER CHECK (weight_grams IS NULL OR weight_grams >= 0),
     low_stock_threshold INTEGER NOT NULL DEFAULT 3 CHECK (low_stock_threshold >= 0),
     is_active INTEGER NOT NULL DEFAULT 1,
+    archived_with_product INTEGER NOT NULL DEFAULT 0,
     combination_signature VARCHAR(255) NOT NULL,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     UNIQUE(product_id, combination_signature)

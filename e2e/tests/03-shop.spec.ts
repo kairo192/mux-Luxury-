@@ -29,6 +29,89 @@ async function addBagToCart(page: Page) {
 }
 
 test.describe("shop", () => {
+  test("an order already recorded is confirmed with what the shop recorded", async ({ page }) => {
+    const w = watch(page);
+    const phone = "0773" + String(Date.now()).slice(-6);
+    const p = await createProduct({ name: "Sac Doublon", price: 6000, stock: 5, categoryId: cat.id, attrKey: cat.attrKey, value: cat.value });
+    const addP = async () => {
+      await page.goto(`${SHOP}/produit/${p.slug}`);
+      const modal = page.locator("#product-detail-modal");
+      await expect(modal).toContainText("Sac Doublon");
+      await modal.getByRole("button", { name: /Ajouter au panier/ }).first().click();
+    };
+    // The order the shop really holds (as if the first answer had been lost):
+    // Alger, by Stop-Desk when Alger offers it.
+    const zones = (await publicApi<any>("/delivery-zones")).body.items as any[];
+    const alger = zones.find((z) => z.wilaya_code === "16");
+    const desk = Boolean(alger?.rates?.stop_desk) && Number(alger.rates.stop_desk.is_supported ?? 1) !== 0;
+    const recorded = await (await fetch(`${process.env.E2E_API_URL}/api/v1/orders`, {
+      method: "POST", headers: { "Content-Type": "application/json", "Idempotency-Key": `dup-${phone}` },
+      body: JSON.stringify({ full_name: "Nadia Enregistrée", phone, wilaya_code: "16", commune: "Alger Centre",
+        delivery_address: "5 rue du Premier Envoi, Alger", delivery_method: desk ? "stop_desk" : "home",
+        items: [{ variant_id: p.variantId, quantity: 1 }] }),
+    })).json();
+    await addP();
+    await fillCheckout(page, phone);                 // different name in the form now…
+    await page.locator("#chk-wilaya").selectOption("09");   // …and another wilaya (Blida), home delivery
+    await page.route("**/api/v1/orders", (route) => route.request().method() === "POST"
+      ? route.fulfill({ status: 409, contentType: "application/json",
+          body: JSON.stringify({ detail: `Commande déjà enregistrée (référence ${recorded.order_reference})` }) })
+      : route.continue());
+    const drawer = page.locator("#cart-checkout-modal");
+    await drawer.getByRole("button", { name: /Confirmer la commande/ }).click();
+    await expect(drawer).toContainText("Commande confirmée");
+    await expect(drawer).toContainText(recorded.order_reference);
+    await expect(drawer).toContainText("Nadia Enregistrée");   // the shop's record, not the form
+    await expect(drawer).toContainText("16 - ");                // recorded wilaya…
+    await expect(drawer).not.toContainText("09 - ");
+    await expect(drawer).toContainText(desk ? "Stop-Desk (Bureau relais)" : "Livraison à domicile"); // …and method
+    await expect(drawer).toContainText("Total à payer");
+    await expect(drawer.locator("[data-estimate-note]")).toHaveCount(0);
+
+    // Same, but order tracking cannot be read either: the amount is labelled an estimate.
+    await page.evaluate(() => (window as any).resetConfirmedOrder());
+    await addP();
+    await fillCheckout(page, phone);
+    await page.route("**/api/v1/orders/track*", (route) => route.abort());
+    await drawer.getByRole("button", { name: /Confirmer la commande/ }).click();
+    await expect(drawer).toContainText("Commande confirmée");
+    await expect(drawer).toContainText("Total estimé");
+    await expect(drawer.locator("[data-estimate-note]")).toBeVisible();
+    await page.unroute("**/api/v1/orders/track*");
+    await page.unroute("**/api/v1/orders");
+    w.expectClean([/orders/]);
+  });
+
+  test("cart changes made while an order is being sent stay in the cart", async ({ page }) => {
+    const w = watch(page);
+    const p = await createProduct({ name: "Sac Pendant", price: 4000, stock: 5, categoryId: cat.id, attrKey: cat.attrKey, value: cat.value });
+    await page.goto(`${SHOP}/produit/${p.slug}`);
+    await expect(page.locator("#product-detail-modal")).toContainText("Sac Pendant");
+    await page.evaluate(({ pid, vid }) => (window as any).addToCartInternal(pid, vid, 2, false), { pid: p.productId, vid: p.variantId });
+    await fillCheckout(page, "0772" + String(Date.now()).slice(-6));
+    // Hold the order request: while it is on its way, take one piece out and
+    // add one back. The order is for 2; the piece added meanwhile must stay.
+    let release!: () => void;
+    const held = new Promise<void>((r) => { release = r; });
+    await page.route("**/api/v1/orders", async (route) => {
+      if (route.request().method() === "POST") await held;
+      await route.continue();
+    });
+    const sent = page.waitForRequest((r) => r.url().endsWith("/api/v1/orders") && r.method() === "POST");
+    await page.locator("#cart-checkout-modal").getByRole("button", { name: /Confirmer la commande/ }).click();
+    const req = await sent;
+    expect(JSON.parse(req.postData() || "{}").items).toEqual([{ variant_id: p.variantId, quantity: 2 }]);
+    await page.evaluate((vid) => { (window as any).updateCartItemQty(vid, -1); (window as any).updateCartItemQty(vid, 1); }, p.variantId);
+    // A second click while the first order is on its way changes nothing.
+    await page.evaluate(() => (window as any).submitGuestCheckoutOrder());
+    release();
+    await expect(page.locator("#cart-checkout-modal")).toContainText("Commande confirmée");
+    const cart = await page.evaluate(() => JSON.parse(localStorage.getItem("luxe_store_cart") || "[]"));
+    expect(cart).toEqual([{ variantId: p.variantId, productId: p.productId, quantity: 1 }]);
+    await page.unroute("**/api/v1/orders");
+    w.expectClean();
+  });
+
   test("home page lists the category and the product, without errors", async ({ page }) => {
     const w = watch(page);
     await page.goto(SHOP);
