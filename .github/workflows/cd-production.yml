@@ -68,6 +68,8 @@ jobs:
     name: Wait for CI
     needs: resolve-ref
     runs-on: ubuntu-latest
+    outputs:
+      sha: ${{ steps.sha.outputs.value }}
     steps:
       # The script comes from this workflow's commit: the release being deployed
       # may be older than the script (v1.0.0 was).
@@ -93,7 +95,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          ref: ${{ needs.resolve-ref.outputs.ref }}
+          ref: ${{ needs.wait-for-ci.outputs.sha }}
 
       - uses: actions/setup-node@v4
         with:
