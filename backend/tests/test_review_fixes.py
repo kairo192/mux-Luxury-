@@ -224,6 +224,45 @@ class TestReviewFixes(unittest.TestCase):
         r = self.client.put(f"/api/v1/admin/products/{body['id']}", headers=self.headers, json=update)
         self.assertEqual(r.status_code, 200, r.text)
 
+    def test_offline_sales_synced_together_on_a_closed_register_count_once(self):
+        """Two tills sync at the same moment onto the same closed register: both
+        sales are kept, and the register's expected cash and variance include
+        both (no lost update, no deadlock on PostgreSQL)."""
+        import threading
+        a = self._ok_product(tag="X", variants=[{"color": "Noir"}])["variants"][0]["id"]
+        b = self._ok_product(tag="Y", variants=[{"color": "Noir"}])["variants"][0]["id"]
+        cur = self.client.get("/api/v1/admin/pos/register/current", headers=self.headers).json()
+        if cur.get("session"):
+            self.client.post("/api/v1/admin/pos/register/close", headers=self.headers,
+                             json={"counted_cash_dzd": cur["session"]["expected_cash_dzd"]})
+        opened = self.client.post("/api/v1/admin/pos/register/open", headers=self.headers, json={"opening_float_dzd": 0})
+        self.assertEqual(opened.status_code, 201, opened.text)
+        sid = opened.json()["id"]
+        # The drawer held both sales' cash (10 000 DA) when it was counted.
+        r = self.client.post("/api/v1/admin/pos/register/close", headers=self.headers, json={"counted_cash_dzd": 10000})
+        self.assertEqual(r.status_code, 200, r.text)
+        results = []
+
+        def sync(vid, tag):
+            body = {"operations": [{
+                "client_txn_id": f"rv-{tag}-{self.suffix}", "register_session_id": sid,
+                "payload": {"items": [{"variant_id": vid, "quantity": 1}],
+                            "payments": [{"method": "cash", "amount_dzd": 5000}]},
+            }]}
+            results.append(self.client.post("/api/v1/admin/pos/sync", headers=self.headers, json=body).json())
+
+        threads = [threading.Thread(target=sync, args=(a, "a")), threading.Thread(target=sync, args=(b, "b"))]
+        for t in threads:
+            t.start()
+        for t in threads:
+            t.join(30)
+        statuses = sorted(r["results"][0]["status"] for r in results)
+        self.assertEqual(statuses, ["created", "created"], results)
+        sessions = self.client.get("/api/v1/admin/pos/register/sessions", headers=self.headers).json()
+        sess = next(x for x in (sessions.get("items") or sessions) if x["id"] == sid)
+        self.assertEqual(sess["expected_cash_dzd"], 10000, sess)
+        self.assertEqual(sess["variance_dzd"], 0, sess)
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -264,12 +264,16 @@ async function submitGuestCheckoutOrder() {
   // retry re-sends the SAME key, and the server refuses a second order.
   if (state.placingOrder) return;
   state.placingOrder = true;
+  // The key is kept until an order is confirmed: re-using a key that created
+  // nothing is harmless, while dropping one too early could let a retry
+  // create a second order. `checkoutIdemItems` holds what was sent by the
+  // first attempt that got no clear answer (lost connection, server error,
+  // too many requests): if the shop later says the key's order exists, that
+  // is the order it recorded.
   if (!state.checkoutIdemKey) {
     const rnd = (window.crypto && crypto.randomUUID) ? crypto.randomUUID() : `${Date.now()}-${Math.random().toString(36).slice(2)}`;
     state.checkoutIdemKey = `storefront-${rnd}`;
-    // What was first sent with this key: if the shop answers later that the
-    // key's order already exists, THIS is what it recorded.
-    state.checkoutIdemItems = orderItems.map((it) => ({ ...it }));
+    state.checkoutIdemItems = null;
   }
 
   try {
@@ -301,14 +305,21 @@ async function submitGuestCheckoutOrder() {
     if (dupRef) {
       orderRef = dupRef;
       recordedItems = state.checkoutIdemItems || orderItems;
+      // The shop's own figures for that order (the reply only carries its
+      // number): read them back from order tracking.
+      try {
+        const rec = await fetchPublicJson(
+          `/api/v1/orders/track?reference=${encodeURIComponent(dupRef)}&phone=${encodeURIComponent(phone)}`,
+          { method: "GET" }
+        );
+        if (rec && rec.total_dzd != null) serverTotals = rec;
+      } catch (_e) { /* the estimate below is shown instead */ }
     } else {
-      // The shop answered and refused (stock, details…): no order exists
-      // under this key, so the next attempt starts fresh. Without an answer
-      // (connection lost, server error) the key is kept: a retry cannot
-      // create a second order.
-      if (err && err.status >= 400 && err.status < 500) {
-        state.checkoutIdemKey = null;
-        state.checkoutIdemItems = null;
+      // No clear answer: this attempt may have been recorded. Remember what
+      // it sent (only the first such attempt; a refusal proves nothing).
+      const answered = err && err.status >= 400 && err.status < 500 && err.status !== 429;
+      if (!answered && !state.checkoutIdemItems) {
+        state.checkoutIdemItems = orderItems.map((it) => ({ ...it }));
       }
       state.placingOrder = false;
       showToast(String((err && err.message) || "Erreur lors de l'enregistrement de votre commande."), "error");

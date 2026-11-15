@@ -1387,9 +1387,12 @@ def _reconcile_closed_register(conn, session_id: int, sale_ref: str, user_id: in
     cur = conn.cursor()
     # Two sales synced at the same moment must not both recompute from totals
     # that miss the other one: on PostgreSQL the session row is locked first
-    # (the second waits, then reads the first's sale). SQLite has no FOR
-    # UPDATE; its BEGIN IMMEDIATE already lets one writer through at a time.
-    lock = " FOR UPDATE" if isinstance(conn, PostgresCompatConnection) else ""
+    # (the second waits, then reads the first's sale). NO KEY UPDATE, not
+    # UPDATE: each transaction already holds a KEY SHARE lock on this row from
+    # inserting its sale (foreign key), which FOR UPDATE would wait on — a
+    # deadlock. SQLite has no row locks; its BEGIN IMMEDIATE already lets one
+    # writer through at a time.
+    lock = " FOR NO KEY UPDATE" if isinstance(conn, PostgresCompatConnection) else ""
     cur.execute("SELECT * FROM cash_register_sessions WHERE id = ?" + lock, (session_id,))
     sess = cur.fetchone()
     if not sess or sess["status"] != "closed" or sess["counted_cash_dzd"] is None:
