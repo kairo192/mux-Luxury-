@@ -1,5 +1,5 @@
 import { test, expect } from "@playwright/test";
-import { api, createProduct, ensureCategory, watch, cmsLogin, cmsOpen } from "../support/helpers";
+import { api, createProduct, ensureCategory, watch, cmsLogin, cmsOpen, uid } from "../support/helpers";
 
 // The parts split out of the big CMS screens (App.tsx, CategoryBuilderPage.tsx,
 // PosPage.tsx) each open, show their content and close again, with no error.
@@ -56,6 +56,22 @@ test("products: the delete / archive dialog opens and cancels", async ({ page })
   await dialog.getByRole("button", { name: "Annuler" }).click();
   await expect(dialog).toHaveCount(0);
   await expect(opener).toBeFocused();           // back on the button that opened it
+  w.expectClean();
+});
+
+test("products: after a deletion, keyboard focus lands on the product search", async ({ page }) => {
+  const w = watch(page);
+  const name = `Pochette Jetable ${uid()}`;
+  await createProduct({ name, price: 3000, stock: 1, categoryId: cat.id, attrKey: cat.attrKey, value: cat.value });
+  await cmsLogin(page);
+  await cmsOpen(page, "Produits");
+  const rows = () => page.locator("main tr:visible").filter({ hasText: name }); // other screens stay mounted, hidden
+  await rows().getByRole("button", { name: "Supprimer" }).click();
+  const dialog = page.getByRole("dialog", { name: "Suppression / Archivage du Produit" });
+  await dialog.getByRole("button", { name: /Supprimer Définitivement/ }).click();
+  await expect(dialog).toHaveCount(0);
+  await expect(rows()).toHaveCount(0);          // its row (and « Supprimer » button) is gone
+  await expect(page.locator("[data-products-search]")).toBeFocused();
   w.expectClean();
 });
 

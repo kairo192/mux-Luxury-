@@ -29,6 +29,34 @@ async function addBagToCart(page: Page) {
 }
 
 test.describe("shop", () => {
+  test("cart changes made while an order is being sent stay in the cart", async ({ page }) => {
+    const w = watch(page);
+    const p = await createProduct({ name: "Sac Pendant", price: 4000, stock: 5, categoryId: cat.id, attrKey: cat.attrKey, value: cat.value });
+    await page.goto(`${SHOP}/produit/${p.slug}`);
+    await expect(page.locator("#product-detail-modal")).toContainText("Sac Pendant");
+    await page.evaluate(({ pid, vid }) => (window as any).addToCartInternal(pid, vid, 2, false), { pid: p.productId, vid: p.variantId });
+    await fillCheckout(page, "0772" + String(Date.now()).slice(-6));
+    // Hold the order request: while it is on its way, take one piece out and
+    // add one back. The order is for 2; the piece added meanwhile must stay.
+    let release!: () => void;
+    const held = new Promise<void>((r) => { release = r; });
+    await page.route("**/api/v1/orders", async (route) => {
+      if (route.request().method() === "POST") await held;
+      await route.continue();
+    });
+    const sent = page.waitForRequest((r) => r.url().endsWith("/api/v1/orders") && r.method() === "POST");
+    await page.locator("#cart-checkout-modal").getByRole("button", { name: /Confirmer la commande/ }).click();
+    const req = await sent;
+    expect(JSON.parse(req.postData() || "{}").items).toEqual([{ variant_id: p.variantId, quantity: 2 }]);
+    await page.evaluate((vid) => { (window as any).updateCartItemQty(vid, -1); (window as any).updateCartItemQty(vid, 1); }, p.variantId);
+    release();
+    await expect(page.locator("#cart-checkout-modal")).toContainText("Commande confirmée");
+    const cart = await page.evaluate(() => JSON.parse(localStorage.getItem("luxe_store_cart") || "[]"));
+    expect(cart).toEqual([{ variantId: p.variantId, productId: p.productId, quantity: 1 }]);
+    await page.unroute("**/api/v1/orders");
+    w.expectClean();
+  });
+
   test("home page lists the category and the product, without errors", async ({ page }) => {
     const w = watch(page);
     await page.goto(SHOP);

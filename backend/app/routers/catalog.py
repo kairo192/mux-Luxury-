@@ -1750,9 +1750,17 @@ def _restore_variants_with_product(cur, product_id: int) -> None:
             (product_id,),
         )
     else:
-        # Archived before the markers existed: nothing tells the variants
-        # apart, so they all come back (the previous behaviour).
-        cur.execute("UPDATE product_variants SET is_active = 1 WHERE product_id = ? AND is_active = 0", (product_id,))
+        # Archived before the markers existed: the variants come back (the
+        # previous behaviour), except those deleted on their own (kept only
+        # because of their history) — the audit trail records each of those.
+        cur.execute(
+            """UPDATE product_variants SET is_active = 1
+               WHERE product_id = ? AND is_active = 0
+                 AND CAST(id AS TEXT) NOT IN (
+                     SELECT entity_id FROM audit_logs
+                      WHERE action = 'deactivate_variant' AND entity_type = 'product_variant')""",
+            (product_id,),
+        )
     cur.execute("UPDATE products SET variants_marked_on_archive = 0 WHERE id = ?", (product_id,))
 
 

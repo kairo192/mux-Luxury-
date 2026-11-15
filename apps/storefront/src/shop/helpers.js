@@ -109,7 +109,10 @@ function formatStorefrontError(data, status) {
 
 function saveCartToStorage() {
   try {
-    localStorage.setItem("luxe_store_cart", JSON.stringify(state.cart));
+    // Only what the cart is (the in-flight order bookkeeping is not kept).
+    localStorage.setItem("luxe_store_cart", JSON.stringify(
+      state.cart.map(({ variantId, productId, quantity }) => ({ variantId, productId, quantity }))
+    ));
   } catch (_e) {}
 }
 

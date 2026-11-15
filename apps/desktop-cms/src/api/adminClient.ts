@@ -193,7 +193,8 @@ async function adminFetch(path: string, options: RequestInit = {}, timeoutMs = d
         // a late 401 for an older token (e.g. the logout of the previous
         // session arriving after a new login) must not log the new one out.
         const current = getAccessToken();
-        if (!isAuthEndpoint && current && headers["Authorization"] === `Bearer ${current}`) {
+        const forCurrentSession = Boolean(current) && headers["Authorization"] === `Bearer ${current}`;
+        if (!isAuthEndpoint && forCurrentSession) {
           setAccessToken(null);
         }
         const tr401 = sanitizeAndTranslateError(data, 401, path, "Authentification requise");
@@ -201,7 +202,10 @@ async function adminFetch(path: string, options: RequestInit = {}, timeoutMs = d
           status: 401,
           title: tr401.title,
           userMessage: tr401.message,
-          code: isAuthEndpoint ? tr401.code : "SESSION_EXPIRED",
+          // SESSION_EXPIRED (which sends the screen back to the login) only
+          // for the session in use; a late answer for an older session is
+          // reported as stale and changes nothing.
+          code: isAuthEndpoint ? tr401.code : (forCurrentSession ? "SESSION_EXPIRED" : "STALE_SESSION_RESPONSE"),
         });
       }
 

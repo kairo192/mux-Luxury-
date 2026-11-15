@@ -390,6 +390,8 @@ export default function App() {
         setProdCategoryId(catData.items[0].id);
       }
     } catch (err: any) {
+      // A late answer for a session that has already ended: nothing to show.
+      if (err?.code === "STALE_SESSION_RESPONSE") return;
       if (err?.code === "SESSION_EXPIRED" || err?.message === "SESSION_EXPIRED") {
         setUser(null);
         const msg = "Par mesure de sécurité, votre session a expiré. Vos brouillons locaux sont conservés — veuillez vous reconnecter.";
@@ -642,12 +644,17 @@ export default function App() {
       await loadAllWorkspaceData();
       // The dialog gave focus back to the row's « Supprimer » button, which the
       // refreshed list no longer has: keep keyboard users on the product list.
-      requestAnimationFrame(() => {
+      // The list re-renders a moment later, so watch briefly (1.5 s).
+      const started = Date.now();
+      const keepFocusOnList = () => {
         const active = document.activeElement;
         if (!active || active === document.body || !active.isConnected) {
           document.querySelector<HTMLElement>("[data-products-search]")?.focus();
+          return;
         }
-      });
+        if (Date.now() - started < 1500) window.setTimeout(keepFocusOnList, 50);
+      };
+      window.setTimeout(keepFocusOnList, 0);
     } catch (err: any) {
       const tr = notifyClientError(err, "Suppression du produit impossible");
       setError(tr.message);

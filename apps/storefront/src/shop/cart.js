@@ -24,6 +24,7 @@ function addToCartInternal(prodId, variantId, qty, notify = true) {
   }
   if (existing) {
     existing.quantity += qty;
+    noteCartChangeWhileOrdering(existing, qty);
   } else {
     state.cart.push({ variantId, productId: prodId, quantity: qty });
   }
@@ -32,6 +33,15 @@ function addToCartInternal(prodId, variantId, qty, notify = true) {
   renderStorefront();
   if (notify) showToast(`${prodName(prod)} (${variant.title}) ${L("ajouté au panier", "أُضيف إلى السلة", "added to the cart")}`);
   return true;
+}
+
+// While an order is being sent, its lines count what the customer adds on top
+// (`addedWhileOrdering`): removing pieces takes from those additions first.
+// When the order is confirmed, the line keeps the additions and whatever is
+// left of the ordered part beyond what the shop recorded.
+function noteCartChangeWhileOrdering(line, delta) {
+  if (line.addedWhileOrdering === undefined) return;
+  line.addedWhileOrdering = Math.max(0, line.addedWhileOrdering + delta);
 }
 
 function updateCartItemQty(variantId, delta) {
@@ -45,6 +55,7 @@ function updateCartItemQty(variantId, delta) {
     state.cart.splice(idx, 1);
   } else if (variant && next <= variant.stock) {
     item.quantity = next;
+    noteCartChangeWhileOrdering(item, delta);
   } else {
     showToast("Quantité maximale en stock atteinte", "error");
   }
@@ -259,6 +270,8 @@ async function submitGuestCheckoutOrder() {
   // lines are reduced. A line removed and added again meanwhile is a new line
   // and is left alone; extra pieces added to a line stay in it.
   const sentLines = new Map(state.cart.map((c) => [c.variantId, c]));
+  for (const line of sentLines.values()) line.addedWhileOrdering = 0;
+  const stopTracking = () => { for (const line of sentLines.values()) delete line.addedWhileOrdering; };
 
   // One anti-duplicate key per order: a double click or an automatic
   // retry re-sends the SAME key, and the server refuses a second order.
@@ -322,12 +335,14 @@ async function submitGuestCheckoutOrder() {
         state.checkoutIdemItems = orderItems.map((it) => ({ ...it }));
       }
       state.placingOrder = false;
+      stopTracking();
       showToast(String((err && err.message) || "Erreur lors de l'enregistrement de votre commande."), "error");
       return;
     }
   }
   state.placingOrder = false;
   if (!orderRef) {
+    stopTracking();
     // Never show an invented order number.
     showToast(L("La commande n'a pas pu être confirmée. Réessayez ou contactez-nous sur WhatsApp.", "تعذّر تأكيد الطلب. حاولوا مجددًا أو راسلونا عبر واتساب.", "The order could not be confirmed. Please try again or contact us on WhatsApp."), "error");
     return;
@@ -367,8 +382,12 @@ async function submitGuestCheckoutOrder() {
   // order was being sent stays in the cart.
   for (const it of recordedItems) {
     const line = sentLines.get(it.variant_id);
-    if (line && state.cart.includes(line)) line.quantity -= it.quantity;
+    if (!line || !state.cart.includes(line)) continue;
+    const added = line.addedWhileOrdering || 0;
+    const orderedPartLeft = line.quantity - added;
+    line.quantity = added + Math.max(0, orderedPartLeft - it.quantity);
   }
+  stopTracking();
   state.cart = state.cart.filter((c) => c.quantity > 0);
   saveCartToStorage();
   state.appliedCoupon = null;

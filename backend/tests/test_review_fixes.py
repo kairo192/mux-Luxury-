@@ -263,6 +263,29 @@ class TestReviewFixes(unittest.TestCase):
         self.assertEqual(sess["expected_cash_dzd"], 10000, sess)
         self.assertEqual(sess["variance_dzd"], 0, sess)
 
+    def test_restoring_a_legacy_archive_keeps_variants_deleted_meanwhile_off(self):
+        prod = self._ok_product(variants=[{"color": "Noir"}, {"color": "Blanc"}])
+        by_color = {v["attributes"]["color"]: v["id"] for v in prod["variants"]}
+        # History for "Blanc", so deleting it later only switches it off.
+        r = self.client.post("/api/v1/admin/inventory/write-off", headers=self.headers,
+                             json={"variant_id": by_color["Blanc"], "quantity": 1, "reason": "damaged"})
+        self.assertIn(r.status_code, (200, 201), r.text)
+        r = self.client.post("/api/v1/admin/products/bulk-status", headers=self.headers,
+                             json={"product_ids": [prod["id"]], "status": "archived"})
+        self.assertEqual(r.status_code, 200, r.text)
+        with db_session(commit=True) as conn:  # as if archived before the markers existed
+            conn.execute("UPDATE products SET variants_marked_on_archive = 0 WHERE id = ?", (prod["id"],))
+            conn.execute("UPDATE product_variants SET archived_with_product = 0 WHERE product_id = ?", (prod["id"],))
+        r = self.client.delete(f"/api/v1/admin/variants/{by_color['Blanc']}", headers=self.headers)
+        self.assertEqual(r.status_code, 200, r.text)
+        self.assertTrue(r.json()["deactivated"])
+        r = self.client.post("/api/v1/admin/products/bulk-status", headers=self.headers,
+                             json={"product_ids": [prod["id"]], "status": "published"})
+        self.assertEqual(r.status_code, 200, r.text)
+        admin = self.client.get(f"/api/v1/admin/products?q={prod['sku']}", headers=self.headers).json()["items"][0]
+        active = {v["attributes"]["color"]: v["is_active"] for v in admin["variants"]}
+        self.assertEqual(active, {"Noir": True, "Blanc": False})
+
 
 if __name__ == "__main__":
     unittest.main()
