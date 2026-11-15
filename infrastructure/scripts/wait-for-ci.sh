@@ -18,8 +18,9 @@ start=$(date +%s)
 while :; do
   elapsed=$(( $(date +%s) - start ))
   # One line per CI run on this commit: "<status> <conclusion>"
+  # Filters out pull_request events so the gate evaluates only the deployed commit's push / dispatch runs.
   runs=$(gh api "repos/$REPO/actions/workflows/ci.yml/runs?head_sha=$SHA&per_page=50" \
-           --jq '.workflow_runs[] | "\(.status) \(.conclusion // "-")"')
+           --jq '.workflow_runs[] | select(.event != "pull_request") | "\(.status) \(.conclusion // "-")"')
   if grep -q '^completed success$' <<<"$runs"; then
     echo "CI passed on $SHA."
     exit 0

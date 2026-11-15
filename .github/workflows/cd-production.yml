@@ -78,7 +78,7 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           REF: ${{ needs.resolve-ref.outputs.ref }}
         run: |
-          SHA=$(gh api "repos/$GITHUB_REPOSITORY/commits/${REF#refs/*/}" --jq .sha)
+          SHA=$(gh api "repos/$GITHUB_REPOSITORY/commits/$REF" --jq .sha)
           echo "Deploying $REF = $SHA"
           echo "value=$SHA" >> "$GITHUB_OUTPUT"
       - name: Wait for CI on that commit
