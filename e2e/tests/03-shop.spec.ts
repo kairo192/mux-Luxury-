@@ -94,6 +94,8 @@ test.describe("shop", () => {
     const req = await sent;
     expect(JSON.parse(req.postData() || "{}").items).toEqual([{ variant_id: p.variantId, quantity: 2 }]);
     await page.evaluate((vid) => { (window as any).updateCartItemQty(vid, -1); (window as any).updateCartItemQty(vid, 1); }, p.variantId);
+    // A second click while the first order is on its way changes nothing.
+    await page.evaluate(() => (window as any).submitGuestCheckoutOrder());
     release();
     await expect(page.locator("#cart-checkout-modal")).toContainText("Commande confirmée");
     const cart = await page.evaluate(() => JSON.parse(localStorage.getItem("luxe_store_cart") || "[]"));

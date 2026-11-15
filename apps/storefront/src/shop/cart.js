@@ -219,6 +219,9 @@ function updateCheckoutCalculation() {
 }
 
 async function submitGuestCheckoutOrder() {
+  // A second click while an order is on its way does nothing at all (it must
+  // not reset what the first one is tracking).
+  if (state.placingOrder) return;
   const name = (document.getElementById("chk-name")?.value || "").trim();
   const phone = (document.getElementById("chk-phone")?.value || "").trim().replace(/[\s\-\.]/g, "");
   const wilayaCode = document.getElementById("chk-wilaya")?.value || "16";
@@ -275,7 +278,6 @@ async function submitGuestCheckoutOrder() {
 
   // One anti-duplicate key per order: a double click or an automatic
   // retry re-sends the SAME key, and the server refuses a second order.
-  if (state.placingOrder) return;
   state.placingOrder = true;
   // The key is kept until an order is confirmed: re-using a key that created
   // nothing is harmless, while dropping one too early could let a retry

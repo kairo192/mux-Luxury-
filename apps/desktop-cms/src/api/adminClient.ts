@@ -157,6 +157,9 @@ async function adminFetch(path: string, options: RequestInit = {}, timeoutMs = d
     headers["Authorization"] = `Bearer ${activeToken}`;
   }
 
+  // The address is fixed when the request starts, like its token: a retry
+  // after a logout and a change of server never carries this token elsewhere.
+  const url = `${apiBaseUrl}${path}`;
   const canRetry = method === "GET" || Boolean(headers["Idempotency-Key"]);
   const maxAttempts = canRetry ? 3 : 1;
 
@@ -166,7 +169,7 @@ async function adminFetch(path: string, options: RequestInit = {}, timeoutMs = d
     const startMs = Date.now();
 
     try {
-      const res = await fetch(`${apiBaseUrl}${path}`, {
+      const res = await fetch(url, {
         // The CMS must always see live data: never answer from the WebView's
         // HTTP cache (public endpoints are cacheable for the storefront, which
         // made deleted categories "come back" after a reload).
