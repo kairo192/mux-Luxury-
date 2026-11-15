@@ -676,7 +676,9 @@ function addPdpToCart(buyNow) {
       showToast(`Stock insuffisant pour cette déclinaison (disponible : ${variant ? variant.stock : 0})`, "error");
       return;
     }
-    addToCartInternal(prod.id, state.activePdpVariantId, state.activePdpQty, true);
+    // Kept open when it was refused (e.g. the cart already holds the rest of
+    // the stock); the toast explains why.
+    if (!addToCartInternal(prod.id, state.activePdpVariantId, state.activePdpQty, true)) return;
     closeProductDetailModal();
     if (buyNow) openCartDrawer();
   }

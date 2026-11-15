@@ -640,6 +640,14 @@ export default function App() {
         setProductToDelete(null);
       }
       await loadAllWorkspaceData();
+      // The dialog gave focus back to the row's « Supprimer » button, which the
+      // refreshed list no longer has: keep keyboard users on the product list.
+      requestAnimationFrame(() => {
+        const active = document.activeElement;
+        if (!active || active === document.body || !active.isConnected) {
+          document.querySelector<HTMLElement>("[data-products-search]")?.focus();
+        }
+      });
     } catch (err: any) {
       const tr = notifyClientError(err, "Suppression du produit impossible");
       setError(tr.message);

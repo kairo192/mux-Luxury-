@@ -255,6 +255,10 @@ async function submitGuestCheckoutOrder() {
   const discount = computeCouponDiscount(subtotal);
   let orderRef = null;
   let recordedItems = orderItems; // what the shop recorded for this order
+  // The cart lines as they were when sending: after success, only these exact
+  // lines are reduced. A line removed and added again meanwhile is a new line
+  // and is left alone; extra pieces added to a line stay in it.
+  const sentLines = new Map(state.cart.map((c) => [c.variantId, c]));
 
   // One anti-duplicate key per order: a double click or an automatic
   // retry re-sends the SAME key, and the server refuses a second order.
@@ -351,8 +355,8 @@ async function submitGuestCheckoutOrder() {
   // Take out only what this order contained: an article added while the
   // order was being sent stays in the cart.
   for (const it of recordedItems) {
-    const line = state.cart.find((c) => c.variantId === it.variant_id);
-    if (line) line.quantity -= it.quantity;
+    const line = sentLines.get(it.variant_id);
+    if (line && state.cart.includes(line)) line.quantity -= it.quantity;
   }
   state.cart = state.cart.filter((c) => c.quantity > 0);
   saveCartToStorage();

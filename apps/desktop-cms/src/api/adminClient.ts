@@ -189,7 +189,11 @@ async function adminFetch(path: string, options: RequestInit = {}, timeoutMs = d
 
       if (res.status === 401) {
         const isAuthEndpoint = path.includes("/admin/auth/login");
-        if (!isAuthEndpoint) {
+        // Forget the session only if THIS request carried the current token:
+        // a late 401 for an older token (e.g. the logout of the previous
+        // session arriving after a new login) must not log the new one out.
+        const current = getAccessToken();
+        if (!isAuthEndpoint && current && headers["Authorization"] === `Bearer ${current}`) {
           setAccessToken(null);
         }
         const tr401 = sanitizeAndTranslateError(data, 401, path, "Authentification requise");

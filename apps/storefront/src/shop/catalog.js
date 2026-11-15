@@ -431,8 +431,16 @@ function toggleFavoriteProduct(prodId) {
     showToast("Article ajouté à vos favoris");
   }
   saveFavoritesToStorage();
-  document.getElementById("fav-count-badge").textContent = state.favorites.size;
+  renderFavoriteCounters();
   renderCatalogProducts();
+}
+
+// Header, mobile bar and mobile menu all show the same favourites count.
+function renderFavoriteCounters() {
+  for (const id of ["fav-count-badge", "mobile-fav-count-badge", "mobile-drawer-fav-count"]) {
+    const el = document.getElementById(id);
+    if (el) el.textContent = state.favorites.size;
+  }
 }
 
 function resetCatalogFilters() {
@@ -464,15 +472,11 @@ function toggleDynamicAttrFilter(attrKey, optionVal) {
 
 function renderStorefront() {
   const t = I18N[state.lang];
-  document.getElementById("fav-count-badge").textContent = state.favorites.size;
+  renderFavoriteCounters();
   const totalCartCount = state.cart.reduce((sum, item) => sum + item.quantity, 0);
   document.getElementById("cart-count-badge").textContent = totalCartCount;
   const mobCartBadge = document.getElementById("mobile-cart-count-badge");
   if (mobCartBadge) mobCartBadge.textContent = totalCartCount;
-  const mobFavBadge = document.getElementById("mobile-fav-count-badge");
-  if (mobFavBadge) mobFavBadge.textContent = state.favorites.size;
-  const mobDrawerFav = document.getElementById("mobile-drawer-fav-count");
-  if (mobDrawerFav) mobDrawerFav.textContent = state.favorites.size;
 
   // Render Dynamic Collections & Category Pills
   renderHeaderCollections();
@@ -758,6 +762,7 @@ function renderCatalogProducts() {
 
 Object.assign(window, {
   setActiveCategory,
+  renderFavoriteCounters,
   currentRouteHash,
   currentUrl,
   navigateTo,
