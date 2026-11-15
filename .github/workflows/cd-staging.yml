@@ -89,6 +89,8 @@ jobs:
         with:
           name: release-${{ steps.version.outputs.value }}
           path: .release/
+          include-hidden-files: true   # ".release" starts with a dot: skipped otherwise
+          if-no-files-found: error
           retention-days: 14
 
   deploy-staging:

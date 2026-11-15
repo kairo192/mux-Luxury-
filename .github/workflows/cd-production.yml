@@ -129,6 +129,8 @@ jobs:
         with:
           name: release-${{ needs.resolve-ref.outputs.version }}
           path: .release/
+          include-hidden-files: true   # ".release" starts with a dot: skipped otherwise (v1.0.0 deployed nothing)
+          if-no-files-found: error
           retention-days: 30
 
   deploy-production:

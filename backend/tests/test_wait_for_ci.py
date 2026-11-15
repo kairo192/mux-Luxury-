@@ -57,5 +57,22 @@ class TestWaitForCi(unittest.TestCase):
         self.assertIn("No CI run found", r.stdout)
 
 
+class TestReleaseWorkflows(unittest.TestCase):
+    """v1.0.0: the tarball sat in ".release/", upload-artifact skipped it as hidden,
+    and the deploy found nothing to install."""
+    def test_release_tarball_is_uploaded_and_attached(self):
+        wf_dir = SCRIPT.parents[2] / ".github" / "workflows"
+        for name in ("cd-production.yml", "cd-staging.yml"):
+            wf = (wf_dir / name).read_text(encoding="utf-8")
+            up = wf[wf.index("actions/upload-artifact@v4"):]
+            up = up[:up.index("\n\n")]
+            self.assertIn("path: .release/", up, name)
+            self.assertIn("include-hidden-files: true", up, name)
+            self.assertIn("if-no-files-found: error", up, name)
+            self.assertIn("wait-for-ci.sh", wf, name)
+            self.assertIn("actions: read", wf, name)
+            self.assertNotIn("mux-luxury", wf, name)
+
+
 if __name__ == "__main__":
     unittest.main()
