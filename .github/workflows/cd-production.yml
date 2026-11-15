@@ -69,12 +69,18 @@ jobs:
     needs: resolve-ref
     runs-on: ubuntu-latest
     steps:
+      # The script comes from this workflow's commit: the release being deployed
+      # may be older than the script (v1.0.0 was).
       - uses: actions/checkout@v4
-        with:
-          ref: ${{ needs.resolve-ref.outputs.ref }}
       - name: Get the commit SHA at that ref
         id: sha
-        run: echo "value=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REF: ${{ needs.resolve-ref.outputs.ref }}
+        run: |
+          SHA=$(gh api "repos/$GITHUB_REPOSITORY/commits/${REF#refs/*/}" --jq .sha)
+          echo "Deploying $REF = $SHA"
+          echo "value=$SHA" >> "$GITHUB_OUTPUT"
       - name: Wait for CI on that commit
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
