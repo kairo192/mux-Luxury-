@@ -303,6 +303,26 @@ class TestReviewFixes(unittest.TestCase):
         active = {v["attributes"]["color"]: v["is_active"] for v in admin["variants"]}
         self.assertEqual(active, {"Noir": True, "Blanc": False})
 
+    def test_a_product_created_archived_restores_like_one_archived_later(self):
+        sku = f"RV-Z-{self.suffix.upper()}"
+        r = self.client.post("/api/v1/admin/products", headers=self.headers, json={
+            "category_id": self.category_id, "slug": f"review-z-{self.suffix}", "sku": sku,
+            "name_fr": f"Archivé {self.suffix}", "selling_price_dzd": 5000, "status": "archived",
+            "variants": [{"sku": f"{sku}-{i}", "title": c, "stock_qty": 2, "attributes": {"color": c}}
+                         for i, c in enumerate(("Noir", "Blanc"))],
+        })
+        self.assertEqual(r.status_code, 201, r.text)
+        prod = r.json()
+        blanc = next(v["id"] for v in prod["variants"] if v["attributes"]["color"] == "Blanc")
+        r = self.client.put(f"/api/v1/admin/variants/{blanc}", headers=self.headers, json={"is_active": False})
+        self.assertEqual(r.status_code, 200, r.text)
+        r = self.client.post("/api/v1/admin/products/bulk-status", headers=self.headers,
+                             json={"product_ids": [prod["id"]], "status": "draft"})
+        self.assertEqual(r.status_code, 200, r.text)
+        admin = self.client.get(f"/api/v1/admin/products?q={sku}", headers=self.headers).json()["items"][0]
+        active = {v["attributes"]["color"]: v["is_active"] for v in admin["variants"]}
+        self.assertEqual(active, {"Noir": True, "Blanc": False})
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -39,15 +39,20 @@ test.describe("shop", () => {
       await expect(modal).toContainText("Sac Doublon");
       await modal.getByRole("button", { name: /Ajouter au panier/ }).first().click();
     };
-    // The order the shop really holds (as if the first answer had been lost).
+    // The order the shop really holds (as if the first answer had been lost):
+    // Alger, by Stop-Desk when Alger offers it.
+    const zones = (await publicApi<any>("/delivery-zones")).body.items as any[];
+    const alger = zones.find((z) => z.wilaya_code === "16");
+    const desk = Boolean(alger?.rates?.stop_desk) && Number(alger.rates.stop_desk.is_supported ?? 1) !== 0;
     const recorded = await (await fetch(`${process.env.E2E_API_URL}/api/v1/orders`, {
       method: "POST", headers: { "Content-Type": "application/json", "Idempotency-Key": `dup-${phone}` },
       body: JSON.stringify({ full_name: "Nadia Enregistrée", phone, wilaya_code: "16", commune: "Alger Centre",
-        delivery_address: "5 rue du Premier Envoi, Alger", delivery_method: "home",
+        delivery_address: "5 rue du Premier Envoi, Alger", delivery_method: desk ? "stop_desk" : "home",
         items: [{ variant_id: p.variantId, quantity: 1 }] }),
     })).json();
     await addP();
-    await fillCheckout(page, phone);                 // different name in the form now
+    await fillCheckout(page, phone);                 // different name in the form now…
+    await page.locator("#chk-wilaya").selectOption("09");   // …and another wilaya (Blida), home delivery
     await page.route("**/api/v1/orders", (route) => route.request().method() === "POST"
       ? route.fulfill({ status: 409, contentType: "application/json",
           body: JSON.stringify({ detail: `Commande déjà enregistrée (référence ${recorded.order_reference})` }) })
@@ -57,6 +62,9 @@ test.describe("shop", () => {
     await expect(drawer).toContainText("Commande confirmée");
     await expect(drawer).toContainText(recorded.order_reference);
     await expect(drawer).toContainText("Nadia Enregistrée");   // the shop's record, not the form
+    await expect(drawer).toContainText("16 - ");                // recorded wilaya…
+    await expect(drawer).not.toContainText("09 - ");
+    await expect(drawer).toContainText(desk ? "Stop-Desk (Bureau relais)" : "Livraison à domicile"); // …and method
     await expect(drawer).toContainText("Total à payer");
     await expect(drawer.locator("[data-estimate-note]")).toHaveCount(0);
 

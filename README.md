@@ -42,7 +42,7 @@ luxe-ecommerce/
 │   │   ├── 001_initial_schema.sql          # SQLite schema (41 relational tables)
 │   │   └── 001_initial_schema_postgres.sql # PostgreSQL 16 schema (100% parity)
 │   ├── scripts/                  # Operator tools (production .env generator, owner reset…); dev/ = benchmarks
-│   └── tests/                    # 385 automated backend tests (SQLite + PostgreSQL 16)
+│   └── tests/                    # 386 automated backend tests (SQLite + PostgreSQL 16)
 ├── apps/
 │   ├── storefront/               # Online shop: index.html (markup) + src/shop/*.js (vanilla JS, FR/AR/EN) + Vite/Tailwind
 │   └── desktop-cms/              # Tauri 2.0 + Rust Windows Desktop CMS & POS (wincred token storage)
@@ -96,7 +96,7 @@ Because you are managing the project from a smartphone:
 3. **Run the tests** (all run in CI on every push, see `.github/workflows/ci.yml`):
    ```bash
    npm run lint          # ruff (backend) + TypeScript (CMS, no unused code allowed)
-   npm run test:backend  # 385 backend tests (SQLite; CI also runs them on PostgreSQL 16)
+   npm run test:backend  # 386 backend tests (SQLite; CI also runs them on PostgreSQL 16)
    npm run test:e2e      # 28 browser tests: shop + CMS together on a fresh production-mode API
    ```
    Local development: `cd backend && uvicorn app.main:app --reload --port 8000`,

@@ -672,6 +672,10 @@ def create_dynamic_product(
             vid = cur.lastrowid
             replace_variant_attribute_values(conn, vid, cat_attrs_full, v_attrs)
 
+        if payload.status == "archived":
+            # Created directly as archived: same bookkeeping as archiving later,
+            # so a restore brings back exactly these variants.
+            _switch_off_variants_with_product(cur, prod_id)
         log_audit(conn, int(admin["sub"]), "create_product", "product", str(prod_id), {"sku": payload.sku, "status": payload.status})
         cur.execute("SELECT * FROM products WHERE id = ?", (prod_id,))
         return serialize_product(conn, dict(cur.fetchone()), include_private=True)
