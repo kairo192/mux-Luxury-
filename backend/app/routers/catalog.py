@@ -1512,6 +1512,13 @@ def update_product_with_conflict_detection(
                            ON CONFLICT(product_id, attribute_id) DO UPDATE SET value_text = excluded.value_text""",
                         (product_id, cat_attrs[akey]["id"], str(aval))
                     )
+        # Archiving / bringing back through this form follows the same rules
+        # as the Archive button and the bulk action (variants marked, then
+        # restored exactly).
+        if payload.status == "archived" and prod["status"] != "archived":
+            _switch_off_variants_with_product(cur, product_id)
+        elif payload.status in ("published", "draft") and prod["status"] == "archived":
+            _restore_variants_with_product(cur, product_id)
         # Checked on the saved result (after a category move and attribute
         # changes), whenever the product is or stays published.
         if (payload.status or prod["status"]) == "published":

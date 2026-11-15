@@ -357,16 +357,22 @@ async function submitGuestCheckoutOrder() {
   const recSubtotal = recordedItems.reduce((sum, i) => sum + i.unit_price_dzd * i.quantity, 0);
   const recDiscount = sameAsRecorded ? discount : computeCouponDiscount(recSubtotal);
 
+  // What the shop recorded wins over the form: after a lost answer the
+  // customer may have changed the wilaya or the delivery method since.
+  const rec = serverTotals || {};
   const newOrder = {
     id: state.orders.length + 502,
     reference: orderRef,
-    customer_name: name,
+    customer_name: rec.customer_name || name,
     customer_phone: phone,
-    wilaya_code: wObj.code,
-    wilaya_name: wObj.name_fr,
-    commune,
-    address,
-    delivery_method: method,
+    wilaya_code: rec.wilaya_code || wObj.code,
+    wilaya_name: rec.wilaya_name || wObj.name_fr,
+    commune: rec.commune || commune,
+    address: rec.delivery_address || address,
+    delivery_method: rec.delivery_method || method,
+    // No figures from the shop (its answer was lost and tracking could not
+    // be read): the amounts below are an estimate, and are shown as one.
+    estimated: !serverTotals,
     subtotal_dzd: serverTotals ? serverTotals.subtotal_dzd : recSubtotal,
     discount_dzd: serverTotals ? serverTotals.discount_dzd : recDiscount,
     // Show what the server recorded (free delivery, coupon, prices) —
@@ -433,7 +439,10 @@ function renderCartDrawerContent() {
           <p><strong>${L("Destination :", "الوجهة:", "Destination:")}</strong> ${escapeHtml(o.wilaya_code)} - ${escapeHtml(o.wilaya_name)} (${escapeHtml(o.commune)})</p>
           <p><strong>${L("Mode de livraison :", "طريقة التوصيل:", "Delivery:")}</strong> ${o.delivery_method === "home" ? L("Livraison à domicile", "التوصيل إلى المنزل", "Home delivery") : L("Stop-Desk (Bureau relais)", "مكتب الاستلام (Stop-Desk)", "Stop-Desk (pick-up office)")}</p>
           <p><strong>${L("Paiement :", "الدفع:", "Payment:")}</strong> ${L("Paiement à la livraison (Espèces)", "نقدًا عند الاستلام", "Cash on delivery")}</p>
-          <p class="text-sm font-extrabold text-emerald-deep pt-1.5 border-t border-gray-200">${L("Total à payer à la réception :", "المبلغ الواجب دفعه عند الاستلام:", "To pay on delivery:")} ${formatDZD(o.total_dzd)}</p>
+          <p class="text-sm font-extrabold text-emerald-deep pt-1.5 border-t border-gray-200">${o.estimated
+            ? L("Total estimé à la réception :", "المبلغ التقديري عند الاستلام:", "Estimated amount on delivery:")
+            : L("Total à payer à la réception :", "المبلغ الواجب دفعه عند الاستلام:", "To pay on delivery:")} ${formatDZD(o.total_dzd)}</p>
+          ${o.estimated ? `<p data-estimate-note class="text-[11px] text-amber-800">${L("Le montant exact est dans le suivi de commande (numéro ci-dessus et votre téléphone).", "المبلغ الدقيق متوفر في تتبع الطلب (الرقم أعلاه وهاتفكم).", "The exact amount is in order tracking (number above and your phone).")}</p>` : ""}
         </div>
         <button type="button" onclick="resetConfirmedOrder()" class="w-full py-3 rounded-xl bg-emerald-deep text-gold-reflective font-bold text-xs">
           ${L("Retour à la boutique", "العودة إلى المتجر", "Back to the shop")}

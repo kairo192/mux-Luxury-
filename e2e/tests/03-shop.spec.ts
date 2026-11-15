@@ -29,6 +29,51 @@ async function addBagToCart(page: Page) {
 }
 
 test.describe("shop", () => {
+  test("an order already recorded is confirmed with what the shop recorded", async ({ page }) => {
+    const w = watch(page);
+    const phone = "0773" + String(Date.now()).slice(-6);
+    const p = await createProduct({ name: "Sac Doublon", price: 6000, stock: 5, categoryId: cat.id, attrKey: cat.attrKey, value: cat.value });
+    const addP = async () => {
+      await page.goto(`${SHOP}/produit/${p.slug}`);
+      const modal = page.locator("#product-detail-modal");
+      await expect(modal).toContainText("Sac Doublon");
+      await modal.getByRole("button", { name: /Ajouter au panier/ }).first().click();
+    };
+    // The order the shop really holds (as if the first answer had been lost).
+    const recorded = await (await fetch(`${process.env.E2E_API_URL}/api/v1/orders`, {
+      method: "POST", headers: { "Content-Type": "application/json", "Idempotency-Key": `dup-${phone}` },
+      body: JSON.stringify({ full_name: "Nadia Enregistrée", phone, wilaya_code: "16", commune: "Alger Centre",
+        delivery_address: "5 rue du Premier Envoi, Alger", delivery_method: "home",
+        items: [{ variant_id: p.variantId, quantity: 1 }] }),
+    })).json();
+    await addP();
+    await fillCheckout(page, phone);                 // different name in the form now
+    await page.route("**/api/v1/orders", (route) => route.request().method() === "POST"
+      ? route.fulfill({ status: 409, contentType: "application/json",
+          body: JSON.stringify({ detail: `Commande déjà enregistrée (référence ${recorded.order_reference})` }) })
+      : route.continue());
+    const drawer = page.locator("#cart-checkout-modal");
+    await drawer.getByRole("button", { name: /Confirmer la commande/ }).click();
+    await expect(drawer).toContainText("Commande confirmée");
+    await expect(drawer).toContainText(recorded.order_reference);
+    await expect(drawer).toContainText("Nadia Enregistrée");   // the shop's record, not the form
+    await expect(drawer).toContainText("Total à payer");
+    await expect(drawer.locator("[data-estimate-note]")).toHaveCount(0);
+
+    // Same, but order tracking cannot be read either: the amount is labelled an estimate.
+    await page.evaluate(() => (window as any).resetConfirmedOrder());
+    await addP();
+    await fillCheckout(page, phone);
+    await page.route("**/api/v1/orders/track*", (route) => route.abort());
+    await drawer.getByRole("button", { name: /Confirmer la commande/ }).click();
+    await expect(drawer).toContainText("Commande confirmée");
+    await expect(drawer).toContainText("Total estimé");
+    await expect(drawer.locator("[data-estimate-note]")).toBeVisible();
+    await page.unroute("**/api/v1/orders/track*");
+    await page.unroute("**/api/v1/orders");
+    w.expectClean([/orders/]);
+  });
+
   test("cart changes made while an order is being sent stay in the cart", async ({ page }) => {
     const w = watch(page);
     const p = await createProduct({ name: "Sac Pendant", price: 4000, stock: 5, categoryId: cat.id, attrKey: cat.attrKey, value: cat.value });
