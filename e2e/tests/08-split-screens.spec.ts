@@ -112,3 +112,45 @@ test("till: register history, customer and close-register sheets", async ({ page
   await expect(page.getByText("Espèces comptées")).toHaveCount(0);
   w.expectClean();
 });
+
+test("a request retried after logout and a change of server never takes the old session to the new server", async ({ page }) => {
+  await cmsLogin(page);
+  const other = "http://other-server.e2e.invalid";
+  const seenOnOther: string[] = [];
+  await page.route(`${other}/**`, (route) => {
+    seenOnOther.push(route.request().headers()["authorization"] || "");
+    return route.fulfill({ status: 503, body: "" });
+  });
+  // The first categories request is held, then answered 503 so the client retries it.
+  let release!: () => void;
+  const held = new Promise<void>((r) => { release = r; });
+  const calls: { url: string; auth: string }[] = [];
+  await page.route("**/admin/categories?*", async (route) => {
+    const req = route.request();
+    calls.push({ url: req.url(), auth: req.headers()["authorization"] || "" });
+    if (calls.length === 1) { await held; return route.fulfill({ status: 503, body: "" }); }
+    return route.continue();
+  });
+
+  await page.locator("header").getByRole("button", { name: /Actualiser/ }).click();
+  await expect.poll(() => calls.length).toBeGreaterThanOrEqual(1);
+  const oldAuth = calls[0].auth;
+  expect(oldAuth).toMatch(/^Bearer \S+/);
+
+  // While it is held: sign out and point the CMS at another server.
+  await page.getByRole("button", { name: "Se déconnecter" }).click();
+  await expect(page.locator("#login-email")).toBeVisible();
+  await page.getByRole("button", { name: /Modifier/ }).click();
+  await page.locator("#cms-api-server-url").fill(`${other}/api/v1`);
+  release();
+
+  // The retry goes back to the server the request started on…
+  await expect.poll(() => calls.length).toBeGreaterThanOrEqual(2);
+  expect(new URL(calls[1].url).origin).toBe(new URL(calls[0].url).origin);
+  await page.waitForTimeout(1500);              // room for any further retry
+  // …and the new server never receives the old session's token.
+  expect(seenOnOther.filter((a) => a === oldAuth)).toEqual([]);
+  // A late refusal for the old session leaves the login screen as it is.
+  await expect(page.locator("#login-email")).toBeVisible();
+  await page.unroute("**/admin/categories?*");
+});
