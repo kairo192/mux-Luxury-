@@ -25,6 +25,7 @@ on:
 
 permissions:
   contents: write    # required to create a GitHub release on tag
+  actions: read      # wait-for-ci.sh lists the CI runs of the commit
 
 concurrency:
   group: cd-production
@@ -75,13 +76,9 @@ jobs:
         id: sha
         run: echo "value=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
       - name: Wait for CI on that commit
-        uses: lewagon/wait-on-check-action@ccfb013c15c8afb7bf2b7c028fb74dc5a068cccc  # v1.3.4
-        with:
-          ref: ${{ steps.sha.outputs.value }}
-          check-name: "CI complete (branch-protection gate)"
-          repo-token: ${{ secrets.GITHUB_TOKEN }}
-          wait-interval: 20
-          allowed-conclusions: success
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: bash infrastructure/scripts/wait-for-ci.sh "${{ steps.sha.outputs.value }}"
 
   build-release:
     name: Build release tarball
@@ -220,5 +217,5 @@ jobs:
           name: Mus Luxury ${{ needs.resolve-ref.outputs.version }}
           generate_release_notes: true
           files: |
-            .release/mux-luxury-*.tar.gz
-            .release/mux-luxury-*.tar.gz.sha256
+            .release/mus-luxury-*.tar.gz
+            .release/mus-luxury-*.tar.gz.sha256
