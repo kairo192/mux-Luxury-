@@ -83,7 +83,7 @@ jobs:
               --exclude="scratch" \
               --exclude="images" \
               .
-          sha256sum ".release/mus-luxury-${VERSION}.tar.gz" > ".release/mus-luxury-${VERSION}.tar.gz.sha256"
+          (cd .release && sha256sum "mus-luxury-${VERSION}.tar.gz" > "mus-luxury-${VERSION}.tar.gz.sha256")
 
       - uses: actions/upload-artifact@v4
         with:

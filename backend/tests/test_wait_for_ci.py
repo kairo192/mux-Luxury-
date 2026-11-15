@@ -25,13 +25,18 @@ class TestWaitForCi(unittest.TestCase):
     def _run(self, *answers, **env_extra):
         with tempfile.TemporaryDirectory() as tmp:
             bin_dir = Path(tmp) / "bin"; bin_dir.mkdir()
-            (bin_dir / "gh").write_text(FAKE_GH, newline="\n")
+            gh_file = bin_dir / "gh"
+            gh_file.write_text(FAKE_GH, newline="\n")
+            try:
+                gh_file.chmod(0o755)
+            except Exception:
+                pass
             for i, a in enumerate(answers, 1):
                 (Path(tmp) / f"answer{i}").write_text(a, newline="\n")
             env = dict(os.environ, STATE=tmp.replace("\\", "/"), GITHUB_REPOSITORY="o/r", GH_TOKEN="x",
                        WAIT_INTERVAL="0", **env_extra)
-            cmd = f'export PATH="$(cygpath -u "{bin_dir}" 2>/dev/null || echo "{bin_dir}"):$PATH"; ' \
-                  f'chmod +x "$(command -v gh)"; bash "$0" abc123'
+            cmd = f'p="$(cygpath -u "{bin_dir}" 2>/dev/null || echo "{bin_dir.as_posix()}")"; ' \
+                  f'chmod +x "$p/gh" 2>/dev/null || true; export PATH="$p:$PATH"; bash "$0" abc123'
             r = subprocess.run(["bash", "-c", cmd, str(SCRIPT).replace("\\", "/")], env=env,
                                capture_output=True, text=True, timeout=60)
             calls = int((Path(tmp) / "n").read_text()) if (Path(tmp) / "n").exists() else 0

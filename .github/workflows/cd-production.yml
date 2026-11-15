@@ -129,7 +129,7 @@ jobs:
               --exclude="backend/__pycache__" --exclude="backend/uploads" \
               --exclude="backend/backups" --exclude="**/*.pyc" \
               --exclude="scratch" --exclude="images" .
-          sha256sum ".release/mus-luxury-${VERSION}.tar.gz" > ".release/mus-luxury-${VERSION}.tar.gz.sha256"
+          (cd .release && sha256sum "mus-luxury-${VERSION}.tar.gz" > "mus-luxury-${VERSION}.tar.gz.sha256")
 
       - uses: actions/upload-artifact@v4
         with:
