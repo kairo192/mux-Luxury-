@@ -142,6 +142,39 @@ export async function computeHmacSha256Hex(keyString: string, message: string): 
     .join("");
 }
 
+// At most MAX_IN_FLIGHT requests at the same time. Opening the CMS asks for the
+// data of every screen at once (~40 requests in one second); the server's rate
+// limit refused most of them and every screen showed "cannot reach the server"
+// (2026-11-16). The others wait their turn, in order.
+const MAX_IN_FLIGHT = 6;
+let inFlight = 0;
+const waitingForSlot: Array<() => void> = [];
+
+async function takeRequestSlot(): Promise<void> {
+  if (inFlight < MAX_IN_FLIGHT) {
+    inFlight++;
+    return;
+  }
+  await new Promise<void>((resolve) => waitingForSlot.push(resolve));
+}
+
+function releaseRequestSlot() {
+  const next = waitingForSlot.shift();
+  if (next) next();          // the slot passes straight to the next request
+  else inFlight--;
+}
+
+// 429 = the server's rate limit refused the request before running it, so it
+// is safe to send again, even a save. Wait what the server asks (Retry-After,
+// at most 10 s), a few times, before reporting it.
+const RATE_LIMIT_RETRIES = 3;
+
+export function rateLimitDelayMs(retryAfter: string | null, retry: number): number {
+  const seconds = Number(retryAfter);
+  if (Number.isFinite(seconds) && seconds > 0) return Math.min(seconds, 10) * 1000;
+  return Math.min(1000 * 2 ** (retry - 1), 10000);
+}
+
 async function adminFetch(path: string, options: RequestInit = {}, timeoutMs = defaultTimeoutMs) {
   const method = (options.method || "GET").toUpperCase();
   const isFormData = typeof FormData !== "undefined" && options.body instanceof FormData;
@@ -163,24 +196,42 @@ async function adminFetch(path: string, options: RequestInit = {}, timeoutMs = d
   const canRetry = method === "GET" || Boolean(headers["Idempotency-Key"]);
   const maxAttempts = canRetry ? 3 : 1;
 
+  let rateLimitRetries = 0;
   for (let attempt = 1; attempt <= maxAttempts; attempt++) {
     const controller = new AbortController();
-    const timer = setTimeout(() => controller.abort(), timeoutMs);
-    const startMs = Date.now();
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    let startMs = Date.now();
 
     try {
-      const res = await fetch(url, {
-        // The CMS must always see live data: never answer from the WebView's
-        // HTTP cache (public endpoints are cacheable for the storefront, which
-        // made deleted categories "come back" after a reload).
-        cache: "no-store",
-        ...options,
-        headers,
-        signal: options.signal || controller.signal,
-      });
+      await takeRequestSlot();
+      // The timeout counts from the moment the request is sent, not while it
+      // waits for a free slot.
+      timer = setTimeout(() => controller.abort(), timeoutMs);
+      startMs = Date.now();
+      let res: Response;
+      try {
+        res = await fetch(url, {
+          // The CMS must always see live data: never answer from the WebView's
+          // HTTP cache (public endpoints are cacheable for the storefront, which
+          // made deleted categories "come back" after a reload).
+          cache: "no-store",
+          ...options,
+          headers,
+          signal: options.signal || controller.signal,
+        });
+      } finally {
+        releaseRequestSlot();
+      }
       const rttMs = Date.now() - startMs;
       const serverReqId = res.headers.get("x-request-id") || reqId;
       recordNetworkSample({ online: true, latencyMs: rttMs, requestId: serverReqId, retried: attempt > 1 });
+
+      if (res.status === 429 && rateLimitRetries < RATE_LIMIT_RETRIES) {
+        rateLimitRetries++;
+        attempt--;           // not a failed attempt: the request was never run
+        await new Promise((r) => setTimeout(r, rateLimitDelayMs(res.headers.get("retry-after"), rateLimitRetries)));
+        continue;
+      }
 
       if ([502, 503, 504].includes(res.status) && attempt < maxAttempts) {
         await new Promise((r) => setTimeout(r, attempt * 250));
