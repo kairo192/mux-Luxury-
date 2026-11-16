@@ -63,6 +63,14 @@ class TestNginxRateLimits(unittest.TestCase):
         # the stale-session guard stays: a late 401 for an older token never logs out the new session
         self.assertIn("forCurrentSession", ts)
 
+    def test_deploy_recreates_the_proxy(self):
+        """The proxy reads nginx.conf through the "current" link, resolved when the
+        container is created: v1.0.1 was deployed with the old limits still live."""
+        sh = (ROOT / "infrastructure" / "scripts" / "release-deploy.sh").read_text(encoding="utf-8")
+        self.assertIn("docker compose up -d --no-deps --force-recreate nginx", sh)
+        calls = re.findall(r"^\s*luxe_restart_proxy$", sh, re.M)
+        self.assertEqual(len(calls), 2)  # after the switch and after a rollback
+
 
 if __name__ == "__main__":
     unittest.main()
