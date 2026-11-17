@@ -7,6 +7,7 @@ Start with the first table. The guides there are kept up to date with the code.
 | Need | Read |
 |---|---|
 | Run the shop day to day (owner): backups, restore, new database, updates, keys | [OPERATIONS_GUIDE.md](OPERATIONS_GUIDE.md) |
+| Use the desktop CMS, screen by screen (staff and owner, English PDF with screenshots) | [user-guide/Mus_Luxury_CMS_User_Guide_EN.pdf](user-guide/Mus_Luxury_CMS_User_Guide_EN.pdf) |
 | Every `.env` key, how to check a file | [CONFIGURATION.md](CONFIGURATION.md) |
 | Put the shop on the VPS | [deployment/VPS_DEPLOYMENT.md](deployment/VPS_DEPLOYMENT.md) |
 | CI, deploys, releases, rollback, migrations | [cicd/README.md](cicd/README.md) (and the files next to it) |
