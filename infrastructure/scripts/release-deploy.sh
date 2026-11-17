@@ -147,9 +147,19 @@ log "== swapping symlink =="
 ln -snf "$NEW_RELEASE" "${CURRENT_LINK}.new"
 mv -Tf  "${CURRENT_LINK}.new" "$CURRENT_LINK"
 
+# The proxy (stock nginx image) mounts its config through the "current" link,
+# which Docker resolves once, when the container is created: compose sees no
+# change and the proxy kept the PREVIOUS release's nginx.conf (v1.0.1 deployed,
+# the old rate limits still live, 2026-11-16). Recreate it on every switch.
+luxe_restart_proxy() {
+  log "recreating the proxy so it reads this release's nginx.conf"
+  (cd "$CURRENT_LINK" && docker compose up -d --no-deps --force-recreate nginx)     || log "WARNING: the proxy could not be recreated; it may still serve the previous nginx.conf"
+}
+
 # -------------------------------------------------- 7. Start new stack (compose takes it from here)
 log "== starting new stack =="
 (cd "$CURRENT_LINK" && docker compose up -d --remove-orphans)
+luxe_restart_proxy
 
 # -------------------------------------------------- 8. Health check
 log "== health check =="
@@ -173,6 +183,7 @@ if [ "$HEALTH_OK" -ne 1 ]; then
       log "ROLLBACK FAILED: the previous release could not be rebuilt/started — manual intervention needed"
       exit 2
     fi
+    luxe_restart_proxy
     ROLLBACK_OK=0
     DEADLINE=$(( $(date +%s) + HEALTH_TIMEOUT_SEC ))
     while [ "$(date +%s)" -lt "$DEADLINE" ]; do
