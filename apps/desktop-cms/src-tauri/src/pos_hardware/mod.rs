@@ -30,8 +30,11 @@
 // release (`docs/cicd/POS_HARDWARE.md` tracks the gap).
 // ============================================================================
 
+mod detect;
 mod escpos;
 mod zpl;
+
+pub use detect::Detection;
 
 use escpos::{Align, EscPos, DEFAULT_LINE_WIDTH};
 use zpl::{render_batch as zpl_render_batch, BarcodeKind as ZplBarcodeKind, LabelContent as ZplLabelContent};
@@ -39,7 +42,6 @@ use serde::{Deserialize, Serialize};
 use std::fs::OpenOptions;
 use std::io::Write;
 use std::net::{TcpStream, ToSocketAddrs};
-use std::path::Path;
 use std::time::Duration;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -121,6 +123,15 @@ pub struct ReceiptOptions {
 
 fn default_true() -> bool { true }
 fn default_feed() -> u8 { 3 }
+
+// -------------------------------------------------- Errors ----------------
+// Errors go to the CMS as "ERR:<code>:<detail>" so it can show them in the
+// language chosen there (French / English / Arabic); <detail> is the printer
+// name, address or path, and sometimes the system's own reason after " — ".
+
+pub(crate) fn hw_err(code: &str, detail: impl std::fmt::Display) -> String {
+    format!("ERR:{}:{}", code, detail)
+}
 
 // -------------------------------------------------- Rendering --------------
 
@@ -220,83 +231,176 @@ fn build_receipt_bytes(opts: &ReceiptOptions, lines: &[ReceiptLine]) -> Vec<u8> 
 // -------------------------------------------------- Transport --------------
 
 #[cfg(feature = "with-printers")]
-fn list_printers_impl() -> Vec<PrinterInfo> {
+fn state_name(s: &printers::common::base::printer::PrinterState) -> &'static str {
+    use printers::common::base::printer::PrinterState as S;
+    match s {
+        S::READY => "ready",
+        S::OFFLINE => "offline",
+        S::PAUSED => "paused",
+        S::PRINTING => "printing",
+        S::UNKNOWN => "unknown",
+    }
+}
+
+#[cfg(feature = "with-printers")]
+fn detected_printers() -> Vec<detect::DetectedPrinter> {
     printers::get_printers()
         .into_iter()
-        .map(|p| PrinterInfo {
-            name: p.name.clone(),
-            system_name: p.system_name.clone(),
+        .map(|p| detect::DetectedPrinter {
+            kind: detect::guess_kind(&p.name, &p.driver_name).to_string(),
+            name: p.name,
+            system_name: p.system_name,
             is_default: p.is_default,
-            state: format!("{:?}", p.state),
+            state: state_name(&p.state).to_string(),
+            port_name: p.port_name,
+            driver_name: p.driver_name,
         })
         .collect()
 }
 
 #[cfg(not(feature = "with-printers"))]
-fn list_printers_impl() -> Vec<PrinterInfo> {
-    // No Spooler/CUPS backend compiled in — the operator must target a raw
-    // device path. Return an empty list so the UI can prompt accordingly.
+fn detected_printers() -> Vec<detect::DetectedPrinter> {
+    // No Spooler/CUPS backend compiled in: printers are reached by device path.
     Vec::new()
+}
+
+fn list_printers_impl() -> Vec<PrinterInfo> {
+    detected_printers()
+        .into_iter()
+        .map(|p| PrinterInfo { name: p.name, system_name: p.system_name, is_default: p.is_default, state: p.state })
+        .collect()
+}
+
+/// What the print queue says about a job, polled after it was handed over.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub(crate) enum JobView {
+    /// Gone from the queue or marked completed: it went to the printer.
+    Done,
+    Waiting,
+    Paused,
+    Cancelled,
+}
+
+/// Follow a job in the system queue. Windows accepts a job even when the
+/// printer is switched off, unplugged or out of paper: the job then just
+/// waits. Saying "printed" in that case would be a lie, so we watch it.
+pub(crate) fn follow_job(name: &str, mut poll: impl FnMut() -> JobView, tries: u32, every: Duration) -> Result<(), String> {
+    for i in 0..tries {
+        match poll() {
+            JobView::Done => return Ok(()),
+            JobView::Paused => return Err(hw_err("job_paused", name)),
+            JobView::Cancelled => return Err(hw_err("job_cancelled", name)),
+            JobView::Waiting => {
+                if i + 1 < tries {
+                    std::thread::sleep(every);
+                }
+            }
+        }
+    }
+    Err(hw_err("job_stuck", name))
 }
 
 #[cfg(feature = "with-printers")]
 fn send_to_system_printer(name: &str, bytes: &[u8]) -> Result<(), String> {
-    use printers::common::base::job::PrinterJobOptions;
-    let target = printers::get_printer_by_name(name)
-        .ok_or_else(|| format!("imprimante introuvable: {}", name))?;
+    use printers::common::base::job::{PrinterJobOptions, PrinterJobState};
+    use printers::common::base::printer::PrinterState;
+    let target = printers::get_printer_by_name(name).ok_or_else(|| hw_err("printer_not_found", name))?;
+    match target.state {
+        PrinterState::OFFLINE => return Err(hw_err("printer_offline", name)),
+        PrinterState::PAUSED => return Err(hw_err("printer_paused", name)),
+        _ => {}
+    }
     let mut options = PrinterJobOptions::none();
-    options.name = Some("Mus Luxury receipt");
-    target
+    options.name = Some("Mus Luxury");
+    // CUPS: send the bytes as they are (ESC/POS, ZPL), never through a text filter.
+    // Windows already prints them as RAW.
+    #[cfg(not(windows))]
+    {
+        options.raw_properties = &[("raw", "true")];
+    }
+    let job_id = target
         .print(bytes, options)
-        .map_err(|e| format!("échec d'impression ({}): {:?}", name, e))?;
-    Ok(())
+        .map_err(|e| hw_err("print_failed", format!("{} — {:?}", name, e)))?;
+    follow_job(name, || {
+        match target.get_active_jobs().into_iter().find(|j| j.id == job_id) {
+            None => JobView::Done,
+            Some(j) => match j.state {
+                PrinterJobState::COMPLETED => JobView::Done,
+                PrinterJobState::PAUSED => JobView::Paused,
+                PrinterJobState::CANCELLED => JobView::Cancelled,
+                _ => JobView::Waiting,
+            },
+        }
+    }, 32, Duration::from_millis(250))
 }
 
 #[cfg(not(feature = "with-printers"))]
 fn send_to_system_printer(name: &str, _bytes: &[u8]) -> Result<(), String> {
-    Err(format!(
-        "Impression système indisponible dans ce build — utilisez un chemin \
-        d'appareil (device_path) pour cibler {} directement",
-        name
-    ))
+    Err(hw_err("system_print_unavailable", name))
 }
 
 fn send_to_device_path(path: &str, bytes: &[u8]) -> Result<(), String> {
-    let p = Path::new(path);
-    if !p.exists() {
-        return Err(format!("chemin introuvable: {}", path));
-    }
-    let mut f = OpenOptions::new()
+    let mut f = open_device_path(path)?;
+    f.write_all(bytes)
+        .and_then(|_| f.flush())
+        .map_err(|e| hw_err("path_write_failed", format!("{} — {}", path, e)))?;
+    Ok(())
+}
+
+fn open_device_path(path: &str) -> Result<std::fs::File, String> {
+    // Windows device names (COM3, LPT1) are not files: open them as \\.\COM3.
+    #[cfg(windows)]
+    let real = {
+        let p = path.trim().trim_end_matches(':');
+        let up = p.to_ascii_uppercase();
+        if (up.starts_with("COM") || up.starts_with("LPT")) && !p.starts_with(r"\\") {
+            format!(r"\\.\{}", p)
+        } else {
+            p.to_string()
+        }
+    };
+    #[cfg(not(windows))]
+    let real = {
+        if !std::path::Path::new(path).exists() {
+            return Err(hw_err("path_not_found", path));
+        }
+        path.to_string()
+    };
+    OpenOptions::new()
         .write(true)
         .append(true)
-        .open(p)
-        .map_err(|e| format!("ouverture {} impossible: {}", path, e))?;
-    f.write_all(bytes)
-        .map_err(|e| format!("écriture sur {} échouée: {}", path, e))?;
-    Ok(())
+        .open(&real)
+        .map_err(|e| {
+            if e.kind() == std::io::ErrorKind::NotFound {
+                hw_err("path_not_found", path)
+            } else {
+                hw_err("path_open_failed", format!("{} — {}", path, e))
+            }
+        })
 }
 
 /// Raw printing to a network printer (port 9100 on almost every ESC/POS and
 /// Zebra printer): connect with a timeout, write everything, flush.
 fn send_to_network(host: &str, port: u16, bytes: &[u8]) -> Result<(), String> {
+    let mut stream = connect_network(host, port)?;
+    stream
+        .set_write_timeout(Some(Duration::from_secs(10)))
+        .and_then(|_| stream.write_all(bytes))
+        .and_then(|_| stream.flush())
+        .map_err(|e| hw_err("net_send_failed", format!("{}:{} — {}", host, port, e)))?;
+    Ok(())
+}
+
+fn connect_network(host: &str, port: u16) -> Result<TcpStream, String> {
     let addrs: Vec<_> = (host, port)
         .to_socket_addrs()
-        .map_err(|e| format!("adresse {}:{} introuvable: {}", host, port, e))?
+        .map_err(|e| hw_err("net_resolve_failed", format!("{}:{} — {}", host, port, e)))?
         .collect();
-    let mut last_err = format!("adresse {}:{} introuvable", host, port);
+    let mut last_err = hw_err("net_resolve_failed", format!("{}:{}", host, port));
     for addr in addrs {
         match TcpStream::connect_timeout(&addr, Duration::from_secs(4)) {
-            Ok(mut stream) => {
-                stream
-                    .set_write_timeout(Some(Duration::from_secs(10)))
-                    .map_err(|e| format!("imprimante {}:{}: {}", host, port, e))?;
-                stream
-                    .write_all(bytes)
-                    .and_then(|_| stream.flush())
-                    .map_err(|e| format!("envoi à {}:{} échoué: {}", host, port, e))?;
-                return Ok(());
-            }
-            Err(e) => last_err = format!("imprimante {}:{} injoignable: {}", host, port, e),
+            Ok(stream) => return Ok(stream),
+            Err(e) => last_err = hw_err("net_unreachable", format!("{}:{} — {}", host, port, e)),
         }
     }
     Err(last_err)
@@ -318,12 +422,53 @@ fn send_bytes(target: &PrinterTarget, bytes: &[u8]) -> Result<(), String> {
         .clone()
         .filter(|n| !n.trim().is_empty())
         .or_else(default_printer_name)
-        .ok_or_else(|| {
-            "aucune imprimante configurée: choisissez une imprimante ou un \
-             chemin d'appareil dans les Paramètres"
-                .to_string()
-        })?;
+        .ok_or_else(|| hw_err("no_printer", ""))?;
     send_to_system_printer(&printer, bytes)
+}
+
+/// Check a printer without printing anything: the network printer accepts a
+/// connection, the port can be opened, or the system printer exists and is
+/// not offline / paused. Returns a short state ("ready", "printing", "unknown",
+/// "reachable", "open").
+fn check_target(target: &PrinterTarget) -> Result<String, String> {
+    if let Some(host) = target.host.as_deref().map(str::trim).filter(|h| !h.is_empty()) {
+        connect_network(host, target.port.unwrap_or(detect::RAW_PRINT_PORT))?;
+        return Ok("reachable".into());
+    }
+    if let Some(path) = target.device_path.as_deref().map(str::trim).filter(|p| !p.is_empty()) {
+        open_device_path(path)?;
+        return Ok("open".into());
+    }
+    let name = target
+        .printer_name
+        .clone()
+        .filter(|n| !n.trim().is_empty())
+        .or_else(default_printer_name)
+        .ok_or_else(|| hw_err("no_printer", ""))?;
+    check_system_printer(&name)
+}
+
+#[cfg(feature = "with-printers")]
+fn check_system_printer(name: &str) -> Result<String, String> {
+    use printers::common::base::printer::PrinterState;
+    let p = printers::get_printer_by_name(name).ok_or_else(|| hw_err("printer_not_found", name))?;
+    match p.state {
+        PrinterState::OFFLINE => Err(hw_err("printer_offline", name)),
+        PrinterState::PAUSED => Err(hw_err("printer_paused", name)),
+        _ => {
+            let waiting = p.get_active_jobs().len();
+            if waiting > 0 {
+                Err(hw_err("jobs_waiting", format!("{} — {}", name, waiting)))
+            } else {
+                Ok(state_name(&p.state).to_string())
+            }
+        }
+    }
+}
+
+#[cfg(not(feature = "with-printers"))]
+fn check_system_printer(name: &str) -> Result<String, String> {
+    Err(hw_err("system_print_unavailable", name))
 }
 
 #[cfg(feature = "with-printers")]
@@ -342,6 +487,26 @@ fn default_printer_name() -> Option<String> { None }
 #[tauri::command(async)]
 pub fn pos_list_printers() -> Vec<PrinterInfo> {
     list_printers_impl()
+}
+
+/// Everything this PC can see: system printers, network printers (when
+/// `scan_network`), serial / USB ports.
+#[tauri::command(async)]
+pub fn pos_detect_devices(scan_network: bool) -> Detection {
+    let (subnet, network) = if scan_network { detect::scan_network() } else { (None, Vec::new()) };
+    Detection {
+        printers: detected_printers(),
+        network,
+        ports: detect::list_ports(),
+        subnet,
+        network_scanned: scan_network,
+    }
+}
+
+/// Check a printer (receipt or label) without printing: see `check_target`.
+#[tauri::command(async)]
+pub fn pos_check_printer(opts: PrinterTarget) -> Result<String, String> {
+    check_target(&opts)
 }
 
 #[tauri::command(async)]
@@ -478,7 +643,7 @@ fn render_labels_escpos_text(labels: &[LabelPayload], width_chars: u8) -> Vec<u8
 #[tauri::command(async)]
 pub fn pos_print_labels(opts: LabelPrinterTarget, labels: Vec<LabelPayload>) -> Result<(), String> {
     if labels.is_empty() {
-        return Err("Aucune étiquette à imprimer".into());
+        return Err(hw_err("no_labels", ""));
     }
     let width_mm = opts.width_mm.unwrap_or(zpl::DEFAULT_LABEL_WIDTH_MM);
     let height_mm = opts.height_mm.unwrap_or(zpl::DEFAULT_LABEL_HEIGHT_MM);
@@ -495,7 +660,10 @@ pub fn pos_print_labels(opts: LabelPrinterTarget, labels: Vec<LabelPayload>) -> 
 }
 
 #[tauri::command(async)]
-pub fn pos_test_print_label(opts: LabelPrinterTarget) -> Result<(), String> {
+pub fn pos_test_print_label(opts: LabelPrinterTarget, sample: Option<LabelPayload>) -> Result<(), String> {
+    if let Some(s) = sample {
+        return pos_print_labels(opts, vec![s]);
+    }
     let sample = vec![LabelPayload {
         header: "Mus Luxury".into(),
         product_name: "Test etiquette".into(),
@@ -509,14 +677,20 @@ pub fn pos_test_print_label(opts: LabelPrinterTarget) -> Result<(), String> {
     pos_print_labels(opts, sample)
 }
 
+/// Print a short test slip. `lines` are written by the CMS in its language
+/// (Latin letters: thermal printers have no Arabic characters); without them
+/// a French slip is printed.
 #[tauri::command(async)]
-pub fn pos_test_print(opts: PrinterTarget) -> Result<(), String> {
+pub fn pos_test_print(opts: PrinterTarget, lines: Option<Vec<ReceiptLine>>) -> Result<(), String> {
     let receipt_opts = ReceiptOptions {
         target: opts.clone(),
         open_drawer: false,
         cut: true,
         feed_before_cut: 2,
     };
+    if let Some(lines) = lines.filter(|l| !l.is_empty()) {
+        return pos_print_receipt(receipt_opts, lines);
+    }
     let width = opts.line_width.unwrap_or(DEFAULT_LINE_WIDTH);
     let lines = vec![
         ReceiptLine { text: "MUS LUXURY".to_string(), align: Some("center".into()), bold: true, double_height: true, double_width: true, ..Default::default() },
@@ -612,7 +786,53 @@ mod tests {
         drop(listener); // nothing listens there any more
         let target = PrinterTarget { host: Some("127.0.0.1".into()), port: Some(port), ..Default::default() };
         let err = send_bytes(&target, b"x").unwrap_err();
-        assert!(err.contains("injoignable"), "{}", err);
+        assert!(err.starts_with("ERR:net_unreachable:127.0.0.1:"), "{}", err);
+        assert!(check_target(&target).unwrap_err().starts_with("ERR:net_unreachable:"));
+    }
+
+    #[test]
+    fn check_reaches_a_network_printer_without_sending_anything() {
+        use std::io::Read;
+        let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+        let port = listener.local_addr().unwrap().port();
+        let server = std::thread::spawn(move || {
+            let (mut s, _) = listener.accept().unwrap();
+            let mut got = Vec::new();
+            s.read_to_end(&mut got).unwrap();
+            got
+        });
+        let target = PrinterTarget { host: Some("127.0.0.1".into()), port: Some(port), ..Default::default() };
+        assert_eq!(check_target(&target).unwrap(), "reachable");
+        assert!(server.join().unwrap().is_empty());
+    }
+
+    #[test]
+    fn device_path_errors_are_coded() {
+        let target = PrinterTarget { device_path: Some("/dev/no-such-printer-0".into()), ..Default::default() };
+        assert_eq!(send_bytes(&target, b"x").unwrap_err(), "ERR:path_not_found:/dev/no-such-printer-0");
+        assert_eq!(check_target(&target).unwrap_err(), "ERR:path_not_found:/dev/no-such-printer-0");
+    }
+
+    #[test]
+    fn device_path_receives_the_bytes() {
+        let dir = std::env::temp_dir().join(format!("luxe-lp-{}", std::process::id()));
+        std::fs::write(&dir, b"").unwrap();
+        let target = PrinterTarget { device_path: Some(dir.to_string_lossy().into()), ..Default::default() };
+        send_bytes(&target, b"\x1b@slip").unwrap();
+        assert_eq!(check_target(&target).unwrap(), "open");
+        assert_eq!(std::fs::read(&dir).unwrap(), b"\x1b@slip");
+        let _ = std::fs::remove_file(&dir);
+    }
+
+    #[test]
+    fn a_job_that_stays_in_the_queue_is_not_reported_as_printed() {
+        let fast = Duration::from_millis(1);
+        assert_eq!(follow_job("P", || JobView::Done, 5, fast), Ok(()));
+        let mut seq = vec![JobView::Done, JobView::Waiting, JobView::Waiting];
+        assert_eq!(follow_job("P", || seq.pop().unwrap(), 5, fast), Ok(()));
+        assert_eq!(follow_job("POS-80", || JobView::Waiting, 5, fast), Err("ERR:job_stuck:POS-80".into()));
+        assert_eq!(follow_job("POS-80", || JobView::Paused, 5, fast), Err("ERR:job_paused:POS-80".into()));
+        assert_eq!(follow_job("POS-80", || JobView::Cancelled, 5, fast), Err("ERR:job_cancelled:POS-80".into()));
     }
 
     #[test]
@@ -667,6 +887,53 @@ mod tests {
         // 2026-11-09 is day 20766 from the unix epoch.
         let (y, m, d) = date_from_days(20766);
         assert_eq!((y, m, d), (2026, 11, 9));
+    }
+
+    /// Through a real system print queue (CUPS here; the Windows spooler on the
+    /// shop PC goes through the same code). Needs a running cupsd and a raw
+    /// queue: see infrastructure/scripts/test-print-queue.sh. Run with
+    /// LUXE_PRINT_QUEUE_PORT=<port of the fake printer> cargo test -- --ignored.
+    #[cfg(feature = "with-printers")]
+    #[test]
+    #[ignore]
+    fn system_print_queue_end_to_end() {
+        use std::io::Read;
+        let port: u16 = std::env::var("LUXE_PRINT_QUEUE_PORT").expect("LUXE_PRINT_QUEUE_PORT").parse().unwrap();
+        let queue = std::env::var("LUXE_PRINT_QUEUE").unwrap_or_else(|_| "POS-80".into());
+        let found = detected_printers();
+        let p = found.iter().find(|p| p.system_name == queue).unwrap_or_else(|| panic!("queue not detected: {:?}", found));
+        assert_eq!(p.kind, "receipt");
+        assert_eq!(check_target(&PrinterTarget { printer_name: Some(queue.clone()), ..Default::default() }).unwrap(), "ready");
+
+        // 1. printer on: the exact bytes arrive, unfiltered.
+        let listener = std::net::TcpListener::bind(("127.0.0.1", port)).unwrap();
+        let server = std::thread::spawn(move || {
+            let (mut s, _) = listener.accept().unwrap();
+            let mut got = Vec::new();
+            s.read_to_end(&mut got).unwrap();
+            got
+        });
+        let target = PrinterTarget { printer_name: Some(queue.clone()), ..Default::default() };
+        let slip = build_receipt_bytes(&ReceiptOptions { target: target.clone(), open_drawer: true, cut: true, feed_before_cut: 1 },
+            &[ReceiptLine { text: "Caf\u{e9} 1 200 DA".into(), ..Default::default() }]);
+        send_bytes(&target, &slip).expect("printed through the queue");
+        assert_eq!(server.join().unwrap(), slip);
+
+        // 2. printer off: the job stays in the queue -> not reported as printed.
+        let err = send_bytes(&target, b"\x1b@off").unwrap_err();
+        assert_eq!(err, format!("ERR:job_stuck:{}", queue));
+        assert!(check_target(&target).unwrap_err().starts_with("ERR:jobs_waiting:"));
+        let _ = std::process::Command::new("cancel").args(["-a", &queue]).status();
+
+        // 3. queue paused by someone: refused before sending.
+        std::process::Command::new("cupsdisable").arg(&queue).status().unwrap();
+        let err = send_bytes(&target, b"x").unwrap_err();
+        std::process::Command::new("cupsenable").arg(&queue).status().unwrap();
+        assert_eq!(err, format!("ERR:printer_paused:{}", queue));
+
+        // 4. a name that does not exist.
+        let missing = PrinterTarget { printer_name: Some("No-Such-Printer".into()), ..Default::default() };
+        assert_eq!(send_bytes(&missing, b"x").unwrap_err(), "ERR:printer_not_found:No-Such-Printer");
     }
 
     fn windows_contains(hay: &[u8], needle: &[u8]) -> bool {

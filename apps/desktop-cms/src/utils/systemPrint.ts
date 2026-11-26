@@ -56,18 +56,19 @@ function buildPageSizeCss(opts: SystemPrintOptions): string {
 }
 
 /**
- * Open a fresh browser window, write the HTML, and invoke the print dialog.
- * Returns an ok/error result instead of throwing so the caller can surface a
- * toast without a try/catch at every site.
+ * Print an HTML page with the system print dialog (any installed printer,
+ * or "Save as PDF").
+ *
+ * The page is written into a hidden frame of the CMS itself, not into a new
+ * window: the desktop app's web view does not open pop-up windows, so
+ * `window.open` returned nothing there and the button did nothing. A frame
+ * works the same in the desktop app and in a browser.
+ * Returns an ok/error result instead of throwing.
  */
 export function openSystemPrint(opts: SystemPrintOptions): SystemPrintResult {
   try {
-    if (typeof window === "undefined") {
+    if (typeof window === "undefined" || typeof document === "undefined") {
       return { ok: false, error: tr("misc.no_gui") };
-    }
-    const w = window.open("", "_blank", "width=720,height=820");
-    if (!w) {
-      return { ok: false, error: tr("misc.popup_blocked") };
     }
     const css = `
       ${buildPageSizeCss(opts)}
@@ -81,13 +82,39 @@ export function openSystemPrint(opts: SystemPrintOptions): SystemPrintResult {
       .page:last-child { page-break-after: auto; }
       ${opts.extraCss ?? ""}
     `;
-    const auto = opts.autoPrint !== false;
     const title = (opts.title ?? "Impression").replace(/</g, "&lt;");
-    w.document.write(`<!DOCTYPE html><html><head><meta charset="utf-8"><title>${title}</title>
-      <style>${css}</style></head><body>${opts.html}
-      ${auto ? `<script>window.addEventListener('load', function(){ setTimeout(function(){ window.print(); }, 150); });<\/script>` : ""}
-      </body></html>`);
-    w.document.close();
+    document.querySelectorAll("iframe[data-luxe-print]").forEach((f) => f.remove());
+    const frame = document.createElement("iframe");
+    frame.setAttribute("data-luxe-print", "1");
+    frame.setAttribute("aria-hidden", "true");
+    frame.title = title;
+    frame.style.cssText = "position:fixed;right:0;bottom:0;width:0;height:0;border:0;visibility:hidden;";
+    document.body.appendChild(frame);
+    const doc = frame.contentDocument;
+    const win = frame.contentWindow;
+    if (!doc || !win) {
+      frame.remove();
+      return { ok: false, error: tr("misc.sys_print_failed") };
+    }
+    doc.open();
+    doc.write(`<!DOCTYPE html><html><head><meta charset="utf-8"><title>${title}</title>
+      <style>${css}</style></head><body>${opts.html}</body></html>`);
+    doc.close();
+    if (opts.autoPrint !== false) {
+      // Let images / barcodes lay out, then open the print dialog of the frame.
+      setTimeout(() => {
+        try {
+          win.focus();
+          win.print();
+        } catch {
+          /* the dialog could not open: nothing printed, nothing to undo */
+        }
+      }, 200);
+    }
+    // Remove the frame once the dialog is closed (or after a minute anyway).
+    const cleanup = () => setTimeout(() => frame.remove(), 500);
+    win.addEventListener("afterprint", cleanup, { once: true });
+    setTimeout(() => frame.isConnected && frame.remove(), 60_000);
     return { ok: true };
   } catch (e: any) {
     return { ok: false, error: String(e?.message ?? e ?? tr("misc.sys_print_failed")) };

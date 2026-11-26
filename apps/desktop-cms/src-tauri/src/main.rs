@@ -165,6 +165,8 @@ fn main() {
             keychain_status,
             open_external_url,
             pos_hardware::pos_list_printers,
+            pos_hardware::pos_detect_devices,
+            pos_hardware::pos_check_printer,
             pos_hardware::pos_print_receipt,
             pos_hardware::pos_open_cash_drawer,
             pos_hardware::pos_test_print,

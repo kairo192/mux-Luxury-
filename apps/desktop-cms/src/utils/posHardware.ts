@@ -1,6 +1,6 @@
 // ============================================================================
 import { serverDate } from "./serverDate";
-import { tr } from "../i18n/translations";
+import { tr, translateRaw, getCurrentLang } from "../i18n/translations";
 // POS hardware bridge — thin typed wrapper around the Tauri 2 invoke commands
 // defined in `apps/desktop-cms/src-tauri/src/pos_hardware/`.
 //
@@ -92,6 +92,8 @@ export function loadHardwareSettings(): PrinterTarget {
     return {
       printer_name: parsed.printer_name ?? null,
       device_path: parsed.device_path ?? null,
+      host: parsed.host ?? null,
+      port: parsed.host ? Number(parsed.port) || 9100 : null,
       line_width: parsed.line_width ?? 32,
       drawer_pin: (parsed.drawer_pin === 5 ? 5 : 2) as 2 | 5,
     };
@@ -105,6 +107,8 @@ export function saveHardwareSettings(s: PrinterTarget): void {
     localStorage.setItem(POS_HW_SETTINGS_KEY, JSON.stringify({
       printer_name: s.printer_name ?? null,
       device_path: s.device_path ?? null,
+      host: s.host?.trim() || null,
+      port: s.host?.trim() ? Number(s.port) || 9100 : null,
       line_width: s.line_width ?? 32,
       drawer_pin: s.drawer_pin ?? 2,
     }));
@@ -115,7 +119,84 @@ export function saveHardwareSettings(s: PrinterTarget): void {
 
 export function isHardwareConfigured(s?: PrinterTarget): boolean {
   const cfg = s ?? loadHardwareSettings();
-  return Boolean((cfg.printer_name && cfg.printer_name.trim()) || (cfg.device_path && cfg.device_path.trim()));
+  return Boolean((cfg.printer_name && cfg.printer_name.trim()) || (cfg.device_path && cfg.device_path.trim()) || (cfg.host && cfg.host.trim()));
+}
+
+// -------------------------------------------------- Errors --------------
+
+/** The desktop app reports printer errors as "ERR:<code>:<detail>": show them
+ *  in the CMS language. Anything else is shown as it is. */
+export function hardwareErrorText(raw: unknown, fallbackKey = "hw.printer_error"): string {
+  const text = String((raw as any)?.message ?? raw ?? "").trim();
+  const m = text.match(/^ERR:([a-z_]+):([\s\S]*)$/);
+  if (!m) return text || tr(fallbackKey);
+  const [, code, detailRaw] = m;
+  const [what, why] = detailRaw.split(" — ");
+  const key = `hw.err_${code}`;
+  const msg = tr(key, { d: what || "", n: why || "" });
+  if (msg === key) return text;
+  return why && !msg.includes(why) && code !== "jobs_waiting" ? `${msg} (${why})` : msg;
+}
+
+// -------------------------------------------------- Detection -----------
+
+export interface DetectedPrinter extends PrinterInfo {
+  /** receipt | label | office | virtual */
+  kind: "receipt" | "label" | "office" | "virtual";
+  port_name: string;
+  driver_name: string;
+}
+
+export interface Detection {
+  printers: DetectedPrinter[];
+  network: Array<{ host: string; port: number }>;
+  ports: Array<{ path: string; kind: "usb_printer" | "serial" }>;
+  subnet: string | null;
+  network_scanned: boolean;
+}
+
+/** What this PC can see (desktop app only): system printers, printers on the
+ *  local network (port 9100) when `scanNetwork`, serial / USB ports. */
+export async function detectDevices(scanNetwork: boolean): Promise<Detection | null> {
+  const invoke = getTauriInvoke();
+  if (!invoke) return null;
+  return (await invoke("pos_detect_devices", { scanNetwork })) as Detection;
+}
+
+/** Check a printer without printing (reachable / exists, not offline or
+ *  paused, nothing stuck in its queue). */
+export async function checkPrinter(opts: PrinterTarget): Promise<HardwareResult & { state?: string }> {
+  const invoke = getTauriInvoke();
+  if (!invoke) return { ok: false, error: tr("hw.no_tauri_test") };
+  try {
+    const state = (await invoke("pos_check_printer", { opts })) as string;
+    return { ok: true, state };
+  } catch (e: any) {
+    return { ok: false, error: hardwareErrorText(e, "hw.test_failed") };
+  }
+}
+
+/** Test slip in the CMS language. Thermal printers have no Arabic letters:
+ *  in Arabic the slip is printed in French. */
+export function testSlipLines(deviceName: string, width = 32): ReceiptLine[] {
+  const lang = getCurrentLang() === "ar" ? "fr" : getCurrentLang();
+  const L = (k: string, v?: Record<string, string | number>) => translateRaw(lang, `hw.slip_${k}`).replace(/\{\{(\w+)\}\}/g, (_, n) => String(v?.[n] ?? ""));
+  const now = new Date();
+  const pad = (n: number) => String(n).padStart(2, "0");
+  const stamp = `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())} ${pad(now.getHours())}:${pad(now.getMinutes())}`;
+  return [
+    { text: "MUS LUXURY", align: "center", bold: true, double_height: true, double_width: true },
+    { text: L("title"), align: "center" },
+    { rule: true },
+    { left: L("printer"), right: deviceName.slice(0, Math.max(8, width - 12)) },
+    { left: L("width"), right: L("chars", { n: width }) },
+    { left: L("date"), right: stamp },
+    { rule: true },
+    { text: L("ok"), align: "center", bold: true },
+    { text: L("accents") + " é è à ç ù", align: "center" },
+    { feed: 1 },
+    { barcode: "MUSLUXURY" },
+  ];
 }
 
 // -------------------------------------------------- Commands ------------
@@ -140,7 +221,7 @@ export async function printReceipt(
     await invoke("pos_print_receipt", { opts, lines });
     return { ok: true };
   } catch (e: any) {
-    return { ok: false, error: String(e?.message ?? e ?? tr("hw.printer_error")) };
+    return { ok: false, error: hardwareErrorText(e, "hw.printer_error") };
   }
 }
 
@@ -151,18 +232,19 @@ export async function openCashDrawer(opts: PrinterTarget = loadHardwareSettings(
     await invoke("pos_open_cash_drawer", { opts });
     return { ok: true };
   } catch (e: any) {
-    return { ok: false, error: String(e?.message ?? e ?? tr("hw.drawer_failed")) };
+    return { ok: false, error: hardwareErrorText(e, "hw.drawer_failed") };
   }
 }
 
-export async function testPrint(opts: PrinterTarget = loadHardwareSettings()): Promise<HardwareResult> {
+export async function testPrint(opts: PrinterTarget = loadHardwareSettings(), deviceName?: string): Promise<HardwareResult> {
   const invoke = getTauriInvoke();
   if (!invoke) return { ok: false, error: tr("hw.no_tauri_test") };
   try {
-    await invoke("pos_test_print", { opts });
+    const name = deviceName || opts.printer_name || opts.host || opts.device_path || tr("hw.default_printer");
+    await invoke("pos_test_print", { opts, lines: testSlipLines(String(name), opts.line_width ?? 32) });
     return { ok: true };
   } catch (e: any) {
-    return { ok: false, error: String(e?.message ?? e ?? tr("hw.test_failed")) };
+    return { ok: false, error: hardwareErrorText(e, "hw.test_failed") };
   }
 }
 
@@ -306,6 +388,8 @@ export function loadLabelPrinterSettings(): LabelPrinterTarget {
     return {
       printer_name: parsed.printer_name ?? null,
       device_path: parsed.device_path ?? null,
+      host: parsed.host ?? null,
+      port: parsed.host ? Number(parsed.port) || 9100 : null,
       format: parsed.format === "escpos-text" ? "escpos-text" : "zpl",
       width_mm: Number(parsed.width_mm) || 50,
       height_mm: Number(parsed.height_mm) || 30,
@@ -321,6 +405,8 @@ export function saveLabelPrinterSettings(s: LabelPrinterTarget): void {
     localStorage.setItem(POS_LABEL_SETTINGS_KEY, JSON.stringify({
       printer_name: s.printer_name ?? null,
       device_path: s.device_path ?? null,
+      host: s.host?.trim() || null,
+      port: s.host?.trim() ? Number(s.port) || 9100 : null,
       format: s.format === "escpos-text" ? "escpos-text" : "zpl",
       width_mm: Number(s.width_mm) || 50,
       height_mm: Number(s.height_mm) || 30,
@@ -333,7 +419,7 @@ export function saveLabelPrinterSettings(s: LabelPrinterTarget): void {
 
 export function isLabelPrinterConfigured(s?: LabelPrinterTarget): boolean {
   const cfg = s ?? loadLabelPrinterSettings();
-  return Boolean((cfg.printer_name && cfg.printer_name.trim()) || (cfg.device_path && cfg.device_path.trim()));
+  return Boolean((cfg.printer_name && cfg.printer_name.trim()) || (cfg.device_path && cfg.device_path.trim()) || (cfg.host && cfg.host.trim()));
 }
 
 export async function printLabels(opts: LabelPrinterTarget, labels: LabelPayload[]): Promise<HardwareResult> {
@@ -344,7 +430,7 @@ export async function printLabels(opts: LabelPrinterTarget, labels: LabelPayload
     await invoke("pos_print_labels", { opts, labels });
     return { ok: true };
   } catch (e: any) {
-    return { ok: false, error: String(e?.message ?? e ?? tr("hw.label_error")) };
+    return { ok: false, error: hardwareErrorText(e, "hw.label_error") };
   }
 }
 
@@ -352,10 +438,21 @@ export async function testPrintLabel(opts: LabelPrinterTarget = loadLabelPrinter
   const invoke = getTauriInvoke();
   if (!invoke) return { ok: false, error: tr("hw.no_tauri_test") };
   try {
-    await invoke("pos_test_print_label", { opts });
+    const lang = getCurrentLang() === "ar" ? "fr" : getCurrentLang();
+    const sample: LabelPayload = {
+      header: "Mus Luxury",
+      product_name: translateRaw(lang, "hw.slip_label_name"),
+      variant_title: "",
+      sku: "TEST-001",
+      price_text: "1 234 DA",
+      barcode_value: "MUSLUXURY",
+      barcode_kind: "code128",
+      copies: 1,
+    };
+    await invoke("pos_test_print_label", { opts, sample });
     return { ok: true };
   } catch (e: any) {
-    return { ok: false, error: String(e?.message ?? e ?? tr("hw.label_test_failed")) };
+    return { ok: false, error: hardwareErrorText(e, "hw.label_test_failed") };
   }
 }
 
