@@ -33,6 +33,7 @@ import { DesktopCmsApi } from "../api/adminClient";
 import { notifyClientError, notifyClientSuccess, notifyClientWarning } from "../utils/clientNotifier";
 import { serverDate } from "../utils/serverDate";
 import { copyBackupToPc, listPcCopies, pcCopiesAvailable, sendPcCopyToServer, type PcCopies } from "../utils/backupCopies";
+import { DICTS } from "../i18n/translations";
 
 interface BackupMeta {
   name: string;
@@ -255,7 +256,7 @@ export function DatabasePanel({ active, isOwner }: { active: boolean; isOwner: b
               <p className="mt-1 text-base font-bold text-[#063D2E] flex items-center gap-2">
                 <HardDrive className="w-4 h-4 text-[#D4AF62]" /> {status.engine}
               </p>
-              <p className="text-[11px] text-gray-500 mt-0.5">{status.location}</p>
+              <p className="text-[11px] text-gray-500 mt-0.5">{status.engine === "SQLite" ? t("dbx.loc_sqlite") : status.engine === "PostgreSQL" ? t("dbx.loc_pg") : status.location}</p>
             </div>
             <div className="bg-white p-4 rounded-2xl border border-[#D4AF62]/40">
               <p className="text-[10px] uppercase tracking-wider font-extrabold text-gray-400">{t("db.size")}</p>
@@ -315,7 +316,7 @@ export function DatabasePanel({ active, isOwner }: { active: boolean; isOwner: b
             <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
               {status.counts.map((c) => (
                 <div key={c.table} className="rounded-xl bg-[#F8F6F0] px-3 py-2.5">
-                  <p className="text-[11px] text-gray-500">{c.label}</p>
+                  <p className="text-[11px] text-gray-500">{DICTS.fr[`dbx.c_${c.table}`] ? t(`dbx.c_${c.table}`) : c.label}</p>
                   <p className="text-lg font-bold text-[#063D2E] font-mono">{c.rows.toLocaleString()}</p>
                 </div>
               ))}

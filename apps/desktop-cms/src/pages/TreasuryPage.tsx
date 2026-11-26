@@ -16,6 +16,7 @@ import {
 import { DesktopCmsApi } from "../api/adminClient";
 import { useT } from "../i18n";
 import { codeLabel } from "../utils/codeLabels";
+import { treasuryText } from "../utils/treasuryText";
 
 interface TreasurySummary {
   cash_balance_dzd: number;
@@ -328,7 +329,7 @@ export const TreasuryPage: React.FC = () => {
                         </span>
                       </td>
                       <td className="py-3 px-4 text-gray-700">
-                        <div>{m.notes || m.description || "—"}</div>
+                        <div>{treasuryText(m.notes || m.description) || "—"}</div>
                         {(m.reference_id || m.source_reference) && (
                           <div className="text-[11px] font-mono text-gray-400">
                             {t("tre.ref", { ref: m.reference_id || m.source_reference })}

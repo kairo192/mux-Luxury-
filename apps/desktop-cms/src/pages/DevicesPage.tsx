@@ -23,6 +23,7 @@ import { useT } from "../i18n";
 import { isTauriRuntime, testPrint, testPrintLabel } from "../utils/posHardware";
 import { serverDate } from "../utils/serverDate";
 import { localeFor } from "../i18n/translations";
+import { tr } from "../i18n/translations";
 
 type DeviceType = "receipt_printer" | "label_printer" | "barcode_scanner" | "cash_drawer" | "customer_display" | "other";
 type ConnectionType = "usb" | "network" | "windows" | "serial" | "hid_keyboard" | "browser";
@@ -317,7 +318,7 @@ export const DevicesPage: React.FC = () => {
           <p className="text-gray-500 mt-1">{t("devices.subtitle")}</p>
         </div>
         <div className="flex gap-2">
-          <button aria-label="Actualiser" type="button" onClick={load} className="h-12 w-12 rounded-2xl border-2 border-gray-200 flex items-center justify-center text-gray-500 active:scale-95">
+          <button aria-label={tr("ui.refresh")} type="button" onClick={load} className="h-12 w-12 rounded-2xl border-2 border-gray-200 flex items-center justify-center text-gray-500 active:scale-95">
             <RefreshCw className="w-5 h-5" />
           </button>
           <button type="button" onClick={() => setForm({ ...emptyForm })} className="h-12 px-5 rounded-2xl bg-[#063D2E] text-[#D4AF62] font-bold flex items-center gap-2 active:scale-95">
@@ -393,10 +394,10 @@ export const DevicesPage: React.FC = () => {
                           <Star className="w-4 h-4" /> {t("devices.btn_set_default")}
                         </button>
                       )}
-                      <button aria-label="Modifier" type="button" onClick={() => editDevice(dev)} className="h-10 w-10 rounded-xl border-2 border-gray-200 flex items-center justify-center text-gray-500 active:scale-95">
+                      <button aria-label={t("misc.edit")} type="button" onClick={() => editDevice(dev)} className="h-10 w-10 rounded-xl border-2 border-gray-200 flex items-center justify-center text-gray-500 active:scale-95">
                         <Pencil className="w-4 h-4" />
                       </button>
-                      <button aria-label="Supprimer" type="button" onClick={() => remove(dev)} className="h-10 w-10 rounded-xl border-2 border-red-200 flex items-center justify-center text-red-500 active:scale-95">
+                      <button aria-label={t("misc.delete")} type="button" onClick={() => remove(dev)} className="h-10 w-10 rounded-xl border-2 border-red-200 flex items-center justify-center text-red-500 active:scale-95">
                         <Trash2 className="w-4 h-4" />
                       </button>
                     </div>
@@ -414,7 +415,7 @@ export const DevicesPage: React.FC = () => {
           <div className="bg-white rounded-3xl w-full max-w-md max-h-[92vh] overflow-auto" onClick={(e) => e.stopPropagation()}>
             <div className="flex items-center justify-between px-5 py-4 border-b">
               <h3 className="font-serif font-bold text-[#063D2E] text-lg">{form.id === null ? t("devices.modal_new") : t("devices.modal_edit")}</h3>
-              <button aria-label="Fermer" type="button" onClick={() => setForm(null)} className="w-11 h-11 rounded-xl flex items-center justify-center text-gray-400 hover:bg-gray-100 active:scale-95">
+              <button aria-label={tr("ui.close")} type="button" onClick={() => setForm(null)} className="w-11 h-11 rounded-xl flex items-center justify-center text-gray-400 hover:bg-gray-100 active:scale-95">
                 <X className="w-6 h-6" />
               </button>
             </div>

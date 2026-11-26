@@ -19,6 +19,7 @@ import { syncCatalog } from "../utils/posMirrorSync";
 import { confirmClientAction } from "../utils/clientNotifier";
 import { useT } from "../i18n";
 import { useEscapeToClose } from "../utils/useEscapeToClose";
+import { tr } from "../i18n/translations";
 
 // ---------------------------------------------------------------------------
 // PrinterSettingsModal — configure the thermal receipt printer, cash drawer
@@ -164,7 +165,7 @@ export const PrinterSettingsModal: React.FC<Props> = ({ open, onClose, onFlash }
           <div className="flex items-center gap-2 font-bold text-lg">
             <Printer className="w-6 h-6" /> {t("printer_settings.title")}
           </div>
-          <button aria-label="Fermer" type="button" onClick={onClose} className="h-10 w-10 flex items-center justify-center rounded-full hover:bg-white/10 active:scale-95">
+          <button aria-label={tr("ui.close")} type="button" onClick={onClose} className="h-10 w-10 flex items-center justify-center rounded-full hover:bg-white/10 active:scale-95">
             <X className="w-5 h-5" />
           </button>
         </div>

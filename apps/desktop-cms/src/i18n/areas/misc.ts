@@ -62,4 +62,8 @@ export const misc = defineArea("misc", {
   "login_to_update": ["Connectez-vous pour installer la mise à jour.", "Sign in to install the update.", "سجّل الدخول لتثبيت التحديث."],
   "got_it": ["Compris (fermer)", "Got it (close)", "فهمت (إغلاق)"],
   "failed": ["Échec", "Failed", "فشل"],
+  "period": ["Période : {{from}} → {{to}}", "Period: {{from}} → {{to}}", "الفترة: {{from}} ← {{to}}"],
+  "edit": ["Modifier", "Edit", "تعديل"],
+  "delete": ["Supprimer", "Delete", "حذف"],
+  "search": ["Rechercher", "Search", "بحث"],
 });

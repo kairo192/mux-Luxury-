@@ -18,6 +18,7 @@ import { DesktopCmsApi, getAccessToken } from "../api/adminClient";
 import { useT } from "../i18n";
 import { localDateIso } from "../utils/serverDate";
 import { pickLang } from "../i18n/translations";
+import { treasuryText } from "../utils/treasuryText";
 
 interface PnlStatement {
   gross_revenue_dzd: number;
@@ -515,7 +516,7 @@ export const AccountingPage: React.FC = () => {
                         <span className="text-gray-500 text-[11px]">{entry.account_name}</span>
                       </td>
                       <td className="py-3 px-4 text-gray-700">
-                        {entry.description}
+                        {treasuryText(entry.description)}
                       </td>
                       <td className="py-3 px-4 text-right font-mono font-bold text-gray-900 whitespace-nowrap">
                         {entry.debit_dzd > 0 ? `${entry.debit_dzd.toLocaleString()} DZD` : "—"}

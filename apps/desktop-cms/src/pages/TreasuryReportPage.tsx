@@ -4,6 +4,7 @@ import { DesktopCmsApi, getAccessToken } from "../api/adminClient";
 import { useT } from "../i18n";
 import { codeLabel } from "../utils/codeLabels";
 import { serverDate, localDateIso } from "../utils/serverDate";
+import { treasuryText } from "../utils/treasuryText";
 
 const fmt = (dzd: number) => `${Number(dzd || 0).toLocaleString("fr-DZ")} DA`;
 
@@ -172,7 +173,7 @@ export const TreasuryReportPage: React.FC = () => {
                         <tr key={it.id} className="border-t border-gray-100">
                           <td className="px-3 py-2 font-mono text-[10px] whitespace-nowrap">{serverDate(it.created_at).toLocaleString("fr-FR")}</td>
                           <td className="px-3 py-2">
-                            <div className="truncate">{it.description}</div>
+                            <div className="truncate">{treasuryText(it.description)}</div>
                             <div className="text-gray-400 text-[10px]">{accountLabel(it.account_type)} · {sourceLabel(it.source_type)}</div>
                           </td>
                           <td className={`px-3 py-2 text-right font-mono font-bold ${outgoing ? "text-red-600" : "text-emerald-600"}`}>

@@ -3,6 +3,7 @@ import { X, AlertTriangle, CheckCircle2, PackageMinus } from "lucide-react";
 import { DesktopCmsApi } from "../api/adminClient";
 import { useT } from "../i18n";
 import { useEscapeToClose } from "../utils/useEscapeToClose";
+import { tr } from "../i18n/translations";
 
 export const StockWriteOffModal: React.FC<{
   variantId: number;
@@ -52,7 +53,7 @@ export const StockWriteOffModal: React.FC<{
           <h3 className="font-serif font-bold text-[#063D2E] text-lg flex items-center gap-2">
             <PackageMinus className="w-5 h-5" /> {t("stock_writeoff.title")}
           </h3>
-          <button aria-label="Fermer" type="button" onClick={onClose} className="w-11 h-11 rounded-xl flex items-center justify-center text-gray-400 hover:bg-gray-100 active:scale-95">
+          <button aria-label={tr("ui.close")} type="button" onClick={onClose} className="w-11 h-11 rounded-xl flex items-center justify-center text-gray-400 hover:bg-gray-100 active:scale-95">
             <X className="w-6 h-6" />
           </button>
         </div>

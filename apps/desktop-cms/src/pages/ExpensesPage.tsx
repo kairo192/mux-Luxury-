@@ -596,7 +596,7 @@ export const ExpensesPage: React.FC = () => {
                   <p className="text-[11px] text-[#E8D4A5]/80">{t("expenses.modal_del_subtitle")}</p>
                 </div>
               </div>
-              <button aria-label="Fermer"
+              <button aria-label={tr("ui.close")}
                 type="button"
                 onClick={() => setExpenseToDelete(null)}
                 className="w-8 h-8 rounded-full bg-white/10 hover:bg-white/20 text-[#E8D4A5] flex items-center justify-center transition"

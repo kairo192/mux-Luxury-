@@ -171,7 +171,7 @@ export const ExpenseReportPage: React.FC = () => {
           </div>
 
           <p className="text-[11px] text-gray-400 text-center">
-            Période : {data.period.from} → {data.period.to}
+            {t("misc.period", { from: data.period.from, to: data.period.to })}
           </p>
         </>
       ) : null}

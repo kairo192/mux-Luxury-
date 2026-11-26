@@ -4,6 +4,7 @@ import { DesktopCmsApi } from "../api/adminClient";
 import { useT } from "../i18n";
 import { useEscapeToClose } from "../utils/useEscapeToClose";
 import { serverDate } from "../utils/serverDate";
+import { tr } from "../i18n/translations";
 
 const fmt = (dzd: number) => `${Number(dzd || 0).toLocaleString("fr-DZ")} DA`;
 
@@ -36,7 +37,7 @@ export const InvoiceModal: React.FC<{ saleId: number; onClose: () => void }> = (
             <button type="button" onClick={printIt} disabled={!data} className="h-11 px-4 rounded-xl bg-[#063D2E] text-[#D4AF62] font-bold flex items-center gap-2 active:scale-95 disabled:opacity-50">
               <Printer className="w-4 h-4" /> {t("invoice_modal.btn_print")}
             </button>
-            <button aria-label="Fermer" type="button" onClick={onClose} className="w-11 h-11 rounded-xl flex items-center justify-center text-gray-400 hover:bg-gray-100 active:scale-95">
+            <button aria-label={tr("ui.close")} type="button" onClick={onClose} className="w-11 h-11 rounded-xl flex items-center justify-center text-gray-400 hover:bg-gray-100 active:scale-95">
               <X className="w-6 h-6" />
             </button>
           </div>

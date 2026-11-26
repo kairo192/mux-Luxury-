@@ -272,7 +272,7 @@ export default function App() {
       if (document.querySelector('[aria-labelledby="active-confirm-title"], [aria-labelledby="active-message-box-title"]')) return;
       const overlays = Array.from(document.querySelectorAll<HTMLElement>("div.fixed.inset-0")).filter((el) => el.offsetParent !== null || el.getClientRects().length > 0);
       const top = overlays[overlays.length - 1];
-      const close = top?.querySelector<HTMLButtonElement>('button[aria-label="Fermer"]');
+      const close = top?.querySelector<HTMLButtonElement>('button[aria-label="Fermer"], button[aria-label="Close"], button[aria-label="إغلاق"]');
       if (close) {
         e.stopPropagation();
         e.preventDefault();
