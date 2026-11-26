@@ -5,9 +5,13 @@ export const CATEGORY_PRESETS: CategoryPreset[] = [
   {
     id: "preset-tshirts",
     name: "T-shirts & Prêt-à-porter",
+    name_en: "T-shirts & Ready-to-wear",
+    name_ar: "قمصان وملابس جاهزة فاخرة",
     slug: "t-shirts",
     iconName: "shirt",
     description_fr: "T-shirts d'exception, polos raffinés et créations prêt-à-porter confectionnés dans les cotons et lins les plus nobles.",
+    description_en: "Exceptional T-shirts, refined polos and ready-to-wear pieces made from the finest cottons and linens.",
+    description_ar: "قمصان استثنائية وبولو أنيق وقطع جاهزة مصنوعة من أجود أنواع القطن والكتان.",
     image_url: "",
     banner_url: "",
     attributes: [
@@ -88,9 +92,13 @@ export const CATEGORY_PRESETS: CategoryPreset[] = [
   {
     id: "preset-chaussures",
     name: "Chaussures & Souliers",
+    name_en: "Shoes",
+    name_ar: "أحذية",
     slug: "chaussures",
     iconName: "shoes",
     description_fr: "Escarpins, sneakers d'exception et souliers de créateurs mariant confort absolu et élégance intemporelle.",
+    description_en: "Pumps, exceptional sneakers and designer shoes combining complete comfort with timeless elegance.",
+    description_ar: "أحذية كعب وأحذية رياضية استثنائية وأحذية مصممين تجمع بين الراحة التامة والأناقة الخالدة.",
     image_url: "",
     banner_url: "",
     attributes: [
@@ -157,9 +165,13 @@ export const CATEGORY_PRESETS: CategoryPreset[] = [
   {
     id: "preset-sacs",
     name: "Sacs & Maroquinerie",
+    name_en: "Bags & Leather goods",
+    name_ar: "حقائب ومصنوعات جلدية",
     slug: "sacs-maroquinerie",
     iconName: "bag",
     description_fr: "Sacs emblématiques, pochettes de soirée et maroquinerie d'exception confectionnés dans les cuirs les plus nobles.",
+    description_en: "Iconic bags, evening clutches and exceptional leather goods made from the finest leathers.",
+    description_ar: "حقائب أيقونية وحقائب سهرة ومصنوعات جلدية استثنائية من أجود أنواع الجلود.",
     image_url: "",
     banner_url: "",
     attributes: [
@@ -227,9 +239,13 @@ export const CATEGORY_PRESETS: CategoryPreset[] = [
   {
     id: "preset-montres",
     name: "Montres & Haute Horlogerie",
+    name_en: "Watches & Fine watchmaking",
+    name_ar: "ساعات وصناعة ساعات راقية",
     slug: "montres",
     iconName: "watch",
     description_fr: "Garde-temps d'exception, calibres suisses et chronographes alliant haute précision et finitions luxueuses.",
+    description_en: "Exceptional timepieces, Swiss movements and chronographs combining high precision with luxurious finishes.",
+    description_ar: "ساعات استثنائية وحركات سويسرية وكرونوغرافات تجمع بين الدقة العالية والتشطيبات الفاخرة.",
     image_url: "",
     banner_url: "",
     attributes: [
@@ -297,9 +313,13 @@ export const CATEGORY_PRESETS: CategoryPreset[] = [
   {
     id: "preset-beaute",
     name: "Beauté & Parfumerie",
+    name_en: "Beauty & Perfume",
+    name_ar: "تجميل وعطور",
     slug: "beaute",
     iconName: "gem",
     description_fr: "Senteurs rares d'Orient, élixirs, soins d'exception et maquillage haute définition pour sublimer votre beauté.",
+    description_en: "Rare oriental scents, elixirs, exceptional skincare and high-definition make-up.",
+    description_ar: "عطور شرقية نادرة وإكسيرات وعناية استثنائية ومكياج عالي الدقة لإبراز جمالك.",
     image_url: "",
     banner_url: "",
     attributes: [
@@ -353,9 +373,13 @@ export const CATEGORY_PRESETS: CategoryPreset[] = [
   {
     id: "preset-lunettes",
     name: "Lunettes de Soleil & Optique",
+    name_en: "Sunglasses & Optics",
+    name_ar: "نظارات شمسية وبصريات",
     slug: "lunettes",
     iconName: "glasses",
     description_fr: "Montures solaires iconiques, acétates d'exception et verres haute protection anti-reflets.",
+    description_en: "Iconic sunglasses frames, exceptional acetates and high-protection anti-glare lenses.",
+    description_ar: "إطارات نظارات شمسية أيقونية وخلات استثنائية وعدسات عالية الحماية مضادة للانعكاس.",
     image_url: "",
     banner_url: "",
     attributes: [
@@ -409,9 +433,13 @@ export const CATEGORY_PRESETS: CategoryPreset[] = [
   {
     id: "preset-chales",
     name: "Châles, Carrés & Soieries",
+    name_en: "Shawls, Scarves & Silks",
+    name_ar: "شالات ومناديل وحرير",
     slug: "chales",
     iconName: "sparkles",
     description_fr: "Carrés de pure soie naturelle, châles en cachemire précieux et étoles tissées à la main.",
+    description_en: "Pure natural silk squares, precious cashmere shawls and hand-woven stoles.",
+    description_ar: "مربعات من الحرير الطبيعي الخالص وشالات من الكشمير الثمين وأوشحة منسوجة يدوياً.",
     image_url: "",
     banner_url: "",
     attributes: [

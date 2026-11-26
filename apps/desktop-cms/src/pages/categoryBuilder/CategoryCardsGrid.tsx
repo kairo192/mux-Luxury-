@@ -3,6 +3,7 @@ import React from "react";
 import { useT } from "../../i18n";
 import { getCategoryIconComponent, typeLabel } from "./catalogSetup";
 import { Edit3, Eye, EyeOff, Plus, Sparkles, Tags, Trash2 } from "lucide-react";
+import { pickLang } from "../../i18n/translations";
 
 /** The category cards (or loading / empty state). */
 export function CategoryCardsGrid({ loading, filteredCategories, liveCategories, activeFilter, handleInitializeLuxuryStarterCollections, setShowCreateForm, setSearchQuery, setActiveFilter, setQuickAttrCategory, handleDeleteAttribute, handleRestoreCategory, setDeletingCategory, handleToggleCategoryHomepage, handleOpenEdit }: {
@@ -36,7 +37,7 @@ export function CategoryCardsGrid({ loading, filteredCategories, liveCategories,
         <div className="max-w-md mx-auto space-y-1">
           <h4 className="text-lg font-serif font-bold text-[#063D2E]">{t("cat_builder.empty_title")}</h4>
           <p className="text-xs text-gray-600 leading-relaxed">
-            Aucune catégorie n'est actuellement enregistrée dans la base de données. Vous pouvez initialiser en un clic les 4 collections de prestige Mus Luxury (Sacs, Souliers, Cosmétiques, Soieries) ou créer une catégorie sur mesure.
+            {t("cbf.empty_body")}
           </p>
         </div>
         <div className="flex flex-wrap items-center justify-center gap-3 pt-2">
@@ -109,13 +110,13 @@ export function CategoryCardsGrid({ loading, filteredCategories, liveCategories,
                 </div>
 
                 <span className="text-[11px] font-mono text-gray-400 font-semibold">
-                  Ordre #{c.display_order ?? 1}
+                  {t("cbf.order_n", { n: c.display_order ?? 1 })}
                 </span>
               </div>
 
-              {c.description_fr && (
+              {pickLang(c, "description") && (
                 <p className="text-xs text-gray-600 line-clamp-2 leading-relaxed">
-                  {c.description_fr}
+                  {pickLang(c, "description")}
                 </p>
               )}
 
@@ -160,16 +161,16 @@ export function CategoryCardsGrid({ loading, filteredCategories, liveCategories,
                         key={a.id}
                         className="inline-flex items-center gap-1 px-2 py-0.5 rounded-lg bg-[#F8F6F0] border border-gray-200 text-[11px] text-gray-700 font-medium"
                       >
-                        <strong>{a.label_fr}</strong>
+                        <strong>{pickLang(a, "label")}</strong>
                         <span className="text-[10px] text-gray-400 font-mono">
                           ({typeLabel(a.input_type)}
-                          {a.is_variant_axis ? " • crée les variantes" : ""})
+                          {a.is_variant_axis ? t("cbf.makes_variants") : ""})
                         </span>
                         <button
                           type="button"
                           onClick={() => handleDeleteAttribute(a.id)}
                           className="text-red-500 hover:text-red-800 font-bold ml-0.5"
-                          title="Supprimer cet attribut"
+                          title={t("cbf.remove_attr")}
                         >
                           ×
                         </button>
@@ -208,7 +209,7 @@ export function CategoryCardsGrid({ loading, filteredCategories, liveCategories,
                 type="button"
                 onClick={() => handleToggleCategoryHomepage(c)}
                 className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg border border-gray-300 text-gray-700 hover:bg-white transition"
-                title={c.show_on_homepage ? "Masquer de la page d'accueil" : "Afficher sur la page d'accueil"}
+                title={c.show_on_homepage ? t("cbf.hide_home") : t("cbf.show_home")}
               >
                 {c.show_on_homepage ? <EyeOff className="w-3.5 h-3.5 text-gray-500" /> : <Eye className="w-3.5 h-3.5 text-emerald-600" />}
                 <span>{c.show_on_homepage ? t("cat_builder.btn_toggle_home_hide") : t("cat_builder.btn_toggle_home_show")}</span>
@@ -220,7 +221,7 @@ export function CategoryCardsGrid({ loading, filteredCategories, liveCategories,
                   type="button"
                   onClick={() => handleOpenEdit(c)}
                   className="flex items-center gap-1 px-3 py-1.5 rounded-lg bg-white border border-[#D4AF62] text-[#063D2E] hover:bg-[#D4AF62]/20 transition shadow-sm"
-                  title="Modifier les noms, slug, description et icône"
+                  title={t("cbf.edit_hint")}
                 >
                   <Edit3 className="w-3.5 h-3.5 text-[#063D2E]" />
                   <span>{t("cat_builder.btn_modify")}</span>
@@ -231,7 +232,7 @@ export function CategoryCardsGrid({ loading, filteredCategories, liveCategories,
                   type="button"
                   onClick={() => setDeletingCategory(c)}
                   className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg bg-red-50 border border-red-200 text-red-700 hover:bg-red-100 transition"
-                  title="Archiver ou Supprimer définitivement cette catégorie"
+                  title={t("cbf.delete_hint")}
                 >
                   <Trash2 className="w-3.5 h-3.5 text-red-600" />
                   <span>{t("cat_builder.btn_delete")}</span>

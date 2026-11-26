@@ -26,6 +26,7 @@ import {
   RTL_LANGS,
   SUPPORTED_LANGS,
   interpolate,
+  setCurrentLang,
   translateRaw,
   type Lang,
 } from "./translations";
@@ -55,7 +56,11 @@ interface Ctx {
 const I18nContext = createContext<Ctx | null>(null);
 
 export const I18nProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
-  const [lang, setLangState] = useState<Lang>(() => loadLang());
+  const [lang, setLangState] = useState<Lang>(() => {
+    const l = loadLang();
+    setCurrentLang(l);
+    return l;
+  });
 
   useEffect(() => {
     // Keep the <html> element's lang + dir attributes in sync so Tailwind's
@@ -66,6 +71,7 @@ export const I18nProvider: React.FC<{ children: React.ReactNode }> = ({ children
   }, [lang]);
 
   const setLang = useCallback((l: Lang) => {
+    setCurrentLang(l);
     setLangState(l);
     try { localStorage.setItem(STORAGE_KEY, l); } catch { /* ignore */ }
   }, []);
@@ -147,3 +153,4 @@ export const LanguageToggle: React.FC<{ className?: string }> = ({ className }) 
 
 // Re-export the Lang type so callers don't have to reach into translations.ts.
 export type { Lang } from "./translations";
+export { tr, getCurrentLang, localeFor, pickLang } from "./translations";

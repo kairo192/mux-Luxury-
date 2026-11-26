@@ -3,10 +3,11 @@ import React from "react";
 import { useT } from "../../i18n";
 import { PLACEHOLDER_IMG, mediaUrl } from "../../api/adminClient";
 import { ImageUploadField } from "../../components/ImageUploadField";
-import { ATTRIBUTE_TYPES, LUXURY_PALETTE, getCategoryIconComponent, typeLabel } from "./catalogSetup";
+import { ATTRIBUTE_TYPES, LUXURY_PALETTE, getCategoryIconComponent, paletteLabel, typeLabel } from "./catalogSetup";
 import { CATEGORY_PRESETS } from "./presets";
 import { Check, ChevronDown, ChevronUp, Eye, Palette, Plus, Shirt, SlidersHorizontal, Sparkles, Trash2, X } from "lucide-react";
 import type { CategoryPreset, DraftAttribute, DraftAttributeOption } from "./catalogSetup";
+import { pickLang } from "../../i18n/translations";
 
 /** New category: presets, names, pictures, attributes, live shop preview. */
 export function CategoryCreateForm({ handleSaveCategory, setShowCreateForm, activePresetId, applyCategoryPreset, nameFr, setNameFr, slug, setSlug, nameAr, setNameAr, nameEn, setNameEn, descriptionFr, setDescriptionFr, displayOrder, setDisplayOrder, imageUrl, setImageUrl, bannerUrl, setBannerUrl, attributes, moveDraftAttribute, removeDraftAttribute, newKey, setNewKey, newLabelFr, setNewLabelFr, newType, setNewType, newUnit, setNewUnit, setTempColorName, setTempColorHex, tempColorHex, tempColorName, addColorToRichList, newRichColors, removeColorFromRichList, setNewOptionsCsv, newOptionsCsv, newVariantAxis, setNewVariantAxis, newFilterable, setNewFilterable, newVisibleOnStorefront, setNewVisibleOnStorefront, newRequired, setNewRequired, addDraftAttribute }: {
@@ -81,7 +82,7 @@ export function CategoryCreateForm({ handleSaveCategory, setShowCreateForm, acti
           type="button"
           onClick={() => setShowCreateForm(false)}
           className="p-1 rounded-lg text-gray-400 hover:text-gray-700 transition"
-          aria-label="Fermer"
+          aria-label={t("cbf.close")}
         >
           <X className="w-5 h-5" />
         </button>
@@ -112,7 +113,7 @@ export function CategoryCreateForm({ handleSaveCategory, setShowCreateForm, acti
                 }`}
               >
                 <IconComp className="w-3.5 h-3.5 text-[#D4AF62]" />
-                <span>{preset.name}</span>
+                <span>{pickLang(preset, "name")}</span>
               </button>
             );
           })}
@@ -122,11 +123,11 @@ export function CategoryCreateForm({ handleSaveCategory, setShowCreateForm, acti
       {/* 2. Category Identity Inputs */}
       <div className="space-y-3">
         <h3 className="text-xs font-bold text-[#063D2E] uppercase tracking-wider border-b border-gray-200 pb-1">
-          1. Identité &amp; Informations de la Catégorie
+          {t("cbf.section_identity")}
         </h3>
         <div className="grid grid-cols-1 md:grid-cols-4 gap-3 text-xs">
           <div>
-            <label className="block font-bold text-[#063D2E] mb-1">Nom Français (FR) *</label>
+            <label className="block font-bold text-[#063D2E] mb-1">{t("cbf.name_fr")}</label>
             <input
               value={nameFr}
               onChange={(e) => {
@@ -141,13 +142,13 @@ export function CategoryCreateForm({ handleSaveCategory, setShowCreateForm, acti
                   );
                 }
               }}
-              placeholder="ex: T-shirts & Prêt-à-porter"
+              placeholder={t("cbf.name_fr_ph")}
               required
               className="w-full px-3 py-2 border rounded-xl font-semibold"
             />
           </div>
           <div>
-            <label className="block font-bold text-[#063D2E] mb-1">Nom Arabe (AR)</label>
+            <label className="block font-bold text-[#063D2E] mb-1">{t("cbf.name_ar")}</label>
             <input
               value={nameAr}
               onChange={(e) => setNameAr(e.target.value)}
@@ -157,16 +158,16 @@ export function CategoryCreateForm({ handleSaveCategory, setShowCreateForm, acti
             />
           </div>
           <div>
-            <label className="block font-bold text-[#063D2E] mb-1">Nom Anglais (EN)</label>
+            <label className="block font-bold text-[#063D2E] mb-1">{t("cbf.name_en")}</label>
             <input
               value={nameEn}
               onChange={(e) => setNameEn(e.target.value)}
-              placeholder="T-Shirts & Apparel"
+              placeholder={t("cbf.name_en_ph")}
               className="w-full px-3 py-2 border rounded-xl"
             />
           </div>
           <div>
-            <label className="block font-bold text-[#063D2E] mb-1">Identifiant URL (Slug) *</label>
+            <label className="block font-bold text-[#063D2E] mb-1">{t("cbf.slug")}</label>
             <input
               value={slug}
               onChange={(e) => setSlug(e.target.value)}
@@ -179,16 +180,16 @@ export function CategoryCreateForm({ handleSaveCategory, setShowCreateForm, acti
 
         <div className="grid grid-cols-1 md:grid-cols-4 gap-3 text-xs">
           <div className="md:col-span-3">
-            <label className="block font-bold text-[#063D2E] mb-1">Description (FR)</label>
+            <label className="block font-bold text-[#063D2E] mb-1">{t("cbf.desc_fr")}</label>
             <input
               value={descriptionFr}
               onChange={(e) => setDescriptionFr(e.target.value)}
-              placeholder="T-shirts d'exception, polos raffinés et créations prêt-à-porter en coton Pima noble."
+              placeholder={t("cbf.desc_ph")}
               className="w-full px-3 py-2 border rounded-xl"
             />
           </div>
           <div>
-            <label className="block font-bold text-[#063D2E] mb-1">Ordre d'affichage</label>
+            <label className="block font-bold text-[#063D2E] mb-1">{t("cbf.order")}</label>
             <input
               type="number"
               value={displayOrder}
@@ -201,13 +202,13 @@ export function CategoryCreateForm({ handleSaveCategory, setShowCreateForm, acti
         {/* Visual Media Selectors */}
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-xs pt-1">
           <ImageUploadField
-            label="Photo de la catégorie"
+            label={t("cbf.photo")}
             value={imageUrl}
             onChange={setImageUrl}
-            hint="Affichée dans « Nos catégories » sur la boutique. Sans photo, une vignette neutre est affichée."
+            hint={t("cbf.photo_hint")}
           />
           <ImageUploadField
-            label="Bannière (haut de la page catégorie)"
+            label={t("cbf.banner_top")}
             value={bannerUrl}
             onChange={setBannerUrl}
             wide
@@ -223,10 +224,10 @@ export function CategoryCreateForm({ handleSaveCategory, setShowCreateForm, acti
           <div className="flex items-center justify-between">
             <h3 className="text-xs font-bold text-[#063D2E] uppercase tracking-wider flex items-center gap-2">
               <SlidersHorizontal className="w-4 h-4 text-[#D4AF62]" />
-              <span>2. Modèle d'Attributs &amp; Déclinaisons ({attributes.length})</span>
+              <span>{t("cbf.section_attrs", { n: attributes.length })}</span>
             </h3>
             <span className="text-[11px] text-gray-500">
-              Définissez les couleurs, tailles et caractéristiques héritées par les produits
+              {t("cbf.section_attrs_hint")}
             </span>
           </div>
 
@@ -242,23 +243,23 @@ export function CategoryCreateForm({ handleSaveCategory, setShowCreateForm, acti
                     <span className="font-mono font-bold text-[#063D2E] bg-white px-2 py-0.5 rounded border border-gray-200 text-xs">
                       {attr.attr_key}
                     </span>
-                    <span className="font-bold text-gray-900 text-xs">{attr.label_fr}</span>
+                    <span className="font-bold text-gray-900 text-xs">{pickLang(attr, "label")}</span>
                     <span className="px-2 py-0.5 rounded bg-gray-200/80 text-[10px] font-mono text-gray-700">
                       {typeLabel(attr.input_type)}
                     </span>
                     {attr.is_variant_axis && (
                       <span className="px-2 py-0.5 rounded bg-emerald-100 text-emerald-900 text-[10px] font-bold border border-emerald-300">
-                        ⚡ Axe de variante (Stock dédié)
+                        {t("cbf.axis_badge")}
                       </span>
                     )}
                     {attr.is_filterable && (
                       <span className="px-2 py-0.5 rounded bg-amber-100 text-amber-900 text-[10px] font-bold border border-amber-300">
-                        Filtre boutique
+                        {t("cbf.filter_badge")}
                       </span>
                     )}
                     {attr.is_required && (
                       <span className="px-2 py-0.5 rounded bg-rose-100 text-rose-900 text-[10px] font-bold border border-rose-200">
-                        Requis
+                        {t("cbf.required_badge")}
                       </span>
                     )}
                   </div>
@@ -268,7 +269,7 @@ export function CategoryCreateForm({ handleSaveCategory, setShowCreateForm, acti
                       onClick={() => moveDraftAttribute(idx, "up")}
                       disabled={idx === 0}
                       className="p-1 rounded text-gray-500 hover:text-gray-900 disabled:opacity-25"
-                      title="Monter"
+                      title={t("cbf.move_up")}
                     >
                       <ChevronUp className="w-3.5 h-3.5" />
                     </button>
@@ -277,7 +278,7 @@ export function CategoryCreateForm({ handleSaveCategory, setShowCreateForm, acti
                       onClick={() => moveDraftAttribute(idx, "down")}
                       disabled={idx === attributes.length - 1}
                       className="p-1 rounded text-gray-500 hover:text-gray-900 disabled:opacity-25"
-                      title="Descendre"
+                      title={t("cbf.move_down")}
                     >
                       <ChevronDown className="w-3.5 h-3.5" />
                     </button>
@@ -285,7 +286,7 @@ export function CategoryCreateForm({ handleSaveCategory, setShowCreateForm, acti
                       type="button"
                       onClick={() => removeDraftAttribute(idx)}
                       className="p-1 rounded text-rose-600 hover:bg-rose-50 transition"
-                      title="Supprimer cet attribut"
+                      title={t("cbf.remove_attr")}
                     >
                       <Trash2 className="w-3.5 h-3.5" />
                     </button>
@@ -327,30 +328,30 @@ export function CategoryCreateForm({ handleSaveCategory, setShowCreateForm, acti
           {/* Sub-Builder to add a custom attribute */}
           <div className="p-4 bg-white rounded-xl border border-[#D4AF62]/40 shadow-sm space-y-3 text-xs">
             <span className="font-bold text-[#063D2E] uppercase tracking-wider block">
-              + Ajouter un attribut sur-mesure au modèle
+              {t("cbf.custom_attr")}
             </span>
 
             <div className="grid grid-cols-1 md:grid-cols-4 gap-2">
               <div>
-                <label className="block font-semibold mb-1">Clé technique *</label>
+                <label className="block font-semibold mb-1">{t("cbf.tech_key")}</label>
                 <input
                   value={newKey}
                   onChange={(e) => setNewKey(e.target.value)}
-                  placeholder="ex: col_type"
+                  placeholder={t("cbf.tech_key_ph")}
                   className="w-full px-2.5 py-1.5 border rounded-lg font-mono"
                 />
               </div>
               <div>
-                <label className="block font-semibold mb-1">Libellé (FR) *</label>
+                <label className="block font-semibold mb-1">{t("cbf.label_fr")}</label>
                 <input
                   value={newLabelFr}
                   onChange={(e) => setNewLabelFr(e.target.value)}
-                  placeholder="ex: Type de Col"
+                  placeholder={t("cbf.label_fr_ph")}
                   className="w-full px-2.5 py-1.5 border rounded-lg"
                 />
               </div>
               <div>
-                <label className="block font-semibold mb-1">Type de champ</label>
+                <label className="block font-semibold mb-1">{t("cbf.field_type")}</label>
                 <select
                   value={newType}
                   onChange={(e) => setNewType(e.target.value)}
@@ -364,7 +365,7 @@ export function CategoryCreateForm({ handleSaveCategory, setShowCreateForm, acti
                 </select>
               </div>
               <div>
-                <label className="block font-semibold mb-1">Unité (optionnelle)</label>
+                <label className="block font-semibold mb-1">{t("cbf.unit")}</label>
                 <input
                   value={newUnit}
                   onChange={(e) => setNewUnit(e.target.value)}
@@ -380,14 +381,14 @@ export function CategoryCreateForm({ handleSaveCategory, setShowCreateForm, acti
                 <div className="flex items-center justify-between">
                   <span className="font-bold text-[#063D2E] flex items-center gap-1.5">
                     <Palette className="w-4 h-4 text-[#D4AF62]" />
-                    <span>Nuancier Visuel &amp; Pastilles Circulaires</span>
+                    <span>{t("cbf.swatches")}</span>
                   </span>
-                  <span className="text-[11px] text-gray-500">Ajoutez les teintes avec leur pastille couleur</span>
+                  <span className="text-[11px] text-gray-500">{t("cbf.swatches_hint")}</span>
                 </div>
 
                 {/* Preconfigured Colors Quick Add Palette */}
                 <div className="flex flex-wrap items-center gap-1.5">
-                  <span className="text-[10px] font-bold text-gray-600 mr-1">Palettes Luxe :</span>
+                  <span className="text-[10px] font-bold text-gray-600 mr-1">{t("cbf.palettes")}</span>
                   {LUXURY_PALETTE.map((pal) => (
                     <button
                       key={pal.name}
@@ -399,7 +400,7 @@ export function CategoryCreateForm({ handleSaveCategory, setShowCreateForm, acti
                       className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-white border border-gray-200 text-[10px] font-medium hover:border-[#D4AF62] transition"
                     >
                       <span className="w-2.5 h-2.5 rounded-full border border-gray-300" style={{ backgroundColor: pal.hex }} />
-                      <span>{pal.name}</span>
+                      <span>{paletteLabel(pal.hex)}</span>
                     </button>
                   ))}
                 </div>
@@ -428,7 +429,7 @@ export function CategoryCreateForm({ handleSaveCategory, setShowCreateForm, acti
                   <input
                     value={tempColorName}
                     onChange={(e) => setTempColorName(e.target.value)}
-                    placeholder="Nom de la couleur (ex: Vert Émeraude)"
+                    placeholder={t("cbf.color_name_ph")}
                     className="flex-1 px-2.5 py-1.5 border rounded-lg bg-white text-xs font-medium"
                   />
                   <button
@@ -436,7 +437,7 @@ export function CategoryCreateForm({ handleSaveCategory, setShowCreateForm, acti
                     onClick={addColorToRichList}
                     className="px-3 py-1.5 bg-[#063D2E] text-[#D4AF62] font-bold rounded-lg hover:brightness-110 transition"
                   >
-                    + Ajouter cette nuance
+                    {t("cbf.add_shade")}
                   </button>
                 </div>
 
@@ -450,7 +451,7 @@ export function CategoryCreateForm({ handleSaveCategory, setShowCreateForm, acti
                       >
                         <span className="w-3.5 h-3.5 rounded-full border border-gray-400" style={{ backgroundColor: col.color_hex }} />
                         <span>{col.value}</span>
-                        <button aria-label="Retirer cette couleur"
+                        <button aria-label={t("cbf.remove_color")}
                           type="button"
                           onClick={() => removeColorFromRichList(col.value)}
                           className="text-gray-400 hover:text-red-600 transition"
@@ -465,7 +466,7 @@ export function CategoryCreateForm({ handleSaveCategory, setShowCreateForm, acti
             ) : (
               <div>
                 <div className="flex items-center justify-between mb-1">
-                  <label className="block font-semibold">Options prédéfinies (séparées par virgule)</label>
+                  <label className="block font-semibold">{t("cbf.options_csv")}</label>
                   {(newType === "size" || newKey === "size" || newKey.includes("taille") || newKey.includes("pointure")) && (
                     <div className="flex items-center gap-1">
                       <button
@@ -473,7 +474,7 @@ export function CategoryCreateForm({ handleSaveCategory, setShowCreateForm, acti
                         onClick={() => setNewOptionsCsv("XS, S, M, L, XL, XXL")}
                         className="text-[10px] text-[#063D2E] font-bold hover:underline"
                       >
-                        + Tailles Vêtements
+                        {t("cbf.sizes_clothes")}
                       </button>
                       <span className="text-gray-300">·</span>
                       <button
@@ -481,7 +482,7 @@ export function CategoryCreateForm({ handleSaveCategory, setShowCreateForm, acti
                         onClick={() => setNewOptionsCsv("36, 37, 38, 39, 40, 41, 42, 43, 44")}
                         className="text-[10px] text-[#063D2E] font-bold hover:underline"
                       >
-                        + Pointures Souliers
+                        {t("cbf.sizes_shoes")}
                       </button>
                     </div>
                   )}
@@ -489,7 +490,7 @@ export function CategoryCreateForm({ handleSaveCategory, setShowCreateForm, acti
                 <input
                   value={newOptionsCsv}
                   onChange={(e) => setNewOptionsCsv(e.target.value)}
-                  placeholder="ex: Col Rond, Col V, Col Montant"
+                  placeholder={t("cbf.options_ph")}
                   className="w-full px-2.5 py-1.5 border rounded-lg"
                 />
               </div>
@@ -504,7 +505,7 @@ export function CategoryCreateForm({ handleSaveCategory, setShowCreateForm, acti
                   onChange={(e) => setNewVariantAxis(e.target.checked)}
                   className="rounded text-[#063D2E]"
                 />
-                <span>⚡ Axe de variante (génère stocks &amp; déclinaisons)</span>
+                <span>{t("cbf.axis_long")}</span>
               </label>
               <label className="inline-flex items-center gap-1.5 cursor-pointer font-semibold">
                 <input
@@ -513,7 +514,7 @@ export function CategoryCreateForm({ handleSaveCategory, setShowCreateForm, acti
                   onChange={(e) => setNewFilterable(e.target.checked)}
                   className="rounded text-[#063D2E]"
                 />
-                <span>Filtrable sur la boutique</span>
+                <span>{t("cbf.filterable")}</span>
               </label>
               <label className="inline-flex items-center gap-1.5 cursor-pointer">
                 <input
@@ -522,7 +523,7 @@ export function CategoryCreateForm({ handleSaveCategory, setShowCreateForm, acti
                   onChange={(e) => setNewVisibleOnStorefront(e.target.checked)}
                   className="rounded text-[#063D2E]"
                 />
-                <span>Visible sur fiche article</span>
+                <span>{t("cbf.visible")}</span>
               </label>
               <label className="inline-flex items-center gap-1.5 cursor-pointer">
                 <input
@@ -531,7 +532,7 @@ export function CategoryCreateForm({ handleSaveCategory, setShowCreateForm, acti
                   onChange={(e) => setNewRequired(e.target.checked)}
                   className="rounded text-[#063D2E]"
                 />
-                <span>Obligatoire</span>
+                <span>{t("cbf.required")}</span>
               </label>
             </div>
 
@@ -542,7 +543,7 @@ export function CategoryCreateForm({ handleSaveCategory, setShowCreateForm, acti
                 className="px-4 py-2 rounded-xl bg-[#063D2E] text-[#D4AF62] font-bold hover:bg-[#02291F] transition flex items-center gap-1.5"
               >
                 <Plus className="w-4 h-4" />
-                <span>Ajouter cet attribut au modèle</span>
+                <span>{t("cbf.add_to_model")}</span>
               </button>
             </div>
           </div>
@@ -553,10 +554,10 @@ export function CategoryCreateForm({ handleSaveCategory, setShowCreateForm, acti
           <div className="flex items-center justify-between">
             <span className="text-xs font-bold text-[#063D2E] uppercase tracking-wider flex items-center gap-1.5">
               <Eye className="w-4 h-4 text-[#D4AF62]" />
-              <span>Aperçu Vitrine en Direct</span>
+              <span>{t("cbf.preview")}</span>
             </span>
             <span className="text-[10px] font-bold text-[#D4AF62] bg-[#063D2E] px-2 py-0.5 rounded-full">
-              Live Preview
+              {t("cbf.live")}
             </span>
           </div>
 
@@ -566,7 +567,7 @@ export function CategoryCreateForm({ handleSaveCategory, setShowCreateForm, acti
             <div className="relative h-32 rounded-xl overflow-hidden bg-black/40 border border-white/10">
               <img
                 src={imageUrl ? mediaUrl(imageUrl) : PLACEHOLDER_IMG}
-                alt={nameFr || "Catégorie"}
+                alt={nameFr || t("cbf.category")}
                 className="w-full h-full object-cover object-center"
                 onError={(e: any) => {
                   e.target.onerror = null;
@@ -582,22 +583,22 @@ export function CategoryCreateForm({ handleSaveCategory, setShowCreateForm, acti
             {/* Identity */}
             <div>
               <h4 className="font-serif text-lg font-bold text-[#D4AF62]">
-                {nameFr || "T-shirts & Prêt-à-porter"}
+                {nameFr || t("cbf.name_placeholder_preview")}
               </h4>
               {nameAr && <p className="text-xs text-amber-100/70" dir="rtl">{nameAr}</p>}
               <p className="text-xs text-gray-200/90 mt-1 line-clamp-2">
-                {descriptionFr || "Description de la collection d'exception..."}
+                {descriptionFr || t("cbf.desc_placeholder_preview")}
               </p>
             </div>
 
             {/* Variant Dimensions Preview */}
             <div className="pt-2 border-t border-white/15 space-y-2 text-xs">
               <span className="text-[11px] font-bold text-[#D4AF62] uppercase tracking-wider block">
-                Déclinaisons &amp; Sélecteurs Fiche Produit :
+                {t("cbf.variants_preview")}
               </span>
 
               {attributes.filter((a) => a.is_variant_axis).length === 0 ? (
-                <span className="text-[11px] text-gray-300 italic">Aucun axe de déclinaison configuré</span>
+                <span className="text-[11px] text-gray-300 italic">{t("cbf.no_axis")}</span>
               ) : (
                 attributes
                   .filter((a) => a.is_variant_axis)

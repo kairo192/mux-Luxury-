@@ -1,6 +1,7 @@
 import { keychainSetSecret, keychainGetSecret, keychainDeleteSecret, getOsKeychainStatus } from "../utils/osKeychain";
 import { ClientSafeApiError, sanitizeAndTranslateError } from "../utils/clientNotifier";
 import { recordNetworkSample } from "../utils/networkQueue";
+import { getCurrentLang } from "../i18n/translations";
 // ============================================================================
 // TAURI 2 DESKTOP CMS — SHARED AUTHENTICATED HTTPS API CLIENT
 // Features:
@@ -183,6 +184,8 @@ async function adminFetch(path: string, options: RequestInit = {}, timeoutMs = d
   const headers: Record<string, string> = {
     ...(isFormData ? {} : { "Content-Type": "application/json" }),
     "X-Request-ID": reqId,
+    // Server messages come back in the language chosen in the CMS.
+    "Accept-Language": getCurrentLang(),
     ...((options.headers as Record<string, string>) || {}),
   };
   const activeToken = getAccessToken();

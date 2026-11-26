@@ -9,6 +9,8 @@
 //    the Modal Client Message Box across all 8 CMS tabs and sub-pages.
 // ============================================================================
 
+import { tr } from "../i18n/translations";
+
 export type ClientNotificationType = "success" | "error" | "warning" | "info";
 
 export interface ClientNotificationItem {
@@ -58,39 +60,43 @@ export class ClientSafeApiError extends Error {
   }
 }
 
-const FIELD_LABELS_FR: Record<string, string> = {
-  full_name: "Nom complet",
-  email: "Adresse e-mail",
-  password: "Mot de passe",
-  new_password: "Nouveau mot de passe",
-  verification_code: "Code de vérification",
-  phone: "Numéro de téléphone",
-  whatsapp_phone: "Numéro WhatsApp",
-  emergency_phone: "Téléphone de secours",
-  name_fr: "Nom en français",
-  title_fr: "Titre en français",
-  content_fr: "Contenu en français",
-  slug: "Identifiant URL (slug)",
-  sku: "Référence SKU",
-  selling_price_dzd: "Prix de vente (DA)",
-  purchase_cost_dzd: "Coût d'achat (DA)",
-  stock_qty: "Quantité en stock",
-  change_qty: "Ajustement de stock",
-  wilaya_code: "Code Wilaya",
-  commune: "Commune",
-  delivery_address: "Adresse de livraison",
-  code: "Code promotionnel",
-  discount_value: "Valeur de remise",
-  min_order_dzd: "Montant minimum de commande",
-  attr_key: "Clé technique d'attribut",
-  label_fr: "Libellé d'attribut (FR)",
-};
+const FIELD_KEYS = new Set<string>([
+  "full_name",
+  "email",
+  "password",
+  "new_password",
+  "verification_code",
+  "phone",
+  "whatsapp_phone",
+  "emergency_phone",
+  "name_fr",
+  "title_fr",
+  "content_fr",
+  "slug",
+  "sku",
+  "selling_price_dzd",
+  "purchase_cost_dzd",
+  "stock_qty",
+  "change_qty",
+  "wilaya_code",
+  "commune",
+  "delivery_address",
+  "code",
+  "discount_value",
+  "min_order_dzd",
+  "attr_key",
+  "label_fr",
+]);
+
+function fieldLabel(loc: string): string {
+  return FIELD_KEYS.has(loc) ? tr(`field.${loc}`) : loc;
+}
 
 export function sanitizeAndTranslateError(
   rawError: unknown,
   status = 0,
   contextPath = "",
-  fallbackTitle = "Action interrompue"
+  fallbackTitle = tr("errors.fallback_title")
 ): { title: string; message: string; code: string; status: number } {
   if (rawError instanceof ClientSafeApiError) {
     return {
@@ -112,21 +118,21 @@ export function sanitizeAndTranslateError(
       const fields = detailArr
         .map((item: any) => {
           const loc = Array.isArray(item?.loc) ? String(item.loc[item.loc.length - 1]) : "";
-          return FIELD_LABELS_FR[loc] || loc;
+          return fieldLabel(loc);
         })
         .filter(Boolean);
       const uniqueFields = Array.from(new Set(fields));
       const fieldText = uniqueFields.length > 0 ? ` (${uniqueFields.join(", ")})` : "";
       return {
-        title: "Champs du formulaire invalides ou incomplets",
-        message: `Veuillez vérifier les informations saisies${fieldText}. Assurez-vous que les formats, longueurs et montants en DA sont valides.`,
+        title: tr("errors.validation_title"),
+        message: tr("errors.validation_body", { fields: fieldText }),
         code: "VALIDATION_ERROR",
         status: 422,
       };
     }
     return {
-      title: "Données saisies non conformes",
-      message: "Certains champs du formulaire sont incomplets ou contiennent des caractères non autorisés.",
+      title: tr("errors.invalid_data_title"),
+      message: tr("errors.invalid_data_body"),
       code: "VALIDATION_ERROR",
       status: 422,
     };
@@ -152,8 +158,8 @@ export function sanitizeAndTranslateError(
     lower.includes("timeout")
   ) {
     return {
-      title: "Délai de réponse dépassé",
-      message: "Le serveur met trop de temps à répondre. Vos brouillons sont conservés localement — veuillez réessayer.",
+      title: tr("errors.timeout_title"),
+      message: tr("errors.timeout_body"),
       code: "NETWORK_TIMEOUT",
       status: 0,
     };
@@ -165,8 +171,8 @@ export function sanitizeAndTranslateError(
     lower.includes("econnrefused")
   ) {
     return {
-      title: "Connexion au serveur indisponible",
-      message: "Impossible de joindre le serveur Mus Luxury. Vérifiez votre connexion réseau ou l'état du service API.",
+      title: tr("errors.offline_title"),
+      message: tr("errors.offline_body"),
       code: "NETWORK_OFFLINE",
       status: 0,
     };
@@ -176,15 +182,15 @@ export function sanitizeAndTranslateError(
   if (status === 401 || rawText === "SESSION_EXPIRED") {
     if (contextPath.includes("/admin/auth/login") || lower.includes("invalid email or password")) {
       return {
-        title: "Identifiants incorrects",
-        message: "L'adresse e-mail ou le mot de passe saisi est incorrect. En cas d'oubli, contactez l'administrateur système sur le serveur.",
+        title: tr("errors.bad_credentials_title"),
+        message: tr("errors.bad_credentials_body"),
         code: "AUTH_INVALID_CREDENTIALS",
         status: 401,
       };
     }
     return {
-      title: "Session sécurisée expirée",
-      message: "Par mesure de sécurité, votre session a expiré. Vos brouillons en cours sont sauvegardés — veuillez vous reconnecter.",
+      title: tr("errors.session_title"),
+      message: tr("errors.session_body"),
       code: "SESSION_EXPIRED",
       status: 401,
     };
@@ -194,33 +200,34 @@ export function sanitizeAndTranslateError(
   if (status === 403 || lower.includes("insufficient permissions")) {
     if (lower.includes("anti-retour") || lower.includes("bloqué")) {
       return {
-        title: "Numéro bloqué (Protection Anti-Retour COD)",
+        title: tr("errors.cod_blocked_title"),
         message: rawText,
         code: "COD_BLACKLISTED",
         status: 403,
       };
     }
     return {
-      title: "Accès refusé — Permissions insuffisantes",
-      message: "Votre compte ne dispose pas des droits requis pour exécuter cette opération. Contactez l'administrateur propriétaire.",
+      title: tr("errors.denied_title"),
+      message: tr("errors.denied_body"),
       code: "PERMISSION_DENIED",
       status: 403,
     };
   }
 
-  // 4b. The server already explained the problem in French, for people
-  // (e.g. "« Couleur » sert à distinguer 2 variante(s)…"): show it as is.
-  // English or technical messages keep going through the safe wording below.
-  const humanFrench =
+  // 4b. The server already explained the problem for people, in the language
+  // of the CMS (it marks those messages "human"; older servers sent French):
+  // show it as is. Technical messages keep going through the safe wording below.
+  const markedHuman = typeof rawError === "object" && rawError !== null && (rawError as any).human === true;
+  const humanText =
     status >= 400 && status < 500 &&
     rawText.length > 0 && rawText.length <= 400 &&
-    /[éèàùçêâîôû«»]/i.test(rawText) &&
+    (markedHuman || /[éèàùçêâîôû«»]/i.test(rawText)) &&
     !/(traceback|psycopg|sqlite|exception|select |insert into|delete from|update \w+ set|[{}<>]|file ")/i.test(rawText);
-  if (humanFrench) {
+  if (humanText) {
     const titles: Record<number, string> = {
-      400: "Opération impossible",
-      404: "Élément introuvable",
-      409: "Action bloquée pour protéger vos données",
+      400: tr("errors.t400"),
+      404: tr("errors.t404"),
+      409: tr("errors.t409"),
     };
     return { title: titles[status] || fallbackTitle, message: rawText, code: `HTTP_${status}`, status };
   }
@@ -228,8 +235,8 @@ export function sanitizeAndTranslateError(
   // 5. Not Found (404)
   if (status === 404 || lower.includes("not found") || lower.includes("introuvable")) {
     return {
-      title: "Élément introuvable",
-      message: "L'élément demandé est introuvable ou a déjà été supprimé.",
+      title: tr("errors.t404"),
+      message: tr("errors.not_found_body"),
       code: "NOT_FOUND",
       status: 404,
     };
@@ -239,31 +246,31 @@ export function sanitizeAndTranslateError(
   if (status === 409 || lower.includes("conflict") || lower.includes("already exists") || lower.includes("unique")) {
     if (lower.includes("version") || lower.includes("synchronization conflict")) {
       return {
-        title: "Conflit de modification simultanée",
-        message: "Cette fiche produit a été modifiée depuis un autre poste. Rechargez les données avant d'enregistrer vos changements.",
+        title: tr("errors.version_title"),
+        message: tr("errors.version_body"),
         code: "VERSION_CONFLICT",
         status: 409,
       };
     }
     if (lower.includes("insufficient stock") || lower.includes("stock")) {
       return {
-        title: "Stock disponible insuffisant",
-        message: "La quantité demandée dépasse le stock actuellement disponible pour cette variante.",
+        title: tr("errors.stock_title"),
+        message: tr("errors.stock_body"),
         code: "INSUFFICIENT_STOCK",
         status: 409,
       };
     }
     if (lower.includes("already used by") || lower.includes("migration")) {
       return {
-        title: "Attribut utilisé par des produits existants",
-        message: "Cet attribut est rattaché à des fiches produits actives. Confirmez la migration forcée pour le retirer.",
+        title: tr("errors.attr_in_use_title"),
+        message: tr("errors.attr_in_use_body"),
         code: "ATTRIBUTE_IN_USE",
         status: 409,
       };
     }
     return {
-      title: "Doublon détecté dans le catalogue",
-      message: "Une entrée portant le même identifiant (Slug, SKU ou Code) existe déjà. Veuillez choisir un identifiant unique.",
+      title: tr("errors.duplicate_title"),
+      message: tr("errors.duplicate_body"),
       code: "DUPLICATE_RESOURCE",
       status: 409,
     };
@@ -272,8 +279,8 @@ export function sanitizeAndTranslateError(
   // 7. File Size Too Large (413)
   if (status === 413 || lower.includes("exceeds maximum allowed size")) {
     return {
-      title: "Image trop volumineuse (max. 15 Mo)",
-      message: "Le fichier sélectionné dépasse 15 Mo. Choisissez une photo JPEG, PNG ou WEBP plus légère.",
+      title: tr("errors.too_large_title"),
+      message: tr("errors.too_large_body"),
       code: "PAYLOAD_TOO_LARGE",
       status: 413,
     };
@@ -282,8 +289,8 @@ export function sanitizeAndTranslateError(
   // 8. Rate Limit (429)
   if (status === 429 || lower.includes("rate limit")) {
     return {
-      title: "Protection anti-surcharge activée",
-      message: "Vous avez effectué trop de requêtes rapprochées. Veuillez patienter quelques secondes avant de réessayer.",
+      title: tr("errors.rate_title"),
+      message: tr("errors.rate_body"),
       code: "RATE_LIMITED",
       status: 429,
     };
@@ -293,32 +300,32 @@ export function sanitizeAndTranslateError(
   if (status === 400) {
     if (lower.includes("terminal status") || lower.includes("status transition")) {
       return {
-        title: "Transition de statut non autorisée",
-        message: "Une commande déjà annulée ou retournée est verrouillée. Seule une commande livrée peut passer au statut « Retournée ».",
+        title: tr("errors.transition_title"),
+        message: tr("errors.transition_body"),
         code: "INVALID_STATUS_TRANSITION",
         status: 400,
       };
     }
     if (lower.includes("negative stock") || lower.includes("below zero")) {
       return {
-        title: "Stock négatif interdit",
-        message: "L'ajustement demandé entraînerait un stock inférieur à zéro. Vérifiez la quantité saisie.",
+        title: tr("errors.negative_title"),
+        message: tr("errors.negative_body"),
         code: "NEGATIVE_STOCK_BLOCKED",
         status: 400,
       };
     }
     if (lower.includes("path traversal") || lower.includes("binary signature") || lower.includes("unsupported image") || lower.includes("malicious")) {
       return {
-        title: "Fichier image non valide ou refusé",
-        message: "Seuls les fichiers images authentiques aux formats JPEG (.jpg), PNG (.png) et WEBP (.webp) sont acceptés.",
+        title: tr("errors.image_title"),
+        message: tr("errors.image_body"),
         code: "INVALID_IMAGE_FILE",
         status: 400,
       };
     }
     if (lower.includes("coupon") || lower.includes("code promo")) {
       return {
-        title: "Code promotionnel non applicable",
-        message: "Ce code promo est invalide, a atteint sa limite d'utilisation ou le montant minimum n'est pas atteint.",
+        title: tr("errors.coupon_title"),
+        message: tr("errors.coupon_body"),
         code: "COUPON_INVALID",
         status: 400,
       };
@@ -330,18 +337,18 @@ export function sanitizeAndTranslateError(
   if (status >= 500 || technicalPatterns.test(rawText) || !rawText.trim()) {
     return {
       title: fallbackTitle,
-      message: "L'opération n'a pas pu être finalisée par le serveur. Vos données sont intactes — veuillez vérifier votre saisie et réessayer.",
+      message: tr("errors.server_body"),
       code: "SERVER_ERROR_SANITIZED",
       status: status || 500,
     };
   }
 
-  // If the message is already a clean French business message, keep it; otherwise wrap in polite French
-  const looksEnglishTechnical = /(invalid|missing|failed|error|unauthorized|forbidden|required|must be|cannot|not found)/i.test(rawText);
+  // A clean business message is kept; an English technical one gets a polite wording.
+  const looksEnglishTechnical = !markedHuman && /(invalid|missing|failed|error|unauthorized|forbidden|required|must be|cannot|not found)/i.test(rawText);
   if (looksEnglishTechnical) {
     return {
       title: fallbackTitle,
-      message: "L'action demandée n'a pas pu être validée. Veuillez vérifier les champs saisis et réessayer.",
+      message: tr("errors.not_validated_body"),
       code: `CLIENT_SAFE_${status || 400}`,
       status: status || 400,
     };
@@ -396,7 +403,7 @@ export function notifyClientWarning(title: string, message: string, showModalBox
 
 export function notifyClientError(
   err: unknown,
-  fallbackTitle = "Opération impossible",
+  fallbackTitle = tr("errors.impossible"),
   showModalBox = true
 ): { title: string; message: string; code: string } {
   const translated = sanitizeAndTranslateError(err, (err as any)?.status || 0, "", fallbackTitle);

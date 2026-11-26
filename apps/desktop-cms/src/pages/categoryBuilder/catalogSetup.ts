@@ -1,5 +1,6 @@
 // Attribute types, category icons, colour palette and the draft shapes of the category builder.
 import { Crown, Footprints, Gem, Glasses, Shirt, ShoppingBag, Sparkles, Store, Tag, Watch } from "lucide-react";
+import { tr } from "../../i18n/translations";
 
 export const ATTRIBUTE_TYPES = [
   "short_text",
@@ -19,25 +20,19 @@ export const ATTRIBUTE_TYPES = [
 ];
 
 // Names staff read for the technical attribute types.
-export const ATTRIBUTE_TYPE_LABEL: Record<string, string> = {
-  short_text: "Texte court", long_text: "Texte long", number: "Nombre", price: "Prix",
-  boolean: "Oui / Non", single_select: "Choix unique", multi_select: "Choix multiple",
-  color: "Couleur", size: "Taille", image: "Image", date: "Date", measurement: "Mesure",
-  brand: "Marque", barcode_sku: "Code-barres / SKU",
-};
-export const typeLabel = (t: string) => ATTRIBUTE_TYPE_LABEL[t] || t;
+export const typeLabel = (t: string) => (ATTRIBUTE_TYPES.includes(t) ? tr(`cb.type_${t}`) : t);
 
 export const LUXURY_ICONS = [
-  { key: "bag", label: "Sacs & Maroquinerie", icon: ShoppingBag },
-  { key: "shoes", label: "Chaussures & Souliers", icon: Footprints },
-  { key: "shirt", label: "T-shirts & Prêt-à-porter", icon: Shirt },
-  { key: "sparkles", label: "Châles & Soieries", icon: Sparkles },
-  { key: "gem", label: "Maquillage & Beauté", icon: Gem },
-  { key: "crown", label: "Chapeaux & Couvre-chefs", icon: Crown },
-  { key: "glasses", label: "Lunettes & Optique", icon: Glasses },
-  { key: "watch", label: "Montres & Horlogerie", icon: Watch },
-  { key: "tag", label: "Accessoires & Mode", icon: Tag },
-  { key: "store", label: "Boutique & Vitrine", icon: Store },
+  { key: "bag", icon: ShoppingBag },
+  { key: "shoes", icon: Footprints },
+  { key: "shirt", icon: Shirt },
+  { key: "sparkles", icon: Sparkles },
+  { key: "gem", icon: Gem },
+  { key: "crown", icon: Crown },
+  { key: "glasses", icon: Glasses },
+  { key: "watch", icon: Watch },
+  { key: "tag", icon: Tag },
+  { key: "store", icon: Store },
 ];
 
 export function getCategoryIconComponent(slugOrName: string, iconKey?: string) {
@@ -84,13 +79,21 @@ export interface DraftAttribute {
 export interface CategoryPreset {
   id: string;
   name: string;
+  name_en: string;
+  name_ar: string;
   slug: string;
   iconName: string;
   description_fr: string;
+  description_en: string;
+  description_ar: string;
   image_url: string;
   banner_url: string;
   attributes: DraftAttribute[];
 }
+
+/** Name of an icon / a palette shade in the language in use. */
+export const iconLabel = (key: string, short = false) => tr(`cb.icon_${key}${short ? "_short" : ""}`);
+export const paletteLabel = (hex: string) => tr(`cb.pal_${hex.replace("#", "")}`);
 
 export const LUXURY_PALETTE = [
   { name: "Noir Profond", hex: "#0A0A0A" },

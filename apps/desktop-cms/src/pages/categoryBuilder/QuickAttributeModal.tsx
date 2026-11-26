@@ -2,6 +2,8 @@
 import React from "react";
 import { ATTRIBUTE_TYPES } from "./catalogSetup";
 import { Plus, X } from "lucide-react";
+import { useT } from "../../i18n";
+import { pickLang } from "../../i18n/translations";
 
 /** Add one attribute to an existing category. */
 export function QuickAttributeModal({ quickAttrCategory, setQuickAttrCategory, handleAddAttributeToExisting, quickAttrKey, setQuickAttrKey, quickAttrLabelFr, setQuickAttrLabelFr, quickAttrType, setQuickAttrType, quickAttrOptions, setQuickAttrOptions, quickAttrVariant, setQuickAttrVariant, quickAttrFilterable, setQuickAttrFilterable, quickAttrRequired, setQuickAttrRequired, savingQuickAttr }: {
@@ -24,6 +26,7 @@ export function QuickAttributeModal({ quickAttrCategory, setQuickAttrCategory, h
   setQuickAttrRequired: React.Dispatch<React.SetStateAction<boolean>>;
   savingQuickAttr: boolean;
 }) {
+  const t = useT();
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-in fade-in duration-200">
       <div className="bg-white rounded-2xl border-2 border-[#D4AF62] shadow-2xl max-w-lg w-full space-y-4 p-6 text-xs">
@@ -34,12 +37,12 @@ export function QuickAttributeModal({ quickAttrCategory, setQuickAttrCategory, h
             </div>
             <div>
               <h3 className="font-serif font-bold text-base text-[#063D2E]">
-                Ajouter un attribut à « {quickAttrCategory.name_fr} »
+                {t("cbf.qa_title", { name: pickLang(quickAttrCategory, "name") })}
               </h3>
-              <p className="text-gray-500 font-medium">Adapte le formulaire produit et les filtres boutique.</p>
+              <p className="text-gray-500 font-medium">{t("cbf.qa_sub")}</p>
             </div>
           </div>
-          <button aria-label="Fermer"
+          <button aria-label={t("cbf.close")}
             type="button"
             onClick={() => setQuickAttrCategory(null)}
             className="text-gray-400 hover:text-gray-700"
@@ -50,29 +53,29 @@ export function QuickAttributeModal({ quickAttrCategory, setQuickAttrCategory, h
 
         <form onSubmit={handleAddAttributeToExisting} className="space-y-3">
           <div>
-            <label className="block font-bold mb-1 text-gray-700">Clé technique (minuscules sans espaces) *</label>
+            <label className="block font-bold mb-1 text-gray-700">{t("cbf.qa_key")}</label>
             <input
               value={quickAttrKey}
               onChange={(e) => setQuickAttrKey(e.target.value)}
-              placeholder="ex: pointure, matiere, calibre"
+              placeholder={t("cbf.qa_key_ph")}
               required
               className="w-full px-3 py-2 border rounded-xl font-mono text-gray-800"
             />
           </div>
 
           <div>
-            <label className="block font-bold mb-1 text-gray-700">Libellé en Français *</label>
+            <label className="block font-bold mb-1 text-gray-700">{t("cbf.qa_label")}</label>
             <input
               value={quickAttrLabelFr}
               onChange={(e) => setQuickAttrLabelFr(e.target.value)}
-              placeholder="ex: Pointure Chaussure"
+              placeholder={t("cbf.qa_label_ph")}
               required
               className="w-full px-3 py-2 border rounded-xl font-bold"
             />
           </div>
 
           <div>
-            <label className="block font-bold mb-1 text-gray-700">Type de données</label>
+            <label className="block font-bold mb-1 text-gray-700">{t("cbf.qa_type")}</label>
             <select
               value={quickAttrType}
               onChange={(e) => setQuickAttrType(e.target.value)}
@@ -87,7 +90,7 @@ export function QuickAttributeModal({ quickAttrCategory, setQuickAttrCategory, h
           </div>
 
           <div>
-            <label className="block font-bold mb-1 text-gray-700">Options prédéfinies (séparées par virgules)</label>
+            <label className="block font-bold mb-1 text-gray-700">{t("cbf.qa_options")}</label>
             <input
               value={quickAttrOptions}
               onChange={(e) => setQuickAttrOptions(e.target.value)}
@@ -103,7 +106,7 @@ export function QuickAttributeModal({ quickAttrCategory, setQuickAttrCategory, h
                 checked={quickAttrVariant}
                 onChange={(e) => setQuickAttrVariant(e.target.checked)}
               />
-              <span>Axe de variante (génère stocks et prix distincts)</span>
+              <span>{t("cbf.qa_axis")}</span>
             </label>
             <label className="inline-flex items-center gap-2 cursor-pointer font-bold text-gray-800">
               <input
@@ -111,7 +114,7 @@ export function QuickAttributeModal({ quickAttrCategory, setQuickAttrCategory, h
                 checked={quickAttrFilterable}
                 onChange={(e) => setQuickAttrFilterable(e.target.checked)}
               />
-              <span>Afficher dans les filtres de recherche</span>
+              <span>{t("cbf.qa_filter")}</span>
             </label>
             <label className="inline-flex items-center gap-2 cursor-pointer font-bold text-gray-800">
               <input
@@ -119,7 +122,7 @@ export function QuickAttributeModal({ quickAttrCategory, setQuickAttrCategory, h
                 checked={quickAttrRequired}
                 onChange={(e) => setQuickAttrRequired(e.target.checked)}
               />
-              <span>Champ obligatoire lors de la création d'article</span>
+              <span>{t("cbf.qa_required")}</span>
             </label>
           </div>
 
@@ -129,14 +132,14 @@ export function QuickAttributeModal({ quickAttrCategory, setQuickAttrCategory, h
               onClick={() => setQuickAttrCategory(null)}
               className="px-4 py-2 rounded-xl border border-gray-300 font-bold text-gray-700"
             >
-              Annuler
+              {t("cbf.cancel")}
             </button>
             <button
               type="submit"
               disabled={savingQuickAttr}
               className="px-6 py-2 rounded-xl bg-[#063D2E] text-[#D4AF62] font-extrabold shadow hover:bg-[#02291F] transition"
             >
-              {savingQuickAttr ? "Ajout en cours..." : "+ Ajouter l'attribut"}
+              {savingQuickAttr ? t("cbf.qa_adding") : t("cbf.qa_add")}
             </button>
           </div>
         </form>
