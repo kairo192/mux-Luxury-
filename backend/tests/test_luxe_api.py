@@ -1817,19 +1817,29 @@ const fs = require("fs");
 const path = require("path");
 const babel = require("@babel/core");
 
-const file = path.resolve(process.cwd(), "apps/desktop-cms/src/utils/clientNotifier.ts");
-const src = fs.readFileSync(file, "utf8");
-const compiled = babel.transformSync(src, {
-  filename: file,
-  presets: [
-    ["PRESET_ENV", { targets: { node: "current" }, modules: "commonjs" }],
-    "PRESET_TS",
-  ],
-}).code;""".replace("PRESET_ENV", p_env).replace("PRESET_TS", p_ts) + """
+// clientNotifier.ts imports the CMS dictionaries: compile each local TypeScript module it needs.
+const cache = {};
+function loadTs(file) {
+  if (cache[file]) return cache[file].exports;
+  const compiled = babel.transformSync(fs.readFileSync(file, "utf8"), {
+    filename: file,
+    presets: [
+      ["PRESET_ENV", { targets: { node: "current" }, modules: "commonjs" }],
+      "PRESET_TS",
+    ],
+  }).code;
+  const m = (cache[file] = { exports: {} });
+  const localRequire = (spec) => {
+    if (!spec.startsWith(".")) return require(spec);
+    const base = path.resolve(path.dirname(file), spec);
+    const hit = [base + ".ts", base + ".tsx", path.join(base, "index.ts")].find((f) => fs.existsSync(f));
+    return loadTs(hit);
+  };
+  new Function("exports", "require", "module", compiled)(m.exports, localRequire, m);
+  return m.exports;
+}""".replace("PRESET_ENV", p_env).replace("PRESET_TS", p_ts) + """
 
-const mod = { exports: {} };
-const fn = new Function("exports", "require", "module", compiled);
-fn(mod.exports, require, mod);
+const mod = { exports: loadTs(path.resolve(process.cwd(), "apps/desktop-cms/src/utils/clientNotifier.ts")) };
 
 const {
   sanitizeAndTranslateError,
@@ -1931,7 +1941,7 @@ console.log("CLIENT_NOTIFIER_ALL_TESTS_PASSED");
         self.assertIn("renderClientNotificationCenter", app_tsx)
         self.assertIn("role=\"dialog\"", app_tsx)
         self.assertIn("aria-modal=\"true\"", app_tsx)
-        self.assertIn("Compris (Fermer)", app_tsx)
+        self.assertIn('t("msgbox.ok")', app_tsx)  # "Compris (Fermer)" / "Got it (Close)" / "حسناً (إغلاق)"
 
 
 

@@ -5,6 +5,7 @@ import { serverDate } from "../../utils/serverDate";
 import type { LookupVariant, PaymentMethod, RegisterSession } from "./types";
 import { Keypad, Sheet, fmt } from "./ui";
 import { tr, localeFor } from "../../i18n/translations";
+import { registerName } from "../../utils/registerName";
 
 /** Choose the payment method, global discount and cash received; validates the sale. */
 export function PaymentSheet({ total, payMethod, setPayMethod, orderDiscount, setOrderDiscount, tendered, setTendered, tenderedNum, receivedShown, change, busy, handleConfirmSale, setShowPay }: { total: number; payMethod: PaymentMethod; setPayMethod: (m: PaymentMethod) => void; orderDiscount: string; setOrderDiscount: (v: string) => void; tendered: string; setTendered: (v: string) => void; tenderedNum: number; receivedShown: number; change: number; busy: boolean; handleConfirmSale: () => void; setShowPay: (v: boolean) => void }) {
@@ -109,7 +110,7 @@ export function CloseRegisterSheet({ session, countedCash, setCountedCash, busy,
         <div className="p-3 rounded-2xl bg-[#F5F3EE] mb-3 text-center">
           <div className="text-xs uppercase tracking-wide text-gray-500 font-bold">{tr("posx.stat_expected")}</div>
           <div className="text-2xl font-bold text-[#063D2E] font-mono">{fmt(session.expected_cash_dzd || 0)}</div>
-          <div className="text-xs text-gray-400 mt-1">Fond {fmt(session.opening_float_dzd)} + ventes espèces</div>
+          <div className="text-xs text-gray-400 mt-1">{tr("posx.expected_detail", { v: fmt(session.opening_float_dzd) })}</div>
         </div>
         <div className="p-3 rounded-2xl bg-white border-2 border-gray-100 mb-3 text-center">
           <div className="text-xs uppercase tracking-wide text-gray-500 font-bold">{tr("posx.counted_cash")}</div>
@@ -156,7 +157,7 @@ export function SessionsHistorySheet({ sessionsHistory, setSessionsHistory }: { 
           {sessionsHistory.map((s) => (
             <div key={s.id} className="p-3 rounded-2xl border border-gray-100 bg-[#FCFBF8]">
               <div className="flex items-center justify-between">
-                <span className="font-bold text-[#063D2E]">#{s.id} · {s.register_name}</span>
+                <span className="font-bold text-[#063D2E]">#{s.id} · {registerName(s.register_name)}</span>
                 <span className={`px-2 py-0.5 rounded-lg text-xs font-bold ${s.status === "open" ? "bg-emerald-100 text-emerald-700" : "bg-gray-200 text-gray-600"}`}>
                   {s.status === "open" ? tr("posx.s_open") : tr("posx.s_closed")}
                 </span>

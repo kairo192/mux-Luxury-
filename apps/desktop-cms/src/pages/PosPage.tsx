@@ -48,6 +48,7 @@ import { Keypad, ReceiptModal, Stat, fmt } from "./pos/ui";
 import { buildReceiptBlocks } from "./pos/receipt";
 import { CloseRegisterSheet, ConflictsSheet, CustomerSheet, PaymentSheet, RefundSheet, SessionsHistorySheet, VariantPickerSheet } from "./pos/sheets";
 import { localeFor } from "../i18n/translations";
+import { registerName } from "../utils/registerName";
 
 // ---------------------------------------------------------------------------
 // POS — Touch-first cashier workspace.
@@ -745,7 +746,7 @@ export const PosPage: React.FC<{ onInventoryUpdated?: () => void }> = ({ onInven
                 <span className="w-10 h-10 rounded-2xl bg-white/10 flex items-center justify-center">
                   <Unlock className="w-5 h-5 text-[#D4AF62]" />
                 </span>
-                {session.register_name}
+                {registerName(session.register_name)}
               </div>
               <div className="flex gap-5 text-sm">
                 <Stat label={t("posx.stat_float")} value={fmt(session.opening_float_dzd)} />

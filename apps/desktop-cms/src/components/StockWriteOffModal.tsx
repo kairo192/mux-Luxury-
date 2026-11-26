@@ -68,7 +68,7 @@ export const StockWriteOffModal: React.FC<{
           <label className="block">
             <span className="block text-[11px] font-bold uppercase tracking-wide text-gray-500 mb-1">{t("stock_writeoff.lbl_reason")}</span>
             <select value={reason} onChange={(e) => setReason(e.target.value)} className="w-full h-12 px-3 rounded-2xl border-2 border-gray-200 bg-white">
-              {reasons.map((r) => <option key={r.code} value={r.code}>{r.label}</option>)}
+              {reasons.map((r) => { const k = `mv.wr_${r.code}`; const l = tr(k); return <option key={r.code} value={r.code}>{l === k ? r.label : l}</option>; })}
             </select>
           </label>
           <label className="block">

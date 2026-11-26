@@ -1,6 +1,7 @@
 import { defineArea } from "./define";
 
 export const misc = defineArea("misc", {
+  "code128_bad_char": ["Caractère non supporté en Code 128 : {{ch}}", "Character not supported in Code 128: {{ch}}", "حرف غير مدعوم في Code 128: {{ch}}"],
   "clear_search": ["Effacer la recherche", "Clear the search", "مسح البحث"],
   "cost_price": ["Prix achat", "Cost price", "سعر الشراء"],
   "in_stock_n": ["{{n}} en stock", "{{n}} in stock", "{{n}} في المخزون"],

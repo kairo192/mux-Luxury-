@@ -22,7 +22,8 @@ fails, and commit + push after each finished step.
 - Ask the owner before anything on the VPS that changes data, and before deleting anything.
 - Do not re-add WhatsApp/SMS password recovery (forgotten password = `python -m app.admin_cli reset-password` on the server).
 - No public download link for the installer.
-- Server messages shown to people are French. Every new audited action needs a French name in `_AUDIT_ACTION_FR`.
+- The CMS is in three languages (FR/EN/AR, see WORK_SUMMARY §37): new screen texts are dictionary keys in all three; a new
+  server message goes in `backend/app/i18n_messages.py`; a new audited action needs `_AUDIT_ACTION_FR` and `areas/audit_action.ts`.
 - Keep everything green: `npm run lint`, `npm run test:backend`, `npm run test:e2e`.
 - Commit messages end with the line `Co-Authored-By: Claude <noreply@anthropic.com>`.
 

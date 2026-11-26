@@ -102,6 +102,7 @@ export const posx = defineArea("posx", {
   "no_session": ["Aucune session.", "No session.", "لا توجد جلسات."],
   "s_open": ["Ouverte", "Open", "مفتوح"],
   "s_closed": ["Clôturée", "Closed", "مُقفل"],
+  "expected_detail": ["Fond {{v}} + ventes espèces", "Opening cash {{v}} + cash sales", "رصيد الافتتاح {{v}} + المبيعات نقداً"],
   "h_float": ["Fond : {{v}}", "Opening: {{v}}", "الافتتاح: {{v}}"],
   "h_sales": ["Ventes : {{v}}", "Sales: {{v}}", "المبيعات: {{v}}"],
   "h_refunds": ["Remb. : {{v}}", "Refunds: {{v}}", "الاسترجاعات: {{v}}"],

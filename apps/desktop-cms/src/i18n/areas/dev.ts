@@ -1,6 +1,8 @@
 import { defineArea } from "./define";
 
 export const dev = defineArea("dev", {
+  "print_test_failed": ["échec du test d'impression", "print test failed", "فشل اختبار الطباعة"],
+  "state_unknown": ["état inconnu", "unknown state", "حالة غير معروفة"],
   "serial": ["Série / RS232", "Serial / RS232", "تسلسلي / RS232"],
   "hid": ["Clavier HID (douchette)", "HID keyboard (scanner)", "لوحة مفاتيح HID (قارئ)"],
   "browser": ["Navigateur", "Browser", "المتصفح"],

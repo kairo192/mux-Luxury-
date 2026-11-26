@@ -22,18 +22,18 @@ test("category builder: create form, edit, add attribute and delete dialogs", as
 
   const card = main.locator("div").filter({ hasText: "Sacs E2E" }).filter({ has: page.getByRole("button", { name: "Modifier" }) }).last();
   await card.getByRole("button", { name: "Modifier" }).click();
-  await expect(page.getByText("Modifier la Catégorie : Sacs E2E")).toBeVisible();
+  await expect(page.getByText(/Modifier la catégorie : Sacs E2E/i)).toBeVisible();
   await page.locator("div.fixed.inset-0").last().getByRole("button", { name: "Fermer" }).click();
-  await expect(page.getByText("Modifier la Catégorie : Sacs E2E")).toHaveCount(0);
+  await expect(page.getByText(/Modifier la catégorie : Sacs E2E/i)).toHaveCount(0);
 
   await card.getByRole("button", { name: /^Ajouter$/ }).first().click();
   await expect(page.getByText("Ajouter un attribut à « Sacs E2E »")).toBeVisible();
   await page.locator("div.fixed.inset-0").last().getByRole("button", { name: "Fermer" }).click();
 
   await card.getByRole("button", { name: /^Supprimer$/ }).click();
-  await expect(page.getByText("Supprimer ou Archiver la Catégorie")).toBeVisible();
+  await expect(page.getByText(/Supprimer ou archiver la catégorie/i)).toBeVisible();
   await page.locator("div.fixed.inset-0").last().getByRole("button", { name: "Annuler" }).click();
-  await expect(page.getByText("Supprimer ou Archiver la Catégorie")).toHaveCount(0);
+  await expect(page.getByText(/Supprimer ou archiver la catégorie/i)).toHaveCount(0);
   w.expectClean();
 });
 
@@ -68,7 +68,7 @@ test("products: after a deletion, keyboard focus lands on the product search", a
   const rows = () => page.locator("main tr:visible").filter({ hasText: name }); // other screens stay mounted, hidden
   await rows().getByRole("button", { name: "Supprimer" }).click();
   const dialog = page.getByRole("dialog", { name: "Suppression / Archivage du Produit" });
-  await dialog.getByRole("button", { name: /Supprimer Définitivement/ }).click();
+  await dialog.getByRole("button", { name: /Supprimer définitivement/i }).click();
   await expect(dialog).toHaveCount(0);
   await expect(rows()).toHaveCount(0);          // its row (and « Supprimer » button) is gone
   await expect(page.locator("[data-products-search]")).toBeFocused();

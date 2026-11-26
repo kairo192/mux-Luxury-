@@ -1,5 +1,5 @@
 import { test, expect, type Page } from "@playwright/test";
-import { OWNER, CASHIER, watch, cmsLogin, closeMessageBoxes } from "../support/helpers";
+import { OWNER, CASHIER, CMS, ensureAccount, watch, cmsLogin, closeMessageBoxes } from "../support/helpers";
 
 // Every screen of the menu, in the 3 languages, for the owner and a cashier:
 // no crash, no console error, no refused / failed call, and nothing broken on
@@ -11,7 +11,10 @@ async function menuEntries(page: Page): Promise<number> {
     bs.filter((b) => b.querySelector("svg") && (b as HTMLElement).innerText.trim()).length);
 }
 
-async function sweep(page: Page): Promise<string[]> {
+// Common French words of the CMS itself (not shop data): none may show in English or Arabic.
+const FRENCH_UI = /\b(Enregistrer|Annuler|Supprimer|Modifier|Ajouter|Rechercher|Chargement|Fermer|Aucune?|Nouvelle?|Valider|Imprimer|Actualiser|Exporter|Commandes?|Fournisseurs?|Dépenses?|Trésorerie|Caisse|Tableau de bord)\b/;
+
+async function sweep(page: Page, lang: "fr" | "en" | "ar" = "fr"): Promise<string[]> {
   const problems: string[] = [];
   const buttons = page.locator("aside[aria-label] button");
   const n = await buttons.count();
@@ -28,6 +31,11 @@ async function sweep(page: Page): Promise<string[]> {
       const m = text.match(re);
       if (m) problems.push(`${label}: "${m[0]}"`);
     }
+    if (lang !== "fr") {
+      const all = await page.locator("body").innerText();
+      const m = all.match(FRENCH_UI);
+      if (m) problems.push(`${label}: French text "${m[0]}" in ${lang}`);
+    }
   }
   return problems;
 }
@@ -42,8 +50,19 @@ for (const who of [{ role: "owner", ...OWNER }, { role: "cashier", ...CASHIER }]
       const entries = await menuEntries(page);
       if (who.role === "owner") expect(entries).toBeGreaterThan(25);
       else expect(entries).toBeLessThan(12); // a cashier sees the till, not the accounts
-      expect(await sweep(page)).toEqual([]);
+      expect(await sweep(page, lang)).toEqual([]);
       w.expectClean();
     });
   }
 }
+
+test("server messages follow the CMS language", async ({ page }) => {
+  await ensureAccount(OWNER.email);
+  await page.goto(CMS);
+  await page.evaluate(() => localStorage.setItem("luxe_cms_lang", "ar"));
+  await page.reload();
+  await page.locator("#login-email").fill(OWNER.email);
+  await page.locator("#login-password").fill("not-the-password-123");
+  await page.locator('button[type="submit"]').click();
+  await expect(page.getByText(/البريد الإلكتروني أو كلمة المرور غير صحيحة/).first()).toBeVisible();
+});

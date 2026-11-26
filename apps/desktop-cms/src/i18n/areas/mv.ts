@@ -1,6 +1,11 @@
 import { defineArea } from "./define";
 
 export const mv = defineArea("mv", {
+  "wr_damaged": ["Produit endommagé", "Damaged product", "منتج تالف"],
+  "wr_lost": ["Perte / vol", "Lost / stolen", "مفقود / مسروق"],
+  "wr_return_to_supplier": ["Retour fournisseur", "Return to supplier", "إرجاع إلى المورد"],
+  "wr_promotional_giveaway": ["Cadeau / promo", "Gift / promotion", "هدية / ترويج"],
+  "wr_stocktake_correction": ["Correction d'inventaire", "Stock count correction", "تصحيح الجرد"],
   "order_reserved": ["Commande en ligne", "Online order", "طلبية إلكترونية"],
   "order_confirmed": ["Commande confirmée", "Order confirmed", "طلبية مؤكدة"],
   "order_cancelled": ["Commande annulée", "Order cancelled", "طلبية ملغاة"],

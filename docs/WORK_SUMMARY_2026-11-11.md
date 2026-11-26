@@ -696,6 +696,27 @@ with regression tests in `backend/tests/test_review_fixes.py`, `test_catalog_syn
 | API docs | Generated with the same FastAPI version as CI and the server image (0.99, OpenAPI 3.1); a test checks every schema reference resolves |
 | Second pass | Two clicks / two PCs: an order status change, an expense deletion and an offline sale on a closed register are applied once (claimed on the state read; register row locked on PostgreSQL). Archive restores exactly what it switched off, even when nothing was (`products.variants_marked_on_archive`), and refuses a barcode taken meanwhile; a published product is checked on every save. The till's catalogue cursor trails the clock by 60 s so a late commit is never skipped. Shop: the order confirmation shows what the shop recorded when an earlier attempt already went through; the store phone is escaped; "Plus récents" sorts newest first; a search from La Maison opens the shop; late answers (page, tracking) no longer replace newer ones. CMS: a request retried after a logout and a change of server goes back to the server it started on (e2e test: held request → logout → new server → no old token reaches it); focus follows the dialog on top |
 
+## 37. The whole CMS in the chosen language (French / English / Arabic)
+
+Switching the CMS to English or Arabic left many screens, dialogs and server messages in French. Now every screen,
+dialog, notice and server answer the CMS shows follows the language chosen at the top (Arabic right to left).
+
+| What | How |
+|---|---|
+| Screens, dialogs, notices | Every text goes through the dictionaries: `src/i18n/translations.ts` plus area files `src/i18n/areas/<area>.ts` (`defineArea("area", { key: [fr, en, ar] })`). `tr()` works outside React components (helpers, notifier, API client) |
+| Server messages | The CMS sends `X-Luxe-Lang: fr / en / ar`; the server translates its known messages (`backend/app/i18n_messages.py`, values such as names and quantities carried over) and marks them `"human": true`. Clients without the header (the online shop) get the original answer, unchanged. Backup warnings on the Database screen follow the language too |
+| Codes and stored French texts | Order statuses, roles, stock movement reasons, write-off reasons, expense categories, audit actions / item types, treasury descriptions written by the server ("Dépense : …", "Vente magasin …") and the default register name are shown in the chosen language (`utils/auditLabels.ts`, `movementReasons.ts`, `treasuryText.ts`, `registerName.ts`, `codeLabels.ts`) |
+| Category presets | Names and descriptions in the three languages |
+| Kept in French on purpose | Printed customer documents (till receipt — thermal printers cannot print Arabic —, A4 invoice, delivery note), the shop's own data (product, category, customer names; store address) and the shop preview, CSV exports |
+
+Guards: `backend/tests/test_i18n.py` (every server message has fr/en/ar with the same values; the API follows
+`X-Luxe-Lang` and leaves other clients untouched; every key the CMS uses exists in the three languages; Arabic texts are
+Arabic; every audit name is translated). e2e `06`: every screen in English and Arabic is checked for common French
+words, and a wrong password in Arabic shows the Arabic server message.
+
+Rule for new code: no text written directly in a screen — add a key in the three languages; a new server message goes in
+`app/i18n_messages.py` (the test fails otherwise); a new audited action needs its name in `areas/audit_action.ts`.
+
 ## Verification
 
 | Check | Result |

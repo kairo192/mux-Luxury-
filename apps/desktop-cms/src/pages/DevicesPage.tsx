@@ -194,13 +194,13 @@ export const DevicesPage: React.FC = () => {
           : await testPrint(target);
         await DesktopCmsApi.testDevice(dev.id, { success: res.ok, error: res.ok ? undefined : res.error });
         if (res.ok) flash(t("dev.test_ok", { name: dev.name }));
-        else setError(`${dev.name} : ${res.error || "échec du test d'impression"}`);
+        else setError(`${dev.name} : ${res.error || t("dev.print_test_failed")}`);
       } else if (isPrinter) {
         setError(t("dev.desktop_only"));
       } else {
         const res = await DesktopCmsApi.testDevice(dev.id);
         if (res.status === "ok") flash(`${dev.name} : OK`);
-        else setError(`${dev.name} : ${res.last_error || "état inconnu"}`);
+        else setError(`${dev.name} : ${res.last_error || t("dev.state_unknown")}`);
       }
       load();
     } catch (e: any) {
