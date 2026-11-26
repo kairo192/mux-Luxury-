@@ -59,6 +59,8 @@ type Draft = {
   previous_price_dzd: number | "";
   discount_percent: number;
   status: "draft" | "published" | "archived";
+  /** all = website + shop; store = shop only (till, labels), hidden on the website */
+  sales_channel: "all" | "store";
   is_featured: boolean;
   is_new_arrival: boolean;
   main_image_url: string;
@@ -88,6 +90,7 @@ const EMPTY: Draft = {
   previous_price_dzd: "",
   discount_percent: 0,
   status: "draft",
+  sales_channel: "all",
   is_featured: false,
   is_new_arrival: false,
   main_image_url: "",
@@ -131,6 +134,7 @@ function draftFromProduct(product: any): Draft {
     previous_price_dzd: product.previous_price_dzd ?? "",
     discount_percent: Number(product.discount_percent ?? 0),
     status: product.status || "draft",
+    sales_channel: product.sales_channel === "store" ? "store" : "all",
     is_featured: Boolean(product.is_featured),
     is_new_arrival: Boolean(product.is_new_arrival),
     main_image_url: product.main_image_url || "",
@@ -403,7 +407,7 @@ export function ProductEditor({ open, product, categories, brands, onClose, onSa
     if (Number(draft.selling_price_dzd) < Number(draft.purchase_cost_dzd)) {
       return t("pe.v_margin");
     }
-    if (draft.status === "published") {
+    if (draft.status === "published" && draft.sales_channel !== "store") {
       const missing = dataAttributes.filter(
         (a: any) => a.is_required && !String(draft.dynamic_attributes[a.attr_key] || "").trim()
       );
@@ -442,6 +446,7 @@ export function ProductEditor({ open, product, categories, brands, onClose, onSa
         previous_price_dzd: draft.previous_price_dzd === "" ? null : Number(draft.previous_price_dzd),
         discount_percent: Number(draft.discount_percent) || 0,
         status: draft.status,
+        sales_channel: draft.sales_channel,
         is_featured: draft.is_featured,
         is_new_arrival: draft.is_new_arrival,
         main_image_url: draft.main_image_url.trim() || null,
@@ -909,7 +914,7 @@ export function ProductEditor({ open, product, categories, brands, onClose, onSa
                 </span>
               </div>
 
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+              <div className="grid grid-cols-1 md:grid-cols-4 gap-3">
                 <div>
                   <label className="block font-bold mb-1">{t("product_editor.status_label")}</label>
                   <select
@@ -920,6 +925,17 @@ export function ProductEditor({ open, product, categories, brands, onClose, onSa
                     <option value="draft">{t("product_editor.status_draft")}</option>
                     <option value="published">{t("product_editor.status_published")}</option>
                     <option value="archived">{t("product_editor.status_archived")}</option>
+                  </select>
+                </div>
+                <div>
+                  <label className="block font-bold mb-1">{t("shop.sold_where")}</label>
+                  <select
+                    value={draft.sales_channel}
+                    onChange={(e) => patch({ sales_channel: e.target.value === "store" ? "store" : "all" })}
+                    className="w-full px-3 py-2 border rounded-xl bg-white font-bold"
+                  >
+                    <option value="all">{t("shop.badge_online")}</option>
+                    <option value="store">{t("shop.badge_store")}</option>
                   </select>
                 </div>
                 <div className="flex items-end gap-3">

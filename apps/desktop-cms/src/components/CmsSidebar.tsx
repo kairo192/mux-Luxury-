@@ -31,6 +31,7 @@ import {
   Search,
   X,
   type LucideIcon,
+  Store,
 } from "lucide-react";
 import { useT } from "../i18n";
 
@@ -75,6 +76,7 @@ export const CMS_NAV_GROUPS: NavGroup[] = [
     labelKey: "nav.group.catalog",
     items: [
       { id: "products", labelKey: "sidebar.products", icon: ShoppingBag },
+      { id: "shop_items", labelKey: "shop.menu", icon: Store },
       { id: "categories", labelKey: "sidebar.categories", icon: Tags },
     ],
   },

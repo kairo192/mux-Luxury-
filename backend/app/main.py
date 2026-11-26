@@ -262,7 +262,7 @@ seed_initial_data()
 
 
 # ---------------------------------------------------------------- routes
-from .routers import public, auth, reports, catalog, orders, content, webhooks, pos, inventory, system, finance, seo  # noqa: E402
+from .routers import public, auth, reports, catalog, orders, content, webhooks, pos, inventory, system, finance, seo, store  # noqa: E402
 
 app.include_router(public.router)
 app.include_router(auth.router)
@@ -276,6 +276,7 @@ app.include_router(inventory.router)
 app.include_router(system.router)
 app.include_router(finance.router)
 app.include_router(seo.router)
+app.include_router(store.router)
 
 # Kept importable from app.main (tests and maintenance scripts use them).
 from .routers.catalog import ean_check_digit  # noqa: E402,F401

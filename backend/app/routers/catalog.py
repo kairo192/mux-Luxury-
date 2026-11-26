@@ -26,8 +26,24 @@ from ..common import (
     serialize_products_batch,
 )
 
-router = APIRouter()
+from ..catalog_rules import (  # noqa: F401 — shared with the Shop items router
+    _INTERNAL_EAN_PREFIX,
+    _assert_publishable,
+    _barcode_in_use,
+    _generate_internal_ean13,
+    auto_variant_sku,
+    build_variant_signature,
+    detect_symbology,
+    ean_check_digit,
+    ensure_variant_attribute_options,
+    load_category_attributes_with_options,
+    replace_variant_attribute_values,
+    upca_check_digit,
+    validate_barcode,
+    validate_variant_attributes,
+)
 
+router = APIRouter()
 
 
 class AttributeOptionInput(BaseModel):
@@ -123,6 +139,8 @@ class ProductCreate(BaseModel):
     tags: Optional[str] = None
     dynamic_attributes: Dict[str, Any] = {}
     variants: List[VariantInput] = []
+    # all = online shop + boutique; store = boutique only (till, labels), hidden online
+    sales_channel: str = Field("all", regex=r"^(all|store)$")
 
 
 class VariantMatrixRequest(BaseModel):
@@ -207,105 +225,6 @@ def normalize_variant_sku(value: Optional[str]) -> str:
     return re.sub(r"\s+", "-", str(value or "").strip())
 
 
-def build_variant_signature(attributes: Dict[str, str], sku_fallback: str = "") -> str:
-    if attributes:
-        return "|".join(f"{k}:{attributes[k]}" for k in sorted(attributes.keys()))
-    return f"sku:{sku_fallback}"
-
-
-def load_category_attributes_with_options(conn, category_id: int) -> Dict[str, dict]:
-    cur = conn.cursor()
-    cur.execute("SELECT * FROM category_attributes WHERE category_id = ?", (category_id,))
-    attrs = {r["attr_key"]: dict(r) for r in cur.fetchall()}
-    if not attrs:
-        return attrs
-    attr_ids = [a["id"] for a in attrs.values()]
-    placeholders = ",".join("?" for _ in attr_ids)
-    cur.execute(
-        f"SELECT attribute_id, value FROM category_attribute_options WHERE attribute_id IN ({placeholders})",
-        attr_ids,
-    )
-    options_by_attr: Dict[int, set] = {}
-    for row in cur.fetchall():
-        options_by_attr.setdefault(row["attribute_id"], set()).add(str(row["value"]).strip())
-    for attr in attrs.values():
-        attr["option_values"] = options_by_attr.get(attr["id"], set())
-    return attrs
-
-
-def validate_variant_attributes(
-    cat_attrs: Dict[str, dict],
-    attributes: Dict[str, str],
-    allow_empty: bool = True,
-    allow_custom_values: bool = False,
-) -> Dict[str, str]:
-    """
-    Rejects unknown attributes, non-axis attributes and (unless custom values are allowed)
-    option values that do not belong to the category definition. Returns the trimmed map.
-    """
-    axes = {k: a for k, a in cat_attrs.items() if a.get("is_variant_axis")}
-    cleaned: Dict[str, str] = {}
-    for raw_key, raw_val in (attributes or {}).items():
-        key = str(raw_key).strip()
-        if key not in cat_attrs:
-            raise HTTPException(
-                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-                detail=f"Caractéristique '{key}' inconnue pour cette catégorie",
-            )
-        if key not in axes:
-            raise HTTPException(
-                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-                detail=f"'{key}' ne sert pas à créer des déclinaisons dans cette catégorie",
-            )
-        val = str(raw_val).strip()
-        if not val:
-            raise HTTPException(
-                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-                detail=f"Valeur vide pour '{key}'",
-            )
-        allowed = cat_attrs[key].get("option_values") or set()
-        if allowed and val not in allowed and not allow_custom_values:
-            raise HTTPException(
-                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-                detail=f"Valeur '{val}' non valable pour '{key}'. Valeurs possibles : {', '.join(sorted(allowed))}",
-            )
-        cleaned[key] = val
-    if not cleaned and axes and not allow_empty:
-        raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-            detail="At least one variant attribute value is required for this category",
-        )
-    return cleaned
-
-
-def ensure_variant_attribute_options(conn, cat_attrs: Dict[str, dict], attributes: Dict[str, str]) -> None:
-    """
-    Registers a custom axis value as a reusable option so dropdowns, filters and the CMS
-    stay consistent. Existing options are untouched.
-    """
-    cur = conn.cursor()
-    for key, val in attributes.items():
-        attr = cat_attrs.get(key)
-        if not attr:
-            continue
-        allowed = attr.get("option_values") or set()
-        if val in allowed:
-            continue
-        cur.execute(
-            "SELECT COALESCE(MAX(display_order), 0) AS mx FROM category_attribute_options WHERE attribute_id = ?",
-            (attr["id"],),
-        )
-        next_order = int(cur.fetchone()["mx"] or 0) + 1
-        cur.execute(
-            """INSERT INTO category_attribute_options
-               (attribute_id, value, label_fr, label_ar, label_en, display_order)
-               VALUES (?, ?, ?, '', '', ?)""",
-            (attr["id"], val, val, next_order),
-        )
-        allowed.add(val)
-        attr["option_values"] = allowed
-
-
 def assert_variant_sku_available(conn, sku: str, exclude_variant_id: Optional[int] = None) -> None:
     if not sku:
         raise HTTPException(status_code=422, detail="La référence (SKU) de la déclinaison est obligatoire")
@@ -343,29 +262,6 @@ def assert_variant_signature_available(
             status_code=status.HTTP_409_CONFLICT,
             detail="A variant with this color/size/attribute combination already exists for this product",
         )
-
-
-def replace_variant_attribute_values(conn, variant_id: int, cat_attrs: Dict[str, dict], attributes: Dict[str, str]) -> None:
-    cur = conn.cursor()
-    cur.execute("DELETE FROM variant_attribute_values WHERE variant_id = ?", (variant_id,))
-    for key, val in attributes.items():
-        cur.execute(
-            "INSERT INTO variant_attribute_values (variant_id, attribute_id, option_value) VALUES (?, ?, ?)",
-            (variant_id, cat_attrs[key]["id"], val),
-        )
-
-
-def auto_variant_sku(conn, product_sku: str, attributes: Dict[str, str], signature: str) -> str:
-    if attributes:
-        parts = [re.sub(r"[^A-Z0-9]", "", str(attributes[k]).upper())[:4] for k in sorted(attributes)]
-        base = f"{product_sku}-{'-'.join(parts)}"
-    else:
-        base = f"{product_sku}-STD"
-    cur = conn.cursor()
-    cur.execute("SELECT id FROM product_variants WHERE sku = ?", (base,))
-    if cur.fetchone():
-        base = f"{base}-{hashlib.sha256(signature.encode('utf-8')).hexdigest()[:4].upper()}"
-    return base
 
 
 def serialize_variant_row(conn, variant_id: int) -> dict:
@@ -579,7 +475,7 @@ def create_dynamic_product(
         cat_attrs = {r["attr_key"]: dict(r) for r in cur.fetchall()}
 
         # Validate required category attributes when publishing (drafts may omit required dynamic attributes)
-        if payload.status == "published":
+        if payload.status == "published" and payload.sales_channel != "store":
             missing = []
             for akey, ainfo in cat_attrs.items():
                 if ainfo["is_required"] and not ainfo["is_variant_axis"]:
@@ -635,8 +531,8 @@ def create_dynamic_product(
                 description_fr, description_ar, description_en, main_image_url,
                 purchase_cost_dzd, selling_price_dzd, previous_price_dzd, discount_percent,
                 status, is_featured, is_new_arrival, seo_title, seo_description,
-                weight_grams, dimensions_cm, tags)
-               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                weight_grams, dimensions_cm, tags, sales_channel)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
             (
                 payload.category_id, payload.brand_id, payload.slug, payload.sku, product_barcode,
                 payload.name_fr, payload.name_ar, payload.name_en, payload.description_fr,
@@ -645,7 +541,7 @@ def create_dynamic_product(
                 payload.previous_price_dzd, payload.discount_percent, payload.status,
                 1 if payload.is_featured else 0, 1 if payload.is_new_arrival else 0,
                 payload.seo_title, payload.seo_description,
-                payload.weight_grams, payload.dimensions_cm, payload.tags
+                payload.weight_grams, payload.dimensions_cm, payload.tags, payload.sales_channel
             )
         )
         prod_id = cur.lastrowid
@@ -1245,7 +1141,6 @@ MAX_UPLOAD_IMAGE_BYTES = 15 * 1024 * 1024
 PRODUCT_IMAGE_MAX_SIDE = 1600
 
 
-
 def _optimize_product_image(data: bytes) -> tuple:
     """Phone photos are 3-5 MB; the shop shows them at most ~800 px wide.
     Each upload is turned upright (phone rotation), stripped of its metadata
@@ -1280,7 +1175,6 @@ def _optimize_product_image(data: bytes) -> tuple:
         raise
     except Exception:
         raise HTTPException(status_code=400, detail="Image illisible ou endommagée.")
-
 
 
 @router.post("/api/v1/admin/upload", status_code=201)
@@ -1332,28 +1226,7 @@ class ProductConcurrencyUpdate(BaseModel):
     dimensions_cm: Optional[str] = None
     tags: Optional[str] = None
     dynamic_attributes: Optional[Dict[str, Any]] = None
-
-
-def _assert_publishable(cur, product_id: int, category_id: int) -> None:
-    """Same rule as creating a published product: every required (non-axis)
-    characteristic of the category has a saved value."""
-    cur.execute(
-        """SELECT ca.label_fr FROM category_attributes ca
-           WHERE ca.category_id = ? AND ca.is_required = 1 AND ca.is_variant_axis = 0
-             AND NOT EXISTS (SELECT 1 FROM product_attribute_values pav
-                              WHERE pav.product_id = ? AND pav.attribute_id = ca.id
-                                AND TRIM(COALESCE(pav.value_text, '')) <> '')
-           ORDER BY ca.display_order ASC, ca.id ASC""",
-        (category_id, product_id),
-    )
-    missing = [r["label_fr"] for r in cur.fetchall()]
-    if missing:
-        cur.execute("SELECT sku FROM products WHERE id = ?", (product_id,))
-        row = cur.fetchone()
-        raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-            detail=f"Publication impossible ({row['sku'] if row else product_id}) : caractéristiques obligatoires manquantes : {', '.join(missing)}",
-        )
+    sales_channel: Optional[str] = Field(None, regex=r"^(all|store)$")
 
 
 def _move_product_to_category(cur, product_id: int, new_category_id: int) -> None:
@@ -1465,6 +1338,7 @@ def update_product_with_conflict_detection(
                    weight_grams = COALESCE(?, weight_grams),
                    dimensions_cm = COALESCE(?, dimensions_cm),
                    tags = COALESCE(?, tags),
+                   sales_channel = COALESCE(?, sales_channel),
                    version = ?,
                    updated_at = CURRENT_TIMESTAMP
                WHERE id = ? AND version = ?""",
@@ -1493,6 +1367,7 @@ def update_product_with_conflict_detection(
                 payload.weight_grams,
                 payload.dimensions_cm,
                 payload.tags,
+                payload.sales_channel,
                 new_version,
                 product_id,
                 current_version,
@@ -1525,7 +1400,9 @@ def update_product_with_conflict_detection(
             _restore_variants_with_product(cur, product_id)
         # Checked on the saved result (after a category move and attribute
         # changes), whenever the product is or stays published.
-        if (payload.status or prod["status"]) == "published":
+        # A boutique-only article is not shown online: no online-shop requirement.
+        channel = payload.sales_channel or dict(prod).get("sales_channel") or "all"
+        if (payload.status or prod["status"]) == "published" and channel != "store":
             _assert_publishable(cur, product_id, target_cat_id)
         log_audit(conn, int(admin["sub"]), "update_product_synced", "product", str(product_id), {"new_version": new_version})
         cur.execute("SELECT * FROM products WHERE id = ?", (product_id,))
@@ -1570,7 +1447,6 @@ def admin_adjust_variant_stock(
             "sku": v["sku"], "previous_qty": prev_qty, "new_qty": new_qty, "reason": payload.reason
         })
         return {"variant_id": variant_id, "sku": v["sku"], "previous_qty": prev_qty, "new_qty": new_qty}
-
 
 
 # ============================================================================
@@ -1800,9 +1676,9 @@ def admin_bulk_update_product_status(
                 # variants off — otherwise it would stay invisible). Only the
                 # variants the archive switched off come back: one switched off
                 # on its own (or kept because it has sales history) stays off.
-                cur.execute("SELECT status, deleted_at, category_id, barcode FROM products WHERE id = ?", (pid,))
+                cur.execute("SELECT status, deleted_at, category_id, barcode, sales_channel FROM products WHERE id = ?", (pid,))
                 before = cur.fetchone()
-                if before and payload.status == "published" and before["status"] != "published":
+                if before and payload.status == "published" and before["status"] != "published" and before["sales_channel"] != "store":
                     _assert_publishable(cur, pid, before["category_id"])
                 if before and before["deleted_at"] and (before["barcode"] or "").strip():
                     # While archived, its code was free and may have been given
@@ -1896,7 +1772,6 @@ def admin_restore_category(category_id: int, admin: dict = Depends(require_permi
         return {"restored": True, "category_id": category_id}
 
 
-
 @router.delete("/api/v1/admin/categories/{category_id}")
 def admin_archive_category(
     category_id: int,
@@ -1949,7 +1824,6 @@ def admin_archive_category(
             )
             log_audit(conn, int(admin["sub"]), "archive_category", "category", str(category_id), {"slug": cat["slug"]})
             return {"archived": True, "category_id": category_id}
-
 
 
 # ============================================================================
@@ -2052,99 +1926,6 @@ def admin_delete_product_image(
 # A scanned barcode resolves to a variant via /admin/pos/lookup.
 # ============================================================================
 
-# GS1 reserves prefixes 02 and 20-29 for in-store / restricted distribution.
-# We mint internal EAN-13 codes under "20" so they never collide with real
-# manufacturer GTINs and are never presented as registered GS1 identifiers.
-_INTERNAL_EAN_PREFIX = "20"
-
-
-
-def ean_check_digit(body: str) -> int:
-    """Mod-10 check digit for EAN-13 (12 digits) or EAN-8 (7 digits).
-    Weights alternate 1,3,... starting at weight 1 for the leftmost digit of a
-    12-digit body (EAN-13) and 3 for a 7-digit body (EAN-8)."""
-    digits = [int(c) for c in body]
-    # Rightmost body digit always carries weight 3.
-    weights = [3 if (len(digits) - 1 - i) % 2 == 0 else 1 for i in range(len(digits))]
-    total = sum(d * w for d, w in zip(digits, weights))
-    return (10 - (total % 10)) % 10
-
-
-
-def upca_check_digit(body11: str) -> int:
-    """Mod-10 check digit for UPC-A (11-digit body). Odd positions (1st, 3rd…) weight 3."""
-    digits = [int(c) for c in body11]
-    total = sum(d * (3 if i % 2 == 0 else 1) for i, d in enumerate(digits))
-    return (10 - (total % 10)) % 10
-
-
-
-def detect_symbology(code: str) -> str:
-    c = code.strip()
-    if c.isdigit():
-        if len(c) == 13:
-            return "ean13"
-        if len(c) == 12:
-            return "upca"
-        if len(c) == 8:
-            return "ean8"
-        return "numeric"
-    return "code128"
-
-
-
-def validate_barcode(code: str) -> dict:
-    """Returns {valid, symbology, normalized, reason}. Verifies the check digit
-    for fixed-length retail symbologies; Code 128 accepts printable ASCII."""
-    c = (code or "").strip()
-    if not c:
-        return {"valid": False, "symbology": None, "normalized": "", "reason": "Code vide"}
-    sym = detect_symbology(c)
-    if sym == "ean13":
-        ok = ean_check_digit(c[:12]) == int(c[12])
-        return {"valid": ok, "symbology": "ean13", "normalized": c, "reason": None if ok else "Chiffre de contrôle EAN-13 invalide"}
-    if sym == "ean8":
-        ok = ean_check_digit(c[:7]) == int(c[7])
-        return {"valid": ok, "symbology": "ean8", "normalized": c, "reason": None if ok else "Chiffre de contrôle EAN-8 invalide"}
-    if sym == "upca":
-        ok = upca_check_digit(c[:11]) == int(c[11])
-        return {"valid": ok, "symbology": "upca", "normalized": c, "reason": None if ok else "Chiffre de contrôle UPC-A invalide"}
-    if sym == "numeric":
-        return {"valid": False, "symbology": "numeric", "normalized": c, "reason": "Longueur numérique non standard (attendu 8, 12 ou 13 chiffres)"}
-    # code128: printable ASCII, reasonable length
-    if len(c) > 48 or any(ord(ch) < 32 or ord(ch) > 126 for ch in c):
-        return {"valid": False, "symbology": "code128", "normalized": c, "reason": "Caractères non imprimables ou code trop long"}
-    return {"valid": True, "symbology": "code128", "normalized": c, "reason": None}
-
-
-
-def _barcode_in_use(conn, code: str, exclude_variant_id: Optional[int] = None,
-                    own_product_id: Optional[int] = None, for_product: bool = False) -> Optional[str]:
-    """Returns a human description of where `code` is already used, or None if free.
-
-    A code may be shared inside ONE article: a product and its own variants (a
-    scan still finds that article). `own_product_id` is the article being
-    written; `for_product=True` when the code goes on the product itself (then
-    any of its variants may carry it), else on the variant `exclude_variant_id`
-    (then its product may carry it, but no other variant)."""
-    cur = conn.cursor()
-    cur.execute("SELECT id, sku FROM products WHERE barcode = ? AND deleted_at IS NULL AND id != ?",
-                (code, own_product_id if own_product_id is not None else -1))
-    p = cur.fetchone()
-    if p:
-        return f"produit SKU {p['sku']}"
-    if for_product and own_product_id is not None:
-        cur.execute("SELECT id, sku FROM product_variants WHERE barcode = ? AND product_id != ?", (code, own_product_id))
-    elif exclude_variant_id is not None:
-        cur.execute("SELECT id, sku FROM product_variants WHERE barcode = ? AND id != ?", (code, exclude_variant_id))
-    else:
-        cur.execute("SELECT id, sku FROM product_variants WHERE barcode = ?", (code,))
-    v = cur.fetchone()
-    if v:
-        return f"variante SKU {v['sku']}"
-    return None
-
-
 
 def _unique_barcode(conn, raw: Optional[str], exclude_variant_id: Optional[int] = None,
                     own_product_id: Optional[int] = None, for_product: bool = False) -> Optional[str]:
@@ -2161,28 +1942,12 @@ def _unique_barcode(conn, raw: Optional[str], exclude_variant_id: Optional[int] 
     return code
 
 
-
-def _generate_internal_ean13(conn) -> str:
-    """Mints a unique internal EAN-13 under the restricted-distribution prefix 20."""
-    cur = conn.cursor()
-    for _ in range(50):
-        body = _INTERNAL_EAN_PREFIX + "".join(str(secrets.randbelow(10)) for _ in range(10))  # 12 digits
-        code = body + str(ean_check_digit(body))
-        cur.execute("SELECT 1 FROM products WHERE barcode = ? UNION SELECT 1 FROM product_variants WHERE barcode = ?", (code, code))
-        if not cur.fetchone():
-            return code
-    raise HTTPException(status_code=500, detail="Impossible de générer un code-barres unique, réessayez")
-
-
-
 class BarcodeGenerateInput(BaseModel):
     count: int = Field(1, ge=1, le=100)
 
 
-
 class BarcodeAssignInput(BaseModel):
     barcode: Optional[str] = Field(None, max_length=64)  # omit to auto-generate an internal EAN-13
-
 
 
 @router.get("/api/v1/admin/barcodes/validate")
@@ -2193,13 +1958,11 @@ def admin_validate_barcode(
     return validate_barcode(code)
 
 
-
 @router.post("/api/v1/admin/barcodes/generate")
 def admin_generate_barcodes(payload: BarcodeGenerateInput, admin: dict = Depends(require_permission("products:write"))):
     with db_session() as conn:
         codes = [_generate_internal_ean13(conn) for _ in range(payload.count)]
         return {"symbology": "ean13", "internal": True, "barcodes": codes}
-
 
 
 @router.post("/api/v1/admin/variants/{variant_id}/assign-barcode")
@@ -2240,7 +2003,6 @@ def admin_assign_variant_barcode(
         return {"variant_id": variant_id, "sku": v["sku"], "barcode": code, "symbology": symbology, "internal": internal}
 
 
-
 @router.delete("/api/v1/admin/variants/{variant_id}/barcode")
 def admin_clear_variant_barcode(variant_id: int, admin: dict = Depends(require_permission("products:write"))):
     with db_session(commit=True) as conn:
@@ -2252,7 +2014,6 @@ def admin_clear_variant_barcode(variant_id: int, admin: dict = Depends(require_p
         cur.execute("UPDATE product_variants SET barcode = NULL WHERE id = ?", (variant_id,))
         log_audit(conn, int(admin["sub"]), "clear_barcode", "product_variant", str(variant_id), {"sku": v["sku"]})
         return {"variant_id": variant_id, "sku": v["sku"], "barcode": None}
-
 
 
 @router.get("/api/v1/admin/variants/{variant_id}/label")

@@ -807,6 +807,28 @@ export const DesktopCmsApi = {
   resetUserPassword: (userId: number, new_password: string) =>
     adminFetch(`/admin/users/${userId}/reset-password`, { method: "POST", body: JSON.stringify({ new_password }) }),
 
+  // Shop items (boutique articles): quick add, stock arrivals, barcodes — backend/app/routers/store.py
+  listStoreItems: (params: { q?: string; show?: string; limit?: number; offset?: number } = {}) => {
+    const qs = new URLSearchParams();
+    if (params.q) qs.set("q", params.q);
+    if (params.show) qs.set("show", params.show);
+    qs.set("limit", String(params.limit ?? 40));
+    qs.set("offset", String(params.offset ?? 0));
+    return adminFetch(`/admin/store/items?${qs.toString()}`);
+  },
+  quickAddStoreItem: (payload: unknown) =>
+    adminFetch("/admin/store/items", { method: "POST", body: JSON.stringify(payload) }),
+  addStoreVariants: (productId: number, variants: unknown[]) =>
+    adminFetch(`/admin/store/items/${productId}/variants`, { method: "POST", body: JSON.stringify({ variants }) }),
+  editStoreItem: (productId: number, payload: { name?: string; price_dzd?: number; cost_dzd?: number; sold_online?: boolean }) =>
+    adminFetch(`/admin/store/items/${productId}`, { method: "PUT", body: JSON.stringify(payload) }),
+  receiveStoreStock: (variantId: number, quantity: number) =>
+    adminFetch(`/admin/store/variants/${variantId}/receive`, { method: "POST", body: JSON.stringify({ quantity }) }),
+  generateStoreBarcodes: (productId: number) =>
+    adminFetch(`/admin/store/items/${productId}/barcodes`, { method: "POST" }),
+  generateAllMissingBarcodes: () =>
+    adminFetch("/admin/store/barcodes/missing", { method: "POST" }),
+
   // Devices & hardware management
   listDevices: () => adminFetch("/admin/devices"),
   createDevice: (payload: unknown) =>

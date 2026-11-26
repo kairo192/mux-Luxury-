@@ -368,6 +368,9 @@ _ADDITIVE_COLUMNS = [
     # 1 = archived by a version that marks its variants (so "no variant marked"
     # really means "restore none"); 0 = archived before, restore them all.
     ("products", "variants_marked_on_archive", "INTEGER NOT NULL DEFAULT 0"),
+    # Where an article is sold: 'all' = online shop + boutique, 'store' = boutique only
+    # (till, labels, stock) and hidden from the online shop.
+    ("products", "sales_channel", "VARCHAR(16) NOT NULL DEFAULT 'all'"),
     ("products", "weight_grams", "INTEGER"),
     ("products", "dimensions_cm", "VARCHAR(60)"),
     ("products", "tags", "VARCHAR(400)"),

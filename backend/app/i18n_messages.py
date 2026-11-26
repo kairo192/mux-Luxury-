@@ -63,6 +63,8 @@ MESSAGES: list[tuple[str, Optional[str], str, str]] = [
     ("Nom d'imprimante ou de port trop long", None, "Printer or port name too long", "اسم الطابعة أو المنفذ طويل جداً"),
     ("La broche du tiroir doit être 2 ou 5", None, "The drawer pin must be 2 or 5", "يجب أن يكون طرف الدرج 2 أو 5"),
     ("Imprimante du tiroir invalide", None, "Invalid drawer printer", "طابعة الدرج غير صالحة"),
+    ("« {0} » existe déjà pour cet article", None, "“{0}” already exists for this article", "«{0}» موجود مسبقاً لهذا المنتج"),
+    ("Donnez un nom à l'article", None, "Give the article a name", "أعطِ المنتج اسماً"),
     ('Invalid email or password', 'Adresse e-mail ou mot de passe incorrect.', 'Incorrect email address or password.', 'البريد الإلكتروني أو كلمة المرور غير صحيحة.'),
     ('An administrator with this email already exists', 'Un utilisateur avec cet e-mail existe déjà.', 'A user with this email already exists.', 'يوجد مستخدم بهذا البريد الإلكتروني مسبقاً.'),
     ('Rôle introuvable', None, 'Role not found', 'الدور غير موجود'),

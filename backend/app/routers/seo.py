@@ -37,7 +37,7 @@ def seo_render_page(kind: str, slug: str, request: Request):
             cur = conn.cursor()
             cur.execute(
                 "SELECT p.* FROM products p JOIN categories c ON c.id = p.category_id "
-                "WHERE p.slug = ? AND p.status = 'published' AND p.deleted_at IS NULL "
+                "WHERE p.slug = ? AND p.status = 'published' AND COALESCE(p.sales_channel, 'all') <> 'store' AND p.deleted_at IS NULL "
                 "AND c.is_active = 1 AND c.deleted_at IS NULL",
                 (slug,),
             )
@@ -56,7 +56,7 @@ def seo_render_page(kind: str, slug: str, request: Request):
             cat = cur.fetchone()
             if cat:
                 cur.execute(
-                    "SELECT slug, name_fr FROM products WHERE category_id = ? AND status = 'published' "
+                    "SELECT slug, name_fr FROM products WHERE category_id = ? AND status = 'published' AND COALESCE(sales_channel, 'all') <> 'store' "
                     "AND deleted_at IS NULL ORDER BY id DESC LIMIT 30",
                     (cat["id"],),
                 )
@@ -90,7 +90,7 @@ def seo_sitemap(request: Request):
         cats = [dict(r) for r in cur.fetchall()]
         cur.execute(
             "SELECT p.slug, p.created_at, p.updated_at FROM products p JOIN categories c ON c.id = p.category_id "
-            "WHERE p.status = 'published' AND p.deleted_at IS NULL AND c.is_active = 1 AND c.deleted_at IS NULL "
+            "WHERE p.status = 'published' AND COALESCE(p.sales_channel, 'all') <> 'store' AND p.deleted_at IS NULL AND c.is_active = 1 AND c.deleted_at IS NULL "
             "ORDER BY p.id DESC LIMIT 45000"
         )
         prods = [dict(r) for r in cur.fetchall()]

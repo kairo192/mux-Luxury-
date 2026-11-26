@@ -2,7 +2,7 @@
 // (inventory_movements.reason), in the language of the CMS (i18n area "mv").
 import { tr } from "../i18n/translations";
 
-const KNOWN = new Set<string>(["order_reserved", "order_confirmed", "order_cancelled", "order_returned", "pos_sale", "pos_sale_offline", "pos_refund", "manual_in", "manual_out", "manual_adjustment", "cms_manual_adjustment", "variant_created", "variant_edit", "create_variant", "adjust_variant_stock", "stock_write_off", "purchase_received", "physical_count_reconcile", "cms_bulk_update", "writeoff_damaged", "writeoff_lost", "writeoff_return_to_supplier", "writeoff_promotional_giveaway", "writeoff_stocktake_correction"]);
+const KNOWN = new Set<string>(["order_reserved", "order_confirmed", "order_cancelled", "order_returned", "pos_sale", "pos_sale_offline", "pos_refund", "manual_in", "manual_out", "manual_adjustment", "cms_manual_adjustment", "variant_created", "variant_edit", "create_variant", "adjust_variant_stock", "stock_write_off", "purchase_received", "physical_count_reconcile", "cms_bulk_update", "store_receipt", "writeoff_damaged", "writeoff_lost", "writeoff_return_to_supplier", "writeoff_promotional_giveaway", "writeoff_stocktake_correction"]);
 
 export function movementReasonLabel(reason: string | null | undefined): string {
   const r = String(reason || "");

@@ -81,4 +81,9 @@ export const audit_action = defineArea("audit_action", {
   "whatsapp_webhook_status": ["Statut d'un message WhatsApp reçu", "WhatsApp message status received", "استلام حالة رسالة واتساب"],
   "upsert_cod_blacklist": ["Numéro ajouté à la liste noire", "Number added to the blacklist", "إضافة رقم إلى القائمة السوداء"],
   "upsert_static_page": ["Page d'information modifiée", "Information page changed", "تعديل صفحة معلومات"],
+  "store_quick_add": ["Article ajouté en boutique", "Shop item added", "أُضيف منتج إلى المحل"],
+  "store_add_variants": ["Couleurs / tailles ajoutées", "Colours / sizes added", "أُضيفت ألوان / مقاسات"],
+  "store_edit_item": ["Article de boutique modifié", "Shop item edited", "عُدّل منتج المحل"],
+  "store_receive": ["Arrivage en boutique", "Stock received in the shop", "استلام سلع في المحل"],
+  "store_generate_barcodes": ["Codes-barres créés", "Barcodes created", "أُنشئت الباركودات"],
 });

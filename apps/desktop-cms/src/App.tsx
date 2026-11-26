@@ -48,6 +48,7 @@ import { BusinessDashboardPage } from "./pages/BusinessDashboardPage";
 import { UsersRolesPage } from "./pages/UsersRolesPage";
 import { CustomersPage } from "./pages/CustomersPage";
 import { InventoryCountPage } from "./pages/InventoryCountPage";
+import { ShopItemsPage } from "./pages/ShopItemsPage";
 import { SalesReportPage } from "./pages/SalesReportPage";
 import { FiscalSettingsPage } from "./pages/FiscalSettingsPage";
 import { AuditLogPage } from "./pages/AuditLogPage";
@@ -92,6 +93,7 @@ type CmsTab =
   | "customers"
   | "users"
   | "inventory_count"
+  | "shop_items"
   | "sales_report"
   | "fiscal"
   | "audit"
@@ -1088,6 +1090,7 @@ export default function App() {
         {canOpen("users") && <div className={activeTab === "users" ? "block" : "hidden"}><UsersRolesPage /></div>}
 
         {/* TAB: PHYSICAL INVENTORY (KEEP-ALIVE) */}
+        {canOpen("shop_items") && activeTab === "shop_items" && <div className="block"><ShopItemsPage onCatalogChanged={loadAllWorkspaceData} /></div>}
         {canOpen("inventory_count") && <div className={activeTab === "inventory_count" ? "block" : "hidden"}><InventoryCountPage onInventoryUpdated={loadAllWorkspaceData} /></div>}
 
         {/* TAB: SALES REPORT (KEEP-ALIVE) */}

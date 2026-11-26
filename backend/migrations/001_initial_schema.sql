@@ -135,7 +135,8 @@ CREATE TABLE IF NOT EXISTS products (
     deleted_at TIMESTAMP,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    variants_marked_on_archive INTEGER NOT NULL DEFAULT 0
+    variants_marked_on_archive INTEGER NOT NULL DEFAULT 0,
+    sales_channel VARCHAR(16) NOT NULL DEFAULT 'all' -- all = online + boutique, store = boutique only
 );
 
 CREATE TABLE IF NOT EXISTS product_images (

@@ -34,4 +34,5 @@ export const mv = defineArea("mv", {
   "writeoff_other": ["Démarque — {{x}}", "Write-off — {{x}}", "إسقاط — {{x}}"],
   "purchase_ref": ["Réception fournisseur {{ref}}", "Supplier delivery {{ref}}", "استلام من المورد {{ref}}"],
   "count_ref": ["Inventaire {{ref}}", "Stock count {{ref}}", "الجرد {{ref}}"],
+  "store_receipt": ["Arrivage en boutique", "Stock received in the shop", "استلام سلع في المحل"],
 });

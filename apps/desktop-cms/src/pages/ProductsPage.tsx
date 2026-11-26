@@ -420,6 +420,7 @@ export function ProductsPage(props: ProductsPageProps) {
                             <>
                               <CheckCircle2 className="w-3 h-3 text-emerald-700" />
                               <span>{t("catalog.badge_published")}</span>
+                              {p.sales_channel === "store" && <span className="ms-1 px-1.5 rounded bg-[#D4AF62]/30 text-[#7a5c16]">{t("shop.badge_store")}</span>}
                             </>
                           ) : p.status === "archived" ? (
                             <>

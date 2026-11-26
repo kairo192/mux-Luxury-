@@ -734,6 +734,42 @@ Tests: Rust 40 (+ a real CUPS print queue: exact bytes, printer off, paused queu
 (`cargo check --target x86_64-pc-windows-gnu`), backend `test_devices` 10, e2e `09-devices` (2). CI job
 `desktop-rust-tests` added. Details: `docs/cicd/POS_HARDWARE.md`.
 
+## 39. Shop items: the boutique's articles, quick, with barcodes and labels
+
+The owner found the Products screen (made for the website: photos, descriptions, 3 languages, characteristics) too
+heavy for the articles of the physical shop. New screen **Catalogue → Shop items** (`pages/ShopItemsPage.tsx`).
+
+**Adding an article (one form):** name, category, price (purchase cost and photo optional), then the colours / sizes
+as chips of the category (a new value is typed and added to the category), which make one row per combination
+with: quantity, barcode, own price (optional). The barcode is either **scanned** from the article's own label
+(maker's EAN), or left empty: the shop creates one (EAN-13 starting with **20**, the in-store range, unique).
+**Save and print N labels** prints one label per piece. Unticked "Also sell on the website" = shop only.
+
+**Why one barcode per colour / size:** the till must know which variant is sold (stock of each colour / size stays
+right, and a red bag cannot be rung up as a black one). Quantity = labels, not barcodes: 5 black bags = 1 code,
+5 labels.
+
+**Daily use:** scan an article anywhere on the screen to find it (unknown code → "Create the item with this code",
+barcode filled in); **Arrival** per colour / size (+N pieces, recorded as `store_receipt` in stock movements, then
+"print their labels?"); **Labels** (choose how many per colour / size, default = stock); **+ Colour / size**;
+**Create missing barcodes** (per article or all); **Edit** (name, price, cost, website or not); filters shop only /
+also online / without barcode / low stock.
+
+**Same data as the rest of the CMS:** articles are normal products / variants / stock (`backend/app/routers/store.py`,
+shared rules moved to `app/catalog_rules.py`). The till sells them by scan and by name (offline catalogue too), stock
+reports, physical counts and purchases see them, the Products screen edits them. New column
+`products.sales_channel`: `all` (website + shop, the default) or `store` (shop only: published for the till, hidden
+from the website list, product page, sitemap and checkout). The product editor has "Sold where", the product list a
+"Shop only" badge. Website requirements (required characteristics) apply only to articles sold online.
+
+Labels: on this PC's label printer (ZPL / ESC-POS, desktop app) or the print window (any printer / PDF), label size
+from POS → Hardware.
+
+Tests: `backend/tests/test_store_items.py` (6: colours × sizes, scanned + created codes, invalid / duplicate codes,
+never online but sold at the till, website requirements, editor still works, arrivals, new colours, missing codes,
+search, rights); e2e `10-shop-items` (quick add with a new colour and a scanned code → 6 labels printed, till lookup,
+not on the website, arrival, 9 labels, scan search, unknown code, duplicate code refused, switch to website).
+
 ## Verification
 
 | Check | Result |
