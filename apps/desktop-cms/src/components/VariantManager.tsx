@@ -403,7 +403,7 @@ export function VariantManager({
       if (res?.deactivated) {
         notifyClientWarning(
           t("vm.deactivated_title"),
-          res.reason || t("vm.deactivated_body")
+          t("vm.deactivated_body")
         );
       } else {
         notifyClientSuccess(t("vm.deleted_title"), t("vm.deleted_body", { sku: variant.sku }));

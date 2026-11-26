@@ -72,6 +72,7 @@ import { DeleteProductModal } from "./app/DeleteProductModal";
 import { OwnerSetupScreen } from "./app/OwnerSetupScreen";
 import { LoginScreen } from "./app/LoginScreen";
 import { AppHeader } from "./app/AppHeader";
+import { auditActionLabel, auditEntityLabel } from "./utils/auditLabels";
 
 type CmsTab =
   | "dashboard"
@@ -625,13 +626,12 @@ export default function App() {
     try {
       const res = await DesktopCmsApi.deleteProduct(productToDelete.id, hard, false);
       if (res?.archived && !res?.deleted && hard) {
-        const infoMsg = res.message || t("app.archived_instead_msg");
+        const infoMsg = t("app.archived_instead_msg");
         setSuccessMsg(infoMsg);
         notifyClientWarning(t("app.archived_instead_title"), infoMsg);
         setProductToDelete(null);
       } else {
         const okMsg =
-          res?.message ||
           (hard
             ? t("app.product_deleted_named", { name: productToDelete.name_fr })
             : t("app.product_archived_named", { name: productToDelete.name_fr }));
@@ -1161,9 +1161,9 @@ export default function App() {
                   <div key={al.id} className="p-2.5 flex flex-wrap items-center justify-between gap-2 hover:bg-[#F8F6F0]">
                     <div>
                       <span className="px-2 py-0.5 rounded bg-[#063D2E] text-[#D4AF62] font-mono font-bold text-[10px] mr-2">
-                        {al.action}
+                        {auditActionLabel(al.action, al.action_label)}
                       </span>
-                      <span className="font-bold text-[#202923] mr-2">{al.entity_type} #{al.entity_id}</span>
+                      <span className="font-bold text-[#202923] mr-2">{auditEntityLabel(al.entity_type, al.entity_label)} #{al.entity_id}</span>
                       <span className="text-gray-500">{t("app.by_user", { who: al.admin_email || `Admin #${al.admin_user_id || 1}` })}</span>
                     </div>
                     <span className="font-mono text-[11px] text-gray-500">{formatServerDateTime(al.created_at)}</span>

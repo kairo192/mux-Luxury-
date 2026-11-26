@@ -3,6 +3,7 @@ import { ClipboardCheck, RefreshCw, AlertTriangle, Search, Filter, X } from "luc
 import { DesktopCmsApi } from "../api/adminClient";
 import { useT } from "../i18n";
 import { serverDate } from "../utils/serverDate";
+import { auditActionLabel, auditEntityLabel } from "../utils/auditLabels";
 
 interface AuditLog {
   id: number;
@@ -96,7 +97,7 @@ export const AuditLogPage: React.FC = () => {
           <select value={action} onChange={(e) => { setAction(e.target.value); load({ action: e.target.value, entityType, q }); }} className="w-full h-12 px-3 rounded-2xl border-2 border-gray-200 bg-white">
             <option value="">{t("audit.opt_all_actions")}</option>
             {actions.map((a) => (
-              <option key={a.code} value={a.code}>{a.label || a.code} ({a.count})</option>
+              <option key={a.code} value={a.code}>{auditActionLabel(a.code, a.label)} ({a.count})</option>
             ))}
           </select>
         </label>
@@ -105,7 +106,7 @@ export const AuditLogPage: React.FC = () => {
           <select value={entityType} onChange={(e) => { setEntityType(e.target.value); load({ action, entityType: e.target.value, q }); }} className="w-full h-12 px-3 rounded-2xl border-2 border-gray-200 bg-white">
             <option value="">{t("audit.opt_all_entities")}</option>
             {entities.map((e) => (
-              <option key={e.code} value={e.code}>{e.label || e.code} ({e.count})</option>
+              <option key={e.code} value={e.code}>{auditEntityLabel(e.code, e.label)} ({e.count})</option>
             ))}
           </select>
         </label>
@@ -158,9 +159,9 @@ export const AuditLogPage: React.FC = () => {
                     {l.admin_name ? <span className="font-bold text-[#063D2E]">{l.admin_name}</span> : <span className="text-gray-400">{t("audit.system_author")}</span>}
                     {l.admin_email && <div className="text-[11px] text-gray-400 font-mono">{l.admin_email}</div>}
                   </td>
-                  <td className="px-4 py-3 text-[12px] font-bold text-[#063D2E]">{l.action_label || l.action}</td>
+                  <td className="px-4 py-3 text-[12px] font-bold text-[#063D2E]">{auditActionLabel(l.action, l.action_label)}</td>
                   <td className="px-4 py-3 text-[12px]">
-                    {l.entity_label || l.entity_type}
+                    {auditEntityLabel(l.entity_type, l.entity_label)}
                     <span className="text-gray-400"> #{l.entity_id}</span>
                   </td>
                   <td className="px-4 py-3 text-[11px] text-gray-500 max-w-md truncate hidden md:table-cell">

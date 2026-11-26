@@ -185,7 +185,7 @@ async function adminFetch(path: string, options: RequestInit = {}, timeoutMs = d
     ...(isFormData ? {} : { "Content-Type": "application/json" }),
     "X-Request-ID": reqId,
     // Server messages come back in the language chosen in the CMS.
-    "Accept-Language": getCurrentLang(),
+    "X-Luxe-Lang": getCurrentLang(),
     ...((options.headers as Record<string, string>) || {}),
   };
   const activeToken = getAccessToken();
