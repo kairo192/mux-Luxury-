@@ -13,6 +13,7 @@ import {
   Trash2,
   X,
 } from "lucide-react";
+import { tr } from "../i18n/translations";
 
 interface ExpenseItem {
   id: number;
@@ -28,18 +29,12 @@ interface ExpenseItem {
   created_at: string;
 }
 
-const EXPENSE_CATEGORIES = [
-  { value: "loyer", label: "Loyer & Local" },
-  { value: "salaires", label: "Salaires & Rémunérations" },
-  { value: "electricite_eau", label: "Électricité, Gaz & Eau" },
-  { value: "internet_tel", label: "Internet & Télécoms" },
-  { value: "packaging", label: "Packaging & Sacs Luxe" },
-  { value: "publicite_marketing", label: "Publicité & Sponsoring" },
-  { value: "transport_logistique", label: "Transport & Coursiers" },
-  { value: "maintenance", label: "Maintenance & Entretien" },
-  { value: "abonnements_logiciels", label: "Logiciels & Serveurs" },
-  { value: "autre", label: "Autres Charges Diverses" },
+const EXPENSE_CATEGORY_CODES = [
+  "loyer", "salaires", "electricite_eau", "internet_tel", "packaging",
+  "publicite_marketing", "transport_logistique", "maintenance", "abonnements_logiciels", "autre",
 ];
+// Names in the language of the CMS, read when the list is drawn.
+const expenseCategories = () => EXPENSE_CATEGORY_CODES.map((value) => ({ value, label: tr(`exp.cat_${value}`) }));
 
 export const ExpensesPage: React.FC = () => {
   const t = useT();
@@ -70,25 +65,25 @@ export const ExpensesPage: React.FC = () => {
     const amount = `${Number(exp.amount_dzd || 0).toLocaleString()} DA`;
     // 1. How it was paid (two answers: cash box or bank)…
     const cash = await confirmClientAction({
-      title: "Payer la dépense",
-      message: `${exp.description} — ${amount}. Payée en espèces (caisse) ? Choisissez « Banque » pour un virement ou un chèque.`,
-      confirmLabel: "Espèces (caisse)",
-      cancelLabel: "Banque",
+      title: t("exp.pay_title"),
+      message: t("exp.pay_how", { desc: exp.description, amount }),
+      confirmLabel: t("exp.pay_cash"),
+      cancelLabel: t("exp.pay_bank"),
     });
     // 2. …then a real yes/no: closing or « Annuler » records nothing.
     const go = await confirmClientAction({
-      title: "Confirmer le paiement",
-      message: `Enregistrer le paiement de ${amount} pour « ${exp.description} » ${cash ? "en espèces (sortie de caisse)" : "par la banque"} ?`,
-      confirmLabel: "Enregistrer le paiement",
-      cancelLabel: "Annuler",
+      title: t("exp.confirm_title"),
+      message: t(cash ? "exp.confirm_cash" : "exp.confirm_bank", { amount, desc: exp.description }),
+      confirmLabel: t("exp.record_payment"),
+      cancelLabel: t("exp.cancel"),
     });
     if (!go) return;
     try {
       await DesktopCmsApi.payExpense(exp.id, cash ? "cash" : "bank_transfer");
-      notifyClientSuccess("Dépense payée", `${exp.description} : ${Number(exp.amount_dzd || 0).toLocaleString()} DA (${cash ? "caisse" : "banque"}).`);
+      notifyClientSuccess(t("exp.paid_title"), t(cash ? "exp.paid_cash" : "exp.paid_bank", { desc: exp.description, amount: Number(exp.amount_dzd || 0).toLocaleString() }));
       await loadExpenses();
     } catch (err) {
-      notifyClientError(err, "Paiement de la dépense impossible");
+      notifyClientError(err, t("exp.pay_failed"));
     }
   };
 
@@ -225,7 +220,7 @@ export const ExpensesPage: React.FC = () => {
             <AlertTriangle className="w-4 h-4 text-red-600 shrink-0" />
             <span>{error}</span>
           </span>
-          <button aria-label="Masquer le message" onClick={() => setError(null)} className="text-red-500 font-bold hover:opacity-75 transition">
+          <button aria-label={t("exp.hide")} onClick={() => setError(null)} className="text-red-500 font-bold hover:opacity-75 transition">
             <X className="w-4 h-4" />
           </button>
         </div>
@@ -236,7 +231,7 @@ export const ExpensesPage: React.FC = () => {
             <CheckCircle2 className="w-4 h-4 text-emerald-700 shrink-0" />
             <span>{success}</span>
           </span>
-          <button aria-label="Masquer le message" onClick={() => setSuccess(null)} className="text-emerald-600 font-bold hover:opacity-75 transition">
+          <button aria-label={t("exp.hide")} onClick={() => setSuccess(null)} className="text-emerald-600 font-bold hover:opacity-75 transition">
             <X className="w-4 h-4" />
           </button>
         </div>
@@ -276,7 +271,7 @@ export const ExpensesPage: React.FC = () => {
             className="w-full mt-2 text-xs border border-gray-200 rounded p-1.5 focus:border-[#063D2E] outline-none"
           >
             <option value="all">{t("expenses.filter_all")}</option>
-            {EXPENSE_CATEGORIES.map((cat) => (
+            {expenseCategories().map((cat) => (
               <option key={cat.value} value={cat.value}>
                 {cat.label}
               </option>
@@ -328,7 +323,7 @@ export const ExpensesPage: React.FC = () => {
               <tbody className="divide-y divide-gray-100">
                 {filteredExpenses.map((exp) => {
                   const catLabel =
-                    EXPENSE_CATEGORIES.find((c) => c.value === exp.category)?.label || codeLabel(exp.category);
+                    expenseCategories().find((c) => c.value === exp.category)?.label || codeLabel(exp.category);
                   return (
                     <tr key={exp.id} className="hover:bg-gray-50/80 transition-colors">
                       <td className="py-3 px-4 font-mono text-gray-600 whitespace-nowrap">
@@ -346,7 +341,7 @@ export const ExpensesPage: React.FC = () => {
                       <td className="py-3 px-4 text-gray-600">
                         <div>{exp.beneficiary || "—"}</div>
                         {exp.receipt_ref && (
-                          <div className="text-[11px] font-mono text-gray-400">Réf: {exp.receipt_ref}</div>
+                          <div className="text-[11px] font-mono text-gray-400">{t("exp.ref", { ref: exp.receipt_ref })}</div>
                         )}
                       </td>
                       <td className="py-3 px-4 text-gray-600 capitalize">
@@ -385,7 +380,7 @@ export const ExpensesPage: React.FC = () => {
                           type="button"
                           onClick={() => setExpenseToDelete(exp)}
                           className="inline-flex items-center gap-1 px-2.5 py-1 text-[11px] text-red-600 hover:text-red-800 hover:bg-red-50 rounded-lg border border-red-200 transition-colors font-bold shadow-xs"
-                          title="Supprimer la dépense"
+                          title={t("exp.delete")}
                         >
                           <Trash2 className="w-3 h-3 text-red-600" />
                           <span>{t("expenses.btn_delete")}</span>
@@ -441,7 +436,7 @@ export const ExpensesPage: React.FC = () => {
                     onChange={(e) => setFormCategory(e.target.value)}
                     className="w-full text-xs p-2 border border-gray-300 rounded focus:border-[#063D2E] outline-none"
                   >
-                    {EXPENSE_CATEGORIES.map((cat) => (
+                    {expenseCategories().map((cat) => (
                       <option key={cat.value} value={cat.value}>
                         {cat.label}
                       </option>
@@ -616,11 +611,11 @@ export const ExpensesPage: React.FC = () => {
               <div className="p-3.5 rounded-2xl bg-white border border-[#D4AF62]/40 space-y-1.5">
                 <div className="font-bold text-[#063D2E] text-sm">{expenseToDelete.description}</div>
                 <div className="flex justify-between text-gray-500">
-                  <span>Montant :</span>
+                  <span>{t("exp.amount")}</span>
                   <span className="font-mono font-bold text-red-700">{Number(expenseToDelete.amount_dzd || 0).toLocaleString()} DA</span>
                 </div>
                 <div className="flex justify-between text-gray-500">
-                  <span>Catégorie :</span>
+                  <span>{t("exp.category")}</span>
                   <span>{codeLabel(expenseToDelete.category)}</span>
                 </div>
               </div>

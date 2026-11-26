@@ -2,6 +2,7 @@ import React, { useCallback, useEffect, useRef, useState } from "react";
 import { DesktopCmsApi } from "../api/adminClient";
 import { HomepageContentPanel } from "../components/HomepageContentPanel";
 import { notifyClientError, notifyClientSuccess, notifyClientWarning } from "../utils/clientNotifier";
+import { useT } from "../i18n";
 
 // The shop's hours as they were written in the page, shown until the owner
 // saves their own (CMS → Paramètres boutique).
@@ -23,6 +24,7 @@ export interface ContentSettingsPageProps {
 }
 
 export function ContentSettingsPage({ active, canEdit, categories, products }: ContentSettingsPageProps) {
+  const t = useT();
   const [storePhoneInput, setStorePhoneInput] = useState("");
   const [storeWhatsappInput, setStoreWhatsappInput] = useState("");
   const [storeLocationInput, setStoreLocationInput] = useState("");
@@ -83,7 +85,7 @@ export function ContentSettingsPage({ active, canEdit, categories, products }: C
       setPageDraft(pageDraftFrom(loadedPages.find((p: any) => p.slug === pageSlugRef.current)));
     }
     } catch (err: any) {
-      notifyClientError(err, "Chargement du contenu de la boutique impossible", false);
+      notifyClientError(err, t("cs.load_failed"), false);
     }
   }, [canEdit]);
 
@@ -94,27 +96,27 @@ export function ContentSettingsPage({ active, canEdit, categories, products }: C
   async function handleSaveStoreSettings(e: React.FormEvent) {
     e.preventDefault();
     if (!storePhoneInput.trim() || !storeLocationInput.trim()) {
-      notifyClientWarning("Paramètres incomplets", "Veuillez renseigner le téléphone et l'adresse officielle de la boutique Mus Luxury.");
+      notifyClientWarning(t("cs.incomplete_title"), t("cs.incomplete_body"));
       return;
     }
     const hourLines = openingHoursInput.split("\n").map((l) => l.trim()).filter(Boolean);
     if (hourLines.length > 14 || hourLines.some((l) => l.length > 80 || !l.includes(":"))) {
-      notifyClientWarning("Horaires invalides", "Une ligne par jour, sous la forme « Samedi : 10h00 – 20h00 » (14 lignes au plus).");
+      notifyClientWarning(t("cs.hours_title"), t("cs.hours_body"));
       return;
     }
     const threshold = freeThresholdInput.replace(/\s/g, "");
     if (threshold && !/^\d+$/.test(threshold)) {
-      notifyClientWarning("Seuil invalide", "Le seuil de livraison gratuite est un montant en DA (chiffres seulement), ou 0 pour le désactiver.");
+      notifyClientWarning(t("cs.threshold_title"), t("cs.threshold_body"));
       return;
     }
     const waDigits = storeWhatsappInput.replace(/[^\d]/g, "");
     if (storeWhatsappInput.trim() && (waDigits.length < 9 || waDigits.length > 15)) {
-      notifyClientWarning("Numéro WhatsApp invalide", "Exemple : +213 655 53 41 54");
+      notifyClientWarning(t("cs.wa_title"), t("cs.wa_body"));
       return;
     }
     for (const [label, url] of [["Instagram", instagramInput], ["TikTok", tiktokInput], ["Google Maps", mapsUrlInput]]) {
       if (url.trim() && !/^https:\/\/[^\s]+$/.test(url.trim())) {
-        notifyClientWarning(`Lien ${label} invalide`, "Collez l'adresse complète de la page, commençant par https://");
+        notifyClientWarning(t("cs.link_title", { label }), t("cs.link_body"));
         return;
       }
     }
@@ -131,11 +133,11 @@ export function ContentSettingsPage({ active, canEdit, categories, products }: C
         tiktok_url: tiktokInput.trim(),
       });
       if (settingsRevRef.current === savedRev) settingsDirtyRef.current = false;
-      const okMsg = "Paramètres de la boutique Mus Luxury enregistrés et synchronisés.";
-      notifyClientSuccess("Paramètres boutique enregistrés", okMsg);
+      const okMsg = t("cs.saved_body");
+      notifyClientSuccess(t("cs.saved_title"), okMsg);
       await load();
     } catch (err: any) {
-      notifyClientError(err, "Enregistrement des paramètres refusé");
+      notifyClientError(err, t("cs.save_refused"));
     }
   }
 
@@ -144,8 +146,8 @@ export function ContentSettingsPage({ active, canEdit, categories, products }: C
     const cleanCode = couponCode.trim().toUpperCase();
     if (cleanCode.length < 3 || Number(couponValue) <= 0) {
       notifyClientWarning(
-        "Code promo invalide",
-        "Veuillez saisir un code promo d'au moins 3 caractères et une valeur de remise strictement positive."
+        t("cs.coupon_bad_title"),
+        t("cs.coupon_bad_body")
       );
       return;
     }
@@ -156,23 +158,23 @@ export function ContentSettingsPage({ active, canEdit, categories, products }: C
         discount_value: Number(couponValue),
         min_order_dzd: Math.max(0, Number(couponMinOrder) || 0),
       });
-      const okMsg = `Code promo "${cleanCode}" créé et activé sur la boutique.`;
-      notifyClientSuccess("Code promotionnel activé", okMsg);
+      const okMsg = t("cs.coupon_created", { code: cleanCode });
+      notifyClientSuccess(t("cs.coupon_on_title"), okMsg);
       setCouponCode("");
       await load();
     } catch (err: any) {
-      notifyClientError(err, "Création du code promo refusée");
+      notifyClientError(err, t("cs.coupon_create_refused"));
     }
   }
 
   async function handleDeactivateCoupon(couponId: number, code: string) {
     try {
       await DesktopCmsApi.deactivateCoupon(couponId);
-      const okMsg = `Code promo "${code}" désactivé avec succès.`;
-      notifyClientSuccess("Code promo désactivé", okMsg);
+      const okMsg = t("cs.coupon_off", { code });
+      notifyClientSuccess(t("cs.coupon_off_title"), okMsg);
       await load();
     } catch (err: any) {
-      notifyClientError(err, "Désactivation du code promo impossible");
+      notifyClientError(err, t("cs.coupon_off_failed"));
     }
   }
 
@@ -180,8 +182,8 @@ export function ContentSettingsPage({ active, canEdit, categories, products }: C
     e.preventDefault();
     if (pageDraft.title_fr.trim().length < 2 || pageDraft.content_fr.trim().length < 5) {
       notifyClientWarning(
-        "Contenu de page incomplet",
-        "Veuillez saisir un titre et un texte complet avant de publier la page statique."
+        t("cs.page_incomplete_title"),
+        t("cs.page_incomplete_body")
       );
       return;
     }
@@ -197,11 +199,11 @@ export function ContentSettingsPage({ active, canEdit, categories, products }: C
         is_published: true,
       });
       if (pageRevRef.current === savedRev) pageDirtyRef.current = false;
-      const okMsg = `Page statique "/pages/${pageSlug}" enregistrée et publiée.`;
-      notifyClientSuccess("Page statique publiée", okMsg);
+      const okMsg = t("cs.page_published", { slug: pageSlug });
+      notifyClientSuccess(t("cs.page_published_title"), okMsg);
       await load();
     } catch (err: any) {
-      notifyClientError(err, "Enregistrement de la page statique impossible");
+      notifyClientError(err, t("cs.page_failed"));
     }
   }
 
@@ -211,67 +213,67 @@ export function ContentSettingsPage({ active, canEdit, categories, products }: C
 
       <form onSubmit={handleSaveStoreSettings} onChange={() => { settingsDirtyRef.current = true; settingsRevRef.current += 1; }} className="bg-white p-6 rounded-2xl border border-[#D4AF62]/40 space-y-4">
         <div>
-          <h3 className="text-base font-serif font-bold text-[#063D2E]">Coordonnées de la boutique</h3>
-          <p className="text-gray-500">Affichées partout sur la boutique en ligne (en-tête, pied de page, boutons WhatsApp, page produit).</p>
+          <h3 className="text-base font-serif font-bold text-[#063D2E]">{t("cs.contact_title")}</h3>
+          <p className="text-gray-500">{t("cs.contact_sub")}</p>
         </div>
         <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
           <div>
-            <label className="block font-bold mb-1">Téléphone affiché</label>
+            <label className="block font-bold mb-1">{t("cs.phone")}</label>
             <input value={storePhoneInput} onChange={(e) => setStorePhoneInput(e.target.value)} placeholder="0655 53 41 54" className="w-full px-3 py-2 border rounded-xl font-mono" />
           </div>
           <div>
-            <label className="block font-bold mb-1">Numéro WhatsApp</label>
+            <label className="block font-bold mb-1">{t("cs.whatsapp")}</label>
             <input value={storeWhatsappInput} onChange={(e) => setStoreWhatsappInput(e.target.value)} placeholder="+213 655 53 41 54" className="w-full px-3 py-2 border rounded-xl font-mono" />
           </div>
           <div>
-            <label className="block font-bold mb-1">Adresse de la boutique</label>
+            <label className="block font-bold mb-1">{t("cs.address")}</label>
             <input value={storeLocationInput} onChange={(e) => setStoreLocationInput(e.target.value)} className="w-full px-3 py-2 border rounded-xl" />
           </div>
           <div>
-            <label className="block font-bold mb-1">Lien Google Maps de la boutique</label>
+            <label className="block font-bold mb-1">{t("cs.maps")}</label>
             <input value={mapsUrlInput} onChange={(e) => setMapsUrlInput(e.target.value)} placeholder="https://www.google.com/maps/…" className="w-full px-3 py-2 border rounded-xl font-mono" />
           </div>
           <div>
-            <label className="block font-bold mb-1">Page Instagram (lien)</label>
+            <label className="block font-bold mb-1">{t("cs.instagram")}</label>
             <input value={instagramInput} onChange={(e) => setInstagramInput(e.target.value)} placeholder="https://www.instagram.com/…" className="w-full px-3 py-2 border rounded-xl font-mono" />
           </div>
           <div>
-            <label className="block font-bold mb-1">Page TikTok (lien)</label>
+            <label className="block font-bold mb-1">{t("cs.tiktok")}</label>
             <input value={tiktokInput} onChange={(e) => setTiktokInput(e.target.value)} placeholder="https://www.tiktok.com/@…" className="w-full px-3 py-2 border rounded-xl font-mono" />
           </div>
           <div>
-            <label className="block font-bold mb-1">Livraison gratuite à partir de (DA)</label>
-            <input inputMode="numeric" value={freeThresholdInput} onChange={(e) => setFreeThresholdInput(e.target.value)} placeholder="0 = pas de livraison gratuite" className="w-full px-3 py-2 border rounded-xl font-bold" />
+            <label className="block font-bold mb-1">{t("cs.free_from")}</label>
+            <input inputMode="numeric" value={freeThresholdInput} onChange={(e) => setFreeThresholdInput(e.target.value)} placeholder={t("cs.free_ph")} className="w-full px-3 py-2 border rounded-xl font-bold" />
             <p className="text-[11px] text-gray-500 mt-1">
               {Number(freeThresholdInput.replace(/\s/g, "")) > 0
-                ? `Commandes de ${Number(freeThresholdInput.replace(/\s/g, "")).toLocaleString("fr-FR")} DA ou plus : livraison offerte (appliquée aussi par le serveur).`
-                : "Désactivée : la livraison est toujours payante."}
+                ? t("cs.free_on", { amount: Number(freeThresholdInput.replace(/\s/g, "")).toLocaleString("fr-FR") })
+                : t("cs.free_off")}
             </p>
           </div>
         </div>
         <div>
-          <label htmlFor="store-opening-hours" className="block font-bold mb-1">Horaires d'ouverture</label>
+          <label htmlFor="store-opening-hours" className="block font-bold mb-1">{t("cs.hours")}</label>
           <textarea id="store-opening-hours" rows={7} value={openingHoursInput} onChange={(e) => setOpeningHoursInput(e.target.value)} className="w-full md:w-2/3 px-3 py-2 border rounded-xl font-mono text-xs" />
-          <p className="text-[11px] text-gray-500 mt-1">Une ligne par jour : « Jour : horaires » (ex. « Vendredi : Fermé »). Affichés sur la page Contact de la boutique.</p>
+          <p className="text-[11px] text-gray-500 mt-1">{t("cs.hours_hint")}</p>
         </div>
         <button type="submit" className="px-5 py-2.5 rounded-xl bg-[#D4AF62] text-[#02291F] font-extrabold">
-          Enregistrer les coordonnées
+          {t("cs.save_contact")}
         </button>
       </form>
 
       <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
         <form onSubmit={handleCreateCoupon} className="bg-white p-6 rounded-2xl border border-[#D4AF62]/40 space-y-3">
-          <h3 className="text-base font-serif font-bold text-[#063D2E]">+ Créer un Code Promo Client</h3>
+          <h3 className="text-base font-serif font-bold text-[#063D2E]">{t("cs.coupon_new")}</h3>
           <div className="grid grid-cols-2 gap-3">
             <div>
-              <label className="block font-bold mb-1">Code (ex: RAMADAN15)</label>
+              <label className="block font-bold mb-1">{t("cs.coupon_code")}</label>
               <input value={couponCode} onChange={(e) => setCouponCode(e.target.value)} required placeholder="LUXE20" className="w-full px-3 py-2 border rounded-xl font-mono uppercase" />
             </div>
             <div>
-              <label className="block font-bold mb-1">Type de remise</label>
+              <label className="block font-bold mb-1">{t("cs.coupon_type")}</label>
               <select value={couponType} onChange={(e) => setCouponType(e.target.value as "percentage" | "fixed_dzd")} className="w-full px-3 py-2 border rounded-xl bg-white">
-                <option value="percentage">Pourcentage (%)</option>
-                <option value="fixed_dzd">Montant fixe (DA)</option>
+                <option value="percentage">{t("cs.coupon_pct")}</option>
+                <option value="fixed_dzd">{t("cs.coupon_fixed")}</option>
               </select>
             </div>
             <div>
@@ -279,29 +281,29 @@ export function ContentSettingsPage({ active, canEdit, categories, products }: C
               <input type="number" min={1} value={couponValue} onChange={(e) => setCouponValue(Number(e.target.value))} required className="w-full px-3 py-2 border rounded-xl font-bold" />
             </div>
             <div>
-              <label className="block font-bold mb-1">Minimum commande (DA)</label>
+              <label className="block font-bold mb-1">{t("cs.coupon_min")}</label>
               <input type="number" min={0} value={couponMinOrder} onChange={(e) => setCouponMinOrder(Number(e.target.value))} required className="w-full px-3 py-2 border rounded-xl" />
             </div>
           </div>
           <button type="submit" className="px-5 py-2 rounded-xl bg-[#063D2E] text-[#D4AF62] font-bold">
-            Activer le Code Promo
+            {t("cs.coupon_activate")}
           </button>
           {coupons.length > 0 && (
             <div className="pt-3 border-t space-y-1.5">
-              <p className="font-bold text-[#063D2E]">Codes Promo Enregistrés ({coupons.length})</p>
+              <p className="font-bold text-[#063D2E]">{t("cs.coupons_saved", { n: coupons.length })}</p>
               {/* Every code stays reachable (active ones first), in a scrolling list. */}
               <div className="max-h-64 overflow-y-auto space-y-1.5 pr-1">
               {[...coupons].sort((a: any, b: any) => Number(b.is_active) - Number(a.is_active)).map((cpn: any) => (
                 <div key={cpn.id} className="flex items-center justify-between bg-[#F8F6F0] px-3 py-1.5 rounded-lg border">
                   <span>
-                    <strong className="font-mono text-[#063D2E]">{cpn.code}</strong> ({cpn.discount_value}{cpn.discount_type === "percentage" ? "%" : " DA"}) • Utilisations: {cpn.usage_count}{cpn.usage_limit ? `/${cpn.usage_limit}` : ""}{cpn.orders_count !== undefined ? ` • ${cpn.orders_count} commande(s) gardée(s), ${Number(cpn.discount_given_dzd || 0).toLocaleString("fr-FR")} DA de remise` : ""}
+                    <strong className="font-mono text-[#063D2E]">{cpn.code}</strong> ({cpn.discount_value}{cpn.discount_type === "percentage" ? "%" : " DA"}) • {t("cs.coupon_uses", { n: `${cpn.usage_count}${cpn.usage_limit ? `/${cpn.usage_limit}` : ""}` })}{cpn.orders_count !== undefined ? t("cs.coupon_orders", { n: cpn.orders_count, amount: Number(cpn.discount_given_dzd || 0).toLocaleString("fr-FR") }) : ""}
                   </span>
                   {cpn.is_active ? (
                     <button type="button" onClick={() => handleDeactivateCoupon(cpn.id, cpn.code)} className="px-2 py-0.5 rounded bg-red-50 text-red-700 font-bold">
-                      Désactiver
+                      {t("cs.deactivate")}
                     </button>
                   ) : (
-                    <span className="text-gray-400 font-bold">Inactif</span>
+                    <span className="text-gray-400 font-bold">{t("cs.inactive")}</span>
                   )}
                 </div>
               ))}
@@ -312,48 +314,48 @@ export function ContentSettingsPage({ active, canEdit, categories, products }: C
 
         <form onSubmit={handleSaveStaticPage} onChange={() => { pageDirtyRef.current = true; pageRevRef.current += 1; }} className="bg-white p-6 rounded-2xl border border-[#D4AF62]/40 space-y-3">
           <div>
-            <h3 className="text-base font-serif font-bold text-[#063D2E]">Pages d'information</h3>
-            <p className="text-gray-500">Ouvertes depuis le pied de page de la boutique. Sans texte arabe / anglais, le texte français est affiché.</p>
+            <h3 className="text-base font-serif font-bold text-[#063D2E]">{t("cs.pages_title")}</h3>
+            <p className="text-gray-500">{t("cs.pages_sub")}</p>
           </div>
           <div className="grid grid-cols-2 gap-3">
             <div>
-              <label className="block font-bold mb-1">Page</label>
+              <label className="block font-bold mb-1">{t("cs.page")}</label>
               <select value={pageSlug} onChange={(e) => {
                 const nextSlug = e.target.value;
-                if (pageDirtyRef.current && !window.confirm("Les modifications non enregistrées de cette page seront perdues. Continuer ?")) return;
+                if (pageDirtyRef.current && !window.confirm(t("cs.unsaved_confirm"))) return;
                 setPageSlug(nextSlug);
                 pageDirtyRef.current = false;
                 setPageDraft(pageDraftFrom(staticPages.find((p: any) => p.slug === nextSlug)));
               }} className="w-full px-3 py-2 border rounded-xl bg-white">
-                <option value="about">À propos</option>
-                <option value="faq">Questions fréquentes</option>
-                <option value="returns">Livraison &amp; retours</option>
-                <option value="terms">Conditions générales</option>
+                <option value="about">{t("cs.p_about")}</option>
+                <option value="faq">{t("cs.p_faq")}</option>
+                <option value="returns">{t("cs.p_returns")}</option>
+                <option value="terms">{t("cs.p_terms")}</option>
               </select>
             </div>
             <div>
-              <label className="block font-bold mb-1">Langue</label>
+              <label className="block font-bold mb-1">{t("cs.language")}</label>
               <div className="flex gap-1">
                 {(["fr", "ar", "en"] as const).map((l) => (
                   <button key={l} type="button" onClick={() => setPageLang(l)}
                     className={`flex-1 py-2 rounded-xl border font-bold ${pageLang === l ? "bg-[#063D2E] text-[#D4AF62] border-[#063D2E]" : "bg-white text-gray-600"}`}>
-                    {l.toUpperCase()}{l === "fr" ? " *" : pageDraft[`content_${l}`] ? "" : " (vide)"}
+                    {l.toUpperCase()}{l === "fr" ? " *" : pageDraft[`content_${l}`] ? "" : t("cs.empty")}
                   </button>
                 ))}
               </div>
             </div>
           </div>
           <div>
-            <label className="block font-bold mb-1">Titre ({pageLang.toUpperCase()})</label>
+            <label className="block font-bold mb-1">{t("cs.title_l", { l: pageLang.toUpperCase() })}</label>
             <input dir={pageLang === "ar" ? "rtl" : "ltr"} value={pageDraft[`title_${pageLang}`] || ""} onChange={(e) => setPageDraft({ ...pageDraft, [`title_${pageLang}`]: e.target.value })} required={pageLang === "fr"} className="w-full px-3 py-2 border rounded-xl" />
           </div>
           <div>
-            <label className="block font-bold mb-1">Texte ({pageLang.toUpperCase()})</label>
+            <label className="block font-bold mb-1">{t("cs.text_l", { l: pageLang.toUpperCase() })}</label>
             <textarea dir={pageLang === "ar" ? "rtl" : "ltr"} rows={9} value={pageDraft[`content_${pageLang}`] || ""} onChange={(e) => setPageDraft({ ...pageDraft, [`content_${pageLang}`]: e.target.value })} required={pageLang === "fr"} className="w-full px-3 py-2 border rounded-xl leading-relaxed" />
-            <p className="text-[11px] text-gray-500">Un retour à la ligne = un nouveau paragraphe sur la boutique.</p>
+            <p className="text-[11px] text-gray-500">{t("cs.para_hint")}</p>
           </div>
           <button type="submit" className="px-5 py-2 rounded-xl bg-[#063D2E] text-[#D4AF62] font-bold">
-            Publier la page
+            {t("cs.publish")}
           </button>
         </form>
       </div>

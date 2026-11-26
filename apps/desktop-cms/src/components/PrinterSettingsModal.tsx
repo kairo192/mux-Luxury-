@@ -74,9 +74,9 @@ export const PrinterSettingsModal: React.FC<Props> = ({ open, onClose, onFlash }
     await refreshMirrorStat();
     setMirrorBusy(null);
     if (r.ok) flash("ok", force
-      ? `Catalogue rechargé (${r.variants_upserted} variantes).`
-      : `Mise à jour: ${r.variants_upserted} variantes.`);
-    else flash("err", r.error ?? "Sync échouée");
+      ? t("prs.reloaded", { n: r.variants_upserted })
+      : t("prs.updated", { n: r.variants_upserted }));
+    else flash("err", r.error ?? t("prs.sync_failed"));
   };
 
   const onClearMirror = async () => {
@@ -262,9 +262,9 @@ export const PrinterSettingsModal: React.FC<Props> = ({ open, onClose, onFlash }
                 onChange={(e) => setSettings(s => ({ ...s, line_width: Number(e.target.value) }))}
                 className="w-full h-12 px-3 rounded-2xl border-2 border-gray-200 focus:border-[#063D2E] text-base"
               >
-                <option value={32}>58 mm — 32 caractères</option>
-                <option value={42}>80 mm — 42 caractères</option>
-                <option value={48}>80 mm — 48 caractères</option>
+                <option value={32}>{t("prs.w32")}</option>
+                <option value={42}>{t("prs.w42")}</option>
+                <option value={48}>{t("prs.w48")}</option>
               </select>
             </div>
             <div className="space-y-2">
@@ -274,8 +274,8 @@ export const PrinterSettingsModal: React.FC<Props> = ({ open, onClose, onFlash }
                 onChange={(e) => setSettings(s => ({ ...s, drawer_pin: (Number(e.target.value) === 5 ? 5 : 2) }))}
                 className="w-full h-12 px-3 rounded-2xl border-2 border-gray-200 focus:border-[#063D2E] text-base"
               >
-                <option value={2}>Pin 2 (Epson, Star — par défaut)</option>
-                <option value={5}>Pin 5 (Citizen, variantes)</option>
+                <option value={2}>{t("prs.pin2")}</option>
+                <option value={5}>{t("prs.pin5")}</option>
               </select>
             </div>
           </div>
@@ -355,8 +355,8 @@ export const PrinterSettingsModal: React.FC<Props> = ({ open, onClose, onFlash }
                   disabled={labelSettings.format === "escpos-text"}
                 >
                   <option value={203}>203 dpi (standard)</option>
-                  <option value={300}>300 dpi (haute définition)</option>
-                  <option value={600}>600 dpi (très haute définition)</option>
+                  <option value={300}>{t("prs.dpi300")}</option>
+                  <option value={600}>{t("prs.dpi600")}</option>
                 </select>
               </div>
             </div>
@@ -439,7 +439,7 @@ export const PrinterSettingsModal: React.FC<Props> = ({ open, onClose, onFlash }
                   disabled={mirrorBusy !== null || !inTauri}
                   onClick={() => onSyncNow(true)}
                   className="h-14 rounded-2xl bg-[#D4AF62] text-[#063D2E] font-bold flex items-center justify-center gap-2 disabled:opacity-40 active:scale-95"
-                  title="Recharge la totalité du catalogue"
+                  title={t("prs.reload_all")}
                 >
                   <Database className="w-5 h-5" /> {t("printer_settings.btn_full_reload")}
                 </button>

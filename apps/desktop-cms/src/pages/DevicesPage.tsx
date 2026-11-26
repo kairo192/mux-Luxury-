@@ -22,6 +22,7 @@ import { confirmClientAction } from "../utils/clientNotifier";
 import { useT } from "../i18n";
 import { isTauriRuntime, testPrint, testPrintLabel } from "../utils/posHardware";
 import { serverDate } from "../utils/serverDate";
+import { localeFor } from "../i18n/translations";
 
 type DeviceType = "receipt_printer" | "label_printer" | "barcode_scanner" | "cash_drawer" | "customer_display" | "other";
 type ConnectionType = "usb" | "network" | "windows" | "serial" | "hid_keyboard" | "browser";
@@ -53,8 +54,8 @@ const CONNECTION_LABEL: Record<ConnectionType, string> = {
   usb: "USB",
   network: "TCP / IP",
   windows: "Windows",
-  serial: "Serial / RS232",
-  hid_keyboard: "HID Keyboard",
+  serial: "RS232",
+  hid_keyboard: "HID",
   browser: "Browser",
 };
 
@@ -191,10 +192,10 @@ export const DevicesPage: React.FC = () => {
           ? await testPrintLabel(target as any)
           : await testPrint(target);
         await DesktopCmsApi.testDevice(dev.id, { success: res.ok, error: res.ok ? undefined : res.error });
-        if (res.ok) flash(`${dev.name} : test imprimé avec succès.`);
+        if (res.ok) flash(t("dev.test_ok", { name: dev.name }));
         else setError(`${dev.name} : ${res.error || "échec du test d'impression"}`);
       } else if (isPrinter) {
-        setError("Le test d'une imprimante se fait depuis l'application de bureau installée sur le poste de la boutique.");
+        setError(t("dev.desktop_only"));
       } else {
         const res = await DesktopCmsApi.testDevice(dev.id);
         if (res.status === "ok") flash(`${dev.name} : OK`);
@@ -216,28 +217,28 @@ export const DevicesPage: React.FC = () => {
       <style>@page{size:${width} auto;margin:3mm} body{font-family:monospace;text-align:center;font-size:12px}</style>
       </head><body>
       <div style="font-weight:700">Mus Luxury</div>
-      <div>— TEST D'IMPRESSION —</div>
+      <div>${t("dev.test_page")}</div>
       <div>${dev.name}</div>
-      <div>${new Date().toLocaleString("fr-FR")}</div>
+      <div>${new Date().toLocaleString(localeFor())}</div>
       <div>................................</div>
-      <div>Imprimante fonctionnelle ✓</div>
+      <div>${t("dev.printer_ok")}</div>
       <script>window.onload=function(){window.print();setTimeout(function(){window.close();},300);};<\/script>
       </body></html>`);
     w.document.close();
     // Only the person in front of the printer knows if the ticket came out:
     // ask, then record that answer (never assume success).
     const printed = await confirmClientAction({
-      title: "Test d'impression",
-      message: `Le ticket de test est-il bien sorti de « ${dev.name} » ?`,
-      confirmLabel: "Oui, imprimé",
-      cancelLabel: "Non",
+      title: t("dev.test_title"),
+      message: t("dev.test_question", { name: dev.name }),
+      confirmLabel: t("dev.yes_printed"),
+      cancelLabel: t("dev.no"),
     });
     try {
       await DesktopCmsApi.testDevice(dev.id, printed
         ? { success: true }
-        : { success: false, error: "Le ticket de test n'est pas sorti (signalé au poste)." });
+        : { success: false, error: t("dev.not_out_server") });
       if (printed) flash(`${dev.name} : OK`);
-      else setError(`${dev.name} : le ticket de test n'est pas sorti. Vérifiez le câble, le papier et le pilote Windows.`);
+      else setError(t("dev.not_out", { name: dev.name }));
       load();
     } catch (e: any) {
       setError(e?.userMessage || t("status.error"));

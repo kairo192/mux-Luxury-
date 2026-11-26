@@ -1,5 +1,6 @@
 // ============================================================================
 import { serverDate } from "./serverDate";
+import { tr } from "../i18n/translations";
 // POS hardware bridge — thin typed wrapper around the Tauri 2 invoke commands
 // defined in `apps/desktop-cms/src-tauri/src/pos_hardware/`.
 //
@@ -134,34 +135,34 @@ export async function printReceipt(
   lines: ReceiptLine[],
 ): Promise<HardwareResult> {
   const invoke = getTauriInvoke();
-  if (!invoke) return { ok: false, error: "Hors Tauri — impression système indisponible" };
+  if (!invoke) return { ok: false, error: tr("hw.no_tauri_print") };
   try {
     await invoke("pos_print_receipt", { opts, lines });
     return { ok: true };
   } catch (e: any) {
-    return { ok: false, error: String(e?.message ?? e ?? "Erreur imprimante") };
+    return { ok: false, error: String(e?.message ?? e ?? tr("hw.printer_error")) };
   }
 }
 
 export async function openCashDrawer(opts: PrinterTarget = loadHardwareSettings()): Promise<HardwareResult> {
   const invoke = getTauriInvoke();
-  if (!invoke) return { ok: false, error: "Hors Tauri — tiroir-caisse indisponible" };
+  if (!invoke) return { ok: false, error: tr("hw.no_tauri_drawer") };
   try {
     await invoke("pos_open_cash_drawer", { opts });
     return { ok: true };
   } catch (e: any) {
-    return { ok: false, error: String(e?.message ?? e ?? "Échec ouverture tiroir") };
+    return { ok: false, error: String(e?.message ?? e ?? tr("hw.drawer_failed")) };
   }
 }
 
 export async function testPrint(opts: PrinterTarget = loadHardwareSettings()): Promise<HardwareResult> {
   const invoke = getTauriInvoke();
-  if (!invoke) return { ok: false, error: "Hors Tauri — test indisponible" };
+  if (!invoke) return { ok: false, error: tr("hw.no_tauri_test") };
   try {
     await invoke("pos_test_print", { opts });
     return { ok: true };
   } catch (e: any) {
-    return { ok: false, error: String(e?.message ?? e ?? "Échec du test d'impression") };
+    return { ok: false, error: String(e?.message ?? e ?? tr("hw.test_failed")) };
   }
 }
 
@@ -337,24 +338,24 @@ export function isLabelPrinterConfigured(s?: LabelPrinterTarget): boolean {
 
 export async function printLabels(opts: LabelPrinterTarget, labels: LabelPayload[]): Promise<HardwareResult> {
   const invoke = getTauriInvoke();
-  if (!invoke) return { ok: false, error: "Hors Tauri — impression d'étiquette indisponible" };
-  if (!labels.length) return { ok: false, error: "Aucune étiquette à imprimer" };
+  if (!invoke) return { ok: false, error: tr("hw.no_tauri_label") };
+  if (!labels.length) return { ok: false, error: tr("hw.no_labels") };
   try {
     await invoke("pos_print_labels", { opts, labels });
     return { ok: true };
   } catch (e: any) {
-    return { ok: false, error: String(e?.message ?? e ?? "Erreur étiqueteuse") };
+    return { ok: false, error: String(e?.message ?? e ?? tr("hw.label_error")) };
   }
 }
 
 export async function testPrintLabel(opts: LabelPrinterTarget = loadLabelPrinterSettings()): Promise<HardwareResult> {
   const invoke = getTauriInvoke();
-  if (!invoke) return { ok: false, error: "Hors Tauri — test indisponible" };
+  if (!invoke) return { ok: false, error: tr("hw.no_tauri_test") };
   try {
     await invoke("pos_test_print_label", { opts });
     return { ok: true };
   } catch (e: any) {
-    return { ok: false, error: String(e?.message ?? e ?? "Échec du test d'étiquette") };
+    return { ok: false, error: String(e?.message ?? e ?? tr("hw.label_test_failed")) };
   }
 }
 
@@ -365,7 +366,7 @@ export async function testPrintLabel(opts: LabelPrinterTarget = loadLabelPrinter
 export async function printSaleReceipt(sale: PosSalePayload): Promise<HardwareResult> {
   const target = loadHardwareSettings();
   if (!isHardwareConfigured(target)) {
-    return { ok: false, error: "Aucune imprimante configurée" };
+    return { ok: false, error: tr("hw.no_printer") };
   }
   const openDrawer = (sale.payments ?? []).some(p => (p.method || "").toLowerCase().includes("cash") || (p.method || "").toLowerCase().includes("espec"));
   const lines = buildReceiptLines(sale, target.line_width ?? 32);

@@ -17,6 +17,7 @@ import { useEffect, useMemo, useState } from "react";
 import { ArrowDown, ArrowUp, Eye, EyeOff, ImagePlus, Loader2, Megaphone, Pencil, Plus, Trash2, X } from "lucide-react";
 import { DesktopCmsApi, mediaUrl, PLACEHOLDER_IMG } from "../api/adminClient";
 import { confirmClientAction, notifyClientError, notifyClientSuccess, notifyClientWarning } from "../utils/clientNotifier";
+import { tr, pickLang } from "../i18n/translations";
 
 type Banner = {
   id: number;
@@ -53,26 +54,19 @@ const EMPTY: Draft = {
   display_order: 1,
 };
 
-const POSITIONS: Record<string, string> = {
-  hero: "Bannière principale (haut de page)",
-  promo_grid: "Carte promo (sous les produits)",
-};
-
-const SECTION_HELP: Record<string, string> = {
-  hero_banner: "Grande bannière en haut de l'accueil",
-  trust_bar: "Livraison 69 wilayas, paiement à la livraison, qualité, service client",
-  categories_grid: "Vos catégories avec leur photo",
-  featured_products: "Grille des produits sur l'accueil",
-  promo_banners: "Cartes promo (visibles seulement s'il y en a)",
-};
+const POSITION_KEYS = ["hero", "promo_grid"] as const;
+const positionLabel = (k: string) => tr(`hp.pos_${k}`);
+const SECTION_KEYS = new Set(["hero_banner", "trust_bar", "categories_grid", "featured_products", "promo_banners"]);
+const sectionHelp = (k: string) => (SECTION_KEYS.has(k) ? tr(`hp.help_${k}`) : "");
+const sectionTitle = (sec: { section_key: string; title_fr: string }) => (SECTION_KEYS.has(sec.section_key) ? tr(`hp.sec_${sec.section_key}`) : sec.title_fr);
 
 function linkLabel(link: string | undefined, categories: any[], products: any[]): string {
   const l = String(link || "");
-  if (!l || l === "#/boutique") return "Toute la boutique";
+  if (!l || l === "#/boutique") return tr("hp.link_shop");
   const c = l.match(/^\/categorie\/(.+)$/);
-  if (c) return `Catégorie : ${categories.find((x) => x.slug === c[1])?.name_fr || c[1]}`;
+  if (c) return tr("hp.link_category", { name: pickLang(categories.find((x) => x.slug === c[1]), "name") || c[1] });
   const p = l.match(/^\/produit\/(.+)$/);
-  if (p) return `Produit : ${products.find((x) => x.slug === p[1])?.name_fr || p[1]}`;
+  if (p) return tr("hp.link_product", { name: pickLang(products.find((x) => x.slug === p[1]), "name") || p[1] });
   return l;
 }
 
@@ -96,7 +90,7 @@ export function HomepageContentPanel({ categories: allCategories, products }: { 
       setSections(sec?.items || []);
       setBanners((ban?.items || []).filter((b: Banner) => b.position !== "seasonal"));
     } catch (err) {
-      notifyClientError(err, "Chargement de la page d'accueil impossible", false);
+      notifyClientError(err, tr("hp.load_failed"), false);
     } finally {
       setLoading(false);
     }
@@ -116,10 +110,10 @@ export function HomepageContentPanel({ categories: allCategories, products }: { 
   async function toggleSection(sec: Section) {
     try {
       await DesktopCmsApi.updateHomepageSection(sec.section_key, { is_active: !sec.is_active, display_order: sec.display_order, config: {} });
-      notifyClientSuccess(sec.is_active ? "Bloc masqué" : "Bloc affiché", `« ${sec.title_fr} » sur la page d'accueil.`);
+      notifyClientSuccess(sec.is_active ? tr("hp.block_hidden") : tr("hp.block_shown"), tr("hp.block_on_home", { name: sectionTitle(sec) }));
       await load();
     } catch (err) {
-      notifyClientError(err, "Modification du bloc impossible");
+      notifyClientError(err, tr("hp.block_failed"));
     }
   }
 
@@ -143,27 +137,27 @@ export function HomepageContentPanel({ categories: allCategories, products }: { 
   async function saveBanner() {
     if (!editing) return;
     if (!editing.title_fr.trim()) {
-      notifyClientWarning("Titre requis", "Saisissez au moins le titre en français.");
+      notifyClientWarning(tr("hp.title_required_title"), tr("hp.title_required_body"));
       return;
     }
     const link = editing.cta_link?.trim() || "";
     if (link && !/^(#\/|\/categorie\/[a-z0-9-]+$|\/produit\/[a-z0-9-]+$|https:\/\/)/.test(link)) {
-      notifyClientWarning("Lien invalide", "Choisissez une destination dans la liste, ou un lien commençant par https://");
+      notifyClientWarning(tr("hp.bad_link_title"), tr("hp.bad_link_body"));
       return;
     }
     setBusy(true);
     try {
       if (editing.id) {
         await DesktopCmsApi.updateBanner(editing.id, payloadOf(editing));
-        notifyClientSuccess("Bannière enregistrée", "La boutique l'affiche dans la minute.");
+        notifyClientSuccess(tr("hp.banner_saved_title"), tr("hp.banner_saved_body"));
       } else {
         await DesktopCmsApi.createBanner(payloadOf(editing));
-        notifyClientSuccess("Bannière créée", editing.is_active ? "Elle apparaît sur la boutique dans la minute." : "Elle est enregistrée mais masquée.");
+        notifyClientSuccess(tr("hp.banner_created_title"), editing.is_active ? tr("hp.banner_created_live") : tr("hp.banner_created_hidden"));
       }
       setEditing(null);
       await load();
     } catch (err) {
-      notifyClientError(err, "Enregistrement de la bannière impossible");
+      notifyClientError(err, tr("hp.banner_save_failed"));
     } finally {
       setBusy(false);
     }
@@ -174,7 +168,7 @@ export function HomepageContentPanel({ categories: allCategories, products }: { 
       await DesktopCmsApi.updateBanner(b.id, payloadOf({ ...(b as any), is_active: Boolean(b.is_active), ...patch }));
       await load();
     } catch (err) {
-      notifyClientError(err, "Modification de la bannière impossible");
+      notifyClientError(err, tr("hp.banner_update_failed"));
     }
   }
 
@@ -188,24 +182,24 @@ export function HomepageContentPanel({ categories: allCategories, products }: { 
       await DesktopCmsApi.updateBanner(other.id, payloadOf({ ...(other as any), is_active: Boolean(other.is_active), display_order: b.display_order }));
       await load();
     } catch (err) {
-      notifyClientError(err, "Réorganisation impossible");
+      notifyClientError(err, tr("hp.reorder_failed"));
     }
   }
 
   async function remove(b: Banner) {
     const ok = await confirmClientAction({
-      title: "Supprimer la bannière",
-      message: `« ${b.title_fr} » disparaîtra de la boutique.`,
-      confirmLabel: "Supprimer",
+      title: tr("hp.delete_title"),
+      message: tr("hp.delete_body", { name: b.title_fr }),
+      confirmLabel: tr("hp.delete"),
       danger: true,
     });
     if (!ok) return;
     try {
       await DesktopCmsApi.deleteBanner(b.id);
-      notifyClientSuccess("Bannière supprimée", b.title_fr);
+      notifyClientSuccess(tr("hp.deleted_title"), b.title_fr);
       await load();
     } catch (err) {
-      notifyClientError(err, "Suppression impossible");
+      notifyClientError(err, tr("hp.delete_failed"));
     }
   }
 
@@ -215,7 +209,7 @@ export function HomepageContentPanel({ categories: allCategories, products }: { 
       const res: any = await DesktopCmsApi.uploadMediaFile(file);
       setEditing((d) => (d ? { ...d, image_url: res.url } : d));
     } catch (err) {
-      notifyClientError(err, "Envoi de la photo impossible");
+      notifyClientError(err, tr("hp.photo_failed"));
     } finally {
       setUploading(false);
     }
@@ -232,8 +226,8 @@ export function HomepageContentPanel({ categories: allCategories, products }: { 
     <div className="space-y-5 text-xs">
       {/* ---------------- Home blocks ---------------- */}
       <div className="bg-white p-6 rounded-2xl border border-[#D4AF62]/40 space-y-3">
-        <h3 className="text-base font-serif font-bold text-[#063D2E]">Blocs de la page d'accueil</h3>
-        <p className="text-gray-500">Affichez ou masquez chaque bloc de l'accueil de la boutique.</p>
+        <h3 className="text-base font-serif font-bold text-[#063D2E]">{tr("hp.blocks_title")}</h3>
+        <p className="text-gray-500">{tr("hp.blocks_sub")}</p>
         {loading ? (
           <Loader2 className="w-5 h-5 animate-spin text-[#063D2E]" />
         ) : (
@@ -253,8 +247,8 @@ export function HomepageContentPanel({ categories: allCategories, products }: { 
                   <span className={`absolute top-0.5 h-4 w-4 rounded-full bg-white shadow transition-all ${sec.is_active ? "start-[18px]" : "start-0.5"}`} />
                 </span>
                 <span>
-                  <span className="block font-bold text-[#063D2E]">{sec.title_fr}</span>
-                  <span className="block text-[11px] text-gray-500">{SECTION_HELP[sec.section_key] || ""}</span>
+                  <span className="block font-bold text-[#063D2E]">{sectionTitle(sec)}</span>
+                  <span className="block text-[11px] text-gray-500">{sectionHelp(sec.section_key)}</span>
                 </span>
               </button>
             ))}
@@ -267,27 +261,27 @@ export function HomepageContentPanel({ categories: allCategories, products }: { 
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div>
             <h3 className="text-base font-serif font-bold text-[#063D2E] flex items-center gap-2">
-              <Megaphone className="w-4 h-4 text-[#D4AF62]" /> Bannières de la boutique
+              <Megaphone className="w-4 h-4 text-[#D4AF62]" /> {tr("hp.banners_title")}
             </h3>
-            <p className="text-gray-500">Sans bannière principale, l'accueil affiche le texte de la marque. Sans carte promo, ce bloc est masqué.</p>
+            <p className="text-gray-500">{tr("hp.banners_sub")}</p>
           </div>
           <div className="flex gap-2">
             <button type="button" onClick={() => setEditing({ ...EMPTY, position: "hero", display_order: (byPosition.hero?.length || 0) + 1 })}
               className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl border border-[#063D2E] text-[#063D2E] font-bold hover:bg-[#063D2E]/5">
-              <Plus className="w-4 h-4" /> Bannière principale
+              <Plus className="w-4 h-4" /> {tr("hp.add_hero")}
             </button>
             <button type="button" onClick={() => setEditing({ ...EMPTY, position: "promo_grid", display_order: (byPosition.promo_grid?.length || 0) + 1 })}
               className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-[#063D2E] text-[#D4AF62] font-bold">
-              <Plus className="w-4 h-4" /> Carte promo
+              <Plus className="w-4 h-4" /> {tr("hp.add_promo")}
             </button>
           </div>
         </div>
 
-        {(["hero", "promo_grid"] as const).map((pos) => (
+        {POSITION_KEYS.map((pos) => (
           <div key={pos} className="space-y-2">
-            <p className="font-bold text-[#063D2E]">{POSITIONS[pos]} ({byPosition[pos]?.length || 0})</p>
+            <p className="font-bold text-[#063D2E]">{positionLabel(pos)} ({byPosition[pos]?.length || 0})</p>
             {(byPosition[pos] || []).length === 0 ? (
-              <p className="text-gray-400 italic px-1">Aucune.</p>
+              <p className="text-gray-400 italic px-1">{tr("hp.none")}</p>
             ) : (
               (byPosition[pos] || []).map((b, i, list) => (
                 <div key={b.id} className={`flex items-center gap-3 p-2.5 rounded-xl border ${b.is_active ? "border-gray-200" : "border-dashed border-gray-300 opacity-70"}`}>
@@ -299,13 +293,13 @@ export function HomepageContentPanel({ categories: allCategories, products }: { 
                     </p>
                   </div>
                   <div className="flex items-center gap-1 shrink-0">
-                    <button type="button" title="Monter" disabled={i === 0} onClick={() => move(b, -1)} className="p-1.5 rounded-lg hover:bg-gray-100 disabled:opacity-30"><ArrowUp className="w-3.5 h-3.5" /></button>
-                    <button type="button" title="Descendre" disabled={i === list.length - 1} onClick={() => move(b, 1)} className="p-1.5 rounded-lg hover:bg-gray-100 disabled:opacity-30"><ArrowDown className="w-3.5 h-3.5" /></button>
-                    <button type="button" title={b.is_active ? "Masquer" : "Afficher"} onClick={() => quickUpdate(b, { is_active: !b.is_active })} className="p-1.5 rounded-lg hover:bg-gray-100">
+                    <button type="button" title={tr("hp.move_up")} disabled={i === 0} onClick={() => move(b, -1)} className="p-1.5 rounded-lg hover:bg-gray-100 disabled:opacity-30"><ArrowUp className="w-3.5 h-3.5" /></button>
+                    <button type="button" title={tr("hp.move_down")} disabled={i === list.length - 1} onClick={() => move(b, 1)} className="p-1.5 rounded-lg hover:bg-gray-100 disabled:opacity-30"><ArrowDown className="w-3.5 h-3.5" /></button>
+                    <button type="button" title={b.is_active ? tr("hp.hide") : tr("hp.show")} onClick={() => quickUpdate(b, { is_active: !b.is_active })} className="p-1.5 rounded-lg hover:bg-gray-100">
                       {b.is_active ? <Eye className="w-3.5 h-3.5 text-emerald-700" /> : <EyeOff className="w-3.5 h-3.5 text-gray-400" />}
                     </button>
-                    <button type="button" title="Modifier" onClick={() => setEditing({ ...(b as any), is_active: Boolean(b.is_active) })} className="p-1.5 rounded-lg hover:bg-gray-100"><Pencil className="w-3.5 h-3.5" /></button>
-                    <button type="button" title="Supprimer" onClick={() => remove(b)} className="p-1.5 rounded-lg hover:bg-red-50 text-red-600"><Trash2 className="w-3.5 h-3.5" /></button>
+                    <button type="button" title={tr("hp.edit")} onClick={() => setEditing({ ...(b as any), is_active: Boolean(b.is_active) })} className="p-1.5 rounded-lg hover:bg-gray-100"><Pencil className="w-3.5 h-3.5" /></button>
+                    <button type="button" title={tr("hp.delete")} onClick={() => remove(b)} className="p-1.5 rounded-lg hover:bg-red-50 text-red-600"><Trash2 className="w-3.5 h-3.5" /></button>
                   </div>
                 </div>
               ))
@@ -320,37 +314,37 @@ export function HomepageContentPanel({ categories: allCategories, products }: { 
           <div role="dialog" aria-modal="true" aria-labelledby="banner-editor-title" className="animate-modal bg-white rounded-2xl max-w-3xl w-full max-h-[92vh] overflow-y-auto shadow-2xl border-2 border-[#D4AF62]">
             <div className="px-5 py-3.5 flex items-center justify-between bg-gradient-to-r from-[#02291F] to-[#063D2E] text-white sticky top-0 z-10">
               <span id="banner-editor-title" className="font-extrabold text-sm text-[#E8D4A5]">
-                {editing.id ? "Modifier la bannière" : "Nouvelle bannière"}
+                {editing.id ? tr("hp.edit_banner") : tr("hp.new_banner")}
               </span>
-              <button type="button" onClick={() => setEditing(null)} aria-label="Fermer" className="w-7 h-7 rounded-full bg-black/25 flex items-center justify-center"><X className="w-4 h-4" /></button>
+              <button type="button" onClick={() => setEditing(null)} aria-label={tr("hp.close")} className="w-7 h-7 rounded-full bg-black/25 flex items-center justify-center"><X className="w-4 h-4" /></button>
             </div>
             <div className="p-5 grid grid-cols-1 md:grid-cols-5 gap-5 text-xs">
               <div className="md:col-span-3 space-y-3">
                 <label className="block">
-                  <span className="font-bold">Emplacement</span>
+                  <span className="font-bold">{tr("hp.placement")}</span>
                   <select value={editing.position} onChange={(e) => setEditing({ ...editing, position: e.target.value as any })} className="mt-1 w-full px-3 py-2 border rounded-xl bg-white">
-                    {Object.entries(POSITIONS).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
+                    {POSITION_KEYS.map((k) => <option key={k} value={k}>{positionLabel(k)}</option>)}
                   </select>
                 </label>
                 {(["fr", "ar", "en"] as const).map((l) => (
                   <div key={l} className="grid grid-cols-2 gap-2">
                     <label className="block">
-                      <span className="font-bold">Titre ({l.toUpperCase()}){l === "fr" ? " *" : ""}</span>
+                      <span className="font-bold">{tr("hp.title_l", { l: l.toUpperCase() })}{l === "fr" ? " *" : ""}</span>
                       <input dir={l === "ar" ? "rtl" : "ltr"} value={(editing as any)[`title_${l}`] || ""} onChange={(e) => setEditing({ ...editing, [`title_${l}`]: e.target.value } as Draft)} className="mt-1 w-full px-3 py-2 border rounded-xl" />
                     </label>
                     <label className="block">
-                      <span className="font-bold">Texte ({l.toUpperCase()})</span>
+                      <span className="font-bold">{tr("hp.text_l", { l: l.toUpperCase() })}</span>
                       <input dir={l === "ar" ? "rtl" : "ltr"} value={(editing as any)[`subtitle_${l}`] || ""} onChange={(e) => setEditing({ ...editing, [`subtitle_${l}`]: e.target.value } as Draft)} className="mt-1 w-full px-3 py-2 border rounded-xl" />
                     </label>
                   </div>
                 ))}
                 <div className="grid grid-cols-2 gap-2">
                   <label className="block">
-                    <span className="font-bold">Texte du bouton (FR)</span>
-                    <input value={editing.cta_text_fr || ""} onChange={(e) => setEditing({ ...editing, cta_text_fr: e.target.value })} placeholder="Voir la collection" className="mt-1 w-full px-3 py-2 border rounded-xl" />
+                    <span className="font-bold">{tr("hp.cta_text")}</span>
+                    <input value={editing.cta_text_fr || ""} onChange={(e) => setEditing({ ...editing, cta_text_fr: e.target.value })} placeholder={tr("hp.cta_ph")} className="mt-1 w-full px-3 py-2 border rounded-xl" />
                   </label>
                   <label className="block">
-                    <span className="font-bold">Le bouton ouvre</span>
+                    <span className="font-bold">{tr("hp.cta_opens")}</span>
                     <select
                       value={linkMode(editing.cta_link)}
                       onChange={(e) => {
@@ -363,10 +357,10 @@ export function HomepageContentPanel({ categories: allCategories, products }: { 
                       }}
                       className="mt-1 w-full px-3 py-2 border rounded-xl bg-white"
                     >
-                      <option value="shop">Toute la boutique</option>
-                      <option value="category" disabled={!categories.length}>Une catégorie</option>
-                      <option value="product" disabled={!products.length}>Un produit</option>
-                      <option value="url">Un lien externe (https://)</option>
+                      <option value="shop">{tr("hp.opt_shop")}</option>
+                      <option value="category" disabled={!categories.length}>{tr("hp.opt_category")}</option>
+                      <option value="product" disabled={!products.length}>{tr("hp.opt_product")}</option>
+                      <option value="url">{tr("hp.opt_url")}</option>
                     </select>
                   </label>
                 </div>
@@ -385,35 +379,35 @@ export function HomepageContentPanel({ categories: allCategories, products }: { 
                 )}
                 <label className="flex items-center gap-2 font-bold pt-1">
                   <input type="checkbox" checked={editing.is_active} onChange={(e) => setEditing({ ...editing, is_active: e.target.checked })} />
-                  Visible sur la boutique
+                  {tr("hp.visible")}
                 </label>
               </div>
 
               {/* Photo + preview */}
               <div className="md:col-span-2 space-y-3">
-                <span className="font-bold block">Photo</span>
+                <span className="font-bold block">{tr("hp.photo")}</span>
                 <div className="relative rounded-2xl overflow-hidden hero-luxury-bg bg-gradient-to-br from-[#02291F] to-[#063D2E] text-white p-4 min-h-[180px] flex flex-col justify-end">
                   {editing.image_url && <img src={mediaUrl(editing.image_url)} alt="" className="absolute inset-0 w-full h-full object-cover opacity-60" />}
                   <div className="relative space-y-1">
-                    <p className="font-serif text-lg font-bold text-[#E8D4A5]">{editing.title_fr || "Titre de la bannière"}</p>
+                    <p className="font-serif text-lg font-bold text-[#E8D4A5]">{editing.title_fr || tr("hp.title_preview")}</p>
                     {editing.subtitle_fr && <p className="text-[11px] text-white/85">{editing.subtitle_fr}</p>}
-                    <span className="inline-block mt-1 px-3 py-1 rounded-full bg-[#D4AF62] text-[#02291F] text-[10px] font-bold">{editing.cta_text_fr || "Voir la collection"}</span>
+                    <span className="inline-block mt-1 px-3 py-1 rounded-full bg-[#D4AF62] text-[#02291F] text-[10px] font-bold">{editing.cta_text_fr || tr("hp.cta_ph")}</span>
                   </div>
                 </div>
                 <label className="flex items-center justify-center gap-2 px-3 py-2 rounded-xl border border-[#D4AF62] text-[#063D2E] font-bold cursor-pointer hover:bg-[#D4AF62]/10">
                   {uploading ? <Loader2 className="w-4 h-4 animate-spin" /> : <ImagePlus className="w-4 h-4" />}
-                  Téléverser une photo
+                  {tr("hp.upload")}
                   <input type="file" accept="image/jpeg,image/png,image/webp" className="hidden" onChange={(e) => e.target.files?.[0] && uploadImage(e.target.files[0])} />
                 </label>
                 {editing.image_url && (
-                  <button type="button" onClick={() => setEditing({ ...editing, image_url: "" })} className="w-full text-[11px] text-gray-500 underline">Retirer la photo</button>
+                  <button type="button" onClick={() => setEditing({ ...editing, image_url: "" })} className="w-full text-[11px] text-gray-500 underline">{tr("hp.remove_photo")}</button>
                 )}
               </div>
             </div>
             <div className="px-5 py-3.5 border-t flex justify-end gap-2 sticky bottom-0 bg-white">
-              <button type="button" onClick={() => setEditing(null)} className="px-4 py-2 rounded-xl border border-gray-300 font-bold text-gray-700">Annuler</button>
+              <button type="button" onClick={() => setEditing(null)} className="px-4 py-2 rounded-xl border border-gray-300 font-bold text-gray-700">{tr("hp.cancel")}</button>
               <button type="button" onClick={saveBanner} disabled={busy} className="inline-flex items-center gap-1.5 px-5 py-2 rounded-xl bg-[#063D2E] text-[#D4AF62] font-extrabold disabled:opacity-50">
-                {busy && <Loader2 className="w-4 h-4 animate-spin" />} Enregistrer
+                {busy && <Loader2 className="w-4 h-4 animate-spin" />} {tr("hp.save")}
               </button>
             </div>
           </div>

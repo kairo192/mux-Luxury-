@@ -555,7 +555,7 @@ export default function App() {
     if (ownerPassword.length < 10) {
       const msg = t("app.owner_pw_short");
       setError(msg);
-      notifyClientWarning("Mot de passe trop court", msg);
+      notifyClientWarning(t("app.pw_short_title"), msg);
       return;
     }
     if (ownerPassword !== ownerConfirm) {

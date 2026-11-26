@@ -85,4 +85,5 @@ export const app = defineArea("app", {
   "audit_title": ["Journal d'audit administrateur ({{n}} événement(s) tracé(s))", "Admin audit log ({{n}} event(s))", "سجل تدقيق الإدارة ({{n}} حدث)"],
   "wilayas_served": ["Wilayas livrées : {{n}} / 69", "Wilayas served: {{n}} / 69", "الولايات المخدومة: {{n}} / 69"],
   "by_user": ["par {{who}}", "by {{who}}", "بواسطة {{who}}"],
+  "pw_short_title": ["Mot de passe trop court", "Password too short", "كلمة المرور قصيرة جداً"],
 });

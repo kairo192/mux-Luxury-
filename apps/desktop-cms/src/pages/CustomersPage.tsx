@@ -52,7 +52,7 @@ export const CustomersPage: React.FC = () => {
       setTotalCustomers(typeof d.total === "number" ? d.total : null);
       setError(null);
     } catch (e: any) {
-      setError(e?.userMessage || "Chargement impossible");
+      setError(e?.userMessage || t("cust.load_failed"));
     } finally {
       setLoading(false);
     }
@@ -76,7 +76,7 @@ export const CustomersPage: React.FC = () => {
       setCustomers(d.items || []);
       setTotalCustomers(null);
     } catch (e: any) {
-      setError(e?.userMessage || "Recherche échouée");
+      setError(e?.userMessage || t("cust.search_failed"));
     } finally {
       setLoading(false);
     }
@@ -89,7 +89,7 @@ export const CustomersPage: React.FC = () => {
       setCustomers((prev) => [...prev, ...(d.items || [])]);
       if (typeof d.total === "number") setTotalCustomers(d.total);
     } catch (e: any) {
-      setError(e?.userMessage || "Chargement impossible");
+      setError(e?.userMessage || t("cust.load_failed"));
     } finally {
       setBusy(false);
     }
@@ -99,7 +99,7 @@ export const CustomersPage: React.FC = () => {
     try {
       setDetail(await DesktopCmsApi.getCustomer(c.id));
     } catch (e: any) {
-      setError(e?.userMessage || "Détail indisponible");
+      setError(e?.userMessage || t("cust.detail_failed"));
     }
   };
 
@@ -128,7 +128,7 @@ export const CustomersPage: React.FC = () => {
       setForm(null);
       load();
     } catch (e: any) {
-      setError(e?.userMessage || "Enregistrement refusé");
+      setError(e?.userMessage || t("cust.save_refused"));
     } finally {
       setBusy(false);
     }
@@ -237,15 +237,15 @@ export const CustomersPage: React.FC = () => {
             </div>
             <div className="p-5 space-y-4">
               <div className="grid grid-cols-3 gap-3">
-                <Kpi icon={Globe} label="En ligne" value={fmt(detail.totals.online_spent_dzd)} sub={`${detail.totals.online_orders} cmd`} />
-                <Kpi icon={Store} label="Magasin" value={fmt(detail.totals.in_store_spent_dzd)} sub={`${detail.totals.in_store_sales} vente(s)`} />
-                <Kpi icon={Users} label="Total" value={fmt(detail.totals.combined_spent_dzd)} sub="cumulé" accent />
+                <Kpi icon={Globe} label={t("cust.online")} value={fmt(detail.totals.online_spent_dzd)} sub={t("cust.orders_short", { n: detail.totals.online_orders })} />
+                <Kpi icon={Store} label={t("cust.shop")} value={fmt(detail.totals.in_store_spent_dzd)} sub={t("cust.sales_n", { n: detail.totals.in_store_sales })} />
+                <Kpi icon={Users} label={t("cust.total")} value={fmt(detail.totals.combined_spent_dzd)} sub={t("cust.cumulated")} accent />
               </div>
               {detail.notes && <div className="p-3 rounded-2xl bg-[#F5F3EE] text-gray-600">{detail.notes}</div>}
               <div>
-                <h4 className="font-bold text-[#063D2E] mb-2">Historique</h4>
+                <h4 className="font-bold text-[#063D2E] mb-2">{t("cust.history")}</h4>
                 <div className="space-y-1 max-h-72 overflow-auto">
-                  {detail.history.length === 0 && <div className="text-gray-400">Aucun achat.</div>}
+                  {detail.history.length === 0 && <div className="text-gray-400">{t("cust.no_purchase")}</div>}
                   {detail.history.map((h: any, i: number) => (
                     <div key={i} className="flex items-center justify-between p-2 rounded-xl border border-gray-100">
                       <div className="flex items-center gap-2">

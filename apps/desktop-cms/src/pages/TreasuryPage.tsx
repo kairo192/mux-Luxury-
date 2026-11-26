@@ -86,7 +86,7 @@ export const TreasuryPage: React.FC = () => {
     e.preventDefault();
     const parsedAmount = parseInt(movAmount, 10);
     if (isNaN(parsedAmount) || parsedAmount <= 0) {
-      setError("Le montant doit être un entier positif en DZD");
+      setError(t("tre.bad_amount"));
       return;
     }
 
@@ -154,7 +154,7 @@ export const TreasuryPage: React.FC = () => {
             <AlertTriangle className="w-4 h-4 text-red-600 shrink-0" />
             <span>{error}</span>
           </span>
-          <button aria-label="Masquer le message" onClick={() => setError(null)} className="text-red-500 font-bold hover:opacity-75 transition">
+          <button aria-label={t("tre.hide")} onClick={() => setError(null)} className="text-red-500 font-bold hover:opacity-75 transition">
             <X className="w-4 h-4" />
           </button>
         </div>
@@ -165,7 +165,7 @@ export const TreasuryPage: React.FC = () => {
             <CheckCircle2 className="w-4 h-4 text-emerald-700 shrink-0" />
             <span>{success}</span>
           </span>
-          <button aria-label="Masquer le message" onClick={() => setSuccess(null)} className="text-emerald-600 font-bold hover:opacity-75 transition">
+          <button aria-label={t("tre.hide")} onClick={() => setSuccess(null)} className="text-emerald-600 font-bold hover:opacity-75 transition">
             <X className="w-4 h-4" />
           </button>
         </div>
@@ -180,14 +180,14 @@ export const TreasuryPage: React.FC = () => {
               <DollarSign className="w-4 h-4 text-emerald-700" />
               {t("treasury.stat_cash")}
             </span>
-            <span className="text-[10px] bg-emerald-50 text-emerald-800 font-bold px-2 py-0.5 rounded-full">Physique</span>
+            <span className="text-[10px] bg-emerald-50 text-emerald-800 font-bold px-2 py-0.5 rounded-full">{t("tre.physical")}</span>
           </div>
           <div className="text-3xl font-bold font-mono text-[#063D2E] mt-2">
             {(summary?.cash_balance_dzd ?? 0).toLocaleString()}{" "}
             <span className="text-sm font-sans font-normal text-[#D4AF62]">DZD</span>
           </div>
           <div className="text-[11px] text-gray-500 mt-2">
-            Disponible immédiatement au tiroir-caisse
+            {t("tre.cash_desc")}
           </div>
         </div>
 
@@ -198,14 +198,14 @@ export const TreasuryPage: React.FC = () => {
               <Building2 className="w-4 h-4 text-blue-600" />
               {t("treasury.stat_bank")}
             </span>
-            <span className="text-[10px] bg-blue-50 text-blue-700 font-bold px-2 py-0.5 rounded-full">Banque</span>
+            <span className="text-[10px] bg-blue-50 text-blue-700 font-bold px-2 py-0.5 rounded-full">{t("tre.bank")}</span>
           </div>
           <div className="text-3xl font-bold font-mono text-gray-900 mt-2">
             {(summary?.bank_balance_dzd ?? 0).toLocaleString()}{" "}
             <span className="text-sm font-sans font-normal text-[#D4AF62]">DZD</span>
           </div>
           <div className="text-[11px] text-gray-500 mt-2">
-            Fonds sur comptes bancaires professionnels
+            {t("tre.bank_desc")}
           </div>
         </div>
 
@@ -216,14 +216,14 @@ export const TreasuryPage: React.FC = () => {
               <Zap className="w-4 h-4 text-[#D4AF62]" />
               {t("treasury.stat_liquidity")}
             </span>
-            <span className="text-[10px] bg-white/10 text-[#E8D4A5] font-bold px-2 py-0.5 rounded-full border border-white/15">Consolidé</span>
+            <span className="text-[10px] bg-white/10 text-[#E8D4A5] font-bold px-2 py-0.5 rounded-full border border-white/15">{t("tre.consolidated")}</span>
           </div>
           <div className="text-3xl font-bold font-mono text-white mt-2">
             {(summary?.total_liquidity_dzd ?? 0).toLocaleString()}{" "}
             <span className="text-sm font-sans font-normal text-[#D4AF62]">DZD</span>
           </div>
           <div className="text-[11px] text-emerald-200 mt-2">
-            Caisse physique + Comptes bancaires consolidés
+            {t("tre.liquidity_desc")}
           </div>
         </div>
 
@@ -234,14 +234,14 @@ export const TreasuryPage: React.FC = () => {
               <Truck className="w-4 h-4 text-amber-600" />
               {t("treasury.stat_cod_pending")}
             </span>
-            <span className="text-[10px] bg-amber-50 text-amber-700 font-bold px-2 py-0.5 rounded-full">En cours</span>
+            <span className="text-[10px] bg-amber-50 text-amber-700 font-bold px-2 py-0.5 rounded-full">{t("tre.in_progress")}</span>
           </div>
           <div className="text-3xl font-bold font-mono text-amber-700 mt-2">
             {(summary?.pending_cod_collections_dzd ?? 0).toLocaleString()}{" "}
             <span className="text-sm font-sans font-normal text-[#D4AF62]">DZD</span>
           </div>
           <div className="text-[11px] text-gray-500 mt-2">
-            Commandes confirmées, en préparation ou expédiées : à encaisser à la livraison
+            {t("tre.cod_desc")}
           </div>
         </div>
 
@@ -250,9 +250,9 @@ export const TreasuryPage: React.FC = () => {
           <div className="flex items-center justify-between text-xs font-semibold uppercase tracking-wider text-gray-500">
             <span className="flex items-center gap-1.5 font-bold text-gray-700">
               <FileSpreadsheet className="w-4 h-4 text-red-600" />
-              Dettes Fournisseurs
+              {t("tre.supplier_debts")}
             </span>
-            <span className="text-[10px] bg-red-50 text-red-700 font-bold px-2 py-0.5 rounded-full">Passif</span>
+            <span className="text-[10px] bg-red-50 text-red-700 font-bold px-2 py-0.5 rounded-full">{t("tre.liability")}</span>
           </div>
           <div className="text-3xl font-bold font-mono text-red-600 mt-2">
             {(summary?.supplier_debts_dzd ?? 0).toLocaleString()}{" "}
@@ -267,7 +267,7 @@ export const TreasuryPage: React.FC = () => {
               <Boxes className="w-4 h-4 text-purple-600" />
               {t("accounting.stat_inventory_val")}
             </span>
-            <span className="text-[10px] bg-purple-50 text-purple-700 font-bold px-2 py-0.5 rounded-full">PMP</span>
+            <span className="text-[10px] bg-purple-50 text-purple-700 font-bold px-2 py-0.5 rounded-full">{t("tre.wac")}</span>
           </div>
           <div className="text-3xl font-bold font-mono text-purple-900 mt-2">
             {(summary?.inventory_valuation_dzd ?? 0).toLocaleString()}{" "}
@@ -283,7 +283,7 @@ export const TreasuryPage: React.FC = () => {
             {t("treasury.subtitle")}
           </h3>
           <span className="text-xs text-gray-500 font-mono">
-            {movements.length} mouvements
+            {t("tre.movements_n", { n: movements.length })}
           </span>
         </div>
 
@@ -303,8 +303,8 @@ export const TreasuryPage: React.FC = () => {
                   <th className="py-3 px-4">{t("treasury.th_type")} / {t("treasury.th_category")}</th>
                   <th className="py-3 px-4">{t("expense_report.th_desc")}</th>
                   <th className="py-3 px-4 text-right">{t("treasury.th_amount")}</th>
-                  <th className="py-3 px-4 text-right">Solde du compte après</th>
-                  <th className="py-3 px-4 text-right">Opérateur</th>
+                  <th className="py-3 px-4 text-right">{t("tre.balance_after")}</th>
+                  <th className="py-3 px-4 text-right">{t("tre.operator")}</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-100">
@@ -331,7 +331,7 @@ export const TreasuryPage: React.FC = () => {
                         <div>{m.notes || m.description || "—"}</div>
                         {(m.reference_id || m.source_reference) && (
                           <div className="text-[11px] font-mono text-gray-400">
-                            Réf. {m.reference_id || m.source_reference}
+                            {t("tre.ref", { ref: m.reference_id || m.source_reference })}
                           </div>
                         )}
                       </td>
@@ -378,7 +378,7 @@ export const TreasuryPage: React.FC = () => {
             <form onSubmit={handleRecordMovement} className="p-6 space-y-4">
               <div>
                 <label className="block text-xs font-semibold text-gray-700 mb-1">
-                  Type *
+                  {t("tre.type")}
                 </label>
                 <div className="grid grid-cols-2 gap-3">
                   <button
@@ -423,38 +423,37 @@ export const TreasuryPage: React.FC = () => {
                 >
                   {movType === "inflow" ? (
                     <>
-                      <option value="cash_in">Fond de caisse / alimentation (caisse)</option>
-                      <option value="bank_withdrawal">Retrait à la banque vers la caisse (transfert)</option>
-                      <option value="capital_contribution">Apport du propriétaire</option>
-                      <option value="other_inflow">Autre entrée</option>
+                      <option value="cash_in">{t("tre.opt_cash_in")}</option>
+                      <option value="bank_withdrawal">{t("tre.opt_bank_withdrawal")}</option>
+                      <option value="capital_contribution">{t("tre.opt_capital_contribution")}</option>
+                      <option value="other_inflow">{t("tre.opt_other_inflow")}</option>
                     </>
                   ) : (
                     <>
-                      <option value="cash_out">Retrait du propriétaire</option>
-                      <option value="bank_deposit">Dépôt d'espèces à la banque (transfert)</option>
-                      <option value="courier_remittance">Versement du livreur sur le compte (transfert)</option>
-                      <option value="minor_expense">Petite dépense boutique (caisse)</option>
-                      <option value="cash_adjustment">Régularisation d'écart de caisse</option>
-                      <option value="other_outflow">Autre sortie</option>
+                      <option value="cash_out">{t("tre.opt_cash_out")}</option>
+                      <option value="bank_deposit">{t("tre.opt_bank_deposit")}</option>
+                      <option value="courier_remittance">{t("tre.opt_courier_remittance")}</option>
+                      <option value="minor_expense">{t("tre.opt_minor_expense")}</option>
+                      <option value="cash_adjustment">{t("tre.opt_cash_adjustment")}</option>
+                      <option value="other_outflow">{t("tre.opt_other_outflow")}</option>
                     </>
                   )}
                 </select>
                 <p className="text-[11px] text-gray-500 mt-1">
-                  Les ventes en magasin, les commandes livrées et les dépenses sont enregistrées automatiquement :
-                  utilisez ce formulaire seulement pour les autres mouvements.
+                  {t("tre.auto_note")}
                 </p>
               </div>
 
               {["capital_contribution", "other_inflow", "cash_out", "other_outflow"].includes(movCategory) && (
                 <div>
-                  <label className="block text-xs font-semibold text-gray-700 mb-1">Compte</label>
+                  <label className="block text-xs font-semibold text-gray-700 mb-1">{t("tre.account")}</label>
                   <select
                     value={movAccount}
                     onChange={(e) => setMovAccount(e.target.value as "cash_box" | "bank_account")}
                     className="w-full text-xs p-2 border border-gray-300 rounded focus:border-[#063D2E] outline-none"
                   >
-                    <option value="cash_box">Caisse (espèces)</option>
-                    <option value="bank_account">Banque / CCP</option>
+                    <option value="cash_box">{t("tre.acc_cash")}</option>
+                    <option value="bank_account">{t("tre.acc_bank")}</option>
                   </select>
                 </div>
               )}
