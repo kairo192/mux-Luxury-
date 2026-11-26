@@ -112,9 +112,9 @@ export const ExpenseReportPage: React.FC = () => {
       ) : data ? (
         <>
           <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-            <Tile icon={Wallet} label={t("expense_report.tile_total")} value={fmt(data.totals.total_dzd)} sub={`${data.totals.count} entrée(s)`} accent />
+            <Tile icon={Wallet} label={t("expense_report.tile_total")} value={fmt(data.totals.total_dzd)} sub={t("misc.entries_n", { n: data.totals.count })} accent />
             <Tile icon={Layers} label={t("expense_report.tile_categories")} value={String(data.totals.categories_count)} sub="distinctes" />
-            <Tile icon={Clock} label={t("expense_report.tile_pending")} value={fmt(data.totals.pending_dzd)} sub="à régler" tone={data.totals.pending_dzd > 0 ? "warn" : undefined} />
+            <Tile icon={Clock} label={t("expense_report.tile_pending")} value={fmt(data.totals.pending_dzd)} sub={t("misc.to_pay")} tone={data.totals.pending_dzd > 0 ? "warn" : undefined} />
             <Tile icon={CalendarRange} label={t("expense_report.tile_active_days")} value={String(data.by_day.length)} sub="jour(s)" />
           </div>
 

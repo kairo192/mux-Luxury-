@@ -22,6 +22,7 @@ import {
   type MirrorVariant,
   type MirrorStatus,
 } from "./posMirror";
+import { tr } from "../i18n/translations";
 
 const BATCH = 500;
 
@@ -72,8 +73,8 @@ async function chunkedUpsert<T>(
  *  when a step failed: the sync must then stop BEFORE recording the new
  *  catalogue generation, or products removed on the server would stay. */
 async function resetMirror(): Promise<string | null> {
-  if (!(await mirrorClear())) return "Réinitialisation du miroir échouée";
-  if (!(await mirrorInit())) return "Initialisation du miroir échouée";
+  if (!(await mirrorClear())) return tr("misc.mirror_reset_failed");
+  if (!(await mirrorInit())) return tr("misc.mirror_init_failed");
   return null;
 }
 
@@ -83,11 +84,11 @@ export async function syncCatalog(force = false): Promise<SyncReport> {
     ok: false, mode: "skip", products_upserted: 0, variants_upserted: 0,
     cursor: null, elapsed_ms: Date.now() - start, ...p,
   });
-  if (!isMirrorAvailable()) return report({ error: "Miroir indisponible (hors Tauri)" });
+  if (!isMirrorAvailable()) return report({ error: tr("misc.mirror_unavailable") });
 
   // Ensure the mirror is initialised (schema in place).
   const initStatus = await mirrorInit();
-  if (!initStatus) return report({ error: "Initialisation du miroir échouée" });
+  if (!initStatus) return report({ error: tr("misc.mirror_init_failed") });
 
   // Decide: snapshot or delta?
   const status = await mirrorStatus();

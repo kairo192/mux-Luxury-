@@ -32,7 +32,7 @@ export const BusinessDashboardPage: React.FC = () => {
       setData(await DesktopCmsApi.getBusinessDashboard());
       setError(null);
     } catch (e: any) {
-      setError(e?.userMessage || "Chargement impossible");
+      setError(e?.userMessage || t("misc.load_failed"));
     } finally {
       setLoading(false);
     }

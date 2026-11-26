@@ -690,7 +690,7 @@ export const PosPage: React.FC<{ onInventoryUpdated?: () => void }> = ({ onInven
           <div className="flex items-center gap-2">
             {queueCounts.conflict > 0 && (
               <button type="button" onClick={() => setShowConflicts(true)} className="h-10 px-3 rounded-xl bg-white/60 font-bold flex items-center gap-1.5 active:scale-95">
-                <CloudOff className="w-4 h-4" /> Voir conflits
+                <CloudOff className="w-4 h-4" /> {t("misc.see_conflicts")}
               </button>
             )}
             <button
@@ -699,7 +699,7 @@ export const PosPage: React.FC<{ onInventoryUpdated?: () => void }> = ({ onInven
               onClick={() => runSync(false)}
               className="h-10 px-4 rounded-xl bg-[#063D2E] text-[#D4AF62] font-bold flex items-center gap-1.5 disabled:opacity-40 active:scale-95"
             >
-              {syncing ? <RefreshCw className="w-4 h-4 animate-spin" /> : <CloudUpload className="w-4 h-4" />} Synchroniser
+              {syncing ? <RefreshCw className="w-4 h-4 animate-spin" /> : <CloudUpload className="w-4 h-4" />} {t("misc.sync")}
             </button>
           </div>
         </div>
@@ -726,14 +726,14 @@ export const PosPage: React.FC<{ onInventoryUpdated?: () => void }> = ({ onInven
             onClick={handleOpenRegister}
             className="mt-4 w-full h-16 rounded-2xl bg-[#063D2E] text-[#D4AF62] font-extrabold text-lg flex items-center justify-center gap-2 disabled:opacity-50 active:scale-[0.99]"
           >
-            <Unlock className="w-6 h-6" /> Ouvrir la caisse
+            <Unlock className="w-6 h-6" /> {t("misc.open_register")}
           </button>
           <button
             type="button"
             onClick={openSessionsHistory}
             className="mt-2 w-full h-11 rounded-2xl border-2 border-[#063D2E]/10 text-[#063D2E] font-bold flex items-center justify-center gap-2 active:scale-95"
           >
-            <History className="w-5 h-5" /> Historique des caisses
+            <History className="w-5 h-5" /> {t("misc.register_history")}
           </button>
         </div>
       ) : (

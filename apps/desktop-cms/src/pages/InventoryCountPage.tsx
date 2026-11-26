@@ -16,6 +16,7 @@ import { DesktopCmsApi } from "../api/adminClient";
 import { confirmClientAction } from "../utils/clientNotifier";
 import { useT } from "../i18n";
 import { serverDate } from "../utils/serverDate";
+import { localeFor } from "../i18n/translations";
 
 interface Count {
   id: number;
@@ -107,9 +108,9 @@ export const InventoryCountPage: React.FC<{ onInventoryUpdated?: () => void }> =
   const openNew = async () => {
     setBusy(true);
     try {
-      const c = await DesktopCmsApi.openInventoryCount({ name: `Inventaire ${new Date().toLocaleDateString("fr-FR")}` });
+      const c = await DesktopCmsApi.openInventoryCount({ name: t("misc.count_name", { date: new Date().toLocaleDateString(localeFor()) }) });
       setActive(c);
-      flash(`Inventaire ${c.reference} ouvert`);
+      flash(t("misc.count_opened", { ref: c.reference }));
       load();
     } catch (e: any) {
       flashError(e?.userMessage || t("status.error"));
@@ -135,7 +136,7 @@ export const InventoryCountPage: React.FC<{ onInventoryUpdated?: () => void }> =
     try {
       const look = await DesktopCmsApi.posLookup(code);
       if (look.match_type !== "variant") {
-        flashError(`Aucune variante pour « ${code} »`);
+        flashError(t("misc.no_variant", { code }));
         return;
       }
       const vid = look.variant.variant_id;
@@ -151,7 +152,7 @@ export const InventoryCountPage: React.FC<{ onInventoryUpdated?: () => void }> =
   const saveQty = async (line: CountLine) => {
     if (!active || !qtyEdit) return;
     const n = parseInt(qtyEdit.value || "0", 10);
-    if (isNaN(n) || n < 0) return flashError("Quantité invalide");
+    if (isNaN(n) || n < 0) return flashError(t("misc.bad_qty"));
     const delta = n - line.counted_qty;
     if (delta === 0) {
       setQtyEdit(null);
@@ -180,10 +181,7 @@ export const InventoryCountPage: React.FC<{ onInventoryUpdated?: () => void }> =
     if (!active) return;
     const confirmed = await confirmClientAction({
       title: t("inventory_count.btn_apply"),
-      message:
-        `${active.reference} : le stock de ${(active.items || []).length} article(s) compté(s) sera corrigé ` +
-        "de l'écart trouvé (compté − stock affiché au moment du comptage). Les ventes faites depuis le comptage sont conservées ; " +
-        "les articles non comptés ne changent pas. Cette opération est définitive.",
+      message: t("misc.apply_count_msg", { ref: active.reference, n: (active.items || []).length }),
       confirmLabel: t("inventory_count.btn_apply"),
       danger: false,
     });
@@ -387,7 +385,7 @@ export const InventoryCountPage: React.FC<{ onInventoryUpdated?: () => void }> =
                     <span className="font-bold text-[#063D2E]">{c.reference}</span>
                     <span className={`px-2 py-0.5 rounded-lg text-xs font-bold ${BADGE[c.status]}`}>{statusLabels[c.status]}</span>
                   </div>
-                  <div className="text-gray-500 text-[11px] mt-1">{c.name} · {c.total_lines} · écart {c.total_variance_abs}</div>
+                  <div className="text-gray-500 text-[11px] mt-1">{t("misc.count_line", { name: c.name, lines: c.total_lines, v: c.total_variance_abs })}</div>
                   <div className="text-gray-400 text-[11px]">{serverDate(c.opened_at).toLocaleString("fr-FR")}</div>
                 </button>
               ))}

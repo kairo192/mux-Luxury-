@@ -10,15 +10,7 @@ const fmt = (dzd: number) => `${Number(dzd || 0).toLocaleString("fr-DZ")} DA`;
 function todayIso(): string { return localDateIso(); }
 function monthStartIso(): string { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-01`; }
 
-const SOURCE_LABEL: Record<string, string> = {
-  manual: "Manuel",
-  pos_cash_in: "Encaisse POS",
-  pos_cash_out: "Retrait POS",
-  cod_delivery: "Encaissement COD",
-  supplier_payment: "Règlement fournisseur",
-  expense: "Dépense",
-  purchase_order: "Commande fournisseur",
-};
+const SOURCES = new Set(["manual", "pos_cash_in", "pos_cash_out", "cod_delivery", "supplier_payment", "expense", "purchase_order"]);
 
 export const TreasuryReportPage: React.FC = () => {
   const t = useT();
@@ -71,7 +63,7 @@ export const TreasuryReportPage: React.FC = () => {
 
   const accountIcon = (acc: string) => (acc === "bank_account" ? Building2 : Banknote);
   const accountLabel = (acc: string) => (acc === "bank_account" ? t("treasury_report.acc_bank") : acc === "cash_box" ? t("treasury_report.acc_cash") : acc);
-  const sourceLabel = (s: string) => SOURCE_LABEL[s] || codeLabel(s);
+  const sourceLabel = (s: string) => (SOURCES.has(s) ? t(`misc.src_${s}`) : codeLabel(s));
 
   return (
     <div className="space-y-4 text-sm">

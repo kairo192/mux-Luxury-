@@ -113,7 +113,7 @@ export function ClientNotificationCenter({ messageQueue, setMessageQueue, closeM
                     onClick={closeMessageBox}
                     className="px-6 py-2.5 rounded-xl bg-[#063D2E] hover:bg-[#02291F] text-[#D4AF62] font-extrabold text-xs shadow focus:outline-none focus:ring-2 focus:ring-[#D4AF62] focus:ring-offset-2"
                   >
-                    {messageQueue.length > 1 ? t("msgbox.next") : t("msgbox.ok") || "Compris (Fermer)"}
+                    {messageQueue.length > 1 ? t("msgbox.next") : t("msgbox.ok") || t("misc.got_it")}
                   </button>
                 </div>
               </div>

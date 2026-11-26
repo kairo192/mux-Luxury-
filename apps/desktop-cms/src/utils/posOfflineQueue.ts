@@ -10,6 +10,8 @@
 // Conflicts/failures are NEVER silently discarded — they stay for the cashier.
 // ===========================================================================
 
+import { tr } from "../i18n/translations";
+
 export type PosQueueStatus = "pending" | "synced" | "conflict" | "failed";
 
 export interface PosSalePayload {
@@ -295,7 +297,7 @@ export async function syncPosQueue(
     if (r.status === "conflict") {
       return { ...i, status: "conflict" as PosQueueStatus, error: r.error || "Conflit", reason: r.reason || null, attempts: i.attempts + 1 };
     }
-    return { ...i, status: "failed" as PosQueueStatus, error: r.error || "Échec", attempts: i.attempts + 1 };
+    return { ...i, status: "failed" as PosQueueStatus, error: r.error || tr("misc.failed"), attempts: i.attempts + 1 };
   });
   write(updated);
   return response.summary;

@@ -29,13 +29,13 @@ export const StockWriteOffModal: React.FC<{
 
   const submit = async () => {
     const n = parseInt(qty || "0", 10);
-    if (isNaN(n) || n <= 0) return setError("Quantité invalide");
-    if (n > currentStock) return setError(`Stock insuffisant (${currentStock} dispo)`);
+    if (isNaN(n) || n <= 0) return setError(t("misc.bad_qty"));
+    if (n > currentStock) return setError(t("misc.stock_short", { n: currentStock }));
     setBusy(true);
     setError(null);
     try {
       const r = await DesktopCmsApi.stockWriteOff(variantId, n, reason, notes.trim() || undefined);
-      setDone(`Nouveau stock : ${r.new_qty}`);
+      setDone(t("misc.new_stock", { n: r.new_qty }));
       onDone?.();
       setTimeout(onClose, 1200);
     } catch (e: any) {

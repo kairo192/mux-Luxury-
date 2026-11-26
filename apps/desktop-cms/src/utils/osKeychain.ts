@@ -5,6 +5,8 @@
 // Strictly avoids storing any authentication token or secret in browser localStorage.
 // ============================================================================
 
+import { tr } from "../i18n/translations";
+
 const volatileMemorySecrets: Record<string, string> = {};
 
 function getTauriInvoke(): ((cmd: string, args?: Record<string, unknown>) => Promise<any>) | null {
@@ -80,7 +82,7 @@ export async function getOsKeychainStatus(): Promise<{
   }
   return {
     service: "dz.musluxury.cms.secure",
-    provider: "Session du navigateur (sans coffre-fort système)",
+    provider: tr("misc.browser_session"),
     localstorage_tokens_disabled: true,
     os_keychain: false,
   };

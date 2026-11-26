@@ -42,17 +42,17 @@ export function InventoryPage({ products, movements, onAdjustStock, onPrintLabel
                   </div>
                 </div>
                 <div className="flex items-center gap-1.5">
-                  <button type="button" aria-label="Retirer une unité" disabled={Number(v.stock_qty) <= 0} title={Number(v.stock_qty) <= 0 ? "Stock déjà à 0" : undefined} onClick={() => handleAdjustStock(v.id, -1)} className="px-2.5 py-1 rounded bg-gray-100 font-bold disabled:opacity-40">-1</button>
+                  <button type="button" aria-label={t("misc.remove_one")} disabled={Number(v.stock_qty) <= 0} title={Number(v.stock_qty) <= 0 ? t("misc.stock_zero") : undefined} onClick={() => handleAdjustStock(v.id, -1)} className="px-2.5 py-1 rounded bg-gray-100 font-bold disabled:opacity-40">-1</button>
                   <button type="button" onClick={() => handleAdjustStock(v.id, 1)} className="px-2.5 py-1 rounded bg-emerald-100 text-emerald-900 font-bold">+1</button>
                   <button type="button" onClick={() => handleAdjustStock(v.id, 5)} className="px-2.5 py-1 rounded bg-[#063D2E] text-[#D4AF62] font-bold">+5</button>
-                  <button type="button" onClick={() => setBarcodeVariantId(v.id)} title="Code-barres & étiquette" className="px-2.5 py-1 rounded bg-[#D4AF62]/20 text-[#7a5c16] font-bold flex items-center gap-1">
+                  <button type="button" onClick={() => setBarcodeVariantId(v.id)} title={t("misc.barcode_label")} className="px-2.5 py-1 rounded bg-[#D4AF62]/20 text-[#7a5c16] font-bold flex items-center gap-1">
                     <ScanLine className="w-3.5 h-3.5" /> {t("devices.label_printer")}
                   </button>
                   <button
                     type="button"
                     disabled={v.stock_qty <= 0}
                     onClick={() => setWriteOffTarget({ variantId: v.id, sku: v.sku, productName: p.name_fr, variantTitle: v.title, currentStock: v.stock_qty })}
-                    title="Sortie de stock"
+                    title={t("misc.write_off")}
                     className="px-2.5 py-1 rounded bg-red-100 text-red-700 font-bold disabled:opacity-40"
                   >
                     {t("stock_writeoff.title")}

@@ -1,7 +1,7 @@
 import { keychainSetSecret, keychainGetSecret, keychainDeleteSecret, getOsKeychainStatus } from "../utils/osKeychain";
 import { ClientSafeApiError, sanitizeAndTranslateError } from "../utils/clientNotifier";
 import { recordNetworkSample } from "../utils/networkQueue";
-import { getCurrentLang } from "../i18n/translations";
+import { getCurrentLang, tr as trText } from "../i18n/translations";
 // ============================================================================
 // TAURI 2 DESKTOP CMS — SHARED AUTHENTICATED HTTPS API CLIENT
 // Features:
@@ -254,7 +254,7 @@ async function adminFetch(path: string, options: RequestInit = {}, timeoutMs = d
         if (!isAuthEndpoint && forCurrentSession) {
           setAccessToken(null);
         }
-        const tr401 = sanitizeAndTranslateError(data, 401, path, "Authentification requise");
+        const tr401 = sanitizeAndTranslateError(data, 401, path, trText("misc.auth_required"));
         throw new ClientSafeApiError({
           status: 401,
           title: tr401.title,
@@ -267,7 +267,7 @@ async function adminFetch(path: string, options: RequestInit = {}, timeoutMs = d
       }
 
       if (!res.ok) {
-        const tr = sanitizeAndTranslateError(data, res.status, path, "Opération refusée");
+        const tr = sanitizeAndTranslateError(data, res.status, path, trText("misc.op_refused"));
         throw new ClientSafeApiError({
           status: res.status,
           title: tr.title,
@@ -298,7 +298,7 @@ async function adminFetch(path: string, options: RequestInit = {}, timeoutMs = d
         continue;
       }
       recordNetworkSample({ online: false, requestId: reqId });
-      const trNet = sanitizeAndTranslateError(err, 0, path, "Erreur de communication");
+      const trNet = sanitizeAndTranslateError(err, 0, path, trText("misc.comm_error"));
       throw new ClientSafeApiError({
         status: trNet.status,
         title: trNet.title,
@@ -384,7 +384,7 @@ export const DesktopCmsApi = {
     });
     if (!res.ok) {
       const data = await res.json().catch(() => ({}));
-      const tr = sanitizeAndTranslateError(data, res.status, "/admin/system/backups/download", "Copie impossible");
+      const tr = sanitizeAndTranslateError(data, res.status, "/admin/system/backups/download", trText("misc.copy_failed"));
       throw new ClientSafeApiError({ status: res.status, title: tr.title, userMessage: tr.message, code: tr.code });
     }
     return new Uint8Array(await res.arrayBuffer());

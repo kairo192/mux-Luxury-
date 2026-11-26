@@ -4,6 +4,7 @@
 // app (browser), a copy is a normal file download.
 import { DesktopCmsApi } from "../api/adminClient";
 import { getTauriInvoke, isTauriRuntime } from "./posHardware";
+import { tr } from "../i18n/translations";
 
 export type PcCopy = { name: string; size: number; modified: number };
 export type PcCopies = { folder: string; items: PcCopy[]; keep: number };
@@ -44,7 +45,7 @@ export async function sendPcCopyToServer(source: { name: string } | File): Promi
     return DesktopCmsApi.importBackupFromPc(source.name, new Uint8Array(await source.arrayBuffer()));
   }
   const invoke = getTauriInvoke();
-  if (!invoke) throw new Error("Application de bureau requise.");
+  if (!invoke) throw new Error(tr("misc.desktop_required"));
   const data: number[] = await invoke("backup_copy_read", { fileName: source.name });
   return DesktopCmsApi.importBackupFromPc(source.name, Uint8Array.from(data));
 }

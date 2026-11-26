@@ -14,6 +14,8 @@
 // shareable PDF file.
 // ============================================================================
 
+import { tr } from "../i18n/translations";
+
 export interface SystemPrintOptions {
   /** Visible <title> of the preview window; also what Windows shows as
    * the job name in the queue. */
@@ -61,11 +63,11 @@ function buildPageSizeCss(opts: SystemPrintOptions): string {
 export function openSystemPrint(opts: SystemPrintOptions): SystemPrintResult {
   try {
     if (typeof window === "undefined") {
-      return { ok: false, error: "Environnement non graphique" };
+      return { ok: false, error: tr("misc.no_gui") };
     }
     const w = window.open("", "_blank", "width=720,height=820");
     if (!w) {
-      return { ok: false, error: "Le navigateur a bloqué la fenêtre d'aperçu — autorisez les pop-ups." };
+      return { ok: false, error: tr("misc.popup_blocked") };
     }
     const css = `
       ${buildPageSizeCss(opts)}
@@ -88,7 +90,7 @@ export function openSystemPrint(opts: SystemPrintOptions): SystemPrintResult {
     w.document.close();
     return { ok: true };
   } catch (e: any) {
-    return { ok: false, error: String(e?.message ?? e ?? "Échec de l'impression système") };
+    return { ok: false, error: String(e?.message ?? e ?? tr("misc.sys_print_failed")) };
   }
 }
 

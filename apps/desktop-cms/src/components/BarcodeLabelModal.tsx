@@ -157,7 +157,7 @@ export const BarcodeLabelModal: React.FC<{
     const widthMm = Number(settings.width_mm) || 50;
     const heightMm = Number(settings.height_mm) || 30;
     const r = openSystemPrint({
-      title: `Étiquette ${label.sku}`,
+      title: t("misc.label_title", { sku: label.sku }),
       paper: { kind: "mm", width: widthMm, height: heightMm },
       marginMm: 2,
       html: renderLabelsHtml([{
@@ -330,7 +330,7 @@ export const BarcodeLabelModal: React.FC<{
                 {codeCheck && (
                   <div className={`mt-1.5 text-xs font-bold ${codeCheck.valid ? "text-emerald-600" : "text-red-600"}`}>
                     {codeCheck.valid
-                      ? `✓ Valide (${codeCheck.symbology === "ean13" ? "EAN-13" : codeCheck.symbology === "ean8" ? "EAN-8" : codeCheck.symbology === "upca" ? "UPC-A" : "Code 128"})`
+                      ? t("misc.valid", { type: codeCheck.symbology === "ean13" ? "EAN-13" : codeCheck.symbology === "ean8" ? "EAN-8" : codeCheck.symbology === "upca" ? "UPC-A" : "Code 128" })
                       : `✗ ${codeCheck.reason || "Code-barres invalide"}`}
                   </div>
                 )}

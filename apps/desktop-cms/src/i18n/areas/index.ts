@@ -1,5 +1,10 @@
 // Every area dictionary of the CMS. Add a new file here when a screen gets its texts.
 import type { AreaDict } from "./define";
+import { misc } from "./misc";
+import { dash } from "./dash";
+import { owner } from "./owner";
+import { login } from "./login";
+import { dpm } from "./dpm";
 import { cust } from "./cust";
 import { dev } from "./dev";
 import { prs } from "./prs";
@@ -28,4 +33,4 @@ import { field } from "./field";
 import { status_label } from "./status_label";
 import { app } from "./app";
 
-export const AREAS: AreaDict[] = [app, status_label, field, errors, pe, cb, cbf, vm, posx, hp, pur, cs, mv, code, order_status, tre, exp, role, users, dw, ord, acc, charts, hw, prs, dev, cust];
+export const AREAS: AreaDict[] = [app, status_label, field, errors, pe, cb, cbf, vm, posx, hp, pur, cs, mv, code, order_status, tre, exp, role, users, dw, ord, acc, charts, hw, prs, dev, cust, dpm, login, owner, dash, misc];
