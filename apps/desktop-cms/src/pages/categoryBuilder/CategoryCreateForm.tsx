@@ -10,7 +10,7 @@ import type { CategoryPreset, DraftAttribute, DraftAttributeOption } from "./cat
 import { pickLang } from "../../i18n/translations";
 
 /** New category: presets, names, pictures, attributes, live shop preview. */
-export function CategoryCreateForm({ handleSaveCategory, setShowCreateForm, activePresetId, applyCategoryPreset, nameFr, setNameFr, slug, setSlug, nameAr, setNameAr, nameEn, setNameEn, descriptionFr, setDescriptionFr, displayOrder, setDisplayOrder, imageUrl, setImageUrl, bannerUrl, setBannerUrl, attributes, moveDraftAttribute, removeDraftAttribute, newKey, setNewKey, newLabelFr, setNewLabelFr, newType, setNewType, newUnit, setNewUnit, setTempColorName, setTempColorHex, tempColorHex, tempColorName, addColorToRichList, newRichColors, removeColorFromRichList, setNewOptionsCsv, newOptionsCsv, newVariantAxis, setNewVariantAxis, newFilterable, setNewFilterable, newVisibleOnStorefront, setNewVisibleOnStorefront, newRequired, setNewRequired, addDraftAttribute }: {
+export function CategoryCreateForm({ handleSaveCategory, setShowCreateForm, activePresetId, applyCategoryPreset, nameFr, setNameFr, slug, setSlug, nameAr, setNameAr, nameEn, setNameEn, descriptionFr, setDescriptionFr, displayOrder, setDisplayOrder, imageUrl, setImageUrl, bannerUrl, setBannerUrl, attributes, moveDraftAttribute, removeDraftAttribute, newKey, setNewKey, newLabelFr, setNewLabelFr, newType, setNewType, newUnit, setNewUnit, setTempColorName, setTempColorHex, tempColorHex, tempColorName, addColorToRichList, newRichColors, removeColorFromRichList, setNewOptionsCsv, newOptionsCsv, newVariantAxis, setNewVariantAxis, newFilterable, setNewFilterable, newVisibleOnStorefront, setNewVisibleOnStorefront, addDraftAttribute }: {
   handleSaveCategory: (e: React.FormEvent) => Promise<void>;
   setShowCreateForm: React.Dispatch<React.SetStateAction<boolean>>;
   activePresetId: string | null;
@@ -255,11 +255,6 @@ export function CategoryCreateForm({ handleSaveCategory, setShowCreateForm, acti
                     {attr.is_filterable && (
                       <span className="px-2 py-0.5 rounded bg-amber-100 text-amber-900 text-[10px] font-bold border border-amber-300">
                         {t("cbf.filter_badge")}
-                      </span>
-                    )}
-                    {attr.is_required && (
-                      <span className="px-2 py-0.5 rounded bg-rose-100 text-rose-900 text-[10px] font-bold border border-rose-200">
-                        {t("cbf.required_badge")}
                       </span>
                     )}
                   </div>
@@ -524,15 +519,6 @@ export function CategoryCreateForm({ handleSaveCategory, setShowCreateForm, acti
                   className="rounded text-[#063D2E]"
                 />
                 <span>{t("cbf.visible")}</span>
-              </label>
-              <label className="inline-flex items-center gap-1.5 cursor-pointer">
-                <input
-                  type="checkbox"
-                  checked={newRequired}
-                  onChange={(e) => setNewRequired(e.target.checked)}
-                  className="rounded text-[#063D2E]"
-                />
-                <span>{t("cbf.required")}</span>
               </label>
             </div>
 

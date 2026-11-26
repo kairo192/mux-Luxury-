@@ -6,7 +6,7 @@ import { useT } from "../../i18n";
 import { pickLang } from "../../i18n/translations";
 
 /** Add one attribute to an existing category. */
-export function QuickAttributeModal({ quickAttrCategory, setQuickAttrCategory, handleAddAttributeToExisting, quickAttrKey, setQuickAttrKey, quickAttrLabelFr, setQuickAttrLabelFr, quickAttrType, setQuickAttrType, quickAttrOptions, setQuickAttrOptions, quickAttrVariant, setQuickAttrVariant, quickAttrFilterable, setQuickAttrFilterable, quickAttrRequired, setQuickAttrRequired, savingQuickAttr }: {
+export function QuickAttributeModal({ quickAttrCategory, setQuickAttrCategory, handleAddAttributeToExisting, quickAttrKey, setQuickAttrKey, quickAttrLabelFr, setQuickAttrLabelFr, quickAttrType, setQuickAttrType, quickAttrOptions, setQuickAttrOptions, quickAttrVariant, setQuickAttrVariant, quickAttrFilterable, setQuickAttrFilterable, savingQuickAttr }: {
   quickAttrCategory: any | null;
   setQuickAttrCategory: React.Dispatch<React.SetStateAction<any | null>>;
   handleAddAttributeToExisting: (e: React.FormEvent) => Promise<void>;
@@ -115,14 +115,6 @@ export function QuickAttributeModal({ quickAttrCategory, setQuickAttrCategory, h
                 onChange={(e) => setQuickAttrFilterable(e.target.checked)}
               />
               <span>{t("cbf.qa_filter")}</span>
-            </label>
-            <label className="inline-flex items-center gap-2 cursor-pointer font-bold text-gray-800">
-              <input
-                type="checkbox"
-                checked={quickAttrRequired}
-                onChange={(e) => setQuickAttrRequired(e.target.checked)}
-              />
-              <span>{t("cbf.qa_required")}</span>
             </label>
           </div>
 

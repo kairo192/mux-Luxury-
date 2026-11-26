@@ -49,7 +49,7 @@ export const vm = defineArea("vm", {
   "remove_value": ["Retirer cette valeur", "Remove this value", "إزالة هذه القيمة"],
   "remove_custom": ["Retirer cette option personnalisée", "Remove this custom option", "إزالة هذا الخيار المخصّص"],
   "pick_palette": ["Choisir une nuance sur la palette", "Pick a shade from the palette", "اختيار درجة من اللوحة"],
-  "color_name_ph": ["Nom de la couleur (ex. : Vert sauge)…", "Colour name (e.g. Vert sauge)…", "اسم اللون (مثلاً Vert sauge)…"],
+  "color_name_ph": ["Nom de la couleur…", "Colour name…", "اسم اللون…"],
   "add_color": ["Ajouter cette couleur", "Add this colour", "إضافة هذا اللون"],
   "other_value_ph": ["Autre {{axis}}…", "Other {{axis}}…", "{{axis}} آخر…"],
   "add_option": ["Ajouter cette option", "Add this option", "إضافة هذا الخيار"],

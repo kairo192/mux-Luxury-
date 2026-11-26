@@ -167,21 +167,22 @@ class TestLuxeEcommercePlatform(unittest.TestCase):
         )
         self.assertEqual(r_a2.status_code, 201, r_a2.text)
 
-        # Verify dynamic product validation rejects published product missing required 'concentration'
+        # Characteristics are optional: a product is published without 'concentration'
         r_bad_prod = self.client.post(
             "/api/v1/admin/products",
             headers=headers,
             json={
                 "category_id": cat_id,
-                "slug": "oud-royal-alger",
-                "sku": "LUX-PRF-001",
-                "name_fr": "Oud Royal d'Alger",
+                "slug": "oud-royal-sans-fiche",
+                "sku": "LUX-PRF-000",
+                "name_fr": "Oud Royal (sans fiche)",
                 "selling_price_dzd": 14500,
                 "status": "published",
-                "dynamic_attributes": {} # missing required 'concentration'
+                "dynamic_attributes": {},  # 'concentration' left empty
+                "variants": [{"sku": "LUX-PRF-000-50", "title": "50 ml", "stock_qty": 50}],
             }
         )
-        self.assertEqual(r_bad_prod.status_code, 422)
+        self.assertEqual(r_bad_prod.status_code, 201, r_bad_prod.text)
 
         # Saving as draft without required attributes is allowed
         r_draft = self.client.post(

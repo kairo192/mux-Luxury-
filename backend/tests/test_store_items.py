@@ -141,10 +141,10 @@ class TestStoreItems(unittest.TestCase):
         after = self.client.get("/api/v1/admin/store/items", headers=self.h, params={"q": code}).json()["items"][0]
         self.assertEqual(self._variant(after, "Noir / S")["stock_qty"], 2)
 
-    def test_online_needs_what_the_online_shop_needs(self):
+    def test_sold_online_too(self):
+        # an empty characteristic ("Matière") never blocks an article
         r = self._add(sold_online=True)
-        self.assertEqual(r.status_code, 422, r.text)
-        self.assertIn("Matière", r.json()["detail"])
+        self.assertEqual(r.status_code, 201, r.text)
         ok = self._add(category_id=self.free_cat, sold_online=True,
                        variants=[{"title": "Modèle A", "quantity": 2}, {"title": "Modèle B", "quantity": 1}])
         self.assertEqual(ok.status_code, 201, ok.text)
@@ -164,17 +164,17 @@ class TestStoreItems(unittest.TestCase):
         item = r.json()
         self.assertEqual([v["title"] for v in item["variants"]], ["Unique"])
         self.assertEqual(item["total_stock"], 0)
-        # the Products screen edits it (boutique-only: the missing "Matière" does not block)
+        # the Products screen edits it (the empty "Matière" does not block)
         full = next(p for p in self.client.get("/api/v1/admin/products", headers=self.h).json().get("items", [])
                     if p["id"] == item["id"])
         upd = self.client.put(f"/api/v1/admin/products/{item['id']}", headers=self.h, json={
             "expected_version": full["version"], "name_fr": item["name_fr"] + " (cuir)", "selling_price_dzd": 9900})
         self.assertEqual(upd.status_code, 200, upd.text)
         self.assertEqual(upd.json()["sales_channel"], "store")
-        # …but selling it online asks for the missing characteristic
+        # …and puts it on the website too, still without it
         upd = self.client.put(f"/api/v1/admin/products/{item['id']}", headers=self.h, json={
             "expected_version": upd.json()["version"], "name_fr": item["name_fr"], "selling_price_dzd": 9900, "sales_channel": "all"})
-        self.assertEqual(upd.status_code, 422, upd.text)
+        self.assertEqual(upd.status_code, 200, upd.text)
 
     def test_receive_stock_new_colours_and_missing_barcodes(self):
         item = self._add().json()

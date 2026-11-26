@@ -73,16 +73,16 @@ export function CategoryBuilderPage({ onCategoryChanged }: { onCategoryChanged?:
         label_en: "Color",
         input_type: "color",
         unit: "",
-        is_required: true,
+        is_required: false,
         is_visible_on_storefront: true,
         is_filterable: true,
         is_variant_axis: true,
-        options_csv: "Noir Profond, Blanc Pur, Vert Émeraude Mus, Bordeaux Royal",
+        options_csv: "Noir, Blanc, Beige, Marron",
         rich_options: [
-          { value: "Noir Profond", label_fr: "Noir Profond", color_hex: "#0A0A0A", display_order: 1 },
-          { value: "Blanc Pur", label_fr: "Blanc Pur", color_hex: "#FFFFFF", display_order: 2 },
-          { value: "Vert Émeraude Mus", label_fr: "Vert Émeraude Mus", color_hex: "#063D2E", display_order: 3 },
-          { value: "Bordeaux Royal", label_fr: "Bordeaux Royal", color_hex: "#4A0E17", display_order: 4 },
+          { value: "Noir", label_fr: "Noir", color_hex: "#0A0A0A", display_order: 1 },
+          { value: "Blanc", label_fr: "Blanc", color_hex: "#FFFFFF", display_order: 2 },
+          { value: "Beige", label_fr: "Beige", color_hex: "#D9C7A7", display_order: 3 },
+          { value: "Marron", label_fr: "Marron", color_hex: "#6B4226", display_order: 4 },
         ],
       },
       {
@@ -92,7 +92,7 @@ export function CategoryBuilderPage({ onCategoryChanged }: { onCategoryChanged?:
         label_en: "Size",
         input_type: "size",
         unit: "",
-        is_required: true,
+        is_required: false,
         is_visible_on_storefront: true,
         is_filterable: true,
         is_variant_axis: true,
@@ -103,13 +103,13 @@ export function CategoryBuilderPage({ onCategoryChanged }: { onCategoryChanged?:
         label_fr: "Matière",
         label_ar: "المادة",
         label_en: "Material",
-        input_type: "single_select",
+        input_type: "short_text",
         unit: "",
-        is_required: true,
+        is_required: false,
         is_visible_on_storefront: true,
         is_filterable: true,
         is_variant_axis: false,
-        options_csv: "100% Coton Pima, Lin Naturel, Soie Noble",
+        options_csv: "",
       },
     ])
   );
@@ -131,7 +131,7 @@ export function CategoryBuilderPage({ onCategoryChanged }: { onCategoryChanged?:
   const [newVariantAxis, setNewVariantAxis] = useState(false);
   const [newOptionsCsv, setNewOptionsCsv] = useState("");
   const [newRichColors, setNewRichColors] = useState<DraftAttributeOption[]>([]);
-  const [tempColorName, setTempColorName] = useState("Vert Émeraude Mus");
+  const [tempColorName, setTempColorName] = useState("");
   const [tempColorHex, setTempColorHex] = useState("#063D2E");
 
   // Edit Modal State
@@ -190,7 +190,7 @@ export function CategoryBuilderPage({ onCategoryChanged }: { onCategoryChanged?:
             label_en: attr.label_en || attr.label_fr,
             input_type: attr.input_type,
             unit: attr.unit || "",
-            is_required: Boolean(attr.is_required),
+            is_required: false,
             is_visible_on_storefront: Boolean(attr.is_visible_on_storefront),
             is_filterable: Boolean(attr.is_filterable),
             is_variant_axis: Boolean(attr.is_variant_axis),
@@ -328,7 +328,7 @@ export function CategoryBuilderPage({ onCategoryChanged }: { onCategoryChanged?:
         label_en: (newLabelEn || newLabelFr).trim(),
         input_type: newType,
         unit: newUnit.trim(),
-        is_required: newRequired,
+        is_required: false,
         is_visible_on_storefront: newVisibleOnStorefront,
         is_filterable: newFilterable,
         is_variant_axis: newVariantAxis,
@@ -414,7 +414,7 @@ export function CategoryBuilderPage({ onCategoryChanged }: { onCategoryChanged?:
           label_en: attr.label_en || attr.label_fr,
           input_type: attr.input_type,
           unit: attr.unit || "",
-          is_required: Boolean(attr.is_required),
+          is_required: false,
           is_visible_on_storefront: Boolean(attr.is_visible_on_storefront),
           is_filterable: Boolean(attr.is_filterable),
           is_variant_axis: Boolean(attr.is_variant_axis),
@@ -668,7 +668,7 @@ export function CategoryBuilderPage({ onCategoryChanged }: { onCategoryChanged?:
         label_en: quickAttrLabelFr.trim(),
         input_type: quickAttrType,
         unit: "",
-        is_required: quickAttrRequired,
+        is_required: false,
         is_filterable: quickAttrFilterable,
         is_variant_axis: quickAttrVariant,
         display_order: (quickAttrCategory.attributes || []).length + 1,

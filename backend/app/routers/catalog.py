@@ -28,7 +28,7 @@ from ..common import (
 
 from ..catalog_rules import (  # noqa: F401 — shared with the Shop items router
     _INTERNAL_EAN_PREFIX,
-    _assert_publishable,
+    remember_characteristic_value,
     _barcode_in_use,
     _generate_internal_ean13,
     auto_variant_sku,
@@ -474,19 +474,8 @@ def create_dynamic_product(
         cur.execute("SELECT * FROM category_attributes WHERE category_id = ?", (payload.category_id,))
         cat_attrs = {r["attr_key"]: dict(r) for r in cur.fetchall()}
 
-        # Validate required category attributes when publishing (drafts may omit required dynamic attributes)
-        if payload.status == "published" and payload.sales_channel != "store":
-            missing = []
-            for akey, ainfo in cat_attrs.items():
-                if ainfo["is_required"] and not ainfo["is_variant_axis"]:
-                    val = payload.dynamic_attributes.get(akey)
-                    if val is None or str(val).strip() == "":
-                        missing.append(ainfo["label_fr"])
-            if missing:
-                raise HTTPException(
-                    status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-                    detail=f"Caractéristiques obligatoires manquantes pour '{cat['name_fr']}' : {', '.join(missing)}"
-                )
+        # Characteristics (material, fit…) are optional and typed freely: an
+        # empty one never blocks a product, a new value becomes a suggestion.
 
         cur.execute("SELECT id, slug, sku FROM products WHERE slug = ? OR sku = ?", (payload.slug, payload.sku))
         existing_prod = cur.fetchone()
@@ -547,11 +536,12 @@ def create_dynamic_product(
         prod_id = cur.lastrowid
 
         for akey, aval in payload.dynamic_attributes.items():
-            if akey in cat_attrs:
+            if akey in cat_attrs and str(aval).strip():
                 cur.execute(
                     "INSERT INTO product_attribute_values (product_id, attribute_id, value_text) VALUES (?, ?, ?)",
-                    (prod_id, cat_attrs[akey]["id"], str(aval))
+                    (prod_id, cat_attrs[akey]["id"], str(aval).strip())
                 )
+                remember_characteristic_value(conn, cat_attrs[akey], str(aval))
 
         for v, v_sku, v_attrs, sig, v_barcode in validated_variants:
             cur.execute(
@@ -1384,13 +1374,19 @@ def update_product_with_conflict_detection(
             cur.execute("SELECT * FROM category_attributes WHERE category_id = ?", (target_cat_id,))
             cat_attrs = {r["attr_key"]: dict(r) for r in cur.fetchall()}
             for akey, aval in payload.dynamic_attributes.items():
-                if akey in cat_attrs:
-                    cur.execute(
-                        """INSERT INTO product_attribute_values (product_id, attribute_id, value_text)
-                           VALUES (?, ?, ?)
-                           ON CONFLICT(product_id, attribute_id) DO UPDATE SET value_text = excluded.value_text""",
-                        (product_id, cat_attrs[akey]["id"], str(aval))
-                    )
+                if akey not in cat_attrs:
+                    continue
+                if not str(aval).strip():  # emptied: the characteristic is simply not given
+                    cur.execute("DELETE FROM product_attribute_values WHERE product_id = ? AND attribute_id = ?",
+                                (product_id, cat_attrs[akey]["id"]))
+                    continue
+                cur.execute(
+                    """INSERT INTO product_attribute_values (product_id, attribute_id, value_text)
+                       VALUES (?, ?, ?)
+                       ON CONFLICT(product_id, attribute_id) DO UPDATE SET value_text = excluded.value_text""",
+                    (product_id, cat_attrs[akey]["id"], str(aval).strip())
+                )
+                remember_characteristic_value(conn, cat_attrs[akey], str(aval))
         # Archiving / bringing back through this form follows the same rules
         # as the Archive button and the bulk action (variants marked, then
         # restored exactly).
@@ -1398,12 +1394,6 @@ def update_product_with_conflict_detection(
             _switch_off_variants_with_product(cur, product_id)
         elif payload.status in ("published", "draft") and prod["status"] == "archived":
             _restore_variants_with_product(cur, product_id)
-        # Checked on the saved result (after a category move and attribute
-        # changes), whenever the product is or stays published.
-        # A boutique-only article is not shown online: no online-shop requirement.
-        channel = payload.sales_channel or dict(prod).get("sales_channel") or "all"
-        if (payload.status or prod["status"]) == "published" and channel != "store":
-            _assert_publishable(cur, product_id, target_cat_id)
         log_audit(conn, int(admin["sub"]), "update_product_synced", "product", str(product_id), {"new_version": new_version})
         cur.execute("SELECT * FROM products WHERE id = ?", (product_id,))
         return serialize_product(conn, dict(cur.fetchone()), include_private=True)
@@ -1678,8 +1668,6 @@ def admin_bulk_update_product_status(
                 # on its own (or kept because it has sales history) stays off.
                 cur.execute("SELECT status, deleted_at, category_id, barcode, sales_channel FROM products WHERE id = ?", (pid,))
                 before = cur.fetchone()
-                if before and payload.status == "published" and before["status"] != "published" and before["sales_channel"] != "store":
-                    _assert_publishable(cur, pid, before["category_id"])
                 if before and before["deleted_at"] and (before["barcode"] or "").strip():
                     # While archived, its code was free and may have been given
                     # to another article since: refuse two live owners.

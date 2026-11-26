@@ -202,7 +202,9 @@ class TestReviewFixes(unittest.TestCase):
                              json={"product_ids": [first["id"]], "status": "published"})
         self.assertEqual(r.status_code, 409, r.text)
 
-    def test_a_product_cannot_be_published_without_its_required_characteristics(self):
+    def test_characteristics_are_optional_and_typed_freely(self):
+        """An empty characteristic never blocks publishing; a typed value is saved
+        as it is and offered again as a suggestion; emptying it removes it."""
         r = self.client.post("/api/v1/admin/category-attributes", headers=self.headers, json={
             "category_id": self.category_id, "attr_key": "matiere", "label_fr": "Matière",
             "input_type": "short_text", "is_variant_axis": False, "is_required": True,
@@ -219,10 +221,18 @@ class TestReviewFixes(unittest.TestCase):
         update = {"expected_version": body["version"], "name_fr": body["name_fr"],
                   "selling_price_dzd": body["selling_price_dzd"], "status": "published"}
         r = self.client.put(f"/api/v1/admin/products/{body['id']}", headers=self.headers, json=update)
-        self.assertEqual(r.status_code, 422, r.text)
-        update["dynamic_attributes"] = {"matiere": "Cuir"}
+        self.assertEqual(r.status_code, 200, r.text)
+        update.update(expected_version=r.json()["version"], dynamic_attributes={"matiere": "  Lin lavé main  "})
         r = self.client.put(f"/api/v1/admin/products/{body['id']}", headers=self.headers, json=update)
         self.assertEqual(r.status_code, 200, r.text)
+        cats = self.client.get("/api/v1/admin/categories", headers=self.headers).json()
+        cat = next(c for c in (cats.get("items") if isinstance(cats, dict) else cats) if c["id"] == self.category_id)
+        matiere = next(a for a in cat["attributes"] if a["attr_key"] == "matiere")
+        self.assertEqual([o["value"] for o in matiere["options"]], ["Lin lavé main"])
+        update.update(expected_version=r.json()["version"], dynamic_attributes={"matiere": ""})
+        r = self.client.put(f"/api/v1/admin/products/{body['id']}", headers=self.headers, json=update)
+        self.assertEqual(r.status_code, 200, r.text)
+        self.assertNotIn("matiere", r.json()["attributes"])
 
     def test_offline_sales_synced_together_on_a_closed_register_count_once(self):
         """Two tills sync at the same moment onto the same closed register: both

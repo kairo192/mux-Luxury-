@@ -770,6 +770,26 @@ never online but sold at the till, website requirements, editor still works, arr
 search, rights); e2e `10-shop-items` (quick add with a new colour and a scanned code → 6 labels printed, till lookup,
 not on the website, arrival, 9 labels, scan search, unknown code, duplicate code refused, switch to website).
 
+## 40. Product characteristics: optional and typed freely (no fixed texts)
+
+The product form asked first for "Matière & Composition" as a **required drop-down** of fixed marketing values
+("100% Coton Pima Péruvien", "Lin Naturel Aérien"…), and other categories had required lists such as cuts, leathers,
+watch movements, even brand names (Balenciaga, Saint Laurent). They came from the ready-made category models.
+
+| Before | Now |
+|---|---|
+| Characteristics marked required: a product could not be published without them | Never required: an empty characteristic never blocks a product (form, server, bulk publish, Shop items) |
+| Drop-down limited to the fixed values | Free text; values already used are offered as suggestions (typing anything is accepted) |
+| — | A value typed for the first time is kept as a suggestion of the category (next product, shop filters); emptying a field removes it from the product |
+| Category models pre-filled marketing values, brand names and invented category descriptions | Models create the characteristic names only (Matière, Coupe…) as free text; colours / sizes start with plain values (Noir, Blanc… / S, M, L) the owner extends; descriptions empty |
+| "Required" switch in the category builder | Removed |
+| Examples in the form ("Sac Émeraude Prestige", "Chanel, Hermès…") | Neutral hints ("Item name", "Brand name…") |
+
+Existing databases: migration `006_free_product_characteristics.sql` sets every characteristic to not required and
+removes the old fixed suggestions, except a value a product actually uses (colours / sizes untouched).
+Tests: `test_free_characteristics` (migration), `test_review_fixes` (optional + free typing + suggestion + emptying),
+updated `test_luxe_api`, `test_store_items`.
+
 ## Verification
 
 | Check | Result |

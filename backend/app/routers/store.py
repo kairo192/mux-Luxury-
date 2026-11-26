@@ -24,7 +24,6 @@ from ..common import _boutique_info_from_settings
 from ..database import db_session
 from ..deps import log_audit, require_any_permission, require_permission
 from ..catalog_rules import (
-    _assert_publishable,
     _barcode_in_use,
     _generate_internal_ean13,
     auto_variant_sku,
@@ -249,11 +248,8 @@ def _load_product(cur, product_id: int) -> dict:
 
 
 def _set_channel(cur, product: dict, sold_online: bool) -> None:
-    """Online needs what the online shop needs (required characteristics);
-    boutique-only makes the article sellable at the till right away."""
+    """Boutique-only makes the article sellable at the till right away."""
     if sold_online:
-        if product["status"] == "published":
-            _assert_publishable(cur, product["id"], product["category_id"])
         cur.execute("UPDATE products SET sales_channel = 'all', updated_at = CURRENT_TIMESTAMP, version = version + 1 WHERE id = ?",
                     (product["id"],))
     else:
@@ -335,8 +331,6 @@ def store_quick_add(payload: StoreQuickAddIn, admin: dict = Depends(require_perm
         pid = cur.lastrowid
         product = _load_product(cur, pid)
         created = _add_variants(conn, int(admin["sub"]), product, variants)
-        if payload.sold_online:
-            _assert_publishable(cur, pid, payload.category_id)
         log_audit(conn, int(admin["sub"]), "store_quick_add", "product", str(pid), {
             "sku": sku, "variants": len(created), "pieces": sum(v.quantity for v in variants),
             "sold_online": payload.sold_online,

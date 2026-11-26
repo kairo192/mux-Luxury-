@@ -408,10 +408,7 @@ export function ProductEditor({ open, product, categories, brands, onClose, onSa
       return t("pe.v_margin");
     }
     if (draft.status === "published" && draft.sales_channel !== "store") {
-      const missing = dataAttributes.filter(
-        (a: any) => a.is_required && !String(draft.dynamic_attributes[a.attr_key] || "").trim()
-      );
-      if (missing.length) return t("pe.v_missing_specs", { list: missing.map((a: any) => pickLang(a, "label")).join(", ") });
+      // Characteristics (material, fit…) are optional: they never block a product.
       if (!draft.main_image_url.trim()) return t("pe.v_main_image");
       if (!draft.variants.length) return t("pe.v_variant");
     }
@@ -827,7 +824,6 @@ export function ProductEditor({ open, product, categories, brands, onClose, onSa
                       setSkuTouched(true);
                       patch({ sku: e.target.value.toUpperCase() });
                     }}
-                    placeholder="LUX-BAG-001"
                     className="w-full px-3 py-2 border rounded-xl font-mono uppercase bg-white"
                   />
                 </div>
@@ -978,24 +974,27 @@ export function ProductEditor({ open, product, categories, brands, onClose, onSa
                           <label className="block font-semibold mb-1">
                             {pickLang(attr, "label")}
                             {attr.unit ? <span className="text-gray-400"> ({attr.unit})</span> : null}
-                            {attr.is_required ? <span className="text-rose-600"> *</span> : null}
                             <span className="ml-1 text-[10px] text-gray-400 font-normal">
                               {labelForType(attr.input_type)}
                             </span>
                           </label>
-                          {hasOptions ? (
-                            <select
-                              value={value}
-                              onChange={(e) => setValue(e.target.value)}
-                              className="w-full px-3 py-1.5 border rounded-lg bg-white"
-                            >
-                              <option value="">{t("product_editor.select_option")}</option>
-                              {attr.options.map((o: any) => (
-                                <option key={o.value} value={o.value}>
-                                  {pickLang(o, "label") || o.value}
-                                </option>
-                              ))}
-                            </select>
+                          {hasOptions && attr.input_type !== "boolean" ? (
+                            // Free text: the values already used are only suggestions.
+                            <>
+                              <input
+                                list={`spec-${attr.attr_key}`}
+                                value={value}
+                                onChange={(e) => setValue(e.target.value)}
+                                placeholder={t("pe.spec_free_ph")}
+                                aria-label={pickLang(attr, "label")}
+                                className="w-full px-3 py-1.5 border rounded-lg bg-white"
+                              />
+                              <datalist id={`spec-${attr.attr_key}`}>
+                                {attr.options.map((o: any) => (
+                                  <option key={o.value} value={o.value}>{pickLang(o, "label") !== o.value ? pickLang(o, "label") : ""}</option>
+                                ))}
+                              </datalist>
+                            </>
                           ) : attr.input_type === "long_text" ? (
                             <textarea
                               rows={2}
@@ -1014,6 +1013,8 @@ export function ProductEditor({ open, product, categories, brands, onClose, onSa
                               type={["number", "price", "measurement"].includes(attr.input_type) ? "number" : attr.input_type === "date" ? "date" : "text"}
                               value={value}
                               onChange={(e) => setValue(e.target.value)}
+                              placeholder={t("pe.optional")}
+                              aria-label={pickLang(attr, "label")}
                               className="w-full px-3 py-1.5 border rounded-lg bg-white"
                             />
                           )}

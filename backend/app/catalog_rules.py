@@ -132,33 +132,34 @@ def auto_variant_sku(conn, product_sku: str, attributes: Dict[str, str], signatu
     return base
 
 
-def _assert_publishable(cur, product_id: int, category_id: int) -> None:
-    """Same rule as creating a published product: every required (non-axis)
-    characteristic of the category has a saved value."""
-    cur.execute(
-        """SELECT ca.label_fr FROM category_attributes ca
-           WHERE ca.category_id = ? AND ca.is_required = 1 AND ca.is_variant_axis = 0
-             AND NOT EXISTS (SELECT 1 FROM product_attribute_values pav
-                              WHERE pav.product_id = ? AND pav.attribute_id = ca.id
-                                AND TRIM(COALESCE(pav.value_text, '')) <> '')
-           ORDER BY ca.display_order ASC, ca.id ASC""",
-        (category_id, product_id),
-    )
-    missing = [r["label_fr"] for r in cur.fetchall()]
-    if missing:
-        cur.execute("SELECT sku FROM products WHERE id = ?", (product_id,))
-        row = cur.fetchone()
-        raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-            detail=f"Publication impossible ({row['sku'] if row else product_id}) : caractéristiques obligatoires manquantes : {', '.join(missing)}",
-        )
-
-
 # GS1 reserves prefixes 02 and 20-29 for in-store / restricted distribution.
 # We mint internal EAN-13 codes under "20" so they never collide with real
 # manufacturer GTINs and are never presented as registered GS1 identifiers.
 _INTERNAL_EAN_PREFIX = "20"
 
+
+# Kinds of characteristic whose typed values are offered again as suggestions
+# (and as shop filters): short words, not free paragraphs or numbers.
+_SUGGESTED_TYPES = {"short_text", "single_select", "multi_select", "brand", "color", "size"}
+
+
+def remember_characteristic_value(conn, attr: dict, value: str) -> None:
+    """A characteristic is typed freely; a new value is kept as a suggestion of
+    its category (the next product offers it, the shop can filter on it)."""
+    val = str(value or "").strip()
+    if not val or len(val) > 80 or attr.get("input_type") not in _SUGGESTED_TYPES or attr.get("is_variant_axis"):
+        return
+    cur = conn.cursor()
+    cur.execute("SELECT 1 FROM category_attribute_options WHERE attribute_id = ? AND value = ?", (attr["id"], val))
+    if cur.fetchone():
+        return
+    cur.execute("SELECT COALESCE(MAX(display_order), 0) AS mx FROM category_attribute_options WHERE attribute_id = ?", (attr["id"],))
+    nxt = int(cur.fetchone()["mx"] or 0) + 1
+    cur.execute(
+        """INSERT INTO category_attribute_options (attribute_id, value, label_fr, label_ar, label_en, display_order)
+           VALUES (?, ?, ?, '', '', ?)""",
+        (attr["id"], val, val, nxt),
+    )
 
 def ean_check_digit(body: str) -> int:
     """Mod-10 check digit for EAN-13 (12 digits) or EAN-8 (7 digits).
