@@ -969,9 +969,18 @@ def _validate_device_config(connection_type: str, config: Dict[str, Any]) -> Non
             raise HTTPException(status_code=422, detail="Un appareil réseau requiert un 'port' numérique")
         if not (1 <= port <= 65535):
             raise HTTPException(status_code=422, detail="Le port doit être compris entre 1 et 65535")
-    if connection_type == "windows" and not str(config.get("windows_printer_name") or "").strip():
-        # Not fatal, but record intent clearly
-        pass
+    if connection_type == "serial" and config.get("device_path") is not None and not str(config.get("device_path")).strip():
+        raise HTTPException(status_code=422, detail="Indiquez le port de l'appareil (ex. COM3)")
+    for key in ("windows_printer_name", "device_path"):
+        if len(str(config.get(key) or "")) > 200:
+            raise HTTPException(status_code=422, detail="Nom d'imprimante ou de port trop long")
+    if "drawer_pin" in config and config.get("drawer_pin") not in (2, 5, "2", "5"):
+        raise HTTPException(status_code=422, detail="La broche du tiroir doit être 2 ou 5")
+    if config.get("printer_device_id") not in (None, ""):
+        try:
+            int(config.get("printer_device_id"))
+        except (TypeError, ValueError):
+            raise HTTPException(status_code=422, detail="Imprimante du tiroir invalide")
 
 
 

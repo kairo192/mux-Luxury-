@@ -242,6 +242,34 @@ jobs:
           path: apps/desktop-cms/dist
           retention-days: 7
 
+  # ------------------------------------------------------------------ 5b. Desktop app (Rust): printers, scanner, offline till
+  # Unit tests of the hardware bridge (ESC/POS, ZPL, detection, network
+  # printer, device ports, Windows-queue follow-up) and one real print through
+  # a system print queue (CUPS raw queue -> fake network printer): the bytes
+  # arrive unchanged, a job left in the queue is not reported as printed, a
+  # paused queue is refused.
+  desktop-rust-tests:
+    name: Desktop app (Rust) + real print queue
+    runs-on: ubuntu-latest
+    needs: [lockfiles]
+    steps:
+      - uses: actions/checkout@v4
+      - name: System libraries (web view, CUPS)
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y build-essential pkg-config libwebkit2gtk-4.1-dev librsvg2-dev libdbus-1-dev libcups2-dev cups cups-client cups-bsd
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: apps/desktop-cms/src-tauri
+      - name: Placeholder web bundle (the Rust build checks it exists)
+        run: mkdir -p apps/desktop-cms/dist && echo '<!doctype html>' > apps/desktop-cms/dist/index.html
+      - name: cargo test
+        working-directory: apps/desktop-cms/src-tauri
+        run: cargo test
+      - name: Real print queue (CUPS)
+        run: SUDO=sudo bash infrastructure/scripts/test-print-queue.sh
+
   # ------------------------------------------------------------------ 6b. End-to-end: shop + CMS in a real browser
   # A fresh production-mode API on an empty PostgreSQL database, the CMS and
   # the shop dev servers; e2e/tests walk a first installation, the catalogue,
@@ -405,6 +433,7 @@ jobs:
       - backend-tests-postgres
       - build-storefront
       - build-cms
+      - desktop-rust-tests
       - e2e
       - build-backend-image
       - dependency-audit
@@ -419,6 +448,7 @@ jobs:
           || [ "${{ needs.backend-tests-postgres.result }}" != "success" ] \
           || [ "${{ needs.build-storefront.result }}"     != "success" ] \
           || [ "${{ needs.build-cms.result }}"            != "success" ] \
+          || [ "${{ needs.desktop-rust-tests.result }}"   != "success" ] \
           || [ "${{ needs.e2e.result }}"                  != "success" ] \
           || [ "${{ needs.build-backend-image.result }}"  != "success" ] \
           || [ "${{ needs.dependency-audit.result }}"     != "success" ]; then

@@ -150,5 +150,30 @@ class TestDevices(unittest.TestCase):
         self.assertEqual(self.client.get("/api/v1/admin/devices").status_code, 401)
 
 
+    def test_09_port_drawer_and_reported_results(self):
+        """What the Devices page sends: a COM port, a drawer plugged into a printer,
+        and the honest result of a test done on the shop PC."""
+        bad = self.client.post("/api/v1/admin/devices", headers=self.headers, json={
+            "name": "x", "device_type": "receipt_printer", "connection_type": "serial", "config": {"device_path": "  "}})
+        self.assertEqual(bad.status_code, 422, bad.text)
+        serial = self._create(name="Afficheur", device_type="customer_display", connection_type="serial", config={"device_path": "COM3"})
+        self.assertEqual(serial["config"]["device_path"], "COM3")
+        printer = self._create(name="Caisse POS-80")
+        bad = self.client.post("/api/v1/admin/devices", headers=self.headers, json={
+            "name": "Tiroir", "device_type": "cash_drawer", "connection_type": "usb", "config": {"drawer_pin": 3}})
+        self.assertEqual(bad.status_code, 422, bad.text)
+        drawer = self._create(name="Tiroir", device_type="cash_drawer", connection_type="usb",
+                              config={"drawer_pin": 5, "printer_device_id": printer["id"]})
+        self.assertEqual(drawer["config"]["printer_device_id"], printer["id"])
+
+        ok = self.client.post(f"/api/v1/admin/devices/{drawer['id']}/test", headers=self.headers, json={"success": True}).json()
+        self.assertEqual((ok["status"], ok["last_error"], ok["test_method"]), ("ok", None, "client_reported"))
+        ko = self.client.post(f"/api/v1/admin/devices/{printer['id']}/test", headers={**self.headers, "X-Luxe-Lang": "en"},
+                              json={"success": False, "error": "Nothing came out: the job is waiting in the print queue of “POS-80”."}).json()
+        self.assertEqual(ko["status"], "error")
+        self.assertIn("waiting in the print queue", ko["last_error"])
+        self.assertIsNotNone(ko["last_test_at"])
+
+
 if __name__ == "__main__":
     unittest.main()

@@ -10,6 +10,9 @@ import {
   loadLabelPrinterSettings,
   saveLabelPrinterSettings,
   testPrintLabel,
+  checkPrinter,
+  detectDevices,
+  type Detection,
   type PrinterInfo,
   type PrinterTarget,
   type LabelPrinterTarget,
@@ -40,7 +43,8 @@ export const PrinterSettingsModal: React.FC<Props> = ({ open, onClose, onFlash }
   const [settings, setSettings] = useState<PrinterTarget>(() => loadHardwareSettings());
   const [labelSettings, setLabelSettings] = useState<LabelPrinterTarget>(() => loadLabelPrinterSettings());
   const [loadingPrinters, setLoadingPrinters] = useState(false);
-  const [testing, setTesting] = useState<null | "print" | "drawer" | "label">(null);
+  const [testing, setTesting] = useState<null | "print" | "drawer" | "label" | "check" | "check-label" | "scan">(null);
+  const [seen, setSeen] = useState<Detection | null>(null);
   const [status, setStatus] = useState<{ kind: "ok" | "err"; msg: string } | null>(null);
   const [tab, setTab] = useState<"receipt" | "label" | "mirror">("receipt");
   const [mirror, setMirror] = useState<MirrorStatus | null>(null);
@@ -52,9 +56,31 @@ export const PrinterSettingsModal: React.FC<Props> = ({ open, onClose, onFlash }
     try {
       const p = await listPrinters();
       setPrinters(p);
+      if (inTauri) detectDevices(false).then((d) => d && setSeen((prev) => ({ ...d, network: prev?.network ?? [], subnet: prev?.subnet ?? null, network_scanned: !!prev?.network_scanned }))).catch(() => undefined);
     } finally {
       setLoadingPrinters(false);
     }
+  };
+
+  const scanNetwork = async () => {
+    setTesting("scan");
+    try {
+      const d = await detectDevices(true);
+      if (d) {
+        setSeen(d);
+        flash(d.network.length ? "ok" : "err", d.network.length
+          ? t("prs.net_found", { n: d.network.length, list: d.network.map((n) => n.host).join(", ") })
+          : d.subnet ? t("dvx.no_network_printers", { net: d.subnet }) : t("dvx.no_local_network"));
+      }
+    } finally {
+      setTesting(null);
+    }
+  };
+
+  const stateText = (st: string) => {
+    const k = `dvx.state_${String(st || "unknown").toLowerCase()}`;
+    const v = t(k);
+    return v === k ? st : v;
   };
 
   useEffect(() => {
@@ -105,6 +131,8 @@ export const PrinterSettingsModal: React.FC<Props> = ({ open, onClose, onFlash }
     const normalised: PrinterTarget = {
       printer_name: settings.printer_name?.trim() || null,
       device_path: settings.device_path?.trim() || null,
+      host: settings.host?.trim() || null,
+      port: settings.host?.trim() ? Number(settings.port) || 9100 : null,
       line_width: Number(settings.line_width) || 32,
       drawer_pin: settings.drawer_pin === 5 ? 5 : 2,
     };
@@ -116,6 +144,8 @@ export const PrinterSettingsModal: React.FC<Props> = ({ open, onClose, onFlash }
     const normalised: LabelPrinterTarget = {
       printer_name: labelSettings.printer_name?.trim() || null,
       device_path: labelSettings.device_path?.trim() || null,
+      host: labelSettings.host?.trim() || null,
+      port: labelSettings.host?.trim() ? Number(labelSettings.port) || 9100 : null,
       format: labelSettings.format === "escpos-text" ? "escpos-text" : "zpl",
       width_mm: Number(labelSettings.width_mm) || 50,
       height_mm: Number(labelSettings.height_mm) || 30,
@@ -137,6 +167,15 @@ export const PrinterSettingsModal: React.FC<Props> = ({ open, onClose, onFlash }
     const r = await testPrint(settings);
     setTesting(null);
     if (r.ok) flash("ok", t("printer_settings.flash_test_receipt"));
+    else flash("err", r.error);
+  };
+
+  const onCheck = async (label: boolean) => {
+    if (label) saveLabel(); else saveReceipt();
+    setTesting(label ? "check-label" : "check");
+    const r = await checkPrinter(label ? labelSettings : settings);
+    setTesting(null);
+    if (r.ok) flash("ok", t("prs.check_ok", { state: stateText(r.state || "unknown") }));
     else flash("err", r.error);
   };
 
@@ -228,7 +267,7 @@ export const PrinterSettingsModal: React.FC<Props> = ({ open, onClose, onFlash }
               <option value="">{t("printer_settings.default_printer_opt")}</option>
               {printers.map(p => (
                 <option key={p.name} value={p.name}>
-                  {p.name}{p.is_default ? t("printer_settings.default_suffix") : ""} · {p.state}
+                  {p.name}{p.is_default ? t("printer_settings.default_suffix") : ""} · {stateText(p.state)}
                 </option>
               ))}
             </select>
@@ -239,6 +278,34 @@ export const PrinterSettingsModal: React.FC<Props> = ({ open, onClose, onFlash }
             )}
           </div>
 
+
+          <div className="space-y-2">
+            <label className="flex items-center justify-between gap-2 font-bold text-[#063D2E]">
+              <span>{t("prs.net_printer")}</span>
+              <button type="button" onClick={scanNetwork} disabled={testing !== null || !inTauri} className="h-9 px-3 rounded-xl bg-[#063D2E]/10 text-[#063D2E] font-bold flex items-center gap-1.5 disabled:opacity-40 active:scale-95">
+                <Wifi className={`w-4 h-4 ${testing === "scan" ? "animate-pulse" : ""}`} /> {testing === "scan" ? t("dvx.searching_network") : t("dvx.search_network")}
+              </button>
+            </label>
+            <div className="grid grid-cols-3 gap-2">
+              <input
+                list="net-receipt"
+                aria-label={t("devices.lbl_host")}
+                value={settings.host ?? ""}
+                onChange={(e) => setSettings(s => ({ ...s, host: e.target.value || null }))}
+                placeholder="192.168.1.50"
+                className="col-span-2 h-12 px-3 rounded-2xl border-2 border-gray-200 focus:border-[#063D2E] font-mono text-sm"
+              />
+              <input
+                aria-label={t("devices.lbl_port")}
+                value={settings.port ?? ""}
+                onChange={(e) => setSettings(s => ({ ...s, port: Number(e.target.value) || null }))}
+                placeholder="9100"
+                className="h-12 px-3 rounded-2xl border-2 border-gray-200 focus:border-[#063D2E] font-mono text-sm"
+              />
+            </div>
+            <datalist id="net-receipt">{(seen?.network ?? []).map((n) => <option key={n.host} value={n.host} />)}</datalist>
+            <div className="text-xs text-gray-500">{t("prs.net_hint")}</div>
+          </div>
           <div className="space-y-2">
             <label className="font-bold text-[#063D2E]">
               {t("printer_settings.raw_device_path")}
@@ -247,9 +314,11 @@ export const PrinterSettingsModal: React.FC<Props> = ({ open, onClose, onFlash }
               type="text"
               value={settings.device_path ?? ""}
               onChange={(e) => setSettings(s => ({ ...s, device_path: e.target.value || null }))}
-              placeholder="Ex: /dev/usb/lp0, LPT1, COM3"
+              list="detected-ports-receipt"
+              placeholder="Ex: COM3, LPT1, /dev/usb/lp0"
               className="w-full h-12 px-3 rounded-2xl border-2 border-gray-200 focus:border-[#063D2E] font-mono text-sm"
             />
+            <datalist id="detected-ports-receipt">{(seen?.ports ?? []).map((p) => <option key={p.path} value={p.path} />)}</datalist>
             <div className="text-xs text-gray-500">
               {t("printer_settings.raw_device_hint")}
             </div>
@@ -281,7 +350,15 @@ export const PrinterSettingsModal: React.FC<Props> = ({ open, onClose, onFlash }
             </div>
           </div>
 
-          <div className="grid grid-cols-2 gap-3 pt-2">
+          <div className="grid grid-cols-3 gap-3 pt-2">
+            <button
+              type="button"
+              onClick={() => onCheck(false)}
+              disabled={testing !== null || !inTauri}
+              className="h-14 rounded-2xl border-2 border-[#063D2E] text-[#063D2E] font-bold flex items-center justify-center gap-2 disabled:opacity-40 active:scale-95"
+            >
+              <CheckCircle2 className="w-5 h-5" /> {testing === "check" ? t("dvx.testing") : t("dvx.btn_check")}
+            </button>
             <button
               type="button"
               onClick={onTestPrint}
@@ -315,7 +392,7 @@ export const PrinterSettingsModal: React.FC<Props> = ({ open, onClose, onFlash }
                 <option value="">{t("printer_settings.no_label_printer_opt")}</option>
                 {printers.map(p => (
                   <option key={`lbl-${p.name}`} value={p.name}>
-                    {p.name}{p.is_default ? t("printer_settings.default_suffix") : ""} · {p.state}
+                    {p.name}{p.is_default ? t("printer_settings.default_suffix") : ""} · {stateText(p.state)}
                   </option>
                 ))}
               </select>
@@ -324,13 +401,42 @@ export const PrinterSettingsModal: React.FC<Props> = ({ open, onClose, onFlash }
               </div>
             </div>
 
+
+          <div className="space-y-2">
+            <label className="flex items-center justify-between gap-2 font-bold text-[#063D2E]">
+              <span>{t("prs.net_printer")}</span>
+              <button type="button" onClick={scanNetwork} disabled={testing !== null || !inTauri} className="h-9 px-3 rounded-xl bg-[#063D2E]/10 text-[#063D2E] font-bold flex items-center gap-1.5 disabled:opacity-40 active:scale-95">
+                <Wifi className={`w-4 h-4 ${testing === "scan" ? "animate-pulse" : ""}`} /> {testing === "scan" ? t("dvx.searching_network") : t("dvx.search_network")}
+              </button>
+            </label>
+            <div className="grid grid-cols-3 gap-2">
+              <input
+                list="net-label"
+                aria-label={t("devices.lbl_host")}
+                value={labelSettings.host ?? ""}
+                onChange={(e) => setLabelSettings(s => ({ ...s, host: e.target.value || null }))}
+                placeholder="192.168.1.50"
+                className="col-span-2 h-12 px-3 rounded-2xl border-2 border-gray-200 focus:border-[#063D2E] font-mono text-sm"
+              />
+              <input
+                aria-label={t("devices.lbl_port")}
+                value={labelSettings.port ?? ""}
+                onChange={(e) => setLabelSettings(s => ({ ...s, port: Number(e.target.value) || null }))}
+                placeholder="9100"
+                className="h-12 px-3 rounded-2xl border-2 border-gray-200 focus:border-[#063D2E] font-mono text-sm"
+              />
+            </div>
+            <datalist id="net-label">{(seen?.network ?? []).map((n) => <option key={n.host} value={n.host} />)}</datalist>
+            <div className="text-xs text-gray-500">{t("prs.net_hint")}</div>
+          </div>
             <div className="space-y-2">
               <label className="font-bold text-[#063D2E]">{t("printer_settings.raw_device_path")}</label>
               <input
                 type="text"
                 value={labelSettings.device_path ?? ""}
                 onChange={(e) => setLabelSettings(s => ({ ...s, device_path: e.target.value || null }))}
-                placeholder="Ex: /dev/usb/lp1, USB001, COM4"
+                list="detected-ports-receipt"
+                placeholder="Ex: COM4, /dev/usb/lp1"
                 className="w-full h-12 px-3 rounded-2xl border-2 border-gray-200 focus:border-[#063D2E] font-mono text-sm"
               />
             </div>
@@ -383,12 +489,20 @@ export const PrinterSettingsModal: React.FC<Props> = ({ open, onClose, onFlash }
               </div>
             </div>
 
-            <div className="pt-2">
+            <div className="pt-2 grid grid-cols-3 gap-3">
+              <button
+                type="button"
+                onClick={() => onCheck(true)}
+                disabled={testing !== null || !inTauri}
+                className="h-14 rounded-2xl border-2 border-[#063D2E] text-[#063D2E] font-bold flex items-center justify-center gap-2 disabled:opacity-40 active:scale-95"
+              >
+                <CheckCircle2 className="w-5 h-5" /> {testing === "check-label" ? t("dvx.testing") : t("dvx.btn_check")}
+              </button>
               <button
                 type="button"
                 onClick={onTestLabel}
                 disabled={testing !== null || !inTauri}
-                className="w-full h-14 rounded-2xl bg-[#063D2E] text-[#D4AF62] font-bold flex items-center justify-center gap-2 disabled:opacity-40 active:scale-95"
+                className="col-span-2 h-14 rounded-2xl bg-[#063D2E] text-[#D4AF62] font-bold flex items-center justify-center gap-2 disabled:opacity-40 active:scale-95"
               >
                 <Zap className="w-5 h-5" /> {testing === "label" ? t("printer_settings.btn_test_print_sending") : t("printer_settings.btn_test_label")}
               </button>

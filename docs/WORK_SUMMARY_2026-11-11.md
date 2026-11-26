@@ -717,6 +717,23 @@ words, and a wrong password in Arabic shows the Arabic server message.
 Rule for new code: no text written directly in a screen — add a key in the three languages; a new server message goes in
 `app/i18n_messages.py` (the test fails otherwise); a new audited action needs its name in `areas/audit_action.ts`.
 
+## 38. Devices: real detection and tests (printers, drawer, scanner)
+
+The Devices page had buttons that did not really test anything; printers set there were not used by the till.
+
+| Before | Now |
+|---|---|
+| Windows printer name typed by hand; USB / COM devices had no port field (their test went to the Windows *default* printer) | **Detect**: printers installed on the PC (state, port, kind), network printers found on the local network (port 9100, nothing sent), COM / USB ports; **Add** fills the form; the form offers what was detected |
+| "Printed" as soon as Windows accepted the job (printer off / no paper = false success) | The job is followed in the queue; still waiting after 8 s → "nothing came out"; offline / paused printers refused before sending; CUPS prints raw |
+| "Test print" opened a pop-up window — the desktop app does not open pop-ups, so nothing happened (same for the system-print fallback of receipts and labels) | The print page goes into a hidden frame: the system print dialog opens in the desktop app and in a browser |
+| Scanner and cash-drawer tests only asked the server (cannot see shop hardware) → always "not tested" | Scanner: scan a code within 30 s (typing by hand refused). Drawer: pulse through its receipt printer, then "did it open?" |
+| Printer errors in French only | Error codes translated (FR / EN / AR) with the printer name / address |
+| Devices page and till settings unrelated; till could not use a network printer (IP dropped when saved) | **Use on this PC**; a till PC with nothing set up takes the shop's default printers; network IP / port in POS → Matériel; **Check** (no paper) there too |
+
+Tests: Rust 40 (+ a real CUPS print queue: exact bytes, printer off, paused queue, unknown printer), Windows cross-check
+(`cargo check --target x86_64-pc-windows-gnu`), backend `test_devices` 10, e2e `09-devices` (2). CI job
+`desktop-rust-tests` added. Details: `docs/cicd/POS_HARDWARE.md`.
+
 ## Verification
 
 | Check | Result |

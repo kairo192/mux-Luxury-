@@ -34,6 +34,7 @@ import { FileText as FileTextIcon, Settings as SettingsIcon, Tag as TagIcon } fr
 import { Wifi, WifiOff, CloudUpload, CloudOff, User, UserCheck } from "lucide-react";
 import {
   isHardwareConfigured,
+  isTauriRuntime,
   printSaleReceipt,
   loadHardwareSettings,
   openCashDrawer as kickDrawer,
@@ -49,6 +50,7 @@ import { buildReceiptBlocks } from "./pos/receipt";
 import { CloseRegisterSheet, ConflictsSheet, CustomerSheet, PaymentSheet, RefundSheet, SessionsHistorySheet, VariantPickerSheet } from "./pos/sheets";
 import { localeFor } from "../i18n/translations";
 import { registerName } from "../utils/registerName";
+import { adoptShopDefaults } from "../utils/shopDevices";
 
 // ---------------------------------------------------------------------------
 // POS — Touch-first cashier workspace.
@@ -138,6 +140,16 @@ export const PosPage: React.FC<{ onInventoryUpdated?: () => void }> = ({ onInven
     loadRegister();
     loadRecentSales();
   }, [loadRegister, loadRecentSales]);
+
+  // A till PC with no printer set up takes the shop's default receipt printer
+  // (Devices page), so a printer added there is the one this till prints on.
+  useEffect(() => {
+    if (!isTauriRuntime() || isHardwareConfigured()) return;
+    adoptShopDefaults().then((taken) => {
+      if (taken.receipt) setSuccess(t("posx.printer_adopted", { name: taken.receipt }));
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   useEffect(() => {
     if (session && scanRef.current) scanRef.current.focus();

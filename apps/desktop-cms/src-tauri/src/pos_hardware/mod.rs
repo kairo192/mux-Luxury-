@@ -923,12 +923,18 @@ mod tests {
         let err = send_bytes(&target, b"\x1b@off").unwrap_err();
         assert_eq!(err, format!("ERR:job_stuck:{}", queue));
         assert!(check_target(&target).unwrap_err().starts_with("ERR:jobs_waiting:"));
-        let _ = std::process::Command::new("cancel").args(["-a", &queue]).status();
+        // Queue administration (CI runs it through sudo).
+        let admin = |cmd: &str, args: &[&str]| {
+            let sudo = std::env::var("SUDO").unwrap_or_default();
+            let mut c = if sudo.is_empty() { std::process::Command::new(cmd) } else { let mut c = std::process::Command::new(sudo); c.arg(cmd); c };
+            assert!(c.args(args).status().unwrap().success(), "{} {:?}", cmd, args);
+        };
+        admin("cancel", &["-a", &queue]);
 
         // 3. queue paused by someone: refused before sending.
-        std::process::Command::new("cupsdisable").arg(&queue).status().unwrap();
+        admin("cupsdisable", &[&queue]);
         let err = send_bytes(&target, b"x").unwrap_err();
-        std::process::Command::new("cupsenable").arg(&queue).status().unwrap();
+        admin("cupsenable", &[&queue]);
         assert_eq!(err, format!("ERR:printer_paused:{}", queue));
 
         // 4. a name that does not exist.

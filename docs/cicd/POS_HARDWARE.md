@@ -21,23 +21,53 @@ has one 58/80 mm receipt printer behind the till and one dedicated 50×30 mm
 Zebra-style label printer for product tagging. Each is configured
 independently in POS → **Matériel**.
 
-## First-time setup
+## First-time setup (Devices page)
 
-1. Plug the thermal printer into the POS computer. Install the manufacturer
-   driver so Windows / macOS / Linux lists it as an available printer.
-2. Plug the cash drawer's RJ11 cable into the back of the printer (NOT into
-   a USB port — the drawer kicks off the printer's pass-through pulse).
-3. Plug the barcode scanner. No driver is needed: it registers as a HID
-   keyboard. If it's new, print its "set suffix to CR" code once (in the
-   scanner's quick-start sheet) so each scan ends with Enter.
-4. Open the Desktop CMS → POS → **Matériel** (top toolbar).
-5. Pick the printer from the list, choose paper width (32 chars for 58 mm,
-   42–48 chars for 80 mm), pick drawer pin 2 (Epson/Star) or 5 (Citizen).
-6. Click **Imprimer un test** — a short diagnostic slip should come out.
-7. Click **Ouvrir le tiroir** — the drawer should pop.
+1. Plug the thermal printer into the till PC and install its driver (or Windows'
+   **Generic / Text Only** driver) so Windows lists it. A network printer only
+   needs to be on the shop's network (its self-test page shows its IP address).
+2. Plug the cash drawer's RJ11 cable into the back of the receipt printer
+   (the drawer opens through the printer, never through a USB port).
+3. Plug the barcode scanner (USB keyboard mode; suffix "Enter" if its
+   quick-start sheet offers it).
+4. In the desktop app: **Administration → Devices → Detect**. The dialog lists
+   - the printers installed on this PC (state ready / offline / paused, port such as
+     `USB001`, kind guessed from name + driver: receipts, labels, office, virtual PDF);
+   - **Search the network**: every address of the PC's local /24 network that answers
+     on the raw printing port 9100 (a connection is opened and closed, nothing is sent;
+     only private networks are searched);
+   - the COM / USB ports (Windows registry `SERIALCOMM`; `/dev/usb/lp*`, `/dev/ttyUSB*`… elsewhere).
+   **Add** fills in the form; the form also offers the detected printers / ports.
+5. On each device:
+   - **Check** — no paper: a network printer accepts a connection, a port opens, a
+     Windows printer exists, is not offline / paused and has nothing stuck in its queue.
+   - **Test Print** — a real slip (CMS language; French when the CMS is in Arabic,
+     thermal printers have no Arabic letters) or label, then the person answers
+     "did it come out?". Only that answer marks the device OK.
+   - **Open drawer** (cash drawer) — sends the pulse through its receipt printer
+     (the one chosen in its settings, else the default one), then asks "did it open?".
+   - **Test a scan** (scanner) — scan any code within 30 s; a code typed by hand
+     (more than 60 ms between keys) is refused.
+   - **Use on this PC** — makes the printer this PC's till / label printer. A till PC
+     with nothing set up takes the shop's default receipt and label printers by itself.
+   Every result is recorded on the server (status, last error, date) for everyone.
 
-Settings are persisted in the Tauri store as `luxe_pos_hardware_settings`.
-They stay per-install, so each boutique PC is configured once.
+POS → **Matériel** still holds this PC's own settings (system printer, network IP,
+port, paper width, drawer pin, label format) with **Check / Test print / Open drawer**.
+They are kept per PC (`luxe_pos_hardware_settings`, `luxe_pos_label_printer_settings`).
+
+### Honest results
+
+- Windows accepts a job even when the printer is off, unplugged or out of paper: the
+  job just waits. After sending, the app watches the job for 8 s; still waiting →
+  "Nothing came out: the job is waiting in the print queue…" (not "printed").
+- An offline or paused printer is refused before anything is sent.
+- Errors come from the desktop app as `ERR:<code>:<detail>` and are shown in the
+  CMS language (`hw.err_<code>`): printer_not_found, printer_offline, printer_paused,
+  job_stuck, job_paused, job_cancelled, jobs_waiting, print_failed, path_not_found,
+  path_open_failed, path_write_failed, net_resolve_failed, net_unreachable,
+  net_send_failed, no_printer, no_labels, system_print_unavailable.
+- On Linux / macOS (CUPS) the bytes are sent raw (`raw=true`), never through a text filter.
 
 ## What happens during a sale
 
@@ -244,10 +274,10 @@ migration `003_product_variants_updated_at` (SQLite + Postgres):
   version is skipped. Planned for a follow-up release.
 - **Scale integration**, **card payment terminal integration**
   are not in scope here. They would be separate native modules.
-- **Printer status monitoring** — the current API is fire-and-forget. An
-  "out of paper" slip never reports back. Epson's real-time status
-  protocol (`DLE EOT 1`) can be added later with a synchronous USB IOCTL;
-  the browser-print fallback would then kick in automatically.
+- **Paper sensor of a raw port / network printer** — a printer reached by IP or COM
+  port has no print queue to watch: the bytes were delivered, but "out of paper" is
+  only known from the person's answer to the print test. Epson's real-time status
+  (`DLE EOT 4`) could be read back on those links later.
 
 ## Troubleshooting
 
@@ -263,20 +293,18 @@ migration `003_product_variants_updated_at` (SQLite + Postgres):
 
 ## Testing
 
-The Rust byte builder has unit tests you can run without connected hardware:
-
 ```bash
-# All ESC/POS commands produce the expected bytes.
-rustc --test --edition 2021 \
-  apps/desktop-cms/src-tauri/src/pos_hardware/escpos.rs \
-  -o /tmp/escpos_test && /tmp/escpos_test
-
-# All ZPL label-builder commands produce the expected bytes.
-rustc --test --edition 2021 \
-  apps/desktop-cms/src-tauri/src/pos_hardware/zpl.rs \
-  -o /tmp/zpl_test && /tmp/zpl_test
+cd apps/desktop-cms/src-tauri && cargo test           # ESC/POS, ZPL, detection, network printer,
+                                                      # device ports, queue follow-up (no hardware)
+bash infrastructure/scripts/test-print-queue.sh       # one real print through a CUPS raw queue to a
+                                                      # fake network printer: exact bytes, printer off
+                                                      # -> "job_stuck", paused queue refused
 ```
 
-(Once a Tauri Linux dev stack is installed, `cargo test` inside
-`apps/desktop-cms/src-tauri` runs the module tests under `pos_hardware::`
-and the escpos / zpl sub-modules as well.)
+Both run in CI (`desktop-rust-tests`). The Devices page itself is covered by
+`e2e/tests/09-devices.spec.ts` (desktop bridge simulated with the same answers and
+error codes as the Rust commands; plus a real TCP "printer" checked by the server).
+Windows-only code is checked with `cargo check --target x86_64-pc-windows-gnu`.
+
+On the shop PC, with the real printers, the checklist is: Detect → Add → Check →
+Test Print (answer honestly) → Use on this PC → a real sale prints and the drawer opens.

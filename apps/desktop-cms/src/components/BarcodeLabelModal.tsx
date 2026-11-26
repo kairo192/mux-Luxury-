@@ -13,6 +13,7 @@ import { openSystemPrint, renderLabelsHtml } from "../utils/systemPrint";
 import { useT } from "../i18n";
 import { useEscapeToClose } from "../utils/useEscapeToClose";
 import { tr } from "../i18n/translations";
+import { adoptShopDefaults } from "../utils/shopDevices";
 
 interface LabelData {
   store_name: string;
@@ -42,7 +43,7 @@ export const BarcodeLabelModal: React.FC<{
   const [customCode, setCustomCode] = useState("");
   const [codeCheck, setCodeCheck] = useState<{ valid: boolean; symbology: string | null; reason: string | null } | null>(null);
   const [copies, setCopies] = useState(1);
-  const labelPrinterReady = isLabelPrinterConfigured();
+  const [labelPrinterReady, setLabelPrinterReady] = useState(isLabelPrinterConfigured());
   const inTauri = isTauriRuntime();
 
   const load = useCallback(async () => {
@@ -60,6 +61,13 @@ export const BarcodeLabelModal: React.FC<{
   useEffect(() => {
     load();
   }, [load]);
+
+  // No label printer on this PC yet: take the shop's default one (Devices page).
+  useEffect(() => {
+    if (!inTauri || labelPrinterReady) return;
+    adoptShopDefaults().then((taken) => taken.label && setLabelPrinterReady(true));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   // Live-validate the custom barcode as the user types (debounced).
   useEffect(() => {

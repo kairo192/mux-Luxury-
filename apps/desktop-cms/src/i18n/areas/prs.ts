@@ -12,4 +12,8 @@ export const prs = defineArea("prs", {
   "dpi300": ["300 dpi (haute définition)", "300 dpi (high definition)", "300 نقطة/بوصة (دقة عالية)"],
   "dpi600": ["600 dpi (très haute définition)", "600 dpi (very high definition)", "600 نقطة/بوصة (دقة عالية جداً)"],
   "reload_all": ["Recharge la totalité du catalogue", "Reloads the whole catalogue", "يعيد تحميل الكتالوج كاملاً"],
+  "net_printer": ["Imprimante réseau (adresse IP)", "Network printer (IP address)", "طابعة شبكة (عنوان IP)"],
+  "net_hint": ["Pour une imprimante Wi-Fi / câble réseau. Prioritaire sur les autres choix ; laissez vide sinon.", "For a Wi-Fi / network-cable printer. Takes priority over the other choices; leave empty otherwise.", "لطابعة واي فاي / كابل شبكة. لها الأولوية على الخيارات الأخرى؛ اتركه فارغاً خلاف ذلك."],
+  "net_found": ["{{n}} imprimante(s) réseau trouvée(s) : {{list}}. Choisissez-la dans le champ adresse IP.", "{{n}} network printer(s) found: {{list}}. Pick it in the IP address field.", "عُثر على {{n}} طابعة شبكة: {{list}}. اخترها في حقل عنوان IP."],
+  "check_ok": ["Imprimante OK ({{state}}) — rien n'a été imprimé.", "Printer OK ({{state}}) — nothing was printed.", "الطابعة سليمة ({{state}}) — لم يُطبع شيء."],
 });
