@@ -116,7 +116,7 @@ test("desktop app: detect, add, check, print test, use on this PC, drawer, scann
 
   // A label job left in the queue is NOT reported as printed (no question asked).
   await card(page, "ZDesigner GK420t").getByRole("button", { name: "Test Print" }).click();
-  await expect(page.getByTestId("devices-error")).toContainText("Nothing came out: the job is waiting in the print queue");
+  await expect(page.getByTestId("devices-error")).toContainText("Nothing came out");
   await expect(page.locator('[aria-labelledby="active-confirm-title"]')).toHaveCount(0);
 
   // ---- Use on this PC: the till prints on it

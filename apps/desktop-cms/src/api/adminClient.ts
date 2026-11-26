@@ -229,7 +229,11 @@ async function adminFetch(path: string, options: RequestInit = {}, timeoutMs = d
       const serverReqId = res.headers.get("x-request-id") || reqId;
       recordNetworkSample({ online: true, latencyMs: rttMs, requestId: serverReqId, retried: attempt > 1 });
 
-      if (res.status === 429 && rateLimitRetries < RATE_LIMIT_RETRIES) {
+      // Waiting cannot help when the server asks for more than our 10 s cap, or on
+      // sign-in / first-owner setup (5 tries a minute): say it at once instead of spinning.
+      const retryAfter = Number(res.headers.get("retry-after"));
+      const waitWontHelp = (Number.isFinite(retryAfter) && retryAfter > 10) || /^\/admin\/auth\/(login|initialize-owner)$/.test(path);
+      if (res.status === 429 && !waitWontHelp && rateLimitRetries < RATE_LIMIT_RETRIES) {
         rateLimitRetries++;
         attempt--;           // not a failed attempt: the request was never run
         await new Promise((r) => setTimeout(r, rateLimitDelayMs(res.headers.get("retry-after"), rateLimitRetries)));

@@ -142,10 +142,14 @@ class TestStoreItems(unittest.TestCase):
         self.assertEqual(self._variant(after, "Noir / S")["stock_qty"], 2)
 
     def test_sold_online_too(self):
-        # an empty characteristic ("Matière") never blocks an article
+        # the website shows a photo for every article: none, no website
         r = self._add(sold_online=True)
+        self.assertEqual(r.status_code, 422, r.text)
+        self.assertIn("photo", r.json()["detail"])
+        # an empty characteristic ("Matière") never blocks an article
+        r = self._add(sold_online=True, image_url="/uploads/sac.jpg")
         self.assertEqual(r.status_code, 201, r.text)
-        ok = self._add(category_id=self.free_cat, sold_online=True,
+        ok = self._add(category_id=self.free_cat, sold_online=True, image_url="/uploads/modele.jpg",
                        variants=[{"title": "Modèle A", "quantity": 2}, {"title": "Modèle B", "quantity": 1}])
         self.assertEqual(ok.status_code, 201, ok.text)
         item = ok.json()
@@ -206,6 +210,20 @@ class TestStoreItems(unittest.TestCase):
         self.assertEqual(gen["generated"], 1)
         self.assertEqual(gen["item"]["missing_barcodes"], 0)
         self.assertTrue(self._variant(gen["item"], "Rouge / S")["barcode"].startswith("20"))
+
+    def test_editing_does_not_publish_a_draft_or_go_online_without_a_photo(self):
+        sfx = uuid.uuid4().hex[:6].upper()
+        draft = self.client.post("/api/v1/admin/products", headers=self.h, json={
+            "category_id": self.free_cat, "slug": f"brouillon-{sfx.lower()}", "sku": f"BR-{sfx}", "name_fr": "Brouillon",
+            "selling_price_dzd": 100, "status": "draft", "sales_channel": "store",
+            "variants": [{"sku": f"BR-{sfx}-1", "title": "Unique", "stock_qty": 1}]}).json()
+        r = self.client.put(f"/api/v1/admin/store/items/{draft['id']}", headers=self.h,
+                            json={"name": "Brouillon corrigé", "price_dzd": 150})
+        self.assertEqual((r.json()["status"], r.json()["name_fr"], r.json()["selling_price_dzd"]), ("draft", "Brouillon corrigé", 150))
+        r = self.client.put(f"/api/v1/admin/store/items/{draft['id']}", headers=self.h, json={"sold_online": True})
+        self.assertEqual(r.status_code, 422, r.text)
+        self.assertEqual(self.client.get(f"/api/v1/admin/store/items", headers=self.h,
+                                         params={"q": f"BR-{sfx}"}).json()["items"][0]["sales_channel"], "store")
 
     def test_search_filters_and_rights(self):
         item = self._add().json()

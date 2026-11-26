@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { X, Printer, Barcode } from "lucide-react";
 import { DesktopCmsApi } from "../../api/adminClient";
 import { useEscapeToClose } from "../../utils/useEscapeToClose";
@@ -23,6 +23,15 @@ export function LabelsDialog({ item, storeName, only, onClose, onChanged, onDone
   const [copies, setCopies] = useState<Record<number, string>>(() =>
     Object.fromEntries(variants.map((v) => [v.id, String(only && only !== v.id ? 0 : Math.max(v.stock_qty, only === v.id ? 1 : 0))])));
   const [busy, setBusy] = useState(false);
+  // Colours / sizes that just got a barcode ("Create barcodes"): one label per piece by default.
+  useEffect(() => {
+    setCopies((cur) => {
+      const next = { ...cur };
+      for (const v of variants) if (v.barcode && (next[v.id] === undefined || (next[v.id] === "0" && !only))) next[v.id] = String(Math.max(v.stock_qty, 0));
+      return next;
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [item]);
   const [error, setError] = useState<string | null>(null);
   const toPrinter = isTauriRuntime() && isLabelPrinterConfigured();
 

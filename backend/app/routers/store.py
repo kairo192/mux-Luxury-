@@ -39,6 +39,7 @@ from ..catalog_rules import (
 router = APIRouter()
 
 SINGLE_TITLE = "Unique"
+PHOTO_FOR_WEBSITE = "Pour vendre sur le site, ajoutez une photo (ou gardez « magasin seulement »)"
 STORE_RECEIPT = "store_receipt"
 
 
@@ -248,8 +249,14 @@ def _load_product(cur, product_id: int) -> dict:
 
 
 def _set_channel(cur, product: dict, sold_online: bool) -> None:
-    """Boutique-only makes the article sellable at the till right away."""
+    """Boutique-only makes the article sellable at the till right away. The
+    website shows a photo for every article: none, no website."""
+    current_online = (product.get("sales_channel") or "all") != "store"
+    if sold_online == current_online:
+        return
     if sold_online:
+        if not (product.get("main_image_url") or "").strip():
+            raise HTTPException(status_code=422, detail=PHOTO_FOR_WEBSITE)
         cur.execute("UPDATE products SET sales_channel = 'all', updated_at = CURRENT_TIMESTAMP, version = version + 1 WHERE id = ?",
                     (product["id"],))
     else:
@@ -318,6 +325,8 @@ def store_quick_add(payload: StoreQuickAddIn, admin: dict = Depends(require_perm
         name = payload.name.strip()
         if not name:
             raise HTTPException(status_code=422, detail="Donnez un nom à l'article")
+        if payload.sold_online and not (payload.image_url or "").strip():
+            raise HTTPException(status_code=422, detail=PHOTO_FOR_WEBSITE)
         variants = payload.variants or [StoreVariantIn()]
         sku = _free_product_sku(cur)
         cur.execute(

@@ -790,6 +790,29 @@ removes the old fixed suggestions, except a value a product actually uses (colou
 Tests: `test_free_characteristics` (migration), `test_review_fixes` (optional + free typing + suggestion + emptying),
 updated `test_luxe_api`, `test_store_items`.
 
+## 41. Review of sections 37–40, fixes, release v1.0.2
+
+Code review of everything since PR #5 (23 commits, i18n, devices, shop items, characteristics). Fixed:
+
+| Finding | Fix |
+|---|---|
+| Shop items "Show more" fetched the first page again (frozen list length) | Offset read from a ref; duplicates filtered |
+| Shop items Edit: a cleared price saved 0 DA (sold for free at the till) | Empty name / price refused; cost left out when empty |
+| A print job reported "nothing came out" stayed in the Windows queue and printed later (duplicate after a retry); a long label batch was cut at 8 s | A job not started within 8 s is removed from the queue; a job that is printing gets 8 s + 1 s per 4 KB (max 90 s) |
+| A cancelled / aborted job that left the queue was reported printed | The queue's history is checked (CUPS keeps it); cancelled → "cancelled" |
+| Quick add "also online" published to the website without a photo | Website needs a photo (quick add and switching an article to the website) |
+| Shop items Edit published a draft as a side effect | The channel changes only when the box really changes |
+| Every 422 sentence from the server ("invalid barcode", "add a photo"…) was replaced by a generic "some fields are incomplete" | The server's sentence is shown; only field lists stay generic |
+| Sign-in "too many attempts" waited ~30 s (3 retries of a 60 s limit) | No automatic retry on sign-in / first-owner setup or when Retry-After > 10 s |
+| `wait-for-ci.sh`: one GitHub API hiccup cancelled the deploy; an old success counted after a failed re-run | API errors are retried; only the latest CI run counts |
+
+Also: the migration-006 test ran its SQL through the placeholder path (`100%` read as a parameter on PostgreSQL); it now
+applies the file the way `app.migration_runner` does (checked on PostgreSQL 16: migrations up, 416 tests pass).
+
+Release: tag `v1.0.2` → `cd-production.yml` (server: migrations incl. 006, switch, health check, rollback on failure)
+and `build-desktop-cms.yml` (signed Windows installer + `latest.json` on the server). Installed CMS apps offer the
+update after sign-in (Settings → Updates, or the update banner).
+
 ## Verification
 
 | Check | Result |

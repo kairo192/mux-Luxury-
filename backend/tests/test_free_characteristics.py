@@ -44,9 +44,9 @@ class TestFreeCharacteristicsMigration(unittest.TestCase):
             cur.execute("INSERT INTO product_attribute_values (product_id, attribute_id, value_text) VALUES (?, ?, ?)",
                         (cur.lastrowid, mat, "Cuir d'agneau matelassé"))
         with db_session(commit=True) as conn:
-            cur = conn.cursor()
-            for statement in [s for s in SQL.split(";") if s.strip() and not all(l.strip().startswith("--") or not l.strip() for l in s.splitlines())]:
-                cur.execute(statement)
+            # exactly as app.migration_runner applies a file (one script, no placeholders:
+            # "100% Coton" must not be read as a parameter on PostgreSQL)
+            conn.executescript(SQL)
         with db_session() as conn:
             cur = conn.cursor()
             cur.execute("SELECT attribute_id, value FROM category_attribute_options WHERE attribute_id IN (?, ?) ORDER BY value", (mat, col))

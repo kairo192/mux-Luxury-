@@ -276,28 +276,43 @@ fn list_printers_impl() -> Vec<PrinterInfo> {
 pub(crate) enum JobView {
     /// Gone from the queue or marked completed: it went to the printer.
     Done,
+    /// In the queue, not started.
     Waiting,
+    /// Being sent to / printed by the printer (a long label batch takes time).
+    Printing,
     Paused,
     Cancelled,
 }
 
 /// Follow a job in the system queue. Windows accepts a job even when the
 /// printer is switched off, unplugged or out of paper: the job then just
-/// waits. Saying "printed" in that case would be a lie, so we watch it.
-pub(crate) fn follow_job(name: &str, mut poll: impl FnMut() -> JobView, tries: u32, every: Duration) -> Result<(), String> {
-    for i in 0..tries {
+/// waits. Saying "printed" in that case would be a lie, so we watch it:
+/// a job that does not start within `idle`, or is not finished within
+/// `total`, is reported stuck (the caller then removes it from the queue, so
+/// it does not print later as a duplicate of a retry).
+pub(crate) fn follow_job(name: &str, mut poll: impl FnMut() -> JobView, idle: Duration, total: Duration, every: Duration) -> Result<(), String> {
+    let start = std::time::Instant::now();
+    let mut last_progress = start;
+    loop {
         match poll() {
             JobView::Done => return Ok(()),
             JobView::Paused => return Err(hw_err("job_paused", name)),
             JobView::Cancelled => return Err(hw_err("job_cancelled", name)),
-            JobView::Waiting => {
-                if i + 1 < tries {
-                    std::thread::sleep(every);
-                }
-            }
+            JobView::Printing => last_progress = std::time::Instant::now(),
+            JobView::Waiting => {}
         }
+        if start.elapsed() >= total || last_progress.elapsed() >= idle {
+            return Err(hw_err("job_stuck", name));
+        }
+        std::thread::sleep(every);
     }
-    Err(hw_err("job_stuck", name))
+}
+
+/// How long a job may take: 8 s to start, plus 1 s per 4 KB (a big label batch), at most 90 s.
+pub(crate) fn job_time_limits(bytes: usize) -> (Duration, Duration) {
+    let idle = Duration::from_secs(8);
+    let total = Duration::from_secs((8 + (bytes / 4096) as u64).min(90));
+    (idle, total)
 }
 
 #[cfg(feature = "with-printers")]
@@ -321,17 +336,30 @@ fn send_to_system_printer(name: &str, bytes: &[u8]) -> Result<(), String> {
     let job_id = target
         .print(bytes, options)
         .map_err(|e| hw_err("print_failed", format!("{} — {:?}", name, e)))?;
-    follow_job(name, || {
+    let (idle, total) = job_time_limits(bytes.len());
+    let result = follow_job(name, || {
         match target.get_active_jobs().into_iter().find(|j| j.id == job_id) {
-            None => JobView::Done,
+            // Left the queue: finished, unless the queue's history says it was
+            // cancelled / aborted (CUPS keeps that; Windows forgets finished jobs).
+            None => match target.get_job_history().into_iter().find(|j| j.id == job_id) {
+                Some(j) if j.state == PrinterJobState::CANCELLED => JobView::Cancelled,
+                _ => JobView::Done,
+            },
             Some(j) => match j.state {
                 PrinterJobState::COMPLETED => JobView::Done,
                 PrinterJobState::PAUSED => JobView::Paused,
                 PrinterJobState::CANCELLED => JobView::Cancelled,
+                PrinterJobState::PROCESSING => JobView::Printing,
                 _ => JobView::Waiting,
             },
         }
-    }, 32, Duration::from_millis(250))
+    }, idle, total, Duration::from_millis(250));
+    if result.is_err() {
+        // Reported as not printed: take it out of the queue so it cannot come
+        // out later, after the person has printed it again.
+        let _ = target.cancel_job(job_id);
+    }
+    result
 }
 
 #[cfg(not(feature = "with-printers"))]
@@ -826,13 +854,27 @@ mod tests {
 
     #[test]
     fn a_job_that_stays_in_the_queue_is_not_reported_as_printed() {
-        let fast = Duration::from_millis(1);
-        assert_eq!(follow_job("P", || JobView::Done, 5, fast), Ok(()));
+        let ms = Duration::from_millis;
+        assert_eq!(follow_job("P", || JobView::Done, ms(50), ms(200), ms(1)), Ok(()));
         let mut seq = vec![JobView::Done, JobView::Waiting, JobView::Waiting];
-        assert_eq!(follow_job("P", || seq.pop().unwrap(), 5, fast), Ok(()));
-        assert_eq!(follow_job("POS-80", || JobView::Waiting, 5, fast), Err("ERR:job_stuck:POS-80".into()));
-        assert_eq!(follow_job("POS-80", || JobView::Paused, 5, fast), Err("ERR:job_paused:POS-80".into()));
-        assert_eq!(follow_job("POS-80", || JobView::Cancelled, 5, fast), Err("ERR:job_cancelled:POS-80".into()));
+        assert_eq!(follow_job("P", || seq.pop().unwrap(), ms(50), ms(200), ms(1)), Ok(()));
+        assert_eq!(follow_job("POS-80", || JobView::Waiting, ms(30), ms(500), ms(1)), Err("ERR:job_stuck:POS-80".into()));
+        assert_eq!(follow_job("POS-80", || JobView::Paused, ms(30), ms(500), ms(1)), Err("ERR:job_paused:POS-80".into()));
+        assert_eq!(follow_job("POS-80", || JobView::Cancelled, ms(30), ms(500), ms(1)), Err("ERR:job_cancelled:POS-80".into()));
+    }
+
+    #[test]
+    fn a_long_batch_that_keeps_printing_is_waited_for() {
+        let ms = Duration::from_millis;
+        // printing for ~60 ms (longer than the 30 ms "not started" limit), then done
+        let start = std::time::Instant::now();
+        let poll = || if start.elapsed() < ms(60) { JobView::Printing } else { JobView::Done };
+        assert_eq!(follow_job("ZD", poll, ms(30), ms(500), ms(2)), Ok(()));
+        // …but not forever
+        assert_eq!(follow_job("ZD", || JobView::Printing, ms(30), ms(80), ms(2)), Err("ERR:job_stuck:ZD".into()));
+        assert_eq!(job_time_limits(100), (Duration::from_secs(8), Duration::from_secs(8)));
+        assert_eq!(job_time_limits(40 * 4096).1, Duration::from_secs(48));
+        assert_eq!(job_time_limits(10_000_000).1, Duration::from_secs(90));
     }
 
     #[test]
@@ -922,6 +964,13 @@ mod tests {
         // 2. printer off: the job stays in the queue -> not reported as printed.
         let err = send_bytes(&target, b"\x1b@off").unwrap_err();
         assert_eq!(err, format!("ERR:job_stuck:{}", queue));
+        // …and it was taken out of the queue: it will not print later as a duplicate.
+        let waiting = std::process::Command::new("lpstat").args(["-o", &queue]).output().unwrap();
+        assert!(String::from_utf8_lossy(&waiting.stdout).trim().is_empty(), "stuck job left in the queue");
+        // A job someone else left in the queue is seen by Check.
+        let f = std::env::temp_dir().join(format!("luxe-q-{}", std::process::id()));
+        std::fs::write(&f, b"x").unwrap();
+        assert!(std::process::Command::new("lp").args(["-d", &queue, "-o", "raw"]).arg(&f).status().unwrap().success());
         assert!(check_target(&target).unwrap_err().starts_with("ERR:jobs_waiting:"));
         // Queue administration (CI runs it through sudo).
         let admin = |cmd: &str, args: &[&str]| {

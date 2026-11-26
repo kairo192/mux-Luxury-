@@ -19,8 +19,19 @@ while :; do
   elapsed=$(( $(date +%s) - start ))
   # One line per CI run on this commit: "<status> <conclusion>"
   # Filters out pull_request events so the gate evaluates only the deployed commit's push / dispatch runs.
-  runs=$(gh api "repos/$REPO/actions/workflows/ci.yml/runs?head_sha=$SHA&per_page=50" \
-           --jq '.workflow_runs[] | select(.event != "pull_request") | "\(.status) \(.conclusion // "-")"')
+  # Only the LATEST run counts (a re-run that failed after an earlier success means "not passing").
+  # A GitHub API hiccup (5xx, rate limit) is not a CI result: wait and ask again.
+  if ! runs=$(gh api "repos/$REPO/actions/workflows/ci.yml/runs?head_sha=$SHA&per_page=50" \
+           --jq '[.workflow_runs[] | select(.event != "pull_request")] | sort_by(.created_at) | last
+                 | if . == null then empty else "\(.status) \(.conclusion // "-")" end' 2>/dev/null); then
+    if [ "$elapsed" -ge "$MAX_WAIT" ]; then
+      echo "::error::GitHub API unreachable and CI not confirmed on $SHA after ${MAX_WAIT}s."
+      exit 1
+    fi
+    echo "GitHub API did not answer; asking again in ${INTERVAL}s"
+    sleep "$INTERVAL"
+    continue
+  fi
   if grep -q '^completed success$' <<<"$runs"; then
     echo "CI passed on $SHA."
     exit 0

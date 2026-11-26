@@ -108,8 +108,18 @@ test("shop items: quick add with colours and barcodes, labels, arrival, scan, we
   const edit = page.getByRole("dialog", { name: "Edit item" });
   await edit.getByRole("checkbox").check();
   await edit.getByRole("button", { name: "Save" }).click();
+  // the website shows a photo for every article
+  await expect(edit.getByRole("alert")).toContainText("To sell on the website, add a photo");
+  await page.keyboard.press("Escape");
+  const p = (await api<any>("/admin/products")).items.find((x: any) => x.name_fr === name);
+  await api(`/admin/products/${p.id}`, { method: "PUT", body: {
+    expected_version: p.version, name_fr: name, selling_price_dzd: 7000, main_image_url: "/assets/mus_luxury_logo.png" } });
+  await search.press("Enter");
+  await item(page, name).getByRole("button", { name: "Edit" }).click();
+  await edit.getByRole("checkbox").check();
+  await edit.getByRole("button", { name: "Save" }).click();
   await expect(item(page, name)).toContainText("Website + shop");
   expect((await publicApi<any>(`/products?q=${encodeURIComponent(name)}`)).body.items.map((p: any) => p.name_fr)).toContain(name);
 
-  w.expectClean([/409 POST \/admin\/store\/items$/]);
+  w.expectClean([/409 POST \/admin\/store\/items$/, /422 PUT \/admin\/store\/items\/\d+$/]);
 });

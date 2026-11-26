@@ -65,6 +65,7 @@ MESSAGES: list[tuple[str, Optional[str], str, str]] = [
     ("Imprimante du tiroir invalide", None, "Invalid drawer printer", "طابعة الدرج غير صالحة"),
     ("« {0} » existe déjà pour cet article", None, "“{0}” already exists for this article", "«{0}» موجود مسبقاً لهذا المنتج"),
     ("Donnez un nom à l'article", None, "Give the article a name", "أعطِ المنتج اسماً"),
+    ("Pour vendre sur le site, ajoutez une photo (ou gardez « magasin seulement »)", None, "To sell on the website, add a photo (or keep “shop only”)", "للبيع في الموقع أضف صورة (أو أبقِ «المحل فقط»)"),
     ('Invalid email or password', 'Adresse e-mail ou mot de passe incorrect.', 'Incorrect email address or password.', 'البريد الإلكتروني أو كلمة المرور غير صحيحة.'),
     ('An administrator with this email already exists', 'Un utilisateur avec cet e-mail existe déjà.', 'A user with this email already exists.', 'يوجد مستخدم بهذا البريد الإلكتروني مسبقاً.'),
     ('Rôle introuvable', None, 'Role not found', 'الدور غير موجود'),

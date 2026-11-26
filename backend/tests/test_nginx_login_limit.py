@@ -59,7 +59,10 @@ class TestNginxRateLimits(unittest.TestCase):
         self.assertIn("const MAX_IN_FLIGHT = 6;", ts)
         self.assertIn("await takeRequestSlot();", ts)
         self.assertIn("releaseRequestSlot();", ts)
-        self.assertIn("res.status === 429 && rateLimitRetries < RATE_LIMIT_RETRIES", ts)
+        self.assertIn("res.status === 429 && !waitWontHelp && rateLimitRetries < RATE_LIMIT_RETRIES", ts)
+        # sign-in (5 a minute) and long Retry-After are reported at once, not retried for 30 s
+        self.assertIn("/^\\/admin\\/auth\\/(login|initialize-owner)$/.test(path)", ts)
+        self.assertIn("retryAfter > 10", ts)
         # the stale-session guard stays: a late 401 for an older token never logs out the new session
         self.assertIn("forCurrentSession", ts)
 

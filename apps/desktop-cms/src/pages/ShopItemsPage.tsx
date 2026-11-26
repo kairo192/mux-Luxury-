@@ -41,6 +41,8 @@ export const ShopItemsPage: React.FC<{ onCatalogChanged?: () => void }> = ({ onC
   const [receive, setReceive] = useState<Record<number, string>>({});
   const [busy, setBusy] = useState<number | null>(null);
   const searchRef = useRef<HTMLInputElement>(null);
+  const shown = useRef(0); // items on screen, for "show more"
+  shown.current = items.length;
 
   const flash = (msg: string, ok = true) => {
     if (ok) { setSuccess(msg); setError(null); setTimeout(() => setSuccess(null), 6000); } else { setError(msg); setSuccess(null); }
@@ -49,8 +51,8 @@ export const ShopItemsPage: React.FC<{ onCatalogChanged?: () => void }> = ({ onC
   const load = useCallback(async (append = false) => {
     setLoading(true);
     try {
-      const r = await DesktopCmsApi.listStoreItems({ q: query, show, limit: PAGE, offset: append ? items.length : 0 });
-      setItems((cur) => (append ? [...cur, ...r.items] : r.items));
+      const r = await DesktopCmsApi.listStoreItems({ q: query, show, limit: PAGE, offset: append ? shown.current : 0 });
+      setItems((cur) => (append ? [...cur, ...r.items.filter((n: StoreItem) => !cur.some((c) => c.id === n.id))] : r.items));
       setTotal(r.total);
       setMissing(r.missing_barcodes);
       if (r.store_name) setStoreName(r.store_name);
@@ -315,10 +317,15 @@ function EditDialog({ item, onClose, onSaved }: { item: StoreItem; onClose: () =
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const save = async () => {
-    setBusy(true);
     setError(null);
+    if (!name.trim()) return setError(tr("shop.need_name"));
+    if (price.trim() === "") return setError(tr("shop.need_price"));
+    setBusy(true);
     try {
-      onSaved(await DesktopCmsApi.editStoreItem(item.id, { name: name.trim(), price_dzd: Number(price) || 0, cost_dzd: Number(cost) || 0, sold_online: online }));
+      onSaved(await DesktopCmsApi.editStoreItem(item.id, {
+        name: name.trim(), price_dzd: Number(price), cost_dzd: cost.trim() === "" ? undefined : Number(cost),
+        sold_online: online !== item.sold_online ? online : undefined,
+      }));
     } catch (e: any) {
       setError(e?.userMessage || tr("status.error"));
     } finally {

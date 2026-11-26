@@ -107,8 +107,11 @@ export function sanitizeAndTranslateError(
     };
   }
 
-  // 1. Handle FastAPI 422 Pydantic validation error arrays cleanly
-  if (status === 422 || (typeof rawError === "object" && rawError !== null && Array.isArray((rawError as any).detail))) {
+  // 1. Handle FastAPI 422 Pydantic validation error arrays cleanly. A 422 whose
+  // detail is a sentence (a rule of the shop: "invalid barcode", "add a photo
+  // to sell online"…) is shown as it is, further down.
+  const sentence422 = status === 422 && typeof (rawError as any)?.detail === "string" && (rawError as any).detail.trim() !== "";
+  if (!sentence422 && (status === 422 || (typeof rawError === "object" && rawError !== null && Array.isArray((rawError as any).detail)))) {
     const detailArr = Array.isArray((rawError as any)?.detail)
       ? (rawError as any).detail
       : Array.isArray(rawError)
@@ -230,6 +233,9 @@ export function sanitizeAndTranslateError(
       409: tr("errors.t409"),
     };
     return { title: titles[status] || fallbackTitle, message: rawText, code: `HTTP_${status}`, status };
+  }
+  if (sentence422) {
+    return { title: tr("errors.invalid_data_title"), message: tr("errors.invalid_data_body"), code: "VALIDATION_ERROR", status: 422 };
   }
 
   // 5. Not Found (404)
