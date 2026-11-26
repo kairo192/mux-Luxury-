@@ -11,8 +11,9 @@ async function menuEntries(page: Page): Promise<number> {
     bs.filter((b) => b.querySelector("svg") && (b as HTMLElement).innerText.trim()).length);
 }
 
-// Common French words of the CMS itself (not shop data): none may show in English or Arabic.
-const FRENCH_UI = /\b(Enregistrer|Annuler|Supprimer|Modifier|Ajouter|Rechercher|Chargement|Fermer|Aucune?|Nouvelle?|Valider|Imprimer|Actualiser|Exporter|Commandes?|Fournisseurs?|Dépenses?|Trésorerie|Caisse|Tableau de bord)\b/;
+// Common French words of the CMS itself (not shop data — e.g. no "Commande": a test customer is "Karim Commande"):
+// none may show in English or Arabic.
+const FRENCH_UI = /\b(Enregistrer|Annuler|Supprimer|Modifier|Ajouter|Rechercher|Chargement|Fermer|Aucune?|Nouvelle?|Valider|Imprimer|Actualiser|Exporter|Fournisseurs?|Dépenses?|Trésorerie|Caisse|Tableau de bord)\b/;
 
 async function sweep(page: Page, lang: "fr" | "en" | "ar" = "fr"): Promise<string[]> {
   const problems: string[] = [];
@@ -33,8 +34,8 @@ async function sweep(page: Page, lang: "fr" | "en" | "ar" = "fr"): Promise<strin
     }
     if (lang !== "fr") {
       const all = await page.locator("body").innerText();
-      const m = all.match(FRENCH_UI);
-      if (m) problems.push(`${label}: French text "${m[0]}" in ${lang}`);
+      const line = all.split("\n").find((l) => FRENCH_UI.test(l));
+      if (line) problems.push(`${label}: French text in ${lang}: "${line.trim().slice(0, 120)}"`);
     }
   }
   return problems;
