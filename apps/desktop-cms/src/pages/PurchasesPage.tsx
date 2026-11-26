@@ -19,6 +19,7 @@ import {
   type LabelPayload,
 } from "../utils/posHardware";
 import { useT } from "../i18n";
+import { pickLang } from "../i18n/translations";
 
 export function PurchasesPage({ onInventoryUpdated }: { onInventoryUpdated?: () => void }) {
   const t = useT();
@@ -84,7 +85,7 @@ export function PurchasesPage({ onInventoryUpdated }: { onInventoryUpdated?: () 
         setLineCost(prodRes.items[0].purchase_cost_dzd || 0);
       }
     } catch (err: any) {
-      const tr = notifyClientError(err, "Erreur chargement des achats");
+      const tr = notifyClientError(err, t("pur.load_failed"));
       setError(tr.message);
     }
   }
@@ -110,18 +111,18 @@ export function PurchasesPage({ onInventoryUpdated }: { onInventoryUpdated?: () 
 
   function addItemToPurchaseOrder() {
     if (!selectedProdId) {
-      notifyClientWarning("Sélection requise", "Veuillez choisir un produit à commander.");
+      notifyClientWarning(t("pur.select_title"), t("pur.select_body"));
       return;
     }
     const p = products.find((x) => x.id === Number(selectedProdId));
     if (!p) return;
     const v = (p.variants || []).find((x: any) => x.id === Number(selectedVariantId));
     if (!v && (p.variants || []).length !== 1) {
-      notifyClientWarning("Variante requise", `Choisissez la couleur / taille de « ${p.name_fr} » à commander.`);
+      notifyClientWarning(t("pur.variant_title"), t("pur.variant_body", { name: pickLang(p, "name") }));
       return;
     }
     if (!(Number(lineQty) > 0) || !(Number(lineCost) > 0)) {
-      notifyClientWarning("Quantité et coût requis", "Indiquez la quantité commandée et le coût d'achat unitaire en DA.");
+      notifyClientWarning(t("pur.qty_title"), t("pur.qty_body"));
       return;
     }
 
@@ -136,7 +137,7 @@ export function PurchasesPage({ onInventoryUpdated }: { onInventoryUpdated?: () 
         unit_cost_dzd: Number(lineCost),
       },
     ]);
-    notifyClientSuccess("Article ajouté", `${p.name_fr} (${lineQty} unités) ajouté au bon d'achat.`);
+    notifyClientSuccess(t("pur.added_title"), t("pur.added_body", { name: pickLang(p, "name"), n: lineQty }));
   }
 
   function removeOrderItem(index: number) {
@@ -149,11 +150,11 @@ export function PurchasesPage({ onInventoryUpdated }: { onInventoryUpdated?: () 
   async function handleCreatePurchaseOrder(e: React.FormEvent) {
     e.preventDefault();
     if (!selectedSupplierId) {
-      notifyClientWarning("Fournisseur requis", "Veuillez sélectionner un fournisseur.");
+      notifyClientWarning(t("pur.supplier_title"), t("pur.supplier_body"));
       return;
     }
     if (orderItems.length === 0) {
-      notifyClientWarning("Articles requis", "Ajoutez au moins un article dans le bon de commande.");
+      notifyClientWarning(t("pur.items_title"), t("pur.items_body"));
       return;
     }
     setError("");
@@ -171,14 +172,14 @@ export function PurchasesPage({ onInventoryUpdated }: { onInventoryUpdated?: () 
           unit_cost_dzd: it.unit_cost_dzd,
         })),
       });
-      notifyClientSuccess("Bon de commande créé", `Bon de commande ${res.reference} enregistré (${res.total_cost_dzd} DA).`);
+      notifyClientSuccess(t("pur.po_created_title"), t("pur.po_created_body", { ref: res.reference, total: res.total_cost_dzd }));
       setOrderItems([]);
       setShippingCost(0);
       setTaxCost(0);
       setPoNotes("");
       await loadData();
     } catch (err: any) {
-      const tr = notifyClientError(err, "Création du bon de commande impossible");
+      const tr = notifyClientError(err, t("pur.po_create_failed"));
       setError(tr.message);
     }
   }
@@ -189,7 +190,7 @@ export function PurchasesPage({ onInventoryUpdated }: { onInventoryUpdated?: () 
     setError("");
     try {
       await DesktopCmsApi.receivePurchaseOrder(poToReceive.id);
-      notifyClientSuccess("Réception confirmée", `Bon ${poToReceive.reference} réceptionné en stock avec succès.`);
+      notifyClientSuccess(t("pur.received_title"), t("pur.received_body", { ref: poToReceive.reference }));
       // Ask the operator whether to print labels now; keep the receive modal
       // in a second-step state instead of closing immediately so the batch
       // print is one more click away, with zero guesswork.
@@ -198,7 +199,7 @@ export function PurchasesPage({ onInventoryUpdated }: { onInventoryUpdated?: () 
       await loadData();
       if (onInventoryUpdated) onInventoryUpdated();
     } catch (err: any) {
-      const tr = notifyClientError(err, "Réception impossible");
+      const tr = notifyClientError(err, t("pur.receive_failed"));
       setError(tr.message);
     } finally {
       setReceivingPo(false);
@@ -218,18 +219,18 @@ export function PurchasesPage({ onInventoryUpdated }: { onInventoryUpdated?: () 
       const totalCopies = printable.reduce((n: number, l: any) => n + (l.copies || 0), 0);
       if (!printable.length) {
         notifyClientWarning(
-          "Impression impossible",
+          t("pur.print_impossible"),
           missing > 0
-            ? `${missing} article(s) de ce bon n'ont pas de code-barres. Assignez-leur un code dans Produits avant d'imprimer les étiquettes.`
-            : "Aucune étiquette à imprimer pour ce bon.",
+            ? t("pur.print_missing", { n: missing })
+            : t("pur.print_none"),
         );
         return;
       }
       const confirmMsg = missing > 0
-        ? `Imprimer ${totalCopies} étiquettes maintenant ?\n(${missing} article(s) sans code-barres seront ignorés — à assigner dans Produits.)`
-        : `Imprimer ${totalCopies} étiquettes pour le bon ${reference} ?`;
+        ? t("pur.print_confirm_missing", { n: totalCopies, missing })
+        : t("pur.print_confirm", { n: totalCopies, ref: reference });
       const confirmed = await confirmClientAction({
-        title: "Impression d'étiquettes",
+        title: t("pur.print_title"),
         message: confirmMsg,
         danger: false,
       });
@@ -246,12 +247,12 @@ export function PurchasesPage({ onInventoryUpdated }: { onInventoryUpdated?: () 
       }));
       const r = await printLabels(loadLabelPrinterSettings(), labels);
       if (r.ok) {
-        notifyClientSuccess("Étiquettes envoyées", `${totalCopies} étiquettes transmises à l'étiqueteuse.`);
+        notifyClientSuccess(t("pur.labels_sent_title"), t("pur.labels_sent_body", { n: totalCopies }));
       } else {
-        notifyClientError({ userMessage: r.error }, "Impression des étiquettes impossible");
+        notifyClientError({ userMessage: r.error }, t("pur.labels_failed"));
       }
     } catch (err) {
-      notifyClientError(err, "Impression des étiquettes impossible");
+      notifyClientError(err, t("pur.labels_failed"));
     }
   }
 
@@ -271,12 +272,12 @@ export function PurchasesPage({ onInventoryUpdated }: { onInventoryUpdated?: () 
     try {
       await DesktopCmsApi.payPurchaseOrder(poId, method);
       notifyClientSuccess(
-        "Règlement effectué",
-        `Paiement de ${amount} DA pour le bon ${ref} enregistré via ${method === "cash" ? "Caisse" : "Banque"}.`,
+        t("pur.paid_title"),
+        t(method === "cash" ? "pur.paid_body_cash" : "pur.paid_body_bank", { amount, ref }),
       );
       await loadData();
     } catch (err: any) {
-      const tr = notifyClientError(err, "Règlement impossible");
+      const tr = notifyClientError(err, t("pur.pay_failed"));
       setError(tr.message);
     }
   };
@@ -296,7 +297,7 @@ export function PurchasesPage({ onInventoryUpdated }: { onInventoryUpdated?: () 
         tax_id: supTaxId.trim() || undefined,
         notes: supNotes.trim() || undefined,
       });
-      notifyClientSuccess("Fournisseur créé", `Fournisseur "${supName}" ajouté avec succès.`);
+      notifyClientSuccess(t("pur.sup_created_title"), t("pur.sup_created_body", { name: supName }));
       setSupName("");
       setSupCompany("");
       setSupContact("");
@@ -307,7 +308,7 @@ export function PurchasesPage({ onInventoryUpdated }: { onInventoryUpdated?: () 
       setSupNotes("");
       await loadData();
     } catch (err: any) {
-      const tr = notifyClientError(err, "Création du fournisseur impossible");
+      const tr = notifyClientError(err, t("pur.sup_create_failed"));
       setError(tr.message);
     }
   }
@@ -327,11 +328,11 @@ export function PurchasesPage({ onInventoryUpdated }: { onInventoryUpdated?: () 
         tax_id: editingSupplier.tax_id,
         notes: editingSupplier.notes,
       });
-      notifyClientSuccess("Fournisseur mis à jour", `Coordonnées de "${editingSupplier.name}" enregistrées.`);
+      notifyClientSuccess(t("pur.sup_updated_title"), t("pur.sup_updated_body", { name: editingSupplier.name }));
       setEditingSupplier(null);
       await loadData();
     } catch (err: any) {
-      const tr = notifyClientError(err, "Modification du fournisseur impossible");
+      const tr = notifyClientError(err, t("pur.sup_update_failed"));
       setError(tr.message);
     }
   }
@@ -342,11 +343,11 @@ export function PurchasesPage({ onInventoryUpdated }: { onInventoryUpdated?: () 
     setError("");
     try {
       await DesktopCmsApi.deleteSupplier(supplierToDelete.id);
-      notifyClientSuccess("Fournisseur retiré", `Fournisseur "${supplierToDelete.name}" supprimé/archivé.`);
+      notifyClientSuccess(t("pur.sup_removed_title"), t("pur.sup_removed_body", { name: supplierToDelete.name }));
       setSupplierToDelete(null);
       await loadData();
     } catch (err: any) {
-      const tr = notifyClientError(err, "Suppression impossible");
+      const tr = notifyClientError(err, t("pur.delete_failed"));
       setError(tr.message);
     } finally {
       setDeletingSupplier(false);
@@ -436,7 +437,7 @@ export function PurchasesPage({ onInventoryUpdated }: { onInventoryUpdated?: () 
                     onChange={(e) => handleProductSelect(Number(e.target.value))}
                     className="w-full px-3 py-2 border rounded-xl bg-white font-semibold"
                   >
-                    <option value="">— Choisir un produit —</option>
+                    <option value="">{t("pur.choose_product")}</option>
                     {products.filter((p) => p.status !== "archived" && !p.deleted_at).map((p) => (
                       <option key={p.id} value={p.id}>
                         {p.name_fr} ({p.sku})
@@ -449,12 +450,12 @@ export function PurchasesPage({ onInventoryUpdated }: { onInventoryUpdated?: () 
                     if (vs.length < 2) return null;
                     return (
                       <select
-                        aria-label="Variante"
+                        aria-label={t("pur.variant")}
                         value={selectedVariantId}
                         onChange={(e) => setSelectedVariantId(e.target.value ? Number(e.target.value) : "")}
                         className="mt-2 w-full px-3 py-2 border-2 border-[#D4AF62] rounded-xl bg-white font-semibold"
                       >
-                        <option value="">— Variante (couleur / taille) —</option>
+                        <option value="">{t("pur.choose_variant")}</option>
                         {vs.map((v: any) => (
                           <option key={v.id} value={v.id}>
                             {v.title} · {v.sku} · stock {v.stock_qty}
@@ -558,7 +559,7 @@ export function PurchasesPage({ onInventoryUpdated }: { onInventoryUpdated?: () 
                 value={supName}
                 onChange={(e) => setSupName(e.target.value)}
                 required
-                placeholder="ex: Parfumerie d'Alger Import"
+                placeholder={t("pur.sup_name_ph")}
                 className="w-full px-3 py-2 border rounded-xl"
               />
             </div>
@@ -567,7 +568,7 @@ export function PurchasesPage({ onInventoryUpdated }: { onInventoryUpdated?: () 
               <input
                 value={supCompany}
                 onChange={(e) => setSupCompany(e.target.value)}
-                placeholder="SARL Luxe Import"
+                placeholder={t("pur.sup_company_ph")}
                 className="w-full px-3 py-2 border rounded-xl"
               />
             </div>
@@ -596,7 +597,7 @@ export function PurchasesPage({ onInventoryUpdated }: { onInventoryUpdated?: () 
               <input
                 value={supAddress}
                 onChange={(e) => setSupAddress(e.target.value)}
-                placeholder="Alger, Blida..."
+                placeholder={t("pur.sup_address_ph")}
                 className="w-full px-3 py-2 border rounded-xl"
               />
             </div>
@@ -619,7 +620,7 @@ export function PurchasesPage({ onInventoryUpdated }: { onInventoryUpdated?: () 
                   <span className="font-bold text-[#063D2E]">
                     {s.name}
                     {(s.is_active === 0 || s.is_active === false) && (
-                      <span className="ms-2 px-1.5 py-0.5 rounded bg-gray-200 text-gray-600 text-[10px] font-bold">Archivé</span>
+                      <span className="ms-2 px-1.5 py-0.5 rounded bg-gray-200 text-gray-600 text-[10px] font-bold">{t("pur.archived")}</span>
                     )}
                   </span>
                   <span className={`px-2 py-0.5 rounded font-mono font-bold text-[10px] ${
@@ -629,7 +630,7 @@ export function PurchasesPage({ onInventoryUpdated }: { onInventoryUpdated?: () 
                   </span>
                 </div>
                 <div className="text-[11px] text-gray-500">
-                  {s.phone && <span>Tél: {s.phone} • </span>}
+                  {s.phone && <span>{t("pur.phone_short", { phone: s.phone })}</span>}
                   {s.address && <span>{s.address}</span>}
                 </div>
                 <div className="flex justify-end gap-2 pt-1 border-t text-[10px]">
@@ -661,7 +662,7 @@ export function PurchasesPage({ onInventoryUpdated }: { onInventoryUpdated?: () 
             <h4 className="text-base font-serif font-bold text-[#063D2E]">
               {t("purchases.edit_sup_title", { id: editingSupplier.id, name: editingSupplier.name })}
             </h4>
-            <button aria-label="Fermer"
+            <button aria-label={t("pur.close")}
               type="button"
               onClick={() => setEditingSupplier(null)}
               className="p-1 rounded-lg text-gray-500 hover:text-black transition"
@@ -820,7 +821,7 @@ export function PurchasesPage({ onInventoryUpdated }: { onInventoryUpdated?: () 
                   <p className="text-[11px] text-[#E8D4A5]/80">{t("purchases.modal_receive_sub", { ref: poToReceive.reference })}</p>
                 </div>
               </div>
-              <button aria-label="Fermer"
+              <button aria-label={t("pur.close")}
                 type="button"
                 onClick={() => setPoToReceive(null)}
                 className="w-8 h-8 rounded-full bg-white/10 hover:bg-white/20 text-[#E8D4A5] flex items-center justify-center transition"
@@ -885,7 +886,7 @@ export function PurchasesPage({ onInventoryUpdated }: { onInventoryUpdated?: () 
                   <p className="text-[11px] text-[#E8D4A5]/80">{t("purchases.modal_delete_sup_sub")}</p>
                 </div>
               </div>
-              <button aria-label="Fermer"
+              <button aria-label={t("pur.close")}
                 type="button"
                 onClick={() => setSupplierToDelete(null)}
                 className="w-8 h-8 rounded-full bg-white/10 hover:bg-white/20 text-[#E8D4A5] flex items-center justify-center transition"
@@ -899,7 +900,7 @@ export function PurchasesPage({ onInventoryUpdated }: { onInventoryUpdated?: () 
               </p>
               <div className="p-3.5 rounded-2xl bg-white border border-[#D4AF62]/40">
                 <div className="font-bold text-[#063D2E] text-sm">{supplierToDelete.name}</div>
-                <div className="text-[11px] text-gray-500 mt-1">Identifiant #{supplierToDelete.id}</div>
+                <div className="text-[11px] text-gray-500 mt-1">{t("pur.identifier", { id: supplierToDelete.id })}</div>
               </div>
               <p className="text-[11px] text-amber-800 bg-amber-50 p-2.5 rounded-xl border border-amber-200 flex items-center gap-1.5">
                 <AlertTriangle className="w-4 h-4 text-amber-700 shrink-0" />

@@ -25,6 +25,7 @@ on:
 
 permissions:
   contents: write    # required to create a GitHub release on tag
+  actions: read      # wait-for-ci.sh lists the CI runs of the commit
 
 concurrency:
   group: cd-production
@@ -67,21 +68,25 @@ jobs:
     name: Wait for CI
     needs: resolve-ref
     runs-on: ubuntu-latest
+    outputs:
+      sha: ${{ steps.sha.outputs.value }}
     steps:
+      # The script comes from this workflow's commit: the release being deployed
+      # may be older than the script (v1.0.0 was).
       - uses: actions/checkout@v4
-        with:
-          ref: ${{ needs.resolve-ref.outputs.ref }}
       - name: Get the commit SHA at that ref
         id: sha
-        run: echo "value=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REF: ${{ needs.resolve-ref.outputs.ref }}
+        run: |
+          SHA=$(gh api "repos/$GITHUB_REPOSITORY/commits/$REF" --jq .sha)
+          echo "Deploying $REF = $SHA"
+          echo "value=$SHA" >> "$GITHUB_OUTPUT"
       - name: Wait for CI on that commit
-        uses: lewagon/wait-on-check-action@ccfb013c15c8afb7bf2b7c028fb74dc5a068cccc  # v1.3.4
-        with:
-          ref: ${{ steps.sha.outputs.value }}
-          check-name: "CI complete (branch-protection gate)"
-          repo-token: ${{ secrets.GITHUB_TOKEN }}
-          wait-interval: 20
-          allowed-conclusions: success
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: bash infrastructure/scripts/wait-for-ci.sh "${{ steps.sha.outputs.value }}"
 
   build-release:
     name: Build release tarball
@@ -90,7 +95,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          ref: ${{ needs.resolve-ref.outputs.ref }}
+          ref: ${{ needs.wait-for-ci.outputs.sha }}
 
       - uses: actions/setup-node@v4
         with:
@@ -126,12 +131,14 @@ jobs:
               --exclude="backend/__pycache__" --exclude="backend/uploads" \
               --exclude="backend/backups" --exclude="**/*.pyc" \
               --exclude="scratch" --exclude="images" .
-          sha256sum ".release/mus-luxury-${VERSION}.tar.gz" > ".release/mus-luxury-${VERSION}.tar.gz.sha256"
+          (cd .release && sha256sum "mus-luxury-${VERSION}.tar.gz" > "mus-luxury-${VERSION}.tar.gz.sha256")
 
       - uses: actions/upload-artifact@v4
         with:
           name: release-${{ needs.resolve-ref.outputs.version }}
           path: .release/
+          include-hidden-files: true   # ".release" starts with a dot: skipped otherwise (v1.0.0 deployed nothing)
+          if-no-files-found: error
           retention-days: 30
 
   deploy-production:
@@ -220,5 +227,5 @@ jobs:
           name: Mus Luxury ${{ needs.resolve-ref.outputs.version }}
           generate_release_notes: true
           files: |
-            .release/mux-luxury-*.tar.gz
-            .release/mux-luxury-*.tar.gz.sha256
+            .release/mus-luxury-*.tar.gz
+            .release/mus-luxury-*.tar.gz.sha256

@@ -62,7 +62,7 @@
       "endpoints": [
         "https://api.mus-luxury.com/api/v1/admin/updates/cms/latest.json"
       ],
-      "pubkey": "",
+      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IDVFODRDRUJCQzRDNTBGOTgKUldTWUQ4WEV1ODZFWHF6MDhEWU53aVRtZXBEN2JNajZESGt5bEl6RUkwaGpWMnVXakZ3dHF5VjkK",
       "windows": {
         "installMode": "passive"
       }

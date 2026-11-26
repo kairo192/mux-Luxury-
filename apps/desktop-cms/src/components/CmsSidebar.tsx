@@ -31,6 +31,7 @@ import {
   Search,
   X,
   type LucideIcon,
+  Store,
 } from "lucide-react";
 import { useT } from "../i18n";
 
@@ -75,6 +76,7 @@ export const CMS_NAV_GROUPS: NavGroup[] = [
     labelKey: "nav.group.catalog",
     items: [
       { id: "products", labelKey: "sidebar.products", icon: ShoppingBag },
+      { id: "shop_items", labelKey: "shop.menu", icon: Store },
       { id: "categories", labelKey: "sidebar.categories", icon: Tags },
     ],
   },
@@ -221,7 +223,7 @@ export const CmsSidebar: React.FC<CmsSidebarProps> = ({ activeTab, onSelect, bad
 
   return (
     <aside
-      aria-label="Navigation"
+      aria-label={t("misc.navigation")}
       className={`relative shrink-0 flex flex-col bg-gradient-to-b from-[#02291F] via-[#063D2E] to-[#011C15] text-[#E8D4A5] border-e border-[#D4AF62]/20 transition-[width] duration-200 motion-reduce:transition-none ${
         collapsed ? "w-[76px]" : "w-[264px]"
       }`}
@@ -261,7 +263,7 @@ export const CmsSidebar: React.FC<CmsSidebarProps> = ({ activeTab, onSelect, bad
               className="w-full h-10 ps-9 pe-14 rounded-xl bg-white/[0.06] border border-[#D4AF62]/20 text-sm text-white placeholder:text-[#E8D4A5]/50 outline-none focus:border-[#D4AF62]/70 focus:bg-white/10 transition"
             />
             {query ? (
-              <button aria-label="Effacer la recherche"
+              <button aria-label={t("misc.clear_search")}
                 type="button"
                 onClick={() => setQuery("")}
                 className="absolute end-2 top-1/2 -translate-y-1/2 w-6 h-6 rounded-md flex items-center justify-center text-[#E8D4A5]/70 hover:text-white hover:bg-white/10"

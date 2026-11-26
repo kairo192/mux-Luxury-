@@ -1,6 +1,7 @@
 import { keychainSetSecret, keychainGetSecret, keychainDeleteSecret, getOsKeychainStatus } from "../utils/osKeychain";
 import { ClientSafeApiError, sanitizeAndTranslateError } from "../utils/clientNotifier";
 import { recordNetworkSample } from "../utils/networkQueue";
+import { getCurrentLang, tr as trText } from "../i18n/translations";
 // ============================================================================
 // TAURI 2 DESKTOP CMS — SHARED AUTHENTICATED HTTPS API CLIENT
 // Features:
@@ -142,6 +143,39 @@ export async function computeHmacSha256Hex(keyString: string, message: string): 
     .join("");
 }
 
+// At most MAX_IN_FLIGHT requests at the same time. Opening the CMS asks for the
+// data of every screen at once (~40 requests in one second); the server's rate
+// limit refused most of them and every screen showed "cannot reach the server"
+// (2026-11-16). The others wait their turn, in order.
+const MAX_IN_FLIGHT = 6;
+let inFlight = 0;
+const waitingForSlot: Array<() => void> = [];
+
+async function takeRequestSlot(): Promise<void> {
+  if (inFlight < MAX_IN_FLIGHT) {
+    inFlight++;
+    return;
+  }
+  await new Promise<void>((resolve) => waitingForSlot.push(resolve));
+}
+
+function releaseRequestSlot() {
+  const next = waitingForSlot.shift();
+  if (next) next();          // the slot passes straight to the next request
+  else inFlight--;
+}
+
+// 429 = the server's rate limit refused the request before running it, so it
+// is safe to send again, even a save. Wait what the server asks (Retry-After,
+// at most 10 s), a few times, before reporting it.
+const RATE_LIMIT_RETRIES = 3;
+
+export function rateLimitDelayMs(retryAfter: string | null, retry: number): number {
+  const seconds = Number(retryAfter);
+  if (Number.isFinite(seconds) && seconds > 0) return Math.min(seconds, 10) * 1000;
+  return Math.min(1000 * 2 ** (retry - 1), 10000);
+}
+
 async function adminFetch(path: string, options: RequestInit = {}, timeoutMs = defaultTimeoutMs) {
   const method = (options.method || "GET").toUpperCase();
   const isFormData = typeof FormData !== "undefined" && options.body instanceof FormData;
@@ -150,6 +184,8 @@ async function adminFetch(path: string, options: RequestInit = {}, timeoutMs = d
   const headers: Record<string, string> = {
     ...(isFormData ? {} : { "Content-Type": "application/json" }),
     "X-Request-ID": reqId,
+    // Server messages come back in the language chosen in the CMS.
+    "X-Luxe-Lang": getCurrentLang(),
     ...((options.headers as Record<string, string>) || {}),
   };
   const activeToken = getAccessToken();
@@ -163,24 +199,46 @@ async function adminFetch(path: string, options: RequestInit = {}, timeoutMs = d
   const canRetry = method === "GET" || Boolean(headers["Idempotency-Key"]);
   const maxAttempts = canRetry ? 3 : 1;
 
+  let rateLimitRetries = 0;
   for (let attempt = 1; attempt <= maxAttempts; attempt++) {
     const controller = new AbortController();
-    const timer = setTimeout(() => controller.abort(), timeoutMs);
-    const startMs = Date.now();
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    let startMs = Date.now();
 
     try {
-      const res = await fetch(url, {
-        // The CMS must always see live data: never answer from the WebView's
-        // HTTP cache (public endpoints are cacheable for the storefront, which
-        // made deleted categories "come back" after a reload).
-        cache: "no-store",
-        ...options,
-        headers,
-        signal: options.signal || controller.signal,
-      });
+      await takeRequestSlot();
+      // The timeout counts from the moment the request is sent, not while it
+      // waits for a free slot.
+      timer = setTimeout(() => controller.abort(), timeoutMs);
+      startMs = Date.now();
+      let res: Response;
+      try {
+        res = await fetch(url, {
+          // The CMS must always see live data: never answer from the WebView's
+          // HTTP cache (public endpoints are cacheable for the storefront, which
+          // made deleted categories "come back" after a reload).
+          cache: "no-store",
+          ...options,
+          headers,
+          signal: options.signal || controller.signal,
+        });
+      } finally {
+        releaseRequestSlot();
+      }
       const rttMs = Date.now() - startMs;
       const serverReqId = res.headers.get("x-request-id") || reqId;
       recordNetworkSample({ online: true, latencyMs: rttMs, requestId: serverReqId, retried: attempt > 1 });
+
+      // Waiting cannot help when the server asks for more than our 10 s cap, or on
+      // sign-in / first-owner setup (5 tries a minute): say it at once instead of spinning.
+      const retryAfter = Number(res.headers.get("retry-after"));
+      const waitWontHelp = (Number.isFinite(retryAfter) && retryAfter > 10) || /^\/admin\/auth\/(login|initialize-owner)$/.test(path);
+      if (res.status === 429 && !waitWontHelp && rateLimitRetries < RATE_LIMIT_RETRIES) {
+        rateLimitRetries++;
+        attempt--;           // not a failed attempt: the request was never run
+        await new Promise((r) => setTimeout(r, rateLimitDelayMs(res.headers.get("retry-after"), rateLimitRetries)));
+        continue;
+      }
 
       if ([502, 503, 504].includes(res.status) && attempt < maxAttempts) {
         await new Promise((r) => setTimeout(r, attempt * 250));
@@ -200,7 +258,7 @@ async function adminFetch(path: string, options: RequestInit = {}, timeoutMs = d
         if (!isAuthEndpoint && forCurrentSession) {
           setAccessToken(null);
         }
-        const tr401 = sanitizeAndTranslateError(data, 401, path, "Authentification requise");
+        const tr401 = sanitizeAndTranslateError(data, 401, path, trText("misc.auth_required"));
         throw new ClientSafeApiError({
           status: 401,
           title: tr401.title,
@@ -213,7 +271,7 @@ async function adminFetch(path: string, options: RequestInit = {}, timeoutMs = d
       }
 
       if (!res.ok) {
-        const tr = sanitizeAndTranslateError(data, res.status, path, "Opération refusée");
+        const tr = sanitizeAndTranslateError(data, res.status, path, trText("misc.op_refused"));
         throw new ClientSafeApiError({
           status: res.status,
           title: tr.title,
@@ -244,7 +302,7 @@ async function adminFetch(path: string, options: RequestInit = {}, timeoutMs = d
         continue;
       }
       recordNetworkSample({ online: false, requestId: reqId });
-      const trNet = sanitizeAndTranslateError(err, 0, path, "Erreur de communication");
+      const trNet = sanitizeAndTranslateError(err, 0, path, trText("misc.comm_error"));
       throw new ClientSafeApiError({
         status: trNet.status,
         title: trNet.title,
@@ -330,7 +388,7 @@ export const DesktopCmsApi = {
     });
     if (!res.ok) {
       const data = await res.json().catch(() => ({}));
-      const tr = sanitizeAndTranslateError(data, res.status, "/admin/system/backups/download", "Copie impossible");
+      const tr = sanitizeAndTranslateError(data, res.status, "/admin/system/backups/download", trText("misc.copy_failed"));
       throw new ClientSafeApiError({ status: res.status, title: tr.title, userMessage: tr.message, code: tr.code });
     }
     return new Uint8Array(await res.arrayBuffer());
@@ -752,6 +810,28 @@ export const DesktopCmsApi = {
     adminFetch(`/admin/users/${userId}`, { method: "PUT", body: JSON.stringify(payload) }),
   resetUserPassword: (userId: number, new_password: string) =>
     adminFetch(`/admin/users/${userId}/reset-password`, { method: "POST", body: JSON.stringify({ new_password }) }),
+
+  // Shop items (boutique articles): quick add, stock arrivals, barcodes — backend/app/routers/store.py
+  listStoreItems: (params: { q?: string; show?: string; limit?: number; offset?: number } = {}) => {
+    const qs = new URLSearchParams();
+    if (params.q) qs.set("q", params.q);
+    if (params.show) qs.set("show", params.show);
+    qs.set("limit", String(params.limit ?? 40));
+    qs.set("offset", String(params.offset ?? 0));
+    return adminFetch(`/admin/store/items?${qs.toString()}`);
+  },
+  quickAddStoreItem: (payload: unknown) =>
+    adminFetch("/admin/store/items", { method: "POST", body: JSON.stringify(payload) }),
+  addStoreVariants: (productId: number, variants: unknown[]) =>
+    adminFetch(`/admin/store/items/${productId}/variants`, { method: "POST", body: JSON.stringify({ variants }) }),
+  editStoreItem: (productId: number, payload: { name?: string; price_dzd?: number; cost_dzd?: number; sold_online?: boolean }) =>
+    adminFetch(`/admin/store/items/${productId}`, { method: "PUT", body: JSON.stringify(payload) }),
+  receiveStoreStock: (variantId: number, quantity: number) =>
+    adminFetch(`/admin/store/variants/${variantId}/receive`, { method: "POST", body: JSON.stringify({ quantity }) }),
+  generateStoreBarcodes: (productId: number) =>
+    adminFetch(`/admin/store/items/${productId}/barcodes`, { method: "POST" }),
+  generateAllMissingBarcodes: () =>
+    adminFetch("/admin/store/barcodes/missing", { method: "POST" }),
 
   // Devices & hardware management
   listDevices: () => adminFetch("/admin/devices"),

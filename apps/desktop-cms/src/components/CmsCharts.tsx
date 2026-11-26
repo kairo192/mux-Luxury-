@@ -1,5 +1,6 @@
 import React, { useState } from "react";
 import { ArrowUpRight, Layers, PieChart as PieIcon, BarChart3 } from "lucide-react";
+import { localeFor, tr } from "../i18n/translations";
 
 // ============================================================================
 // 1. REVENUE & ORDERS INTERACTIVE AREA / BAR CHART
@@ -17,11 +18,12 @@ interface RevenueChartProps {
   title?: string;
 }
 
-const DAY_LABELS = ["Dim", "Lun", "Mar", "Mer", "Jeu", "Ven", "Sam"];
+// Short weekday name in the language of the CMS (Mon, Tue… / lun., mar.… / الإثنين…).
+const dayLabel = (dt: Date) => dt.toLocaleDateString(localeFor(), { weekday: "short" });
 
 export const RevenueTrendChart: React.FC<RevenueChartProps> = ({
   byDay = [],
-  title = "Chiffre d'affaires par jour",
+  title,
 }) => {
   const [activeRange, setActiveRange] = useState<"7d" | "30d">("7d");
   const [hoveredIndex, setHoveredIndex] = useState<number | null>(null);
@@ -33,7 +35,7 @@ export const RevenueTrendChart: React.FC<RevenueChartProps> = ({
     const dt = new Date(`${d.date}T12:00:00`);
     return {
       date: d.date,
-      label: activeRange === "7d" ? DAY_LABELS[dt.getDay()] : `${dt.getDate()}/${dt.getMonth() + 1}`,
+      label: activeRange === "7d" ? dayLabel(dt) : `${dt.getDate()}/${dt.getMonth() + 1}`,
       revenue: Number(d.revenue_dzd || 0),
       orders: Number(d.orders || 0),
     };
@@ -46,8 +48,8 @@ export const RevenueTrendChart: React.FC<RevenueChartProps> = ({
   if (points.length === 0) {
     return (
       <div className="bg-white rounded-2xl border border-[#063D2E]/10 p-5 shadow-sm text-xs text-gray-500">
-        <h3 className="font-serif font-bold text-sm text-[#063D2E] mb-1">{title}</h3>
-        Aucune donnée de vente pour le moment.
+        <h3 className="font-serif font-bold text-sm text-[#063D2E] mb-1">{title || tr("charts.rev_title")}</h3>
+        {tr("charts.no_sales")}
       </div>
     );
   }
@@ -87,10 +89,10 @@ export const RevenueTrendChart: React.FC<RevenueChartProps> = ({
             <BarChart3 className="w-5 h-5 text-[#063D2E]" />
           </div>
           <div>
-            <h3 className="font-serif font-bold text-sm text-[#063D2E] tracking-tight">{title}</h3>
+            <h3 className="font-serif font-bold text-sm text-[#063D2E] tracking-tight">{title || tr("charts.rev_title")}</h3>
             <p className="text-[11px] text-gray-500">
-              {activeRange === "7d" ? "7 derniers jours" : "30 derniers jours"} :{" "}
-              <strong className="text-[#063D2E]">{periodRevenue.toLocaleString("fr-FR")} DA</strong> · {periodOrders} commande(s)
+              {activeRange === "7d" ? tr("charts.last7") : tr("charts.last30")} :{" "}
+              <strong className="text-[#063D2E]">{periodRevenue.toLocaleString("fr-FR")} DA</strong> · {tr("charts.orders_n", { n: periodOrders })}
             </p>
           </div>
         </div>
@@ -228,10 +230,10 @@ export const RevenueTrendChart: React.FC<RevenueChartProps> = ({
         <div className="flex items-center gap-4">
           <div className="flex items-center gap-1.5">
             <span className="w-2.5 h-2.5 rounded-full bg-[#063D2E]" />
-            <span className="font-medium text-gray-700">Ventes du jour (DA) — hors commandes annulées et retournées</span>
+            <span className="font-medium text-gray-700">{tr("charts.legend")}</span>
           </div>
         </div>
-        <span className="text-gray-400">Survolez un point pour le détail</span>
+        <span className="text-gray-400">{tr("charts.hover")}</span>
       </div>
     </div>
   );
@@ -252,15 +254,15 @@ export const OrderStatusDistributionChart: React.FC<OrderStatusDistributionProps
   const [hoveredKey, setHoveredKey] = useState<string | null>(null);
 
   const statusMeta: Record<string, { label: string; color: string; desc: string }> = {
-    new: { label: "Nouvelles", color: "#3B82F6", desc: "À confirmer par appel/WhatsApp" },
-    pending_confirmation: { label: "En attente de confirmation", color: "#0EA5E9", desc: "Client à rappeler" },
-    confirmed: { label: "Confirmées", color: "#10B981", desc: "Validées, prêtes pour emballage" },
-    preparing: { label: "En Préparation", color: "#6366F1", desc: "Colis en cours de conditionnement" },
-    ready_for_shipment: { label: "Prêtes à expédier", color: "#8B5CF6", desc: "Colis emballé, en attente du livreur" },
-    shipped: { label: "Expédiées", color: "#F59E0B", desc: "Prises en charge par livreur" },
-    delivered: { label: "Livrées & Encaissées", color: "#063D2E", desc: "Fonds COD perçus" },
-    returned: { label: "Retours COD", color: "#EF4444", desc: "Colis refusé ou injoignable" },
-    cancelled: { label: "Annulées", color: "#9CA3AF", desc: "Annulées avant départ" },
+    new: { label: tr("charts.s_new"), color: "#3B82F6", desc: tr("charts.d_new") },
+    pending_confirmation: { label: tr("charts.s_pending_confirmation"), color: "#0EA5E9", desc: tr("charts.d_pending_confirmation") },
+    confirmed: { label: tr("charts.s_confirmed"), color: "#10B981", desc: tr("charts.d_confirmed") },
+    preparing: { label: tr("charts.s_preparing"), color: "#6366F1", desc: tr("charts.d_preparing") },
+    ready_for_shipment: { label: tr("charts.s_ready_for_shipment"), color: "#8B5CF6", desc: tr("charts.d_ready_for_shipment") },
+    shipped: { label: tr("charts.s_shipped"), color: "#F59E0B", desc: tr("charts.d_shipped") },
+    delivered: { label: tr("charts.s_delivered"), color: "#063D2E", desc: tr("charts.d_delivered") },
+    returned: { label: tr("charts.s_returned"), color: "#EF4444", desc: tr("charts.d_returned") },
+    cancelled: { label: tr("charts.s_cancelled"), color: "#9CA3AF", desc: tr("charts.d_cancelled") },
   };
 
   const segments = Object.entries(statusMeta).map(([k, meta]) => {
@@ -290,12 +292,12 @@ export const OrderStatusDistributionChart: React.FC<OrderStatusDistributionProps
             <PieIcon className="w-5 h-5 text-[#063D2E]" />
           </div>
           <div>
-            <h3 className="font-serif font-bold text-sm text-[#063D2E]">Pipeline des Commandes</h3>
-            <p className="text-[11px] text-gray-500">Distribution par étape opérationnelle</p>
+            <h3 className="font-serif font-bold text-sm text-[#063D2E]">{tr("charts.pipeline")}</h3>
+            <p className="text-[11px] text-gray-500">{tr("charts.pipeline_sub")}</p>
           </div>
         </div>
         <span className="px-2.5 py-1 rounded-full bg-[#063D2E]/10 text-[#063D2E] font-mono font-bold text-[11px]">
-          {totalOrders} commande(s)
+          {tr("charts.orders_n", { n: totalOrders })}
         </span>
       </div>
 
@@ -426,8 +428,8 @@ export const InventoryHealthWidget: React.FC<StockGaugeProps> = ({
             <Layers className="w-5 h-5" />
           </div>
           <div>
-            <h3 className="font-serif font-bold text-sm text-[#063D2E]">Santé des Stocks & Disponibilité</h3>
-            <p className="text-[11px] text-gray-500">{totalVariants} variante(s) en vente (taille / couleur)</p>
+            <h3 className="font-serif font-bold text-sm text-[#063D2E]">{tr("charts.stock_health")}</h3>
+            <p className="text-[11px] text-gray-500">{tr("charts.variants_on_sale", { n: totalVariants })}</p>
           </div>
         </div>
         {onNavigateToProducts && (
@@ -436,7 +438,7 @@ export const InventoryHealthWidget: React.FC<StockGaugeProps> = ({
             onClick={onNavigateToProducts}
             className="text-[11px] font-bold text-[#063D2E] hover:text-[#0A5C45] flex items-center gap-1 transition"
           >
-            <span>Gérer</span>
+            <span>{tr("charts.manage")}</span>
             <ArrowUpRight className="w-3.5 h-3.5" />
           </button>
         )}
@@ -448,37 +450,37 @@ export const InventoryHealthWidget: React.FC<StockGaugeProps> = ({
           <div
             style={{ width: `${inStockPct}%` }}
             className="bg-emerald-600 transition-all duration-500"
-            title={`Stock Normal: ${inStockPct}%`}
+            title={tr("charts.normal_pct", { p: inStockPct })}
           />
           <div
             style={{ width: `${lowStockPct}%` }}
             className="bg-amber-500 transition-all duration-500"
-            title={`Stock Faible: ${lowStockPct}%`}
+            title={tr("charts.low_pct", { p: lowStockPct })}
           />
           <div
             style={{ width: `${outOfStockPct}%` }}
             className="bg-red-500 transition-all duration-500"
-            title={`Rupture: ${outOfStockPct}%`}
+            title={tr("charts.out_pct", { p: outOfStockPct })}
           />
         </div>
         <div className="flex justify-between text-[10px] text-gray-400 font-mono">
-          <span>{inStockPct}% en stock optimal</span>
-          <span>{(Number(lowStockPct) + Number(outOfStockPct)).toFixed(0)}% vigilance requise</span>
+          <span>{tr("charts.optimal", { p: inStockPct })}</span>
+          <span>{tr("charts.attention", { p: (Number(lowStockPct) + Number(outOfStockPct)).toFixed(0) })}</span>
         </div>
       </div>
 
       {/* Metric Cards */}
       <div className="grid grid-cols-3 gap-3 pt-1 text-center">
         <div className="p-3 rounded-xl bg-emerald-50 border border-emerald-100">
-          <span className="text-[10px] font-bold uppercase tracking-wider text-emerald-800">Normal</span>
+          <span className="text-[10px] font-bold uppercase tracking-wider text-emerald-800">{tr("charts.normal")}</span>
           <p className="text-xl font-mono font-black text-emerald-900 mt-1">{inStock}</p>
         </div>
         <div className="p-3 rounded-xl bg-amber-50 border border-amber-200">
-          <span className="text-[10px] font-bold uppercase tracking-wider text-amber-800">Faible</span>
+          <span className="text-[10px] font-bold uppercase tracking-wider text-amber-800">{tr("charts.low")}</span>
           <p className="text-xl font-mono font-black text-amber-900 mt-1">{lowStock}</p>
         </div>
         <div className="p-3 rounded-xl bg-red-50 border border-red-200">
-          <span className="text-[10px] font-bold uppercase tracking-wider text-red-800">Rupture (0)</span>
+          <span className="text-[10px] font-bold uppercase tracking-wider text-red-800">{tr("charts.out")}</span>
           <p className="text-xl font-mono font-black text-red-900 mt-1">{outOfStock}</p>
         </div>
       </div>

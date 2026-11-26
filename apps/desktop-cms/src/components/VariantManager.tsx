@@ -15,6 +15,7 @@ import {
 import { DesktopCmsApi, mediaUrl } from "../api/adminClient";
 import { notifyClientError, notifyClientSuccess, notifyClientWarning } from "../utils/clientNotifier";
 import { useT } from "../i18n";
+import { pickLang } from "../i18n/translations";
 
 // ============================================================================
 // REAL VARIANT MANAGER — colour / size / custom axis combinations
@@ -226,7 +227,7 @@ export function VariantManager({
 
   function buildDraftCombos() {
     if (!combos.length) {
-      notifyClientWarning("Aucune combinaison", "Sélectionnez au moins une valeur sur chaque axe de déclinaison.");
+      notifyClientWarning(t("vm.no_combo_title"), t("vm.no_combo_body"));
       return;
     }
     if (isCreateMode) {
@@ -244,11 +245,11 @@ export function VariantManager({
         __new: true,
       }));
       if (!additions.length) {
-        notifyClientWarning("Déclinaisons déjà présentes", "Toutes les combinaisons sélectionnées existent déjà dans le brouillon.");
+        notifyClientWarning(t("vm.all_exist_title"), t("vm.all_exist_body"));
         return;
       }
       onChange?.([...variants, ...additions]);
-      notifyClientSuccess("Déclinaisons ajoutées", `${additions.length} combinaison(s) ajoutée(s) au brouillon du produit.`);
+      notifyClientSuccess(t("vm.added_title"), t("vm.added_body", { n: additions.length }));
     }
   }
 
@@ -256,7 +257,7 @@ export function VariantManager({
     if (!productId) return;
     const activeAxes = axes.filter((a) => (selection[a.attr_key] || []).length > 0);
     if (!activeAxes.length) {
-      notifyClientWarning("Axes requis", "Sélectionnez au moins une valeur sur un axe de déclinaison.");
+      notifyClientWarning(t("vm.axes_required_title"), t("vm.axes_required_body"));
       return;
     }
     setBusy(true);
@@ -273,12 +274,12 @@ export function VariantManager({
       const created = res?.created_count ?? res?.created?.length ?? 0;
       const skipped = res?.skipped_duplicates ?? 0;
       notifyClientSuccess(
-        "Matrice de déclinaisons générée",
-        `${created} variante(s) créée(s)${skipped ? `, ${skipped} déjà existante(s) ignorée(s)` : ""}.`
+        t("vm.matrix_title"),
+        skipped ? t("vm.matrix_body_skipped", { created, skipped }) : t("vm.matrix_body", { created })
       );
       await onRefresh?.();
     } catch (err: any) {
-      notifyClientError(err, "Génération de la matrice impossible");
+      notifyClientError(err, t("vm.matrix_failed"));
     } finally {
       setBusy(false);
     }
@@ -290,12 +291,12 @@ export function VariantManager({
       if (v) attrs[k] = v;
     });
     if (axes.length > 0 && Object.keys(attrs).length === 0) {
-      notifyClientWarning("Déclinaison incomplète", "Choisissez une valeur pour chaque axe de déclinaison.");
+      notifyClientWarning(t("vm.incomplete_title"), t("vm.incomplete_body"));
       return;
     }
     const sig = signatureOf(attrs);
     if (existingSignatures.has(sig)) {
-      notifyClientWarning("Combinaison existante", "Cette combinaison couleur/taille existe déjà pour ce produit.");
+      notifyClientWarning(t("vm.exists_title"), t("vm.exists_body"));
       return;
     }
     setBusy(true);
@@ -317,7 +318,7 @@ export function VariantManager({
             __new: true,
           },
         ]);
-        notifyClientSuccess("Déclinaison ajoutée", "La combinaison sera enregistrée avec le produit.");
+        notifyClientSuccess(t("vm.one_added_title"), t("vm.one_added_body"));
       } else {
         await DesktopCmsApi.createVariant(productId!, {
           sku: newVariant.sku.trim() || undefined,
@@ -327,13 +328,13 @@ export function VariantManager({
           is_active: true,
           attributes: attrs,
         });
-        notifyClientSuccess("Déclinaison créée", "La nouvelle combinaison est disponible sur la boutique.");
+        notifyClientSuccess(t("vm.created_title"), t("vm.created_body"));
         await onRefresh?.();
       }
       setNewVariant({ stock: 0, price: "", sku: "", attrs: {} });
       setShowAddForm(false);
     } catch (err: any) {
-      notifyClientError(err, "Création de la déclinaison refusée");
+      notifyClientError(err, t("vm.create_refused"));
     } finally {
       setBusy(false);
     }
@@ -347,7 +348,7 @@ export function VariantManager({
       });
       onChange?.(merged);
       setRowEdits({});
-      notifyClientSuccess("Brouillon mis à jour", "Les valeurs seront enregistrées avec le produit.");
+      notifyClientSuccess(t("vm.draft_updated_title"), t("vm.draft_updated_body"));
       return;
     }
     const entries = Object.entries(rowEdits);
@@ -375,18 +376,18 @@ export function VariantManager({
         await DesktopCmsApi.updateVariant(variantId, payload);
         ok += 1;
       } catch (err: any) {
-        const tr = notifyClientError(err, `Déclinaison #${variantId} refusée`, false);
+        const tr = notifyClientError(err, t("vm.variant_refused", { id: variantId }), false);
         failures.push(`#${variantId}: ${tr.message}`);
       }
     }
     setBusy(false);
     if (ok) {
-      notifyClientSuccess("Déclinaisons enregistrées", `${ok} variante(s) mise(s) à jour sur le serveur.`);
+      notifyClientSuccess(t("vm.saved_title"), t("vm.saved_body", { n: ok }));
       setRowEdits({});
       await onRefresh?.();
     }
     if (failures.length) {
-      notifyClientError(new Error(failures.join(" · ")), "Certaines déclinaisons n'ont pas pu être enregistrées");
+      notifyClientError(new Error(failures.join(" · ")), t("vm.some_failed"));
     }
   }
 
@@ -401,15 +402,15 @@ export function VariantManager({
       const res = await DesktopCmsApi.deleteVariant(variant.id);
       if (res?.deactivated) {
         notifyClientWarning(
-          "Déclinaison désactivée",
-          res.reason || "Cette variante est liée à des commandes : elle a été désactivée au lieu d'être supprimée."
+          t("vm.deactivated_title"),
+          t("vm.deactivated_body")
         );
       } else {
-        notifyClientSuccess("Déclinaison supprimée", `SKU ${variant.sku} retiré du catalogue.`);
+        notifyClientSuccess(t("vm.deleted_title"), t("vm.deleted_body", { sku: variant.sku }));
       }
       await onRefresh?.();
     } catch (err: any) {
-      notifyClientError(err, "Suppression de la déclinaison impossible");
+      notifyClientError(err, t("vm.delete_failed"));
     } finally {
       setBusy(false);
     }
@@ -417,34 +418,34 @@ export function VariantManager({
 
   async function runBulk(action: "stock" | "price" | "clear_price" | "activate" | "deactivate") {
     if (!selectedIds.length) {
-      notifyClientWarning("Sélection vide", "Sélectionnez au moins une déclinaison.");
+      notifyClientWarning(t("vm.empty_sel_title"), t("vm.empty_sel_body"));
       return;
     }
     const payload: any = { variant_ids: selectedIds, reason: `cms_bulk_${action}` };
     if (action === "stock") {
       const qty = await askNumber(
-        "Nouveau stock",
+        t("vm.new_stock"),
         String(defaultStock),
         "u.",
-        `Appliqué à ${selectedIds.length} déclinaison${selectedIds.length > 1 ? "s" : ""}`,
+        t("vm.applied_to", { n: selectedIds.length }),
       );
       if (qty === null) return;
       if (!Number.isFinite(qty) || qty < 0) {
-        notifyClientWarning("Quantité invalide", "Le stock doit être un nombre entier positif ou nul.");
+        notifyClientWarning(t("vm.bad_qty_title"), t("vm.bad_qty_body"));
         return;
       }
       payload.set_stock_qty = Math.floor(qty);
     }
     if (action === "price") {
       const price = await askNumber(
-        "Prix spécifique",
+        t("vm.specific_price"),
         String(productPrice),
         "DA",
-        `Appliqué à ${selectedIds.length} déclinaison${selectedIds.length > 1 ? "s" : ""}`,
+        t("vm.applied_to", { n: selectedIds.length }),
       );
       if (price === null) return;
       if (!Number.isFinite(price) || price < 0) {
-        notifyClientWarning("Prix invalide", "Le prix doit être un nombre positif ou nul.");
+        notifyClientWarning(t("vm.bad_price_title"), t("vm.bad_price_body"));
         return;
       }
       payload.set_price_override_dzd = Math.floor(price);
@@ -457,14 +458,14 @@ export function VariantManager({
     try {
       const res = await DesktopCmsApi.bulkUpdateVariants(payload);
       notifyClientSuccess(
-        "Action groupée appliquée",
-        `${res.updated_count} déclinaison(s) mise(s) à jour${res.missing_ids?.length ? `, ${res.missing_ids.length} introuvable(s)` : ""}.`
+        t("vm.bulk_title"),
+        res.missing_ids?.length ? t("vm.bulk_body_missing", { n: res.updated_count, missing: res.missing_ids.length }) : t("vm.bulk_body", { n: res.updated_count })
       );
       setSelectedIds([]);
       setRowEdits({});
       await onRefresh?.();
     } catch (err: any) {
-      notifyClientError(err, "Action groupée refusée");
+      notifyClientError(err, t("vm.bulk_refused"));
     } finally {
       setBusy(false);
     }
@@ -524,7 +525,7 @@ export function VariantManager({
         {axes.map((axis) => (
           <div key={axis.attr_key} className="space-y-1.5">
             <div className="flex items-center justify-between">
-              <span className="font-semibold text-[11px] uppercase tracking-wide text-gray-500">{axis.label_fr}</span>
+              <span className="font-semibold text-[11px] uppercase tracking-wide text-gray-500">{pickLang(axis, "label")}</span>
               <span className="text-[10px] text-gray-400 font-mono">{axis.attr_key}</span>
             </div>
             <div className="flex flex-wrap items-center gap-1.5">
@@ -548,7 +549,7 @@ export function VariantManager({
                         style={{ backgroundColor: opt.color_hex }}
                       />
                     )}
-                    <span>{opt.label_fr || opt.value}</span>
+                    <span>{pickLang(opt, "label") || opt.value}</span>
                     {active && <Check className="w-3 h-3" />}
                   </button>
                 );
@@ -580,7 +581,7 @@ export function VariantManager({
                         <span>{v}</span>
                         {active && <Check className="w-3 h-3 text-[#D4AF62]" />}
                       </button>
-                      <button aria-label="Retirer cette valeur"
+                      <button aria-label={t("vm.remove_value")}
                         type="button"
                         onClick={() => removeCustomValue(axis.attr_key, v)}
                         className={`px-1.5 py-1 rounded-r-lg border border-l-0 text-xs transition ${
@@ -588,7 +589,7 @@ export function VariantManager({
                             ? "bg-[#063D2E] text-[#E8D4A5]/70 hover:text-red-300 border-[#063D2E]"
                             : "bg-white text-gray-400 hover:text-red-500 border-gray-300"
                         }`}
-                        title="Retirer cette option personnalisée"
+                        title={t("vm.remove_custom")}
                       >
                         <X className="w-2.5 h-2.5" />
                       </button>
@@ -605,7 +606,7 @@ export function VariantManager({
                       value={customColorHex[axis.attr_key] || "#063D2E"}
                       onChange={(e) => setCustomColorHex((p) => ({ ...p, [axis.attr_key]: e.target.value }))}
                       className="w-6 h-6 rounded cursor-pointer border-0 p-0 bg-transparent"
-                      title="Choisir une nuance sur la palette"
+                      title={t("vm.pick_palette")}
                     />
                     <input
                       value={customColorHex[axis.attr_key] || "#063D2E"}
@@ -629,14 +630,14 @@ export function VariantManager({
                         addCustomValue(axis.attr_key, customColorHex[axis.attr_key] || "#063D2E");
                       }
                     }}
-                    placeholder="Nom de la couleur (ex: Vert sauge)…"
+                    placeholder={t("vm.color_name_ph")}
                     className="w-36 sm:w-44 px-2 py-1 border rounded-lg bg-white text-xs font-medium"
                   />
                   <button
                     type="button"
                     onClick={() => addCustomValue(axis.attr_key, customColorHex[axis.attr_key] || "#063D2E")}
                     className="px-2.5 py-1.5 rounded-lg bg-[#063D2E] text-[#D4AF62] font-bold hover:brightness-110 shadow-xs flex items-center gap-1 text-xs"
-                    title="Ajouter cette couleur"
+                    title={t("vm.add_color")}
                   >
                     <Plus className="w-3.5 h-3.5" />
                   </button>
@@ -652,14 +653,14 @@ export function VariantManager({
                         addCustomValue(axis.attr_key);
                       }
                     }}
-                    placeholder={`Autre ${axis.label_fr}…`}
+                    placeholder={t("vm.other_value_ph", { axis: pickLang(axis, "label") })}
                     className="w-32 px-2 py-1 border rounded-lg bg-white text-xs font-medium"
                   />
                   <button
                     type="button"
                     onClick={() => addCustomValue(axis.attr_key)}
                     className="px-2.5 py-1 rounded-lg bg-[#063D2E] text-[#D4AF62] font-bold text-xs flex items-center gap-1 shadow-xs"
-                    title="Ajouter cette option"
+                    title={t("vm.add_option")}
                   >
                     <Plus className="w-3 h-3" />
                   </button>
@@ -714,7 +715,7 @@ export function VariantManager({
             <div className="grid grid-cols-1 md:grid-cols-4 gap-2">
               {axes.map((axis) => (
                 <div key={axis.attr_key}>
-                  <label className="block font-semibold mb-1">{axis.label_fr}</label>
+                  <label className="block font-semibold mb-1">{pickLang(axis, "label")}</label>
                   <select
                     value={newVariant.attrs[axis.attr_key] || ""}
                     onChange={(e) =>
@@ -725,7 +726,7 @@ export function VariantManager({
                     <option value="">{t("product_editor.select_option")}</option>
                     {(axis.options || []).map((o) => (
                       <option key={o.value} value={o.value}>
-                        {o.label_fr || o.value}
+                        {pickLang(o, "label") || o.value}
                       </option>
                     ))}
                   </select>
@@ -823,7 +824,7 @@ export function VariantManager({
             <button type="button" onClick={() => runBulk("deactivate")} className="px-2.5 py-1 rounded-lg bg-amber-50 border border-amber-300 font-bold text-amber-800">
               {t("variant_mgr.bulk_deactivate")}
             </button>
-            <button aria-label="Tout désélectionner" type="button" onClick={() => setSelectedIds([])} className="ml-auto p-1 rounded text-gray-500 hover:text-black">
+            <button aria-label={t("vm.deselect_all")} type="button" onClick={() => setSelectedIds([])} className="ml-auto p-1 rounded text-gray-500 hover:text-black">
               <X className="w-3.5 h-3.5" />
             </button>
           </div>
@@ -948,7 +949,7 @@ export function VariantManager({
                               <span
                                 key={axis.attr_key}
                                 className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-[#F8F6F0] border border-[#D4AF62]/40 font-semibold text-[11px]"
-                                title={axis.label_fr}
+                                title={pickLang(axis, "label")}
                               >
                                 {hex && <span className="w-2.5 h-2.5 rounded-full border border-white" style={{ backgroundColor: hex }} />}
                                 {val}
@@ -1084,7 +1085,7 @@ export function VariantManager({
                                 ? "bg-white border-gray-300 text-gray-700"
                                 : "bg-amber-50 border-amber-300 text-amber-800"
                             }`}
-                            title="Activer / désactiver la déclinaison sur la boutique"
+                            title={t("vm.toggle_shop")}
                           >
                             {edit.is_active !== undefined ? (edit.is_active ? t("variant_mgr.btn_activate") : t("variant_mgr.btn_deactivate")) : variant.is_active !== false ? t("variant_mgr.btn_deactivate") : t("variant_mgr.btn_activate")}
                           </button>
@@ -1093,7 +1094,7 @@ export function VariantManager({
                           type="button"
                           onClick={() => removeVariant(variant)}
                           className="px-2 py-1 rounded-lg bg-red-50 border border-red-200 text-red-700 font-bold"
-                          title="Supprimer la déclinaison"
+                          title={t("vm.delete_variant")}
                         >
                           <Trash2 className="w-3 h-3" />
                         </button>

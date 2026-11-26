@@ -120,7 +120,7 @@ export const InventoryMovementsReportPage: React.FC = () => {
                 {data.by_reason.length === 0 && <div className="text-gray-400">{t("inventory_report.no_movements")}</div>}
                 {data.by_reason.map((br: any) => (
                   <div key={br.reason} className="flex items-center justify-between py-1.5 border-b border-gray-50 last:border-0">
-                    <span className="truncate pr-2">{label(br.reason)}<span className="text-gray-400 font-mono text-[10px] ml-2">{br.reason}</span></span>
+                    <span className="truncate pr-2">{label(br.reason)}{/^[a-z_]+$/.test(br.reason) && <span className="text-gray-400 font-mono text-[10px] ms-2">{br.reason}</span>}</span>
                     <div className="text-right">
                       <div className={`font-mono font-bold ${br.net_change >= 0 ? "text-emerald-600" : "text-red-600"}`}>{br.net_change >= 0 ? `+${br.net_change}` : br.net_change}</div>
                       <div className="text-[10px] text-gray-400">{t("inventory_report.entries_units", { count: br.count, units: br.gross_units })}</div>

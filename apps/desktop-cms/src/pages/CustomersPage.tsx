@@ -16,6 +16,7 @@ import {
 import { DesktopCmsApi } from "../api/adminClient";
 import { useT } from "../i18n";
 import { serverDate } from "../utils/serverDate";
+import { tr } from "../i18n/translations";
 
 const fmt = (dzd: number) => `${Number(dzd || 0).toLocaleString("fr-DZ")} DA`;
 
@@ -52,7 +53,7 @@ export const CustomersPage: React.FC = () => {
       setTotalCustomers(typeof d.total === "number" ? d.total : null);
       setError(null);
     } catch (e: any) {
-      setError(e?.userMessage || "Chargement impossible");
+      setError(e?.userMessage || t("cust.load_failed"));
     } finally {
       setLoading(false);
     }
@@ -76,7 +77,7 @@ export const CustomersPage: React.FC = () => {
       setCustomers(d.items || []);
       setTotalCustomers(null);
     } catch (e: any) {
-      setError(e?.userMessage || "Recherche échouée");
+      setError(e?.userMessage || t("cust.search_failed"));
     } finally {
       setLoading(false);
     }
@@ -89,7 +90,7 @@ export const CustomersPage: React.FC = () => {
       setCustomers((prev) => [...prev, ...(d.items || [])]);
       if (typeof d.total === "number") setTotalCustomers(d.total);
     } catch (e: any) {
-      setError(e?.userMessage || "Chargement impossible");
+      setError(e?.userMessage || t("cust.load_failed"));
     } finally {
       setBusy(false);
     }
@@ -99,7 +100,7 @@ export const CustomersPage: React.FC = () => {
     try {
       setDetail(await DesktopCmsApi.getCustomer(c.id));
     } catch (e: any) {
-      setError(e?.userMessage || "Détail indisponible");
+      setError(e?.userMessage || t("cust.detail_failed"));
     }
   };
 
@@ -128,7 +129,7 @@ export const CustomersPage: React.FC = () => {
       setForm(null);
       load();
     } catch (e: any) {
-      setError(e?.userMessage || "Enregistrement refusé");
+      setError(e?.userMessage || t("cust.save_refused"));
     } finally {
       setBusy(false);
     }
@@ -160,7 +161,7 @@ export const CustomersPage: React.FC = () => {
               placeholder={t("customers.search_placeholder")}
               className="flex-1 md:w-64 h-12 px-3 rounded-2xl border-2 border-gray-200 focus:border-[#063D2E] outline-none"
             />
-            <button aria-label="Rechercher" type="button" onClick={runSearch} className="h-12 px-4 rounded-2xl bg-[#063D2E] text-[#D4AF62] font-bold flex items-center gap-2 active:scale-95">
+            <button aria-label={t("misc.search")} type="button" onClick={runSearch} className="h-12 px-4 rounded-2xl bg-[#063D2E] text-[#D4AF62] font-bold flex items-center gap-2 active:scale-95">
               <Search className="w-5 h-5" />
             </button>
           </div>
@@ -200,7 +201,7 @@ export const CustomersPage: React.FC = () => {
                   </td>
                   <td className="px-4 py-3 text-right font-mono font-bold">{fmt(c.total_spent_dzd || 0)}</td>
                   <td className="px-4 py-3 text-right" onClick={(e) => e.stopPropagation()}>
-                    <button aria-label="Modifier" type="button" onClick={() => setForm({ id: c.id, full_name: c.full_name, phone: c.phone, email: c.email || "", notes: c.notes || "" })} className="h-10 w-10 rounded-xl border-2 border-gray-200 inline-flex items-center justify-center text-gray-500 active:scale-95">
+                    <button aria-label={t("misc.edit")} type="button" onClick={() => setForm({ id: c.id, full_name: c.full_name, phone: c.phone, email: c.email || "", notes: c.notes || "" })} className="h-10 w-10 rounded-xl border-2 border-gray-200 inline-flex items-center justify-center text-gray-500 active:scale-95">
                       <Pencil className="w-4 h-4" />
                     </button>
                   </td>
@@ -231,21 +232,21 @@ export const CustomersPage: React.FC = () => {
                   {detail.email && <span className="flex items-center gap-1"><Mail className="w-3 h-3" /> {detail.email}</span>}
                 </div>
               </div>
-              <button aria-label="Fermer" type="button" onClick={() => setDetail(null)} className="w-11 h-11 rounded-xl flex items-center justify-center text-gray-400 hover:bg-gray-100 active:scale-95">
+              <button aria-label={tr("ui.close")} type="button" onClick={() => setDetail(null)} className="w-11 h-11 rounded-xl flex items-center justify-center text-gray-400 hover:bg-gray-100 active:scale-95">
                 <X className="w-6 h-6" />
               </button>
             </div>
             <div className="p-5 space-y-4">
               <div className="grid grid-cols-3 gap-3">
-                <Kpi icon={Globe} label="En ligne" value={fmt(detail.totals.online_spent_dzd)} sub={`${detail.totals.online_orders} cmd`} />
-                <Kpi icon={Store} label="Magasin" value={fmt(detail.totals.in_store_spent_dzd)} sub={`${detail.totals.in_store_sales} vente(s)`} />
-                <Kpi icon={Users} label="Total" value={fmt(detail.totals.combined_spent_dzd)} sub="cumulé" accent />
+                <Kpi icon={Globe} label={t("cust.online")} value={fmt(detail.totals.online_spent_dzd)} sub={t("cust.orders_short", { n: detail.totals.online_orders })} />
+                <Kpi icon={Store} label={t("cust.shop")} value={fmt(detail.totals.in_store_spent_dzd)} sub={t("cust.sales_n", { n: detail.totals.in_store_sales })} />
+                <Kpi icon={Users} label={t("cust.total")} value={fmt(detail.totals.combined_spent_dzd)} sub={t("cust.cumulated")} accent />
               </div>
               {detail.notes && <div className="p-3 rounded-2xl bg-[#F5F3EE] text-gray-600">{detail.notes}</div>}
               <div>
-                <h4 className="font-bold text-[#063D2E] mb-2">Historique</h4>
+                <h4 className="font-bold text-[#063D2E] mb-2">{t("cust.history")}</h4>
                 <div className="space-y-1 max-h-72 overflow-auto">
-                  {detail.history.length === 0 && <div className="text-gray-400">Aucun achat.</div>}
+                  {detail.history.length === 0 && <div className="text-gray-400">{t("cust.no_purchase")}</div>}
                   {detail.history.map((h: any, i: number) => (
                     <div key={i} className="flex items-center justify-between p-2 rounded-xl border border-gray-100">
                       <div className="flex items-center gap-2">
@@ -270,7 +271,7 @@ export const CustomersPage: React.FC = () => {
           <div className="bg-white rounded-3xl w-full max-w-md" onClick={(e) => e.stopPropagation()}>
             <div className="flex items-center justify-between px-5 py-4 border-b">
               <h3 className="font-serif font-bold text-[#063D2E] text-lg">{form.id === null ? t("customers.modal_new_title") : t("customers.modal_edit_title")}</h3>
-              <button aria-label="Fermer" type="button" onClick={() => setForm(null)} className="w-11 h-11 rounded-xl flex items-center justify-center text-gray-400 hover:bg-gray-100 active:scale-95">
+              <button aria-label={tr("ui.close")} type="button" onClick={() => setForm(null)} className="w-11 h-11 rounded-xl flex items-center justify-center text-gray-400 hover:bg-gray-100 active:scale-95">
                 <X className="w-6 h-6" />
               </button>
             </div>

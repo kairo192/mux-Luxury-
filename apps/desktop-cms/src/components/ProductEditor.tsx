@@ -21,6 +21,7 @@ import { notifyClientError, notifyClientSuccess, notifyClientWarning } from "../
 import { VariantManager, EditorVariant, VariantAxis } from "./VariantManager";
 import { StorefrontPreview, type PreviewCheck } from "./StorefrontPreview";
 import { useT } from "../i18n";
+import { tr, pickLang } from "../i18n/translations";
 
 // ============================================================================
 // FULL DYNAMIC PRODUCT EDITOR (create + edit)
@@ -58,6 +59,8 @@ type Draft = {
   previous_price_dzd: number | "";
   discount_percent: number;
   status: "draft" | "published" | "archived";
+  /** all = website + shop; store = shop only (till, labels), hidden on the website */
+  sales_channel: "all" | "store";
   is_featured: boolean;
   is_new_arrival: boolean;
   main_image_url: string;
@@ -87,6 +90,7 @@ const EMPTY: Draft = {
   previous_price_dzd: "",
   discount_percent: 0,
   status: "draft",
+  sales_channel: "all",
   is_featured: false,
   is_new_arrival: false,
   main_image_url: "",
@@ -130,6 +134,7 @@ function draftFromProduct(product: any): Draft {
     previous_price_dzd: product.previous_price_dzd ?? "",
     discount_percent: Number(product.discount_percent ?? 0),
     status: product.status || "draft",
+    sales_channel: product.sales_channel === "store" ? "store" : "all",
     is_featured: Boolean(product.is_featured),
     is_new_arrival: Boolean(product.is_new_arrival),
     main_image_url: product.main_image_url || "",
@@ -158,18 +163,18 @@ function draftFromProduct(product: any): Draft {
 function labelForType(inputType?: string) {
   switch (inputType) {
     case "long_text":
-      return "Description longue";
+      return tr("pe.type_long");
     case "number":
     case "price":
-      return "Numérique";
+      return tr("pe.type_number");
     case "measurement":
-      return "Mesure";
+      return tr("pe.type_measure");
     case "boolean":
-      return "Oui / Non";
+      return tr("pe.type_bool");
     case "date":
-      return "Date";
+      return tr("pe.type_date");
     default:
-      return "Texte";
+      return tr("pe.type_text");
   }
 }
 
@@ -218,9 +223,9 @@ export function ProductEditor({ open, product, categories, brands, onClose, onSa
       setShowNewBrandForm(false);
       setNewBrandName("");
       setNewBrandLogoUrl("");
-      notifyClientSuccess("Marque créée", `La marque « ${created.name} » a été enregistrée.`);
+      notifyClientSuccess(t("pe.brand_created_title"), t("pe.brand_created_body", { name: created.name }));
     } catch (err: any) {
-      notifyClientError("Échec création marque", err.message || "Erreur réseau.");
+      notifyClientError(err, t("pe.brand_failed"));
     } finally {
       setCreatingBrand(false);
     }
@@ -298,11 +303,11 @@ export function ProductEditor({ open, product, categories, brands, onClose, onSa
 
   async function handleUpload(file: File, target: "main" | "gallery") {
     if (!["image/jpeg", "image/png", "image/webp"].includes(file.type)) {
-      notifyClientWarning("Format non supporté", "Formats acceptés : JPEG, PNG ou WEBP.");
+      notifyClientWarning(t("pe.format_title"), t("pe.format_body"));
       return;
     }
     if (file.size > 15 * 1024 * 1024) {
-      notifyClientWarning("Image trop volumineuse", "La taille maximale est de 15 Mo (la photo est ensuite réduite automatiquement).");
+      notifyClientWarning(t("pe.too_big_title"), t("pe.too_big_body"));
       return;
     }
     setUploading(true);
@@ -310,15 +315,15 @@ export function ProductEditor({ open, product, categories, brands, onClose, onSa
       const uploaded = await DesktopCmsApi.uploadMediaFile(file);
       if (target === "main") {
         patch({ main_image_url: uploaded.url });
-        notifyClientSuccess("Image principale prête", `Fichier vérifié : ${uploaded.url}`);
+        notifyClientSuccess(t("pe.main_ready_title"), t("pe.main_ready_body", { url: uploaded.url }));
       } else if (isCreate) {
         setPendingImages((prev) => [...prev, uploaded.url]);
-        notifyClientSuccess("Image ajoutée au brouillon", `${uploaded.url} sera enregistrée avec le produit.`);
+        notifyClientSuccess(t("pe.img_draft_title"), t("pe.img_draft_body", { url: uploaded.url }));
       } else {
         await addGalleryImage(uploaded.url);
       }
     } catch (err: any) {
-      notifyClientError(err, "Téléversement de l'image refusé");
+      notifyClientError(err, t("pe.upload_refused"));
     } finally {
       setUploading(false);
     }
@@ -330,7 +335,7 @@ export function ProductEditor({ open, product, categories, brands, onClose, onSa
       return;
     }
     if (!url.trim()) {
-      notifyClientWarning("URL requise", "Téléversez une image ou saisissez son chemin.");
+      notifyClientWarning(t("pe.url_required_title"), t("pe.url_required_body"));
       return;
     }
     setGalleryBusy(-1);
@@ -343,10 +348,10 @@ export function ProductEditor({ open, product, categories, brands, onClose, onSa
       await DesktopCmsApi.reorderProductImages(draft.id, {
         orders: [{ image_id: img.id, display_order: (product?.gallery_images?.length || 0) + 1 }],
       });
-      notifyClientSuccess("Galerie mise à jour", "Nouvelle image ajoutée au produit.");
+      notifyClientSuccess(t("pe.gallery_updated_title"), t("pe.gallery_updated_body"));
       await onSaved();
     } catch (err: any) {
-      notifyClientError(err, "Ajout de l'image impossible");
+      notifyClientError(err, t("pe.add_img_failed"));
     } finally {
       setGalleryBusy(null);
     }
@@ -356,10 +361,10 @@ export function ProductEditor({ open, product, categories, brands, onClose, onSa
     setGalleryBusy(imageId);
     try {
       await DesktopCmsApi.deleteProductImage(imageId);
-      notifyClientSuccess("Image retirée", "L'image a été supprimée de la galerie.");
+      notifyClientSuccess(t("pe.img_removed_title"), t("pe.img_removed_body"));
       await onSaved();
     } catch (err: any) {
-      notifyClientError(err, "Suppression de l'image impossible");
+      notifyClientError(err, t("pe.remove_img_failed"));
     } finally {
       setGalleryBusy(null);
     }
@@ -380,35 +385,32 @@ export function ProductEditor({ open, product, categories, brands, onClose, onSa
         })),
         primary_image_url: url,
       });
-      notifyClientSuccess("Image principale définie", "La vitrine utilisera cette image en premier.");
+      notifyClientSuccess(t("pe.main_set_title"), t("pe.main_set_body"));
       await onSaved();
     } catch (err: any) {
-      notifyClientError(err, "Choix de l'image principale impossible");
+      notifyClientError(err, t("pe.main_set_failed"));
     } finally {
       setGalleryBusy(null);
     }
   }
 
   function validate(): string | null {
-    if (!draft.category_id) return "Sélectionnez une catégorie.";
-    if (!draft.name_fr.trim()) return "Le nom du produit (français) est obligatoire.";
-    if (!draft.sku.trim()) return "La référence SKU est obligatoire.";
-    if (!/^[a-z0-9-]{2,160}$/.test(draft.slug)) return "Le slug doit contenir 2 à 160 caractères (a-z, 0-9 et tirets).";
-    if (Number(draft.selling_price_dzd) <= 0) return "Le prix de vente doit être strictement supérieur à 0.";
-    if (Number(draft.purchase_cost_dzd) < 0) return "Le coût d'achat ne peut pas être négatif.";
+    if (!draft.category_id) return t("pe.v_category");
+    if (!draft.name_fr.trim()) return t("pe.v_name");
+    if (!draft.sku.trim()) return t("pe.v_sku");
+    if (!/^[a-z0-9-]{2,160}$/.test(draft.slug)) return t("pe.v_slug");
+    if (Number(draft.selling_price_dzd) <= 0) return t("pe.v_price");
+    if (Number(draft.purchase_cost_dzd) < 0) return t("pe.v_cost");
     if (draft.previous_price_dzd !== "" && Number(draft.previous_price_dzd) < Number(draft.selling_price_dzd)) {
-      return "Le prix barré doit être supérieur au prix de vente.";
+      return t("pe.v_old_price");
     }
     if (Number(draft.selling_price_dzd) < Number(draft.purchase_cost_dzd)) {
-      return "Le prix de vente est inférieur au coût d'achat : la marge serait négative.";
+      return t("pe.v_margin");
     }
-    if (draft.status === "published") {
-      const missing = dataAttributes.filter(
-        (a: any) => a.is_required && !String(draft.dynamic_attributes[a.attr_key] || "").trim()
-      );
-      if (missing.length) return `Caractéristiques obligatoires manquantes : ${missing.map((a: any) => a.label_fr).join(", ")}.`;
-      if (!draft.main_image_url.trim()) return "Ajoutez une image principale avant de publier le produit.";
-      if (!draft.variants.length) return "Ajoutez au moins une déclinaison avant de publier le produit.";
+    if (draft.status === "published" && draft.sales_channel !== "store") {
+      // Characteristics (material, fit…) are optional: they never block a product.
+      if (!draft.main_image_url.trim()) return t("pe.v_main_image");
+      if (!draft.variants.length) return t("pe.v_variant");
     }
     return null;
   }
@@ -419,7 +421,7 @@ export function ProductEditor({ open, product, categories, brands, onClose, onSa
     setConflict("");
     const problem = validate();
     if (problem) {
-      notifyClientWarning("Fiche produit incomplète", problem);
+      notifyClientWarning(t("pe.incomplete_title"), problem);
       return;
     }
     setSaving(true);
@@ -441,6 +443,7 @@ export function ProductEditor({ open, product, categories, brands, onClose, onSa
         previous_price_dzd: draft.previous_price_dzd === "" ? null : Number(draft.previous_price_dzd),
         discount_percent: Number(draft.discount_percent) || 0,
         status: draft.status,
+        sales_channel: draft.sales_channel,
         is_featured: draft.is_featured,
         is_new_arrival: draft.is_new_arrival,
         main_image_url: draft.main_image_url.trim() || null,
@@ -475,15 +478,15 @@ export function ProductEditor({ open, product, categories, brands, onClose, onSa
           }
         }
         notifyClientSuccess(
-          "Produit créé",
+          t("pe.created_title"),
           draft.status === "published"
-            ? `« ${draft.name_fr} » et ses ${draft.variants.length} déclinaison(s) sont en ligne sur la boutique.`
-            : `« ${draft.name_fr} » est enregistré en brouillon : il n'apparaît pas encore sur la boutique.`
+            ? t("pe.created_live", { name: draft.name_fr, n: draft.variants.length })
+            : t("pe.created_draft", { name: draft.name_fr })
         );
       } else {
         payload.expected_version = Number(draft.version || 1);
         await DesktopCmsApi.updateProduct(draft.id!, payload);
-        notifyClientSuccess("Fiche produit enregistrée", `« ${draft.name_fr} » a été mise à jour sur la boutique.`);
+        notifyClientSuccess(t("pe.saved_title"), t("pe.saved_body", { name: draft.name_fr }));
       }
       await onSaved();
       setInitialSnapshot(JSON.stringify(draft));
@@ -491,10 +494,10 @@ export function ProductEditor({ open, product, categories, brands, onClose, onSa
     } catch (err: any) {
       const status = err?.status;
       if (status === 409) {
-        setConflict(err?.userMessage || "Un autre poste a modifié ce produit entre-temps.");
+        setConflict(err?.userMessage || t("pe.conflict"));
       } else {
         setConflict("");
-        notifyClientError(err, isCreate ? "Création du produit impossible" : "Enregistrement du produit impossible");
+        notifyClientError(err, isCreate ? t("pe.create_failed") : t("pe.save_failed"));
       }
     } finally {
       setSaving(false);
@@ -517,7 +520,7 @@ export function ProductEditor({ open, product, categories, brands, onClose, onSa
       setDraft(fresh);
       setInitialSnapshot(JSON.stringify(fresh));
       setConflict("");
-      notifyClientSuccess("Données rechargées", `Version serveur v${latest.version} chargée.`);
+      notifyClientSuccess(t("pe.reloaded_title"), t("pe.reloaded_body", { v: latest.version }));
       await onSaved();
     }
   }
@@ -590,7 +593,7 @@ export function ProductEditor({ open, product, categories, brands, onClose, onSa
             >
               <span>{showLivePreview ? t("product_editor.btn_preview_active") : t("product_editor.btn_preview_show")}</span>
             </button>
-            <button aria-label="Fermer"
+            <button aria-label={t("pe.close")}
               type="button"
               onClick={requestClose}
               className="p-2 rounded-xl bg-white/10 hover:bg-white/20 transition"
@@ -687,7 +690,7 @@ export function ProductEditor({ open, product, categories, brands, onClose, onSa
                       <option value="">{t("product_editor.category_placeholder")}</option>
                       {filteredCategories.map((c) => (
                         <option key={c.id} value={c.id}>
-                          {c.name_fr} {c.deleted_at ? t("product_editor.category_archived") : ""}
+                          {pickLang(c, "name")} {c.deleted_at ? t("product_editor.category_archived") : ""}
                         </option>
                       ))}
                     </select>
@@ -695,7 +698,7 @@ export function ProductEditor({ open, product, categories, brands, onClose, onSa
                   {category && (
                     <p className="text-[11px] text-gray-500 mt-1">
                       {t("product_editor.category_meta", { dataCount: dataAttributes.length, axesCount: axes.length })}
-                      {axes.length > 0 ? ` (${axes.map((a: any) => a.label_fr).join(", ")})` : ""}
+                      {axes.length > 0 ? ` (${axes.map((a: any) => pickLang(a, "label")).join(", ")})` : ""}
                     </p>
                   )}
                 </div>
@@ -758,7 +761,7 @@ export function ProductEditor({ open, product, categories, brands, onClose, onSa
                   <input
                     value={draft.name_fr}
                     onChange={(e) => handleNameChange(e.target.value)}
-                    placeholder="ex: Sac Émeraude Prestige"
+                    placeholder={t("pe.name_ph")}
                     className="w-full px-3 py-2 border rounded-xl bg-white focus:border-[#063D2E] outline-none"
                   />
                 </div>
@@ -821,7 +824,6 @@ export function ProductEditor({ open, product, categories, brands, onClose, onSa
                       setSkuTouched(true);
                       patch({ sku: e.target.value.toUpperCase() });
                     }}
-                    placeholder="LUX-BAG-001"
                     className="w-full px-3 py-2 border rounded-xl font-mono uppercase bg-white"
                   />
                 </div>
@@ -875,7 +877,7 @@ export function ProductEditor({ open, product, categories, brands, onClose, onSa
                     min={0}
                     value={draft.previous_price_dzd}
                     onChange={(e) => handlePriceChange("previous_price_dzd", e.target.value)}
-                    placeholder="Optionnel"
+                    placeholder={t("pe.optional")}
                     className="w-full px-3 py-2 border rounded-xl font-mono bg-white"
                   />
                   <p className="text-[10px] text-gray-500 mt-1">{t("product_editor.prev_price_hint")}</p>
@@ -908,7 +910,7 @@ export function ProductEditor({ open, product, categories, brands, onClose, onSa
                 </span>
               </div>
 
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+              <div className="grid grid-cols-1 md:grid-cols-4 gap-3">
                 <div>
                   <label className="block font-bold mb-1">{t("product_editor.status_label")}</label>
                   <select
@@ -919,6 +921,17 @@ export function ProductEditor({ open, product, categories, brands, onClose, onSa
                     <option value="draft">{t("product_editor.status_draft")}</option>
                     <option value="published">{t("product_editor.status_published")}</option>
                     <option value="archived">{t("product_editor.status_archived")}</option>
+                  </select>
+                </div>
+                <div>
+                  <label className="block font-bold mb-1">{t("shop.sold_where")}</label>
+                  <select
+                    value={draft.sales_channel}
+                    onChange={(e) => patch({ sales_channel: e.target.value === "store" ? "store" : "all" })}
+                    className="w-full px-3 py-2 border rounded-xl bg-white font-bold"
+                  >
+                    <option value="all">{t("shop.badge_online")}</option>
+                    <option value="store">{t("shop.badge_store")}</option>
                   </select>
                 </div>
                 <div className="flex items-end gap-3">
@@ -948,7 +961,7 @@ export function ProductEditor({ open, product, categories, brands, onClose, onSa
               {dataAttributes.length > 0 && (
                 <div className="p-4 rounded-xl bg-[#F8F6F0] border border-[#D4AF62]/30 space-y-2">
                   <p className="font-bold text-[#063D2E]">
-                    {t("product_editor.specs_title", { category: category?.name_fr || "", count: dataAttributes.length })}
+                    {t("product_editor.specs_title", { category: pickLang(category, "name"), count: dataAttributes.length })}
                   </p>
                   <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
                     {dataAttributes.map((attr: any) => {
@@ -959,26 +972,29 @@ export function ProductEditor({ open, product, categories, brands, onClose, onSa
                       return (
                         <div key={attr.attr_key}>
                           <label className="block font-semibold mb-1">
-                            {attr.label_fr}
+                            {pickLang(attr, "label")}
                             {attr.unit ? <span className="text-gray-400"> ({attr.unit})</span> : null}
-                            {attr.is_required ? <span className="text-rose-600"> *</span> : null}
                             <span className="ml-1 text-[10px] text-gray-400 font-normal">
                               {labelForType(attr.input_type)}
                             </span>
                           </label>
-                          {hasOptions ? (
-                            <select
-                              value={value}
-                              onChange={(e) => setValue(e.target.value)}
-                              className="w-full px-3 py-1.5 border rounded-lg bg-white"
-                            >
-                              <option value="">{t("product_editor.select_option")}</option>
-                              {attr.options.map((o: any) => (
-                                <option key={o.value} value={o.value}>
-                                  {o.label_fr || o.value}
-                                </option>
-                              ))}
-                            </select>
+                          {hasOptions && attr.input_type !== "boolean" ? (
+                            // Free text: the values already used are only suggestions.
+                            <>
+                              <input
+                                list={`spec-${attr.attr_key}`}
+                                value={value}
+                                onChange={(e) => setValue(e.target.value)}
+                                placeholder={t("pe.spec_free_ph")}
+                                aria-label={pickLang(attr, "label")}
+                                className="w-full px-3 py-1.5 border rounded-lg bg-white"
+                              />
+                              <datalist id={`spec-${attr.attr_key}`}>
+                                {attr.options.map((o: any) => (
+                                  <option key={o.value} value={o.value}>{pickLang(o, "label") !== o.value ? pickLang(o, "label") : ""}</option>
+                                ))}
+                              </datalist>
+                            </>
                           ) : attr.input_type === "long_text" ? (
                             <textarea
                               rows={2}
@@ -989,14 +1005,16 @@ export function ProductEditor({ open, product, categories, brands, onClose, onSa
                           ) : attr.input_type === "boolean" ? (
                             <select value={value} onChange={(e) => setValue(e.target.value)} className="w-full px-3 py-1.5 border rounded-lg bg-white">
                               <option value="">—</option>
-                              <option value="Oui">Oui</option>
-                              <option value="Non">Non</option>
+                              <option value="Oui">{t("pe.yes")}</option>
+                              <option value="Non">{t("pe.no")}</option>
                             </select>
                           ) : (
                             <input
                               type={["number", "price", "measurement"].includes(attr.input_type) ? "number" : attr.input_type === "date" ? "date" : "text"}
                               value={value}
                               onChange={(e) => setValue(e.target.value)}
+                              placeholder={t("pe.optional")}
+                              aria-label={pickLang(attr, "label")}
                               className="w-full px-3 py-1.5 border rounded-lg bg-white"
                             />
                           )}
@@ -1033,7 +1051,7 @@ export function ProductEditor({ open, product, categories, brands, onClose, onSa
                 <div className="flex flex-col md:flex-row gap-4">
                   <div className="w-40 h-40 rounded-xl bg-white border border-gray-200 flex items-center justify-center overflow-hidden shrink-0">
                     {draft.main_image_url ? (
-                      <img src={mediaUrl(draft.main_image_url)} alt="Aperçu" className="w-full h-full object-cover" />
+                      <img src={mediaUrl(draft.main_image_url)} alt={t("pe.preview_alt")} className="w-full h-full object-cover" />
                     ) : (
                       <span className="text-gray-400 text-[11px] px-3 text-center">{t("product_editor.no_image_selected")}</span>
                     )}
@@ -1042,7 +1060,7 @@ export function ProductEditor({ open, product, categories, brands, onClose, onSa
                     <input
                       value={draft.main_image_url}
                       onChange={(e) => patch({ main_image_url: e.target.value })}
-                      placeholder="/assets/produit.jpg ou https://…"
+                      placeholder={t("pe.img_path_ph")}
                       className="w-full px-3 py-2 border rounded-xl bg-white font-mono"
                     />
                     <div className="flex flex-wrap items-center gap-2">
@@ -1201,7 +1219,7 @@ export function ProductEditor({ open, product, categories, brands, onClose, onSa
                     maxLength={255}
                     value={draft.seo_title}
                     onChange={(e) => patch({ seo_title: e.target.value })}
-                    placeholder={draft.name_fr || "Titre affiché dans Google"}
+                    placeholder={draft.name_fr || t("pe.seo_title_ph")}
                     className="w-full px-3 py-2 border rounded-xl bg-white"
                   />
                 </div>
@@ -1212,7 +1230,7 @@ export function ProductEditor({ open, product, categories, brands, onClose, onSa
                     maxLength={320}
                     value={draft.seo_description}
                     onChange={(e) => patch({ seo_description: e.target.value })}
-                    placeholder="Résumé accrocheur affiché dans les résultats de recherche"
+                    placeholder={t("pe.seo_desc_ph")}
                     className="w-full px-3 py-2 border rounded-xl bg-white"
                   />
                   <p className="text-[10px] text-gray-400 mt-1">{t("product_editor.seo_desc_chars", { count: draft.seo_description.length })}</p>
@@ -1222,16 +1240,16 @@ export function ProductEditor({ open, product, categories, brands, onClose, onSa
                   <input
                     value={draft.tags}
                     onChange={(e) => patch({ tags: e.target.value })}
-                    placeholder="sac cuir, maroquinerie, luxe algérien"
+                    placeholder={t("pe.seo_kw_ph")}
                     className="w-full px-3 py-2 border rounded-xl bg-white"
                   />
                 </div>
                 <div className="p-3 rounded-xl bg-[#F8F6F0] border border-gray-200">
                   <p className="text-[10px] uppercase tracking-wide text-gray-500 font-bold mb-1">{t("product_editor.google_preview")}</p>
-                  <p className="text-[#1a0dab] font-semibold truncate">{draft.seo_title || draft.name_fr || "Titre du produit"}</p>
+                  <p className="text-[#1a0dab] font-semibold truncate">{draft.seo_title || draft.name_fr || t("pe.seo_preview_title")}</p>
                   <p className="text-emerald-700 text-[11px] font-mono truncate">mus-luxury.com/produit/{draft.slug || "slug-produit"}</p>
                   <p className="text-gray-600 line-clamp-2">
-                    {draft.seo_description || draft.description_fr || "Ajoutez une meta description pour améliorer le référencement."}
+                    {draft.seo_description || draft.description_fr || t("pe.seo_preview_desc")}
                   </p>
                 </div>
               </div>
@@ -1290,13 +1308,13 @@ export function ProductEditor({ open, product, categories, brands, onClose, onSa
                 />
                 <div className="p-3 rounded-2xl bg-[#063D2E]/5 border border-[#D4AF62]/30 text-[11px] text-[#063D2E] space-y-1">
                   <div className="flex justify-between font-bold">
-                    <span>Marge unitaire estimée :</span>
+                    <span>{t("pe.est_margin")}</span>
                     <span className={margin >= 0 ? "text-emerald-700" : "text-rose-700"}>
                       {margin >= 0 ? "+" : ""}{margin} DZD ({marginPct.toFixed(0)}%)
                     </span>
                   </div>
                   <div className="flex justify-between text-gray-500">
-                    <span>Coût d'achat fournisseur :</span>
+                    <span>{t("pe.supplier_cost")}</span>
                     <span>{draft.purchase_cost_dzd || 0} DZD</span>
                   </div>
                 </div>

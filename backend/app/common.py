@@ -295,7 +295,7 @@ _FR_CODES = {
     "order_reserved": "Commande en ligne", "order_cancelled": "Commande annulée", "order_returned": "Commande retournée",
     "pos_sale_offline": "Vente hors ligne synchronisée", "physical_count_reconcile": "Inventaire physique",
     "cms_manual_adjustment": "Ajustement manuel", "stock_write_off": "Sortie de stock",
-    "variant_created": "Création de la variante", "create_variant": "Création de la variante",
+    "variant_created": "Création de la variante", "store_receipt": "Arrivage en boutique", "create_variant": "Création de la variante",
     "variant_edit": "Modification de la variante", "purchase_received": "Réception fournisseur",
     "writeoff_damaged": "Démarque — endommagé", "writeoff_lost": "Démarque — perte/vol",
     "writeoff_return_to_supplier": "Retour fournisseur", "writeoff_promotional_giveaway": "Cadeau / promo",

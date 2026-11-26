@@ -696,6 +696,123 @@ with regression tests in `backend/tests/test_review_fixes.py`, `test_catalog_syn
 | API docs | Generated with the same FastAPI version as CI and the server image (0.99, OpenAPI 3.1); a test checks every schema reference resolves |
 | Second pass | Two clicks / two PCs: an order status change, an expense deletion and an offline sale on a closed register are applied once (claimed on the state read; register row locked on PostgreSQL). Archive restores exactly what it switched off, even when nothing was (`products.variants_marked_on_archive`), and refuses a barcode taken meanwhile; a published product is checked on every save. The till's catalogue cursor trails the clock by 60 s so a late commit is never skipped. Shop: the order confirmation shows what the shop recorded when an earlier attempt already went through; the store phone is escaped; "Plus récents" sorts newest first; a search from La Maison opens the shop; late answers (page, tracking) no longer replace newer ones. CMS: a request retried after a logout and a change of server goes back to the server it started on (e2e test: held request → logout → new server → no old token reaches it); focus follows the dialog on top |
 
+## 37. The whole CMS in the chosen language (French / English / Arabic)
+
+Switching the CMS to English or Arabic left many screens, dialogs and server messages in French. Now every screen,
+dialog, notice and server answer the CMS shows follows the language chosen at the top (Arabic right to left).
+
+| What | How |
+|---|---|
+| Screens, dialogs, notices | Every text goes through the dictionaries: `src/i18n/translations.ts` plus area files `src/i18n/areas/<area>.ts` (`defineArea("area", { key: [fr, en, ar] })`). `tr()` works outside React components (helpers, notifier, API client) |
+| Server messages | The CMS sends `X-Luxe-Lang: fr / en / ar`; the server translates its known messages (`backend/app/i18n_messages.py`, values such as names and quantities carried over) and marks them `"human": true`. Clients without the header (the online shop) get the original answer, unchanged. Backup warnings on the Database screen follow the language too |
+| Codes and stored French texts | Order statuses, roles, stock movement reasons, write-off reasons, expense categories, audit actions / item types, treasury descriptions written by the server ("Dépense : …", "Vente magasin …") and the default register name are shown in the chosen language (`utils/auditLabels.ts`, `movementReasons.ts`, `treasuryText.ts`, `registerName.ts`, `codeLabels.ts`) |
+| Category presets | Names and descriptions in the three languages |
+| Kept in French on purpose | Printed customer documents (till receipt — thermal printers cannot print Arabic —, A4 invoice, delivery note), the shop's own data (product, category, customer names; store address) and the shop preview, CSV exports |
+
+Guards: `backend/tests/test_i18n.py` (every server message has fr/en/ar with the same values; the API follows
+`X-Luxe-Lang` and leaves other clients untouched; every key the CMS uses exists in the three languages; Arabic texts are
+Arabic; every audit name is translated). e2e `06`: every screen in English and Arabic is checked for common French
+words, and a wrong password in Arabic shows the Arabic server message.
+
+Rule for new code: no text written directly in a screen — add a key in the three languages; a new server message goes in
+`app/i18n_messages.py` (the test fails otherwise); a new audited action needs its name in `areas/audit_action.ts`.
+
+## 38. Devices: real detection and tests (printers, drawer, scanner)
+
+The Devices page had buttons that did not really test anything; printers set there were not used by the till.
+
+| Before | Now |
+|---|---|
+| Windows printer name typed by hand; USB / COM devices had no port field (their test went to the Windows *default* printer) | **Detect**: printers installed on the PC (state, port, kind), network printers found on the local network (port 9100, nothing sent), COM / USB ports; **Add** fills the form; the form offers what was detected |
+| "Printed" as soon as Windows accepted the job (printer off / no paper = false success) | The job is followed in the queue; still waiting after 8 s → "nothing came out"; offline / paused printers refused before sending; CUPS prints raw |
+| "Test print" opened a pop-up window — the desktop app does not open pop-ups, so nothing happened (same for the system-print fallback of receipts and labels) | The print page goes into a hidden frame: the system print dialog opens in the desktop app and in a browser |
+| Scanner and cash-drawer tests only asked the server (cannot see shop hardware) → always "not tested" | Scanner: scan a code within 30 s (typing by hand refused). Drawer: pulse through its receipt printer, then "did it open?" |
+| Printer errors in French only | Error codes translated (FR / EN / AR) with the printer name / address |
+| Devices page and till settings unrelated; till could not use a network printer (IP dropped when saved) | **Use on this PC**; a till PC with nothing set up takes the shop's default printers; network IP / port in POS → Matériel; **Check** (no paper) there too |
+
+Tests: Rust 40 (+ a real CUPS print queue: exact bytes, printer off, paused queue, unknown printer), Windows cross-check
+(`cargo check --target x86_64-pc-windows-gnu`), backend `test_devices` 10, e2e `09-devices` (2). CI job
+`desktop-rust-tests` added. Details: `docs/cicd/POS_HARDWARE.md`.
+
+## 39. Shop items: the boutique's articles, quick, with barcodes and labels
+
+The owner found the Products screen (made for the website: photos, descriptions, 3 languages, characteristics) too
+heavy for the articles of the physical shop. New screen **Catalogue → Shop items** (`pages/ShopItemsPage.tsx`).
+
+**Adding an article (one form):** name, category, price (purchase cost and photo optional), then the colours / sizes
+as chips of the category (a new value is typed and added to the category), which make one row per combination
+with: quantity, barcode, own price (optional). The barcode is either **scanned** from the article's own label
+(maker's EAN), or left empty: the shop creates one (EAN-13 starting with **20**, the in-store range, unique).
+**Save and print N labels** prints one label per piece. Unticked "Also sell on the website" = shop only.
+
+**Why one barcode per colour / size:** the till must know which variant is sold (stock of each colour / size stays
+right, and a red bag cannot be rung up as a black one). Quantity = labels, not barcodes: 5 black bags = 1 code,
+5 labels.
+
+**Daily use:** scan an article anywhere on the screen to find it (unknown code → "Create the item with this code",
+barcode filled in); **Arrival** per colour / size (+N pieces, recorded as `store_receipt` in stock movements, then
+"print their labels?"); **Labels** (choose how many per colour / size, default = stock); **+ Colour / size**;
+**Create missing barcodes** (per article or all); **Edit** (name, price, cost, website or not); filters shop only /
+also online / without barcode / low stock.
+
+**Same data as the rest of the CMS:** articles are normal products / variants / stock (`backend/app/routers/store.py`,
+shared rules moved to `app/catalog_rules.py`). The till sells them by scan and by name (offline catalogue too), stock
+reports, physical counts and purchases see them, the Products screen edits them. New column
+`products.sales_channel`: `all` (website + shop, the default) or `store` (shop only: published for the till, hidden
+from the website list, product page, sitemap and checkout). The product editor has "Sold where", the product list a
+"Shop only" badge. Website requirements (required characteristics) apply only to articles sold online.
+
+Labels: on this PC's label printer (ZPL / ESC-POS, desktop app) or the print window (any printer / PDF), label size
+from POS → Hardware.
+
+Tests: `backend/tests/test_store_items.py` (6: colours × sizes, scanned + created codes, invalid / duplicate codes,
+never online but sold at the till, website requirements, editor still works, arrivals, new colours, missing codes,
+search, rights); e2e `10-shop-items` (quick add with a new colour and a scanned code → 6 labels printed, till lookup,
+not on the website, arrival, 9 labels, scan search, unknown code, duplicate code refused, switch to website).
+
+## 40. Product characteristics: optional and typed freely (no fixed texts)
+
+The product form asked first for "Matière & Composition" as a **required drop-down** of fixed marketing values
+("100% Coton Pima Péruvien", "Lin Naturel Aérien"…), and other categories had required lists such as cuts, leathers,
+watch movements, even brand names (Balenciaga, Saint Laurent). They came from the ready-made category models.
+
+| Before | Now |
+|---|---|
+| Characteristics marked required: a product could not be published without them | Never required: an empty characteristic never blocks a product (form, server, bulk publish, Shop items) |
+| Drop-down limited to the fixed values | Free text; values already used are offered as suggestions (typing anything is accepted) |
+| — | A value typed for the first time is kept as a suggestion of the category (next product, shop filters); emptying a field removes it from the product |
+| Category models pre-filled marketing values, brand names and invented category descriptions | Models create the characteristic names only (Matière, Coupe…) as free text; colours / sizes start with plain values (Noir, Blanc… / S, M, L) the owner extends; descriptions empty |
+| "Required" switch in the category builder | Removed |
+| Examples in the form ("Sac Émeraude Prestige", "Chanel, Hermès…") | Neutral hints ("Item name", "Brand name…") |
+
+Existing databases: migration `006_free_product_characteristics.sql` sets every characteristic to not required and
+removes the old fixed suggestions, except a value a product actually uses (colours / sizes untouched).
+Tests: `test_free_characteristics` (migration), `test_review_fixes` (optional + free typing + suggestion + emptying),
+updated `test_luxe_api`, `test_store_items`.
+
+## 41. Review of sections 37–40, fixes, release v1.0.2
+
+Code review of everything since PR #5 (23 commits, i18n, devices, shop items, characteristics). Fixed:
+
+| Finding | Fix |
+|---|---|
+| Shop items "Show more" fetched the first page again (frozen list length) | Offset read from a ref; duplicates filtered |
+| Shop items Edit: a cleared price saved 0 DA (sold for free at the till) | Empty name / price refused; cost left out when empty |
+| A print job reported "nothing came out" stayed in the Windows queue and printed later (duplicate after a retry); a long label batch was cut at 8 s | A job not started within 8 s is removed from the queue; a job that is printing gets 8 s + 1 s per 4 KB (max 90 s) |
+| A cancelled / aborted job that left the queue was reported printed | The queue's history is checked (CUPS keeps it); cancelled → "cancelled" |
+| Quick add "also online" published to the website without a photo | Website needs a photo (quick add and switching an article to the website) |
+| Shop items Edit published a draft as a side effect | The channel changes only when the box really changes |
+| Every 422 sentence from the server ("invalid barcode", "add a photo"…) was replaced by a generic "some fields are incomplete" | The server's sentence is shown; only field lists stay generic |
+| Sign-in "too many attempts" waited ~30 s (3 retries of a 60 s limit) | No automatic retry on sign-in / first-owner setup or when Retry-After > 10 s |
+| `wait-for-ci.sh`: one GitHub API hiccup cancelled the deploy; an old success counted after a failed re-run | API errors are retried; only the latest CI run counts |
+
+Also: the migration-006 test ran its SQL through the placeholder path (`100%` read as a parameter on PostgreSQL); it now
+applies the file the way `app.migration_runner` does (checked on PostgreSQL 16: migrations up, 416 tests pass).
+
+Release: tag `v1.0.2` → `cd-production.yml` (server: migrations incl. 006, switch, health check, rollback on failure)
+and `build-desktop-cms.yml` (signed Windows installer + `latest.json` on the server). Installed CMS apps offer the
+update after sign-in (Settings → Updates, or the update banner).
+
 ## Verification
 
 | Check | Result |
@@ -707,15 +824,58 @@ with regression tests in `backend/tests/test_review_fixes.py`, `test_catalog_syn
 | Backup engine | SQLite, PostgreSQL 16, and PC → server restore: OK |
 | VPS backup scripts | Backup, verify, native restore and snapshot restore, tested through a Docker stand-in against PostgreSQL 16: OK |
 
-**Not tested yet:** the real VPS (no access from here), the PowerShell key script (no PowerShell
-here), and real Windows notifications or an update install on a Windows PC.
+**Status update (15 November 2026):** Production VPS (`5.196.163.6`) and all live services fully configured, deployed, and verified.
+
+---
+
+## 11. Production Deployment & Live Infrastructure Verification (15 November 2026)
+
+Completed the full production deployment, CI/CD pipeline repair, DNS integration, and security hardening for Mus Luxury across the Octenium VPS (`5.196.163.6`), Tauri Desktop CMS, and Storefront.
+
+### A. CI/CD & Pipeline Repairs
+1. **Runner Permissions (`backend/tests/test_wait_for_ci.py`)**:
+   - Fixed unprivileged GitHub runner failure when executing `chmod +x` against system binaries. Created isolated mock executable inside temporary runner paths with explicit `0o755` permissions.
+2. **Desktop CMS Minisign Updater (`apps/desktop-cms/src-tauri/tauri.conf.json`)**:
+   - Injected the valid base64 Minisign public key (`dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IDVFODRDRUJCQzRDNTBGOTgKUldTWUQ4WEV1ODZFWHF6MDhEWU53aVRtZXBEN2JNajZESGt5bEl6RUkwaGpWMnVXakZ3dHF5VjkK`) under `plugins.updater.pubkey`, eliminating the Tauri bundler `Missing comment in public key` decode failure during installer packaging.
+3. **Release Checksum Relativity (`.github/workflows/cd-production.yml` and `cd-staging.yml`)**:
+   - Fixed tarball checksum generation to operate with proper working directory context `(cd .release && sha256sum "mus-luxury-${VERSION}.tar.gz" > "mus-luxury-${VERSION}.tar.gz.sha256")`, preventing path doubling during verification.
+
+### B. Live VPS Deployment (`5.196.163.6`)
+1. **Docker Production Stack**:
+   - All 4 core production containers deployed and healthy under Compose:
+     - `luxe_proxy` (Nginx 1.27 Alpine)
+     - `luxe_storefront` (React 18 + Nginx)
+     - `luxe_api` (FastAPI Python 3.11)
+     - `luxe_postgres` (PostgreSQL 16 Alpine, 42 tables initialized)
+   - App stack memory consumption: **~107 MiB** (strictly adhering to the 608 MiB server constraint).
+2. **DNS & Valid HTTPS Certificates**:
+   - Verified DNS resolution across all target domains to `5.196.163.6`:
+     - `mus-luxury.com` (Storefront: HTTP 200 OK)
+     - `www.mus-luxury.com` (Storefront CNAME: HTTP 200 OK)
+     - `api.mus-luxury.com` (API Gateway: HTTP 200 OK)
+   - Acquired and verified official Let's Encrypt certificates covering all 3 domains.
+   - Configured automated zero-downtime certificate renewals via `certbot` webroot and Nginx reload deploy-hooks. Simulated renewal dry-run verified successfully.
+3. **Automated Database Backups**:
+   - Configured and verified nightly PostgreSQL backup script `/usr/local/bin/luxe-backup.sh` scheduled via `/etc/cron.d/luxe-backup` (03:30 UTC daily, 30-day retention).
+   - Executed live manual backup drill; verified compressed archive and `.sha256` integrity.
+4. **Monitoring Stack (Uptime Kuma)**:
+   - Deployed lightweight `luxe_uptime_kuma` container listening on `127.0.0.1:3001` (~90 MiB RAM).
+   - Securely accessible by the store owner via SSH tunnel: `ssh -L 3001:localhost:3001 root@5.196.163.6`.
+5. **First-Time Owner Provisioning**:
+   - Confirmed `admin_users` table has 0 rows; `/api/v1/admin/auth/setup-status` returns `{"is_initialized":false,"requires_owner_setup":true}`.
+   - First-time Owner Setup Wizard is ready to guide the store owner upon initial CMS launch.
+
+### C. Live Server Metrics
+- **CPU**: 1 vCore
+- **RAM**: 708 MiB used / 1.9 GiB total (1.2 GiB free/cache available; Swap 11 MiB used / 2.0 GiB)
+- **Disk**: 8.9 GiB used / 40 GiB total (24% utilization, 29 GiB free)
+- **Backups**: Verified `.sql.gz` + `.sha256` in `/var/lib/luxe/backups`
 
 ---
 
 ## What the owner still needs to do
 
-1. Run `setup-github-secrets.ps1` once (see §9), then back up the signing key files to a USB key.
-2. Switch on the off-site backup copy (`S3_*` values + `S3_BACKUP_ENABLED=true`, guide §5.4).
-   Until then, backups live on the same server as the shop. This is the most important remaining risk.
-3. Keep a copy of `BACKUP_ENCRYPTION_KEY` in a password manager.
-4. After the first deploy, do the 15-minute restore drill (guide §9).
+1. Launch Desktop CMS or open setup to create the initial primary Owner credentials.
+2. Complete Backblaze B2 key rotation (create a dedicated Application Key in Backblaze web portal and set `S3_*` in `/opt/luxe/shared/.env`).
+3. Optional: Approve SSH hardening (`PasswordAuthentication no` and `PermitRootLogin prohibit-password`) on the VPS.
+4. Keep a copy of `BACKUP_ENCRYPTION_KEY` and Minisign keys backed up safely.

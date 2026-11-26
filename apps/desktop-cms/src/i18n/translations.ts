@@ -20,6 +20,8 @@
 // and keep each language's block in the same order.
 // ============================================================================
 
+import { AREAS } from "./areas";
+
 export type Lang = "fr" | "en" | "ar";
 
 export const SUPPORTED_LANGS: Lang[] = ["fr", "en", "ar"];
@@ -370,7 +372,7 @@ const fr: Dict = {
   "product_editor.brand_label": "Marque",
   "product_editor.btn_new_brand": "+ Nouvelle marque",
   "product_editor.brand_placeholder": "— Sans marque —",
-  "product_editor.new_brand_name_placeholder": "Nom (ex: Chanel, Hermès, Maison Mus)…",
+  "product_editor.new_brand_name_placeholder": "Nom de la marque…",
   "product_editor.new_brand_logo_placeholder": "URL logo (optionnel)…",
   "product_editor.btn_create_brand": "Créer",
   "product_editor.name_fr_label": "Nom (FR) *",
@@ -1611,7 +1613,7 @@ const en: Dict = {
   "product_editor.brand_label": "Brand",
   "product_editor.btn_new_brand": "+ New brand",
   "product_editor.brand_placeholder": "— No brand —",
-  "product_editor.new_brand_name_placeholder": "Name (e.g. Chanel, Hermes, Maison Mus)…",
+  "product_editor.new_brand_name_placeholder": "Brand name…",
   "product_editor.new_brand_logo_placeholder": "Logo URL (optional)…",
   "product_editor.btn_create_brand": "Create",
   "product_editor.name_fr_label": "Name (FR) *",
@@ -2852,7 +2854,7 @@ const ar: Dict = {
   "product_editor.brand_label": "العلامة التجارية",
   "product_editor.btn_new_brand": "+ علامة تجارية جديدة",
   "product_editor.brand_placeholder": "— بدون علامة تجارية —",
-  "product_editor.new_brand_name_placeholder": "الاسم (مثال: شانيل، هيرميس، ميزون موس)…",
+  "product_editor.new_brand_name_placeholder": "اسم الماركة…",
   "product_editor.new_brand_logo_placeholder": "رابط الشعار (اختياري)…",
   "product_editor.btn_create_brand": "إنشاء",
   "product_editor.name_fr_label": "الاسم (بالفرنسية) *",
@@ -3764,6 +3766,48 @@ const ar: Dict = {
 };
 
 export const DICTS: Record<Lang, Dict> = { fr, en, ar };
+for (const area of AREAS) {
+  Object.assign(fr, area.fr);
+  Object.assign(en, area.en);
+  Object.assign(ar, area.ar);
+}
+
+// The language in use, for code outside React screens (error messages,
+// helpers, printing). The provider keeps it in step with the toggle.
+let currentLang: Lang = readStoredLang();
+
+function readStoredLang(): Lang {
+  try {
+    const stored = typeof localStorage !== "undefined" ? localStorage.getItem("luxe_cms_lang") : null;
+    if (stored && (SUPPORTED_LANGS as string[]).includes(stored)) return stored as Lang;
+  } catch { /* localStorage unavailable */ }
+  return "fr";
+}
+
+export function setCurrentLang(lang: Lang): void {
+  currentLang = lang;
+}
+
+export function getCurrentLang(): Lang {
+  return currentLang;
+}
+
+/** Translate outside React components (same dictionaries as useT()). */
+export function tr(key: string, vars?: Record<string, string | number>): string {
+  return interpolate(translateRaw(currentLang, key), vars);
+}
+
+/** A name stored in three languages (name_fr / name_ar / name_en, label_…):
+ *  the one of the language in use, else the French one. */
+export function pickLang(obj: any, base: string, lang: Lang = currentLang): string {
+  if (!obj) return "";
+  return String(obj[`${base}_${lang}`] || obj[`${base}_fr`] || obj[base] || "");
+}
+
+/** Locale for numbers and dates in the language in use (digits stay 0-9). */
+export function localeFor(lang: Lang = currentLang): string {
+  return lang === "ar" ? "ar-DZ-u-nu-latn" : lang === "en" ? "en-GB" : "fr-FR";
+}
 
 export function translateRaw(lang: Lang, key: string): string {
   // FR is the canonical fallback so an untranslated string is at least

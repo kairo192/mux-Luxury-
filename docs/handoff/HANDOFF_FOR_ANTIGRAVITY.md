@@ -95,7 +95,7 @@ Details: `docs/WORK_SUMMARY_2026-11-11.md` §18. Keep these true (guarded by `te
 - `orders.coupon_code` / `orders.discount_dzd` (via `_ADDITIVE_COLUMNS`); cancel → coupon usage −1.
 - Documents use `_boutique_info_from_settings()` (fiscal settings, then store settings).
 - `seed_initial_data()` runs `migration_runner.run()` at every start.
-- Server messages shown to people are French. CMS screens/data loads are gated by `canOpenTab` / role perms.
+- Server messages: French by default, translated for the CMS (`X-Luxe-Lang`, `app/i18n_messages.py`). CMS screens/data loads are gated by `canOpenTab` / role perms.
 
 ## 0e. EVERY CMS SCREEN TESTED ONE BY ONE (2026-11-11)
 Commits `a54a23f` → `e61c4a8`, details in `docs/WORK_SUMMARY_2026-11-11.md` §17. Rules now in force:

@@ -225,7 +225,7 @@ export function ProductsPage(props: ProductsPageProps) {
                 className="pl-8 pr-3 py-1.5 border rounded-xl w-60 bg-[#F8F6F0] focus:bg-white focus:border-[#063D2E] outline-none transition"
               />
               {prodSearch && (
-                <button aria-label="Effacer la recherche"
+                <button aria-label={t("misc.clear_search")}
                   type="button"
                   onClick={() => setProdSearch("")}
                   className="absolute right-2.5 top-2 text-gray-400 hover:text-gray-700 text-xs font-bold"
@@ -323,7 +323,7 @@ export function ProductsPage(props: ProductsPageProps) {
                   </th>
                   <th className="p-2.5">ID / SKU</th>
                   <th className="p-2.5">{t("catalog.th_product")}</th>
-                  <th className="p-2.5 text-right">Prix Achat</th>
+                  <th className="p-2.5 text-right">{t("misc.cost_price")}</th>
                   <th className="p-2.5 text-right">{t("catalog.th_selling_price")}</th>
                   <th className="p-2.5 text-right">Marge</th>
                   <th className="p-2.5 text-center">Taux</th>
@@ -392,12 +392,12 @@ export function ProductsPage(props: ProductsPageProps) {
                         {stock > 3 ? (
                           <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full bg-emerald-50 text-emerald-800 border border-emerald-200 text-[11px]">
                             <span className="w-2 h-2 rounded-full bg-emerald-500" />
-                            <span>{stock} en stock</span>
+                            <span>{t("misc.in_stock_n", { n: stock })}</span>
                           </span>
                         ) : stock > 0 ? (
                           <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full bg-amber-50 text-amber-800 border border-amber-300 text-[11px]">
                             <span className="w-2 h-2 rounded-full bg-amber-500 animate-pulse" />
-                            <span>Faible ({stock})</span>
+                            <span>{t("misc.low_n", { n: stock })}</span>
                           </span>
                         ) : (
                           <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full bg-rose-50 text-rose-800 border border-rose-300 text-[11px]">
@@ -420,6 +420,7 @@ export function ProductsPage(props: ProductsPageProps) {
                             <>
                               <CheckCircle2 className="w-3 h-3 text-emerald-700" />
                               <span>{t("catalog.badge_published")}</span>
+                              {p.sales_channel === "store" && <span className="ms-1 px-1.5 rounded bg-[#D4AF62]/30 text-[#7a5c16]">{t("shop.badge_store")}</span>}
                             </>
                           ) : p.status === "archived" ? (
                             <>
@@ -512,11 +513,11 @@ export function ProductsPage(props: ProductsPageProps) {
                 <Archive className="w-3.5 h-3.5" />
                 <span>{t("catalog.bulk_archive")}</span>
               </button>
-              <button aria-label="Tout désélectionner"
+              <button aria-label={t("misc.deselect_all")}
                 type="button"
                 onClick={() => setSelectedProductIds([])}
                 className="p-1.5 rounded-lg text-white/60 hover:text-white transition"
-                title="Désélectionner tout"
+                title={t("misc.deselect_all")}
               >
                 <X className="w-4 h-4" />
               </button>

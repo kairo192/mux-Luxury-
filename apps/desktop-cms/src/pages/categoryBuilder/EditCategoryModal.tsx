@@ -1,8 +1,10 @@
 // Part of the category builder (pages/CategoryBuilderPage.tsx), which owns the state.
 import React from "react";
 import { ImageUploadField } from "../../components/ImageUploadField";
-import { LUXURY_ICONS } from "./catalogSetup";
+import { LUXURY_ICONS, iconLabel } from "./catalogSetup";
 import { Edit3, X } from "lucide-react";
+import { useT } from "../../i18n";
+import { pickLang } from "../../i18n/translations";
 
 /** Edit a category's names, pictures, icon, order and visibility. */
 export function EditCategoryModal({ editingCategory, setEditingCategory, handleSubmitEdit, editNameFr, setEditNameFr, editNameAr, setEditNameAr, editNameEn, setEditNameEn, editSlug, setEditSlug, editOrder, setEditOrder, editDescFr, setEditDescFr, editImageUrl, setEditImageUrl, editBannerUrl, setEditBannerUrl, editIconKey, setEditIconKey, editShowHomepage, setEditShowHomepage, editIsActive, setEditIsActive, savingEdit }: {
@@ -33,6 +35,7 @@ export function EditCategoryModal({ editingCategory, setEditingCategory, handleS
   setEditIsActive: React.Dispatch<React.SetStateAction<boolean>>;
   savingEdit: boolean;
 }) {
+  const t = useT();
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-in fade-in duration-200">
       <div className="bg-white rounded-2xl border-2 border-[#D4AF62] shadow-2xl max-w-2xl w-full max-h-[90vh] overflow-y-auto space-y-4 p-6">
@@ -43,12 +46,12 @@ export function EditCategoryModal({ editingCategory, setEditingCategory, handleS
             </div>
             <div>
               <h2 className="text-lg font-serif font-bold text-[#063D2E]">
-                Modifier la Catégorie : {editingCategory.name_fr}
+                {t("cbf.edit_title", { name: pickLang(editingCategory, "name") })}
               </h2>
-              <p className="text-xs text-gray-500">Mettez à jour les traductions, le slug et la visibilité.</p>
+              <p className="text-xs text-gray-500">{t("cbf.edit_sub")}</p>
             </div>
           </div>
-          <button aria-label="Fermer"
+          <button aria-label={t("cbf.close")}
             type="button"
             onClick={() => setEditingCategory(null)}
             className="text-gray-400 hover:text-gray-700"
@@ -60,7 +63,7 @@ export function EditCategoryModal({ editingCategory, setEditingCategory, handleS
         <form onSubmit={handleSubmitEdit} className="space-y-4 text-xs">
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
             <div>
-              <label className="block font-bold mb-1 text-gray-700">Nom Français (FR) *</label>
+              <label className="block font-bold mb-1 text-gray-700">{t("cbf.name_fr")}</label>
               <input
                 value={editNameFr}
                 onChange={(e) => setEditNameFr(e.target.value)}
@@ -69,7 +72,7 @@ export function EditCategoryModal({ editingCategory, setEditingCategory, handleS
               />
             </div>
             <div>
-              <label className="block font-bold mb-1 text-gray-700">Nom Arabe (AR)</label>
+              <label className="block font-bold mb-1 text-gray-700">{t("cbf.name_ar")}</label>
               <input
                 value={editNameAr}
                 onChange={(e) => setEditNameAr(e.target.value)}
@@ -78,7 +81,7 @@ export function EditCategoryModal({ editingCategory, setEditingCategory, handleS
               />
             </div>
             <div>
-              <label className="block font-bold mb-1 text-gray-700">Nom Anglais (EN)</label>
+              <label className="block font-bold mb-1 text-gray-700">{t("cbf.name_en")}</label>
               <input
                 value={editNameEn}
                 onChange={(e) => setEditNameEn(e.target.value)}
@@ -89,7 +92,7 @@ export function EditCategoryModal({ editingCategory, setEditingCategory, handleS
 
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <div>
-              <label className="block font-bold mb-1 text-gray-700">Slug URL *</label>
+              <label className="block font-bold mb-1 text-gray-700">{t("cbf.slug_short")}</label>
               <input
                 value={editSlug}
                 onChange={(e) => setEditSlug(e.target.value)}
@@ -98,7 +101,7 @@ export function EditCategoryModal({ editingCategory, setEditingCategory, handleS
               />
             </div>
             <div>
-              <label className="block font-bold mb-1 text-gray-700">Ordre d'affichage</label>
+              <label className="block font-bold mb-1 text-gray-700">{t("cbf.order")}</label>
               <input
                 type="number"
                 value={editOrder}
@@ -109,24 +112,24 @@ export function EditCategoryModal({ editingCategory, setEditingCategory, handleS
           </div>
 
           <div>
-            <label className="block font-bold mb-1 text-gray-700">Description (FR)</label>
+            <label className="block font-bold mb-1 text-gray-700">{t("cbf.desc_fr")}</label>
             <textarea
               value={editDescFr}
               onChange={(e) => setEditDescFr(e.target.value)}
               rows={2}
               className="w-full px-3 py-2 border rounded-xl"
-              placeholder="Description affichée sur la boutique..."
+              placeholder={t("cbf.desc_edit_ph")}
             />
           </div>
 
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-            <ImageUploadField label="Photo de la catégorie" value={editImageUrl} onChange={setEditImageUrl} />
-            <ImageUploadField label="Bannière" value={editBannerUrl} onChange={setEditBannerUrl} wide />
+            <ImageUploadField label={t("cbf.photo")} value={editImageUrl} onChange={setEditImageUrl} />
+            <ImageUploadField label={t("cbf.banner")} value={editBannerUrl} onChange={setEditBannerUrl} wide />
           </div>
 
           {/* Icon Choice */}
           <div className="p-3 bg-[#F8F6F0] rounded-xl border border-gray-200 space-y-2">
-            <label className="block font-bold text-[#063D2E]">Icône de représentation :</label>
+            <label className="block font-bold text-[#063D2E]">{t("cbf.icon")}</label>
             <div className="grid grid-cols-3 sm:grid-cols-5 gap-2">
               {LUXURY_ICONS.map((item) => {
                 const Icon = item.icon;
@@ -143,7 +146,7 @@ export function EditCategoryModal({ editingCategory, setEditingCategory, handleS
                     }`}
                   >
                     <Icon className="w-5 h-5" />
-                    <span className="text-[10px] text-center truncate w-full">{item.label.split(" ")[0]}</span>
+                    <span className="text-[10px] text-center truncate w-full">{iconLabel(item.key, true)}</span>
                   </button>
                 );
               })}
@@ -159,7 +162,7 @@ export function EditCategoryModal({ editingCategory, setEditingCategory, handleS
                 onChange={(e) => setEditShowHomepage(e.target.checked)}
                 className="w-4 h-4 rounded text-[#063D2E]"
               />
-              <span>Afficher sur la Page d'Accueil</span>
+              <span>{t("cbf.show_home")}</span>
             </label>
 
             <label className="inline-flex items-center gap-2 cursor-pointer font-bold text-gray-800">
@@ -169,7 +172,7 @@ export function EditCategoryModal({ editingCategory, setEditingCategory, handleS
                 onChange={(e) => setEditIsActive(e.target.checked)}
                 className="w-4 h-4 rounded text-[#063D2E]"
               />
-              <span>Catégorie Active</span>
+              <span>{t("cbf.active")}</span>
             </label>
           </div>
 
@@ -179,14 +182,14 @@ export function EditCategoryModal({ editingCategory, setEditingCategory, handleS
               onClick={() => setEditingCategory(null)}
               className="px-4 py-2 rounded-xl border border-gray-300 font-bold text-gray-700"
             >
-              Annuler
+              {t("cbf.cancel")}
             </button>
             <button
               type="submit"
               disabled={savingEdit}
               className="px-6 py-2 rounded-xl bg-[#063D2E] text-[#D4AF62] font-extrabold shadow hover:bg-[#02291F] transition"
             >
-              {savingEdit ? "Enregistrement..." : "Enregistrer les modifications"}
+              {savingEdit ? t("cbf.saving") : t("cbf.save_changes")}
             </button>
           </div>
         </form>

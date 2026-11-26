@@ -3,6 +3,7 @@ import React from "react";
 import { Printer, X, Delete } from "lucide-react";
 import { useEscapeToClose } from "../../utils/useEscapeToClose";
 import { serverDate } from "../../utils/serverDate";
+import { tr } from "../../i18n/translations";
 
 export function fmt(dzd: number): string {
   return `${Number(dzd || 0).toLocaleString("fr-DZ")} DA`;
@@ -38,7 +39,7 @@ export const Keypad: React.FC<{
         ))}
         {onExact && (
           <button type="button" onClick={onExact} className="flex-1 h-12 rounded-xl bg-[#D4AF62]/20 text-[#7a5c16] font-bold text-sm active:scale-95">
-            Exact
+            {tr("posx.exact")}
           </button>
         )}
       </div>
@@ -54,7 +55,7 @@ export const Keypad: React.FC<{
         <button type="button" onClick={() => press("0")} className={keyCls}>
           0
         </button>
-        <button aria-label="Effacer le dernier chiffre" type="button" onClick={() => press("del")} className={`${keyCls} text-[#B91C1C]`}>
+        <button aria-label={tr("posx.del_digit")} type="button" onClick={() => press("del")} className={`${keyCls} text-[#B91C1C]`}>
           <Delete className="w-7 h-7" />
         </button>
       </div>
@@ -81,7 +82,7 @@ export const Sheet: React.FC<{ title: string; onClose: () => void; children: Rea
     >
       <div className="flex items-center justify-between mb-4">
         <h3 className="font-serif font-bold text-[#063D2E] text-lg">{title}</h3>
-        <button aria-label="Fermer" type="button" onClick={onClose} className="w-11 h-11 rounded-xl flex items-center justify-center text-gray-400 hover:text-gray-700 hover:bg-gray-100 active:scale-95">
+        <button aria-label={tr("posx.close")} type="button" onClick={onClose} className="w-11 h-11 rounded-xl flex items-center justify-center text-gray-400 hover:text-gray-700 hover:bg-gray-100 active:scale-95">
           <X className="w-6 h-6" />
         </button>
       </div>
@@ -167,10 +168,10 @@ export const ReceiptModal: React.FC<{ sale: any; onClose: () => void; onPrint: (
         <div className="p-4 border-t space-y-2 print:hidden">
           <div className="flex gap-2">
             <button type="button" onClick={onPrint} className="flex-1 h-14 rounded-2xl bg-[#063D2E] text-[#D4AF62] font-bold flex items-center justify-center gap-2 active:scale-95">
-              <Printer className="w-5 h-5" /> Imprimer
+              <Printer className="w-5 h-5" /> {tr("posx.print")}
             </button>
             <button type="button" onClick={onClose} className="flex-1 h-14 rounded-2xl bg-gray-100 font-bold active:scale-95">
-              Fermer
+              {tr("posx.close")}
             </button>
           </div>
           {onSystemPrint && (
@@ -178,9 +179,9 @@ export const ReceiptModal: React.FC<{ sale: any; onClose: () => void; onPrint: (
               type="button"
               onClick={onSystemPrint}
               className="w-full h-11 rounded-2xl border-2 border-gray-200 text-gray-700 font-bold text-sm flex items-center justify-center gap-2 active:scale-95"
-              title="Ouvrir l'aperçu système (toute imprimante Windows, ajuster la taille)"
+              title={tr("posx.system_preview_title")}
             >
-              <Printer className="w-4 h-4" /> Aperçu système (toute imprimante)
+              <Printer className="w-4 h-4" /> {tr("posx.system_preview")}
             </button>
           )}
         </div>

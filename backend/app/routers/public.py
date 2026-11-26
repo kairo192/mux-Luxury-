@@ -204,7 +204,7 @@ def list_public_products(
 ):
     with db_session() as conn:
         cur = conn.cursor()
-        where = ["p.status = 'published'", "p.deleted_at IS NULL", "c.is_active = 1", "c.deleted_at IS NULL"]
+        where = ["p.status = 'published'", "COALESCE(p.sales_channel, 'all') <> 'store'", "p.deleted_at IS NULL", "c.is_active = 1", "c.deleted_at IS NULL"]
         params: List[Any] = []
         if category:
             where.append("c.slug = ?")
@@ -295,7 +295,7 @@ def get_public_product(slug: str):
         cur.execute(
             """SELECT p.* FROM products p
                JOIN categories c ON c.id = p.category_id
-               WHERE p.slug = ? AND p.status = 'published' AND p.deleted_at IS NULL
+               WHERE p.slug = ? AND p.status = 'published' AND COALESCE(p.sales_channel, 'all') <> 'store' AND p.deleted_at IS NULL
                  AND c.is_active = 1 AND c.deleted_at IS NULL""",
             (slug,)
         )
@@ -397,7 +397,7 @@ def create_guest_order(
             cur.execute(
                 # Same visibility as the shop's product pages: a product that is
                 # deleted or in a hidden category cannot be ordered either.
-                """SELECT pv.*, p.name_fr AS product_name, p.selling_price_dzd, p.status AS product_status
+                """SELECT pv.*, p.name_fr AS product_name, p.selling_price_dzd, p.status AS product_status, COALESCE(p.sales_channel, 'all') AS product_channel
                    FROM product_variants pv
                    JOIN products p ON p.id = pv.product_id
                    JOIN categories c ON c.id = p.category_id
@@ -406,7 +406,7 @@ def create_guest_order(
                 (item.variant_id,)
             )
             v = cur.fetchone()
-            if not v or v["product_status"] != "published":
+            if not v or v["product_status"] != "published" or v["product_channel"] == "store":
                 raise HTTPException(status_code=404, detail=f"Un article n'est plus disponible")
             if v["stock_qty"] < item.quantity:
                 raise HTTPException(

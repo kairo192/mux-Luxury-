@@ -10,6 +10,10 @@ import secrets
 import time
 from typing import Dict
 from fastapi import FastAPI, Request, Response
+from fastapi.responses import JSONResponse
+from starlette.exceptions import HTTPException as StarletteHTTPException
+
+from .i18n_messages import localize, request_lang
 from fastapi.middleware.cors import CORSMiddleware
 from .seed import seed_initial_data
 from starlette.middleware.gzip import GZipMiddleware, GZipResponder
@@ -26,6 +30,22 @@ app = FastAPI(
     docs_url="/api/v1/docs" if _ENABLE_PUBLIC_DOCS else None,
     openapi_url="/api/v1/openapi.json" if _ENABLE_PUBLIC_DOCS else None,
 )
+
+
+@app.exception_handler(StarletteHTTPException)
+async def _localized_http_error(request: Request, exc: StarletteHTTPException):
+    """Errors in the language of the desktop CMS (X-Luxe-Lang: fr|en|ar).
+
+    Known messages written for people are translated and marked "human"; any
+    other request gets exactly what FastAPI would have sent."""
+    detail = exc.detail
+    body: dict = {"detail": detail}
+    lang = request_lang(request.headers.get("x-luxe-lang"))
+    if lang and isinstance(detail, str):
+        text, known = localize(detail, lang)
+        if known:
+            body = {"detail": text, "human": True}
+    return JSONResponse(body, status_code=exc.status_code, headers=getattr(exc, "headers", None))
 
 
 _DEFAULT_CORS_ORIGINS = [
@@ -136,7 +156,7 @@ app.add_middleware(
     allow_origins=ALLOWED_CORS_ORIGINS,
     allow_credentials=True,
     allow_methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
-    allow_headers=["Authorization", "Content-Type", "X-CSRF-Token", "Idempotency-Key", "X-Request-ID", "X-Luxe-Signature", "X-Luxe-Timestamp", "X-Luxe-Nonce"],
+    allow_headers=["Authorization", "Content-Type", "X-CSRF-Token", "Idempotency-Key", "X-Request-ID", "X-Luxe-Signature", "X-Luxe-Timestamp", "X-Luxe-Nonce", "X-Luxe-Lang"],
     expose_headers=["X-Request-ID", "X-Response-Time-Ms", "ETag", "Cache-Control"],
 )
 
@@ -242,7 +262,7 @@ seed_initial_data()
 
 
 # ---------------------------------------------------------------- routes
-from .routers import public, auth, reports, catalog, orders, content, webhooks, pos, inventory, system, finance, seo  # noqa: E402
+from .routers import public, auth, reports, catalog, orders, content, webhooks, pos, inventory, system, finance, seo, store  # noqa: E402
 
 app.include_router(public.router)
 app.include_router(auth.router)
@@ -256,6 +276,7 @@ app.include_router(inventory.router)
 app.include_router(system.router)
 app.include_router(finance.router)
 app.include_router(seo.router)
+app.include_router(store.router)
 
 # Kept importable from app.main (tests and maintenance scripts use them).
 from .routers.catalog import ean_check_digit  # noqa: E402,F401

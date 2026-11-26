@@ -4,7 +4,7 @@ Generated from the code by `backend/scripts/generate_api_docs.py`; a test fails 
 so do not edit by hand. Request and response shapes: `openapi.json` (same folder). What the main
 endpoints do, with examples: `API_INVENTORY.md` and `API_CONTRACT.md`.
 
-172 endpoints. *Access*: public, any staff login, or the permission a staff role must have.
+179 endpoints. *Access*: public, any staff login, or the permission a staff role must have.
 
 ## `backend/app/routers/public.py`
 
@@ -216,6 +216,18 @@ endpoints do, with examples: `API_INVENTORY.md` and `API_CONTRACT.md`.
 |---|---|---|---|
 | GET | `/api/v1/seo/render/{kind}/{slug}` | public | `seo_render_page` |
 | GET | `/api/v1/seo/sitemap.xml` | public | `seo_sitemap` |
+
+## `backend/app/routers/store.py`
+
+| Method | Path | Access | Function |
+|---|---|---|---|
+| GET | `/api/v1/admin/store/items` | `products:write` or `inventory:write` | `store_items` |
+| POST | `/api/v1/admin/store/items` | `products:write` | `store_quick_add` |
+| POST | `/api/v1/admin/store/items/{product_id}/variants` | `products:write` | `store_add_variants` |
+| PUT | `/api/v1/admin/store/items/{product_id}` | `products:write` | `store_edit` |
+| POST | `/api/v1/admin/store/variants/{variant_id}/receive` | `products:write` or `inventory:write` | `store_receive` |
+| POST | `/api/v1/admin/store/items/{product_id}/barcodes` | `products:write` | `store_generate_barcodes` |
+| POST | `/api/v1/admin/store/barcodes/missing` | `products:write` | `store_generate_all_missing` |
 
 ## `backend/app/routers/system.py`
 

@@ -4,6 +4,14 @@ import { notifyClientError } from "../utils/clientNotifier";
 import { allowedOrderStatuses, orderStatusLabel, ORDER_STATUSES } from "../utils/orderStatus";
 import { openExternalUrl } from "../utils/openExternal";
 import { serverDate } from "../utils/serverDate";
+import { localeFor, tr } from "../i18n/translations";
+
+/** The COD history badge, from the figures (the server's own text is French). */
+function codBadge(risk: any): string {
+  const v = { reason: risk.blacklist_reason || "", ret: risk.returned_count ?? 0, deliv: risk.delivered_count ?? 0, canc: risk.cancelled_count ?? 0, rate: risk.return_rate_percent ?? 0 };
+  const level = ["blacklisted", "high_risk", "medium_risk", "trusted", "normal"].includes(risk.risk_level) ? risk.risk_level : null;
+  return level ? tr(`ord.badge_${level}`, v) : String(risk.warning_badge_fr || "");
+}
 
 type WhatsappTemplate = "confirmation_call" | "shipped_notice" | "no_answer_followup" | "delivery_arrived";
 
@@ -119,13 +127,13 @@ export function OrdersPage(props: OrdersPageProps) {
                   <span className="font-mono font-extrabold text-[#063D2E]">#{o.order_reference} • {o.customer_name} ({o.customer_phone})</span>
                   {risk.warning_badge_fr && (
                     <span className={`px-2.5 py-0.5 rounded-full border text-[11px] font-extrabold ${badgeClass}`}>
-                      {risk.warning_badge_fr}
+                      {codBadge(risk)}
                     </span>
                   )}
                 </div>
                 <div className="text-gray-600">
-                  Livraison : <strong>{o.wilaya_code} - {o.wilaya_name}</strong> ({o.commune}) •{" "}
-                  <strong>{o.delivery_method === "stop_desk" ? "Point relais (stop desk)" : "À domicile"}</strong>
+                  {t("ord.delivery")} <strong>{o.wilaya_code} - {o.wilaya_name}</strong> ({o.commune}) •{" "}
+                  <strong>{o.delivery_method === "stop_desk" ? t("ord.stop_desk") : t("ord.home")}</strong>
                   {o.delivery_address ? <> • {o.delivery_address}</> : null}
                 </div>
                 {Array.isArray(o.items) && o.items.length > 0 && (
@@ -140,22 +148,22 @@ export function OrdersPage(props: OrdersPageProps) {
                   </ul>
                 )}
                 <div className="font-bold text-[#063D2E]">
-                  Articles : {Number(o.subtotal_dzd).toLocaleString("fr-FR")} DA
-                  {Number(o.subtotal_dzd) + Number(o.delivery_fee_dzd) !== Number(o.total_dzd) ? ` − remise ${(Number(o.subtotal_dzd) + Number(o.delivery_fee_dzd) - Number(o.total_dzd)).toLocaleString("fr-FR")} DA${o.coupon_code ? ` (code ${o.coupon_code})` : ""}` : ""}
-                  {" "}+ livraison : {Number(o.delivery_fee_dzd) === 0 ? "offerte" : `${Number(o.delivery_fee_dzd).toLocaleString("fr-FR")} DA`}
-                  {" "}= à encaisser : {Number(o.total_dzd).toLocaleString("fr-FR")} DA
+                  {t("ord.items_total", { amount: Number(o.subtotal_dzd).toLocaleString("fr-FR") })}
+                  {Number(o.subtotal_dzd) + Number(o.delivery_fee_dzd) !== Number(o.total_dzd) ? t("ord.discount", { amount: (Number(o.subtotal_dzd) + Number(o.delivery_fee_dzd) - Number(o.total_dzd)).toLocaleString("fr-FR") }) + (o.coupon_code ? t("ord.with_code", { code: o.coupon_code }) : "") : ""}
+                  {" "}{t("ord.plus_delivery", { fee: Number(o.delivery_fee_dzd) === 0 ? t("ord.free") : `${Number(o.delivery_fee_dzd).toLocaleString("fr-FR")} DA` })}
+                  {" "}{t("ord.to_collect", { amount: Number(o.total_dzd).toLocaleString("fr-FR") })}
                 </div>
                 {o.created_at && (
                   <div className="text-[11px] text-gray-500">
-                    Reçue le {serverDate(o.created_at).toLocaleString("fr-FR")}
-                    {o.customer_notes ? <> • Note du client : <em>{o.customer_notes}</em></> : null}
+                    {t("ord.received_on", { date: serverDate(o.created_at).toLocaleString(localeFor()) })}
+                    {o.customer_notes ? <>{t("ord.customer_note")}<em>{o.customer_notes}</em></> : null}
                   </div>
                 )}
               </div>
               <div className="flex flex-wrap items-center gap-2">
                 <select
                   value={o.status}
-                  aria-label={`Statut de la commande ${o.order_reference}`}
+                  aria-label={t("ord.status_aria", { ref: o.order_reference })}
                   disabled={o.status === "cancelled" || o.status === "returned"}
                   onChange={(e) => handleOrderStatusChange(o.id, e.target.value)}
                   className="px-3 py-1.5 rounded-lg border font-bold bg-[#F8F6F0] disabled:opacity-60"
@@ -194,7 +202,7 @@ export function OrdersPage(props: OrdersPageProps) {
                   className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-[#F8F6F0] border border-[#063D2E] text-[#063D2E] font-bold hover:bg-gray-100 transition"
                 >
                   <Truck className="w-3.5 h-3.5 text-[#063D2E]" />
-                  <span>Expédition</span>
+                  <span>{t("ord.shipment")}</span>
                 </button>
                 {risk.is_blacklisted ? (
                   <button
@@ -203,16 +211,16 @@ export function OrdersPage(props: OrdersPageProps) {
                     className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-emerald-700 text-white font-bold hover:bg-emerald-800 transition"
                   >
                     <CheckCircle2 className="w-3.5 h-3.5 text-white" />
-                    <span>Débloquer</span>
+                    <span>{t("ord.unblock")}</span>
                   </button>
                 ) : (
                   <button
                     type="button"
-                    onClick={() => handleBlockCustomerPhone(o.customer_phone, "Retours COD")}
+                    onClick={() => handleBlockCustomerPhone(o.customer_phone, t("ord.block_reason"))}
                     className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-red-50 text-red-800 border border-red-200 font-bold hover:bg-red-100 transition"
                   >
                     <Ban className="w-3.5 h-3.5 text-red-700" />
-                    <span>Bloquer</span>
+                    <span>{t("ord.block")}</span>
                   </button>
                 )}
               </div>
@@ -225,21 +233,21 @@ export function OrdersPage(props: OrdersPageProps) {
       <div className="p-5 rounded-2xl bg-[#F8F6F0] border border-[#D4AF62]/40 space-y-3">
         <div className="flex flex-wrap items-center justify-between gap-2">
           <div>
-            <h4 className="font-serif font-bold text-base text-[#063D2E]">Protection Anti-Retour COD &amp; Liste Noire Téléphones ({codBlacklist.length} bloqué(s))</h4>
-            <p className="text-gray-500">Vérifiez le taux de livraison/retour d'un numéro ou bloquez les clients à retours abusifs avant expédition.</p>
+            <h4 className="font-serif font-bold text-base text-[#063D2E]">{t("ord.cod_title", { n: codBlacklist.length })}</h4>
+            <p className="text-gray-500">{t("ord.cod_sub")}</p>
           </div>
         </div>
         <div className="flex flex-wrap items-center gap-2">
           <input
             value={codCheckPhone}
             onChange={(e) => setCodCheckPhone(e.target.value)}
-            placeholder="Téléphone client (ex: 0550998877)"
+            placeholder={t("ord.phone_ph")}
             className="px-3 py-2 border rounded-xl bg-white font-mono w-56"
           />
           <input
             value={codBlacklistReason}
             onChange={(e) => setCodBlacklistReason(e.target.value)}
-            placeholder="Motif de blocage COD..."
+            placeholder={t("ord.reason_ph")}
             className="px-3 py-2 border rounded-xl bg-white flex-1"
           />
           <button
@@ -247,23 +255,23 @@ export function OrdersPage(props: OrdersPageProps) {
             onClick={handleCheckPhoneCodRisk}
             className="px-3.5 py-2 rounded-xl bg-[#063D2E] text-[#E8D4A5] font-bold"
           >
-            Vérifier Score COD
+            {t("ord.check_score")}
           </button>
           <button
             type="button"
             onClick={() => handleBlockCustomerPhone(codCheckPhone, codBlacklistReason)}
             className="px-3.5 py-2 rounded-xl bg-red-700 text-white font-bold"
           >
-            + Bloquer ce Numéro
+            {t("ord.block_number")}
           </button>
         </div>
         {codCheckResult && (
           <div className="p-3 rounded-xl bg-white border flex flex-wrap items-center justify-between gap-2">
             <div>
-              <strong className="font-mono text-[#063D2E]">{codCheckResult.phone_local} ({codCheckResult.phone_e164})</strong> — {codCheckResult.warning_badge_fr}
+              <strong className="font-mono text-[#063D2E]">{codCheckResult.phone_local} ({codCheckResult.phone_e164})</strong> — {codBadge(codCheckResult)}
             </div>
             <div className="font-mono">
-              Commandes: <strong>{codCheckResult.total_orders}</strong> • Livrées: <strong>{codCheckResult.delivered_count}</strong> • Retours: <strong>{codCheckResult.returned_count}</strong> ({codCheckResult.return_rate_percent}%)
+              {t("ord.check_counts", { orders: codCheckResult.total_orders, deliv: codCheckResult.delivered_count, ret: codCheckResult.returned_count, rate: codCheckResult.return_rate_percent })}
             </div>
           </div>
         )}
@@ -282,7 +290,7 @@ export function OrdersPage(props: OrdersPageProps) {
                   onClick={() => handleUnblockCustomerPhone(bl.phone_e164)}
                   className="px-2.5 py-1 rounded bg-white text-emerald-900 border font-bold"
                 >
-                  Débloquer
+                  {t("ord.unblock")}
                 </button>
               </div>
             ))}
@@ -294,7 +302,7 @@ export function OrdersPage(props: OrdersPageProps) {
         <div className="bg-white p-5 rounded-2xl border border-[#D4AF62]/40 shadow-xs space-y-2 text-xs">
           <h4 className="font-serif font-bold text-[#063D2E] text-sm flex items-center gap-2">
             <Radio className="w-4 h-4 text-[#D4AF62]" />
-            <span>Messages WhatsApp préparés ({waOutbox.length})</span>
+            <span>{t("ord.wa_prepared", { n: waOutbox.length })}</span>
           </h4>
           <div className="space-y-1.5 max-h-40 overflow-y-auto">
             {waOutbox.slice(0, 6).map((m: any, idx: number) => (
@@ -304,15 +312,15 @@ export function OrdersPage(props: OrdersPageProps) {
                   <span className="px-2 py-0.5 rounded bg-[#063D2E] text-[#D4AF62] text-[10px] font-bold mr-2">
                     {m.template_type || m.channel || "OTP"}
                   </span>
-                  <span className="text-gray-700">{m.message_text ? m.message_text.slice(0, 95) + "..." : `Message ID: ${m.message_id}`}</span>
+                  <span className="text-gray-700">{m.message_text ? m.message_text.slice(0, 95) + "..." : t("ord.message_id", { id: m.message_id })}</span>
                 </div>
                 {m.wa_me_customer_url && (
                   <button
                     type="button"
-                    onClick={() => openExternalUrl(m.wa_me_customer_url).catch((err) => notifyClientError(err, "Ouverture de WhatsApp impossible"))}
+                    onClick={() => openExternalUrl(m.wa_me_customer_url).catch((err) => notifyClientError(err, t("ord.wa_open_failed")))}
                     className="px-2.5 py-1 rounded-lg bg-emerald-700 text-white font-bold text-[10px]"
                   >
-                    Rouvrir dans WhatsApp ↗
+                    {t("ord.wa_reopen")}
                   </button>
                 )}
               </div>
@@ -325,9 +333,9 @@ export function OrdersPage(props: OrdersPageProps) {
         <div className="p-5 rounded-2xl bg-[#F8F6F0] border-2 border-[#D4AF62] space-y-2">
           <div className="flex justify-between items-center">
             <h4 className="font-serif font-bold text-base text-[#063D2E]">
-              Facture COD #{selectedInvoice.order_reference} — {selectedInvoice.boutique_info?.name}
+              {t("ord.invoice_title", { ref: selectedInvoice.order_reference, shop: selectedInvoice.boutique_info?.name || "" })}
             </h4>
-            <button aria-label="Fermer"
+            <button aria-label={t("ord.close")}
               type="button"
               onClick={() => setSelectedInvoice(null)}
               className="p-1 rounded-lg text-gray-500 hover:text-black transition"
@@ -335,9 +343,9 @@ export function OrdersPage(props: OrdersPageProps) {
               <X className="w-4 h-4" />
             </button>
           </div>
-          <p><strong>Boutique :</strong> {selectedInvoice.boutique_info?.address} • Tél/WhatsApp : {selectedInvoice.boutique_info?.phone}</p>
-          <p><strong>Client :</strong> {selectedInvoice.customer_name} ({selectedInvoice.customer_phone}) — {selectedInvoice.delivery_address}</p>
-          <p className="font-extrabold text-sm text-[#063D2E]">Total à encaisser à la livraison : {selectedInvoice.total_dzd} DA</p>
+          <p><strong>{t("ord.inv_shop")}</strong> {selectedInvoice.boutique_info?.address} • {t("ord.inv_phone", { phone: selectedInvoice.boutique_info?.phone || "" })}</p>
+          <p><strong>{t("ord.inv_customer")}</strong> {selectedInvoice.customer_name} ({selectedInvoice.customer_phone}) — {selectedInvoice.delivery_address}</p>
+          <p className="font-extrabold text-sm text-[#063D2E]">{t("ord.inv_total", { amount: selectedInvoice.total_dzd })}</p>
         </div>
       )}
     </div>

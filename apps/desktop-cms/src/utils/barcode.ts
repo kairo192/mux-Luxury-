@@ -6,6 +6,7 @@
 // ---------------------------------------------------------------------------
 
 // Code 128 width patterns (values 0..106), 6 module-widths each; stop is 7.
+import { tr } from "../i18n/translations";
 const CODE128_PATTERNS = [
   "212222","222122","222221","121223","121322","131222","122213","122312","132212","221213",
   "221312","231212","112232","122132","122231","113222","123122","123221","223211","221132",
@@ -41,7 +42,7 @@ function code128Modules(value: string): { bars: Array<[number, number]>; width: 
   const codes: number[] = [CODE128_START_B];
   for (const ch of chars) {
     const v = ch.charCodeAt(0) - 32; // Set B: ASCII 32..126 → 0..94
-    if (v < 0 || v > 94) throw new Error(`Caractère non supporté en Code 128: ${ch}`);
+    if (v < 0 || v > 94) throw new Error(tr("misc.code128_bad_char", { ch }));
     codes.push(v);
   }
   let sum = CODE128_START_B;

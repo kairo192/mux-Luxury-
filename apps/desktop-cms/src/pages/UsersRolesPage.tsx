@@ -15,6 +15,7 @@ import {
 import { DesktopCmsApi } from "../api/adminClient";
 import { useT } from "../i18n";
 import { serverDate } from "../utils/serverDate";
+import { tr } from "../i18n/translations";
 
 interface Role {
   id: number;
@@ -33,16 +34,9 @@ interface AdminUser {
   role_name: string;
 }
 
-const ROLE_LABEL: Record<string, string> = {
-  super_admin: "Propriétaire / Super Admin",
-  admin: "Administrateur",
-  product_manager: "Gestion produits",
-  order_manager: "Gestion commandes",
-  inventory_manager: "Gestion stock",
-  cashier: "Caissier",
-  readonly: "Lecture seule",
-};
-const roleLabel = (n: string) => ROLE_LABEL[n] || n;
+const KNOWN_ROLES = new Set(["super_admin", "admin", "product_manager", "order_manager", "inventory_manager", "cashier", "readonly"]);
+const roleLabel = (n: string) => (KNOWN_ROLES.has(n) ? tr(`role.${n}`) : n);
+const roleDescription = (r: { name: string; description: string }) => (KNOWN_ROLES.has(r.name) ? tr(`role.desc_${r.name}`) : r.description);
 
 export const UsersRolesPage: React.FC = () => {
   const t = useT();
@@ -64,7 +58,7 @@ export const UsersRolesPage: React.FC = () => {
       setRoles(r.items || []);
       setError(null);
     } catch (e: any) {
-      setError(e?.userMessage || "Chargement impossible");
+      setError(e?.userMessage || t("users.load_failed"));
     } finally {
       setLoading(false);
     }
@@ -93,7 +87,7 @@ export const UsersRolesPage: React.FC = () => {
       if (form.id === null) {
         if (form.password.length < 10) {
           setBusy(false);
-          return setError("Le mot de passe doit contenir au moins 10 caractères");
+          return setError(t("users.pw_short"));
         }
         await DesktopCmsApi.createUser({
           email: form.email.trim(),
@@ -114,7 +108,7 @@ export const UsersRolesPage: React.FC = () => {
       setForm(null);
       load();
     } catch (e: any) {
-      setError(e?.userMessage || "Enregistrement refusé");
+      setError(e?.userMessage || t("users.save_refused"));
     } finally {
       setBusy(false);
     }
@@ -124,10 +118,10 @@ export const UsersRolesPage: React.FC = () => {
     setBusy(true);
     try {
       await DesktopCmsApi.updateUser(u.id, { is_active: !(u.is_active === 1 || u.is_active === true) });
-      flash(u.is_active ? "Compte désactivé" : "Compte réactivé");
+      flash(u.is_active ? t("users.deactivated") : t("users.reactivated"));
       load();
     } catch (e: any) {
-      setError(e?.userMessage || "Action refusée");
+      setError(e?.userMessage || t("users.action_refused"));
     } finally {
       setBusy(false);
     }
@@ -135,7 +129,7 @@ export const UsersRolesPage: React.FC = () => {
 
   const resetPw = async () => {
     if (!pwTarget) return;
-    if (pwValue.length < 10) return setError("Le mot de passe doit contenir au moins 10 caractères");
+    if (pwValue.length < 10) return setError(t("users.pw_short"));
     setBusy(true);
     try {
       await DesktopCmsApi.resetUserPassword(pwTarget.id, pwValue);
@@ -143,7 +137,7 @@ export const UsersRolesPage: React.FC = () => {
       setPwTarget(null);
       setPwValue("");
     } catch (e: any) {
-      setError(e?.userMessage || "Réinitialisation refusée");
+      setError(e?.userMessage || t("users.reset_refused"));
     } finally {
       setBusy(false);
     }
@@ -167,10 +161,10 @@ export const UsersRolesPage: React.FC = () => {
           <h3 className="text-lg font-serif font-bold text-[#063D2E] flex items-center gap-2">
             <Users className="w-5 h-5" /> {t("users_roles.title")}
           </h3>
-          <p className="text-gray-500 mt-1">Créez des comptes employés (caissier, gestionnaire…). Les permissions sont appliquées côté serveur.</p>
+          <p className="text-gray-500 mt-1">{t("users.subtitle")}</p>
         </div>
         <div className="flex gap-2">
-          <button aria-label="Actualiser" type="button" onClick={load} className="h-12 w-12 rounded-2xl border-2 border-gray-200 flex items-center justify-center text-gray-500 active:scale-95">
+          <button aria-label={tr("ui.refresh")} type="button" onClick={load} className="h-12 w-12 rounded-2xl border-2 border-gray-200 flex items-center justify-center text-gray-500 active:scale-95">
             <RefreshCw className="w-5 h-5" />
           </button>
           <button type="button" onClick={openCreate} className="h-12 px-5 rounded-2xl bg-[#063D2E] text-[#D4AF62] font-bold flex items-center gap-2 active:scale-95">
@@ -193,7 +187,7 @@ export const UsersRolesPage: React.FC = () => {
                 <th className="px-4 py-3">{t("users_roles.th_user")}</th>
                 <th className="px-4 py-3">{t("users_roles.th_role")}</th>
                 <th className="px-4 py-3">{t("users_roles.th_status")}</th>
-                <th className="px-4 py-3 hidden md:table-cell">Dernière connexion</th>
+                <th className="px-4 py-3 hidden md:table-cell">{t("users.last_login")}</th>
                 <th className="px-4 py-3 text-right">{t("users_roles.th_actions")}</th>
               </tr>
             </thead>
@@ -219,13 +213,13 @@ export const UsersRolesPage: React.FC = () => {
                     </td>
                     <td className="px-4 py-3">
                       <div className="flex items-center justify-end gap-1.5">
-                        <button type="button" onClick={() => openEdit(u)} title="Modifier" className="h-10 w-10 rounded-xl border-2 border-gray-200 flex items-center justify-center text-gray-500 active:scale-95">
+                        <button type="button" onClick={() => openEdit(u)} title={t("misc.edit")} className="h-10 w-10 rounded-xl border-2 border-gray-200 flex items-center justify-center text-gray-500 active:scale-95">
                           <Pencil className="w-4 h-4" />
                         </button>
-                        <button type="button" onClick={() => setPwTarget(u)} title="Réinitialiser le mot de passe" className="h-10 w-10 rounded-xl border-2 border-gray-200 flex items-center justify-center text-gray-500 active:scale-95">
+                        <button type="button" onClick={() => setPwTarget(u)} title={t("users.reset_pw")} className="h-10 w-10 rounded-xl border-2 border-gray-200 flex items-center justify-center text-gray-500 active:scale-95">
                           <KeyRound className="w-4 h-4" />
                         </button>
-                        <button type="button" disabled={busy} onClick={() => toggleActive(u)} title={active ? "Désactiver" : "Réactiver"} className={`h-10 w-10 rounded-xl border-2 flex items-center justify-center active:scale-95 ${active ? "border-red-200 text-red-500" : "border-emerald-200 text-emerald-600"}`}>
+                        <button type="button" disabled={busy} onClick={() => toggleActive(u)} title={active ? t("users.deactivate") : t("users.reactivate")} className={`h-10 w-10 rounded-xl border-2 flex items-center justify-center active:scale-95 ${active ? "border-red-200 text-red-500" : "border-emerald-200 text-emerald-600"}`}>
                           {active ? <UserX className="w-4 h-4" /> : <UserCheck className="w-4 h-4" />}
                         </button>
                       </div>
@@ -241,13 +235,13 @@ export const UsersRolesPage: React.FC = () => {
       {/* ROLES REFERENCE */}
       <div className="bg-white p-4 rounded-3xl border border-gray-200">
         <h4 className="font-bold text-[#063D2E] mb-3 flex items-center gap-2">
-          <ShieldCheck className="w-5 h-5" /> Rôles & permissions
+          <ShieldCheck className="w-5 h-5" /> {t("users.roles")}
         </h4>
         <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
           {roles.map((r) => (
             <div key={r.id} className="p-3 rounded-2xl border border-gray-100 bg-[#FCFBF8]">
               <div className="font-bold text-[#063D2E]">{roleLabel(r.name)}</div>
-              <div className="text-gray-500 text-[11px] mb-1">{r.description}</div>
+              <div className="text-gray-500 text-[11px] mb-1">{roleDescription(r)}</div>
               <div className="flex flex-wrap gap-1">
                 {r.permissions.length === 0 && <span className="text-gray-400 text-[11px]">—</span>}
                 {r.permissions.map((p) => (
@@ -265,7 +259,7 @@ export const UsersRolesPage: React.FC = () => {
           <div className="bg-white rounded-3xl w-full max-w-md max-h-[92vh] overflow-auto" onClick={(e) => e.stopPropagation()}>
             <div className="flex items-center justify-between px-5 py-4 border-b">
               <h3 className="font-serif font-bold text-[#063D2E] text-lg">{form.id === null ? t("users_roles.modal_new_title") : t("users_roles.modal_edit_title")}</h3>
-              <button aria-label="Fermer" type="button" onClick={() => setForm(null)} className="w-11 h-11 rounded-xl flex items-center justify-center text-gray-400 hover:bg-gray-100 active:scale-95">
+              <button aria-label={tr("ui.close")} type="button" onClick={() => setForm(null)} className="w-11 h-11 rounded-xl flex items-center justify-center text-gray-400 hover:bg-gray-100 active:scale-95">
                 <X className="w-6 h-6" />
               </button>
             </div>
@@ -316,13 +310,13 @@ export const UsersRolesPage: React.FC = () => {
           <div className="bg-white rounded-3xl w-full max-w-sm" onClick={(e) => e.stopPropagation()}>
             <div className="flex items-center justify-between px-5 py-4 border-b">
               <h3 className="font-serif font-bold text-[#063D2E] text-lg">{t("users_roles.modal_pw_title")}</h3>
-              <button aria-label="Fermer" type="button" onClick={() => setPwTarget(null)} className="w-11 h-11 rounded-xl flex items-center justify-center text-gray-400 hover:bg-gray-100 active:scale-95">
+              <button aria-label={tr("ui.close")} type="button" onClick={() => setPwTarget(null)} className="w-11 h-11 rounded-xl flex items-center justify-center text-gray-400 hover:bg-gray-100 active:scale-95">
                 <X className="w-6 h-6" />
               </button>
             </div>
             <div className="p-5 space-y-3">
               <p className="text-gray-500">{pwTarget.full_name} — <span className="font-mono">{pwTarget.email}</span></p>
-              <input type="password" value={pwValue} onChange={(e) => setPwValue(e.target.value)} placeholder="Nouveau mot de passe (min. 10)" className="w-full h-12 px-3 rounded-2xl border-2 border-gray-200" />
+              <input type="password" value={pwValue} onChange={(e) => setPwValue(e.target.value)} placeholder={t("users.new_pw_ph")} className="w-full h-12 px-3 rounded-2xl border-2 border-gray-200" />
               {error && (
                 <div role="alert" className="p-3 rounded-xl bg-red-50 border border-red-200 text-red-800 text-sm font-bold">{error}</div>
               )}

@@ -34,6 +34,7 @@ import { FileText as FileTextIcon, Settings as SettingsIcon, Tag as TagIcon } fr
 import { Wifi, WifiOff, CloudUpload, CloudOff, User, UserCheck } from "lucide-react";
 import {
   isHardwareConfigured,
+  isTauriRuntime,
   printSaleReceipt,
   loadHardwareSettings,
   openCashDrawer as kickDrawer,
@@ -47,6 +48,9 @@ import type { CartLine, LookupVariant, PaymentMethod, RegisterSession } from "./
 import { Keypad, ReceiptModal, Stat, fmt } from "./pos/ui";
 import { buildReceiptBlocks } from "./pos/receipt";
 import { CloseRegisterSheet, ConflictsSheet, CustomerSheet, PaymentSheet, RefundSheet, SessionsHistorySheet, VariantPickerSheet } from "./pos/sheets";
+import { localeFor } from "../i18n/translations";
+import { registerName } from "../utils/registerName";
+import { adoptShopDefaults } from "../utils/shopDevices";
 
 // ---------------------------------------------------------------------------
 // POS — Touch-first cashier workspace.
@@ -117,7 +121,7 @@ export const PosPage: React.FC<{ onInventoryUpdated?: () => void }> = ({ onInven
       const data = await DesktopCmsApi.posRegisterCurrent();
       setSession(data.open ? data.session : null);
     } catch (e: any) {
-      setError(e?.userMessage || "Impossible de charger la caisse");
+      setError(e?.userMessage || t("posx.load_failed"));
     } finally {
       setLoading(false);
     }
@@ -136,6 +140,16 @@ export const PosPage: React.FC<{ onInventoryUpdated?: () => void }> = ({ onInven
     loadRegister();
     loadRecentSales();
   }, [loadRegister, loadRecentSales]);
+
+  // A till PC with no printer set up takes the shop's default receipt printer
+  // (Devices page), so a printer added there is the one this till prints on.
+  useEffect(() => {
+    if (!isTauriRuntime() || isHardwareConfigured()) return;
+    adoptShopDefaults().then((taken) => {
+      if (taken.receipt) setSuccess(t("posx.printer_adopted", { name: taken.receipt }));
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   useEffect(() => {
     if (session && scanRef.current) scanRef.current.focus();
@@ -161,10 +175,10 @@ export const PosPage: React.FC<{ onInventoryUpdated?: () => void }> = ({ onInven
         removeSyncedItems();
         if (!silent) {
           const parts: string[] = [];
-          if (summary.created) parts.push(`${summary.created} synchronisée(s)`);
-          if (summary.duplicate) parts.push(`${summary.duplicate} déjà connue(s)`);
-          if (summary.conflict) parts.push(`${summary.conflict} conflit(s)`);
-          flashSuccess(`Synchronisation : ${parts.join(", ") || "rien à faire"}`);
+          if (summary.created) parts.push(t("posx.sync_created", { n: summary.created }));
+          if (summary.duplicate) parts.push(t("posx.sync_duplicate", { n: summary.duplicate }));
+          if (summary.conflict) parts.push(t("posx.sync_conflict", { n: summary.conflict }));
+          flashSuccess(t("posx.sync_summary", { parts: parts.join(", ") || t("posx.sync_nothing") }));
         } else {
           // Background sync (reconnect / app start): the cashier may be in
           // another tab or app, so surface the result in the notification
@@ -223,15 +237,15 @@ export const PosPage: React.FC<{ onInventoryUpdated?: () => void }> = ({ onInven
   // ------------------------------------------------------------ register
   const handleOpenRegister = async () => {
     const amount = parseInt(openingFloat || "0", 10);
-    if (isNaN(amount) || amount < 0) return flashError("Fond de caisse invalide");
+    if (isNaN(amount) || amount < 0) return flashError(t("posx.bad_float"));
     setBusy(true);
     try {
-      const s = await DesktopCmsApi.posRegisterOpen(amount, "Caisse principale");
+      const s = await DesktopCmsApi.posRegisterOpen(amount, t("posx.main_register"));
       setSession(s);
       setOpeningFloat("0");
-      flashSuccess(`Caisse ouverte avec un fond de ${fmt(amount)}`);
+      flashSuccess(t("posx.opened", { amount: fmt(amount) }));
     } catch (e: any) {
-      flashError(e?.userMessage || "Ouverture de caisse refusée");
+      flashError(e?.userMessage || t("posx.open_refused"));
     } finally {
       setBusy(false);
     }
@@ -239,7 +253,7 @@ export const PosPage: React.FC<{ onInventoryUpdated?: () => void }> = ({ onInven
 
   const handleCloseRegister = async () => {
     const amount = parseInt(countedCash || "0", 10);
-    if (isNaN(amount) || amount < 0) return flashError("Montant compté invalide");
+    if (isNaN(amount) || amount < 0) return flashError(t("posx.bad_count"));
     setBusy(true);
     try {
       const closed = await DesktopCmsApi.posRegisterClose(amount);
@@ -248,10 +262,10 @@ export const PosPage: React.FC<{ onInventoryUpdated?: () => void }> = ({ onInven
       setShowClose(false);
       setCountedCash("0");
       flashSuccess(
-        `Caisse clôturée. Attendu ${fmt(closed.expected_cash_dzd)}, compté ${fmt(closed.counted_cash_dzd)}, écart ${variance >= 0 ? "+" : ""}${fmt(variance)}`
+        t("posx.closed", { expected: fmt(closed.expected_cash_dzd), counted: fmt(closed.counted_cash_dzd), variance: `${variance >= 0 ? "+" : ""}${fmt(variance)}` })
       );
     } catch (e: any) {
-      flashError(e?.userMessage || "Clôture refusée");
+      flashError(e?.userMessage || t("posx.close_refused"));
     } finally {
       setBusy(false);
     }
@@ -263,13 +277,13 @@ export const PosPage: React.FC<{ onInventoryUpdated?: () => void }> = ({ onInven
       const existing = prev.find((l) => l.variant_id === v.variant_id);
       if (existing) {
         if (existing.quantity + 1 > v.stock_qty) {
-          flashError(`Stock insuffisant pour ${v.product_name} (${v.variant_title}): ${v.stock_qty} dispo`);
+          flashError(t("posx.low_stock", { name: v.product_name, variant: v.variant_title, n: v.stock_qty }));
           return prev;
         }
         return prev.map((l) => (l.variant_id === v.variant_id ? { ...l, quantity: l.quantity + 1 } : l));
       }
       if (v.stock_qty < 1) {
-        flashError(`${v.product_name} (${v.variant_title}) en rupture de stock`);
+        flashError(t("posx.out_of_stock", { name: v.product_name, variant: v.variant_title }));
         return prev;
       }
       return [
@@ -312,10 +326,10 @@ export const PosPage: React.FC<{ onInventoryUpdated?: () => void }> = ({ onInven
       } else if (res.match_type === "search" && res.results.length) {
         setSearchResults(res.results);
       } else {
-        flashError(`Aucun produit pour « ${code} »`);
+        flashError(t("posx.no_product", { code }));
       }
     } catch (e: any) {
-      flashError(e?.userMessage || "Recherche échouée");
+      flashError(e?.userMessage || t("posx.search_failed"));
     }
   };
 
@@ -367,7 +381,7 @@ export const PosPage: React.FC<{ onInventoryUpdated?: () => void }> = ({ onInven
         const q = l.quantity + delta;
         if (q <= 0) return [];
         if (q > l.stock_qty) {
-          flashError(`Stock maximum ${l.stock_qty} atteint pour ${l.product_name}`);
+          flashError(t("posx.max_stock", { n: l.stock_qty, name: l.product_name }));
           return [l];
         }
         return [{ ...l, quantity: q }];
@@ -404,7 +418,7 @@ export const PosPage: React.FC<{ onInventoryUpdated?: () => void }> = ({ onInven
       const d = await DesktopCmsApi.searchCustomers(q);
       setCustResults(d.items || []);
     } catch (e: any) {
-      flashError(e?.userMessage || "Recherche client échouée");
+      flashError(e?.userMessage || t("posx.customer_search_failed"));
     }
   };
 
@@ -417,7 +431,7 @@ export const PosPage: React.FC<{ onInventoryUpdated?: () => void }> = ({ onInven
 
   const createCustomer = async () => {
     if (custNewName.trim().length < 2 || custNewPhone.trim().length < 6) {
-      return flashError("Nom et téléphone requis");
+      return flashError(t("posx.name_phone_required"));
     }
     try {
       const c = await DesktopCmsApi.createCustomer({ full_name: custNewName.trim(), phone: custNewPhone.trim() });
@@ -425,19 +439,19 @@ export const PosPage: React.FC<{ onInventoryUpdated?: () => void }> = ({ onInven
       setShowCustomer(false);
       setCustNewName("");
       setCustNewPhone("");
-      flashSuccess(`Client ${c.full_name} rattaché`);
+      flashSuccess(t("posx.customer_attached", { name: c.full_name }));
     } catch (e: any) {
-      flashError(e?.userMessage || "Création client refusée");
+      flashError(e?.userMessage || t("posx.customer_create_refused"));
     }
   };
 
   // ------------------------------------------------------------ checkout
   const handleConfirmSale = async () => {
     // (tendered empty = exact amount)
-    if (!cart.length) return flashError("Panier vide");
-    if (total <= 0) return flashError("Total invalide");
+    if (!cart.length) return flashError(t("posx.empty_cart"));
+    if (total <= 0) return flashError(t("posx.bad_total"));
     if (payMethod === "cash" && tenderedNum > 0 && tenderedNum < total) {
-      return flashError("Montant reçu inférieur au total");
+      return flashError(t("posx.tendered_low"));
     }
     setBusy(true);
     const idemKey = `pos-sale-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
@@ -458,7 +472,7 @@ export const PosPage: React.FC<{ onInventoryUpdated?: () => void }> = ({ onInven
       setReceipt(sale);
       clearCart();
       setShowPay(false);
-      flashSuccess(`Vente ${sale.sale_reference} enregistrée — ${fmt(sale.total_dzd)}`);
+      flashSuccess(t("posx.sale_ok", { ref: sale.sale_reference, total: fmt(sale.total_dzd) }));
       loadRegister();
       loadRecentSales();
       onInventoryUpdated?.();
@@ -466,7 +480,7 @@ export const PosPage: React.FC<{ onInventoryUpdated?: () => void }> = ({ onInven
       // sale included cash. Errors are shown but never block the sale itself.
       if (isHardwareConfigured()) {
         printSaleReceipt(sale as any).then((r) => {
-          if (!r.ok) flashError(`Imprimante : ${r.error}`);
+          if (!r.ok) flashError(t("posx.printer_error", { error: r.error }));
         }).catch(() => { /* fire-and-forget */ });
       } else if (payMethod === "cash") {
         // Printer not set up — still try to kick the drawer so cash can be put in.
@@ -501,9 +515,9 @@ export const PosPage: React.FC<{ onInventoryUpdated?: () => void }> = ({ onInven
         clearCart();
         setShowPay(false);
         setOnline(false);
-        flashSuccess("Hors ligne : vente enregistrée localement, elle sera synchronisée au retour du réseau.");
+        flashSuccess(t("posx.offline_saved"));
       } else {
-        flashError(e?.userMessage || "Vente refusée");
+        flashError(e?.userMessage || t("posx.sale_refused"));
       }
     } finally {
       setBusy(false);
@@ -517,12 +531,12 @@ export const PosPage: React.FC<{ onInventoryUpdated?: () => void }> = ({ onInven
       const refund = await DesktopCmsApi.posRefundSale(sale.id, { refund_method: "cash" });
       setReceipt(refund);
       setRefundTarget(null);
-      flashSuccess(`Remboursement ${refund.sale_reference} — ${fmt(refund.total_dzd)}`);
+      flashSuccess(t("posx.refund_ok", { ref: refund.sale_reference, total: fmt(refund.total_dzd) }));
       loadRegister();
       loadRecentSales();
       onInventoryUpdated?.();
     } catch (e: any) {
-      flashError(e?.userMessage || "Remboursement refusé");
+      flashError(e?.userMessage || t("posx.refund_refused"));
     } finally {
       setBusy(false);
     }
@@ -535,7 +549,7 @@ export const PosPage: React.FC<{ onInventoryUpdated?: () => void }> = ({ onInven
       // Closed while loading: stay closed (don't pop the sheet back up).
       setSessionsHistory((prev) => (prev === null ? null : d.items || []));
     } catch (e: any) {
-      flashError(e?.userMessage || "Historique indisponible");
+      flashError(e?.userMessage || t("posx.history_unavailable"));
       setSessionsHistory(null);
     }
   };
@@ -547,7 +561,7 @@ export const PosPage: React.FC<{ onInventoryUpdated?: () => void }> = ({ onInven
     if (receipt && isHardwareConfigured()) {
       const r = await printSaleReceipt(receipt as any);
       if (r.ok) {
-        flashSuccess("Reçu envoyé à l'imprimante");
+        flashSuccess(t("posx.receipt_sent"));
       } else {
         flashError(r.error);
         window.print();
@@ -568,7 +582,7 @@ export const PosPage: React.FC<{ onInventoryUpdated?: () => void }> = ({ onInven
     const { blocks, paperWidthMm } = buildReceiptBlocks(receipt);
 
     const r = openSystemPrint({
-      title: `Reçu ${receipt.sale_reference || ""}`.trim(),
+      title: t("posx.receipt_title", { ref: receipt.sale_reference || "" }).trim(),
       paper: { kind: "mm", width: paperWidthMm, height: 297 },  // 58/80mm × receipt-length A4 (printer trims unused area)
       marginMm: 2,
       html: renderReceiptHtml(blocks),
@@ -596,10 +610,10 @@ export const PosPage: React.FC<{ onInventoryUpdated?: () => void }> = ({ onInven
       } else if (res.match_type === "search" && res.results.length) {
         setSearchResults(res.results);
       } else {
-        flashError(`Aucun produit pour « ${trimmed} »`);
+        flashError(t("posx.no_product", { code: trimmed }));
       }
     } catch (e: any) {
-      flashError(e?.userMessage || "Recherche échouée");
+      flashError(e?.userMessage || t("posx.search_failed"));
     }
   }, { enabled: scannerEnabled && Boolean(session) });
 
@@ -632,9 +646,9 @@ export const PosPage: React.FC<{ onInventoryUpdated?: () => void }> = ({ onInven
       const r = await syncCatalog(force);
       setMirrorStat(await mirrorStatus());
       if (r.ok) {
-        flashSuccess(`Catalogue ${r.mode === "snapshot" ? "chargé" : "mis à jour"} (${r.variants_upserted} variantes).`);
+        flashSuccess(t(r.mode === "snapshot" ? "posx.catalog_loaded" : "posx.catalog_updated", { n: r.variants_upserted }));
       } else {
-        flashError(`Sync catalogue : ${r.error ?? "échec"}`);
+        flashError(t("posx.catalog_sync_failed", { error: r.error ?? t("posx.failed") }));
       }
     } finally {
       setMirrorSyncing(false);
@@ -676,20 +690,20 @@ export const PosPage: React.FC<{ onInventoryUpdated?: () => void }> = ({ onInven
         >
           <div className="flex items-center gap-2 font-bold">
             {online ? <Wifi className="w-5 h-5" /> : <WifiOff className="w-5 h-5" />}
-            <span>{online ? "En ligne" : "Hors ligne"}</span>
+            <span>{online ? t("posx.online") : t("posx.offline")}</span>
             {(queueCounts.pending > 0 || queueCounts.failed > 0) && (
-              <span className="font-mono">· {queueCounts.pending + queueCounts.failed} vente(s) en attente</span>
+              <span className="font-mono">{t("posx.pending_sales", { n: queueCounts.pending + queueCounts.failed })}</span>
             )}
             {queueCounts.conflict > 0 && (
               <button type="button" onClick={() => setShowConflicts(true)} className="underline font-mono">
-                · {queueCounts.conflict} conflit(s) à traiter
+                {t("posx.conflicts", { n: queueCounts.conflict })}
               </button>
             )}
           </div>
           <div className="flex items-center gap-2">
             {queueCounts.conflict > 0 && (
               <button type="button" onClick={() => setShowConflicts(true)} className="h-10 px-3 rounded-xl bg-white/60 font-bold flex items-center gap-1.5 active:scale-95">
-                <CloudOff className="w-4 h-4" /> Voir conflits
+                <CloudOff className="w-4 h-4" /> {t("misc.see_conflicts")}
               </button>
             )}
             <button
@@ -698,7 +712,7 @@ export const PosPage: React.FC<{ onInventoryUpdated?: () => void }> = ({ onInven
               onClick={() => runSync(false)}
               className="h-10 px-4 rounded-xl bg-[#063D2E] text-[#D4AF62] font-bold flex items-center gap-1.5 disabled:opacity-40 active:scale-95"
             >
-              {syncing ? <RefreshCw className="w-4 h-4 animate-spin" /> : <CloudUpload className="w-4 h-4" />} Synchroniser
+              {syncing ? <RefreshCw className="w-4 h-4 animate-spin" /> : <CloudUpload className="w-4 h-4" />} {t("misc.sync")}
             </button>
           </div>
         </div>
@@ -711,11 +725,11 @@ export const PosPage: React.FC<{ onInventoryUpdated?: () => void }> = ({ onInven
             <span className="w-11 h-11 rounded-2xl bg-[#063D2E]/5 flex items-center justify-center">
               <Lock className="w-6 h-6" />
             </span>
-            Caisse fermée
+            {t("posx.register_closed")}
           </div>
-          <p className="text-gray-500 mb-4 pl-1">Saisissez le fond de caisse pour commencer la journée.</p>
+          <p className="text-gray-500 mb-4 pl-1">{t("posx.enter_float")}</p>
           <div className="mb-3 p-4 rounded-2xl bg-[#F5F3EE] text-center">
-            <div className="text-xs uppercase tracking-wide text-gray-500 font-bold">Fond de caisse</div>
+            <div className="text-xs uppercase tracking-wide text-gray-500 font-bold">{t("posx.float")}</div>
             <div className="text-3xl font-bold text-[#063D2E] font-mono tabular-nums">{fmt(parseInt(openingFloat || "0", 10) || 0)}</div>
           </div>
           <Keypad value={openingFloat} onChange={setOpeningFloat} quickAdds={[1000, 5000, 10000]} />
@@ -725,14 +739,14 @@ export const PosPage: React.FC<{ onInventoryUpdated?: () => void }> = ({ onInven
             onClick={handleOpenRegister}
             className="mt-4 w-full h-16 rounded-2xl bg-[#063D2E] text-[#D4AF62] font-extrabold text-lg flex items-center justify-center gap-2 disabled:opacity-50 active:scale-[0.99]"
           >
-            <Unlock className="w-6 h-6" /> Ouvrir la caisse
+            <Unlock className="w-6 h-6" /> {t("misc.open_register")}
           </button>
           <button
             type="button"
             onClick={openSessionsHistory}
             className="mt-2 w-full h-11 rounded-2xl border-2 border-[#063D2E]/10 text-[#063D2E] font-bold flex items-center justify-center gap-2 active:scale-95"
           >
-            <History className="w-5 h-5" /> Historique des caisses
+            <History className="w-5 h-5" /> {t("misc.register_history")}
           </button>
         </div>
       ) : (
@@ -744,13 +758,13 @@ export const PosPage: React.FC<{ onInventoryUpdated?: () => void }> = ({ onInven
                 <span className="w-10 h-10 rounded-2xl bg-white/10 flex items-center justify-center">
                   <Unlock className="w-5 h-5 text-[#D4AF62]" />
                 </span>
-                {session.register_name}
+                {registerName(session.register_name)}
               </div>
               <div className="flex gap-5 text-sm">
-                <Stat label="Fond" value={fmt(session.opening_float_dzd)} />
-                <Stat label={`Ventes (${session.sales_count || 0})`} value={fmt(session.sales_total_dzd || 0)} />
-                <Stat label="Remb." value={fmt(session.refunds_total_dzd || 0)} />
-                <Stat label="Caisse attendue" value={fmt(session.expected_cash_dzd || 0)} gold />
+                <Stat label={t("posx.stat_float")} value={fmt(session.opening_float_dzd)} />
+                <Stat label={t("posx.stat_sales", { n: session.sales_count || 0 })} value={fmt(session.sales_total_dzd || 0)} />
+                <Stat label={t("posx.stat_refunds")} value={fmt(session.refunds_total_dzd || 0)} />
+                <Stat label={t("posx.stat_expected")} value={fmt(session.expected_cash_dzd || 0)} gold />
               </div>
             </div>
             <div className="flex items-center gap-2">
@@ -760,12 +774,12 @@ export const PosPage: React.FC<{ onInventoryUpdated?: () => void }> = ({ onInven
                   onClick={() => refreshMirror(false)}
                   disabled={mirrorSyncing}
                   className="h-12 px-3 rounded-2xl bg-white/10 hover:bg-white/20 text-[#E8D4A5] font-bold flex items-center gap-2 active:scale-95 disabled:opacity-60"
-                  title={`Catalogue local — ${mirrorStat.variant_count} variantes${mirrorStat.last_synced_at ? ` · dernière sync ${new Date(mirrorStat.last_synced_at).toLocaleTimeString("fr-FR")}` : ""}`}
+                  title={t("posx.mirror_title", { n: mirrorStat.variant_count }) + (mirrorStat.last_synced_at ? t("posx.mirror_last", { time: new Date(mirrorStat.last_synced_at).toLocaleTimeString(localeFor()) }) : "")}
                 >
                   <RefreshCw className={`w-4 h-4 ${mirrorSyncing ? "animate-spin" : ""}`} />
                   <span className="font-mono text-xs">
                     {mirrorStat.variant_count}
-                    {lastLookupSource === "mirror" && !online && <span className="ml-1 text-amber-300">· hors ligne</span>}
+                    {lastLookupSource === "mirror" && !online && <span className="ml-1 text-amber-300">{t("posx.mirror_offline")}</span>}
                   </span>
                 </button>
               )}
@@ -773,7 +787,7 @@ export const PosPage: React.FC<{ onInventoryUpdated?: () => void }> = ({ onInven
                 type="button"
                 onClick={() => setShowPrinterSettings(true)}
                 className="h-12 px-4 rounded-2xl bg-white/10 hover:bg-white/20 text-[#E8D4A5] font-bold flex items-center gap-2 active:scale-95"
-                title="Imprimante & tiroir-caisse"
+                title={t("posx.hardware")}
               >
                 <SettingsIcon className="w-5 h-5" /> {t("pos.hardware")}
               </button>
@@ -807,7 +821,7 @@ export const PosPage: React.FC<{ onInventoryUpdated?: () => void }> = ({ onInven
                     ref={scanRef}
                     value={scanCode}
                     onChange={(e) => setScanCode(e.target.value)}
-                    placeholder="Code-barres, SKU ou nom…"
+                    placeholder={t("posx.search_ph")}
                     className="flex-1 h-14 px-4 rounded-2xl border-2 border-gray-200 font-mono text-lg focus:border-[#063D2E] outline-none"
                     autoFocus
                     data-barcode-target="true"
@@ -821,8 +835,8 @@ export const PosPage: React.FC<{ onInventoryUpdated?: () => void }> = ({ onInven
               {searchResults.length > 0 && (
                 <div className="bg-white p-4 rounded-3xl border border-gray-200">
                   <div className="flex items-center justify-between mb-2">
-                    <h4 className="font-bold text-[#063D2E] text-base">Résultats</h4>
-                    <button aria-label="Effacer les résultats" type="button" onClick={() => setSearchResults([])} className="text-gray-400 hover:text-gray-700">
+                    <h4 className="font-bold text-[#063D2E] text-base">{t("posx.results")}</h4>
+                    <button aria-label={t("posx.clear_results")} type="button" onClick={() => setSearchResults([])} className="text-gray-400 hover:text-gray-700">
                       <X className="w-5 h-5" />
                     </button>
                   </div>
@@ -841,14 +855,14 @@ export const PosPage: React.FC<{ onInventoryUpdated?: () => void }> = ({ onInven
                               >
                                 <div>{v.variant_title}</div>
                                 <div className="text-[#7a5c16] font-mono">
-                                  {fmt(v.unit_price_dzd)} · {v.stock_qty} dispo
-                                  {!v.barcode && <span className="ml-1 text-amber-700 text-xs"> · sans code-barres</span>}
+                                  {t("posx.available", { price: fmt(v.unit_price_dzd), n: v.stock_qty })}
+                                  {!v.barcode && <span className="ml-1 text-amber-700 text-xs">{t("posx.no_barcode")}</span>}
                                 </div>
                               </button>
                               <button
                                 type="button"
                                 onClick={() => setLabelVariantId(v.variant_id)}
-                                title={v.barcode ? "Imprimer l'étiquette" : "Générer un code-barres et imprimer"}
+                                title={v.barcode ? t("posx.print_label") : t("posx.gen_label")}
                                 className="px-3 border-l-2 border-[#063D2E]/15 bg-white text-[#063D2E] hover:bg-[#063D2E]/5 active:scale-95 flex items-center"
                               >
                                 <TagIcon className="w-4 h-4" />
@@ -864,13 +878,13 @@ export const PosPage: React.FC<{ onInventoryUpdated?: () => void }> = ({ onInven
 
               <div className="bg-white p-4 rounded-3xl border border-gray-200">
                 <div className="flex items-center justify-between mb-2">
-                  <h4 className="font-bold text-[#063D2E] text-base">Ventes récentes</h4>
-                  <button aria-label="Actualiser" type="button" onClick={loadRecentSales} className="w-10 h-10 rounded-xl flex items-center justify-center text-gray-400 hover:text-[#063D2E] active:scale-95">
+                  <h4 className="font-bold text-[#063D2E] text-base">{t("posx.recent")}</h4>
+                  <button aria-label={t("posx.refresh")} type="button" onClick={loadRecentSales} className="w-10 h-10 rounded-xl flex items-center justify-center text-gray-400 hover:text-[#063D2E] active:scale-95">
                     <RefreshCw className="w-5 h-5" />
                   </button>
                 </div>
                 <div className="space-y-2 max-h-72 overflow-auto">
-                  {recentSales.length === 0 && <div className="text-gray-400 py-6 text-center">Aucune vente pour le moment.</div>}
+                  {recentSales.length === 0 && <div className="text-gray-400 py-6 text-center">{t("posx.no_sales")}</div>}
                   {recentSales.map((s) => (
                     <div key={s.id} className="flex items-center justify-between p-3 rounded-2xl border border-gray-100 bg-[#FCFBF8]">
                       <div className="min-w-0">
@@ -887,8 +901,8 @@ export const PosPage: React.FC<{ onInventoryUpdated?: () => void }> = ({ onInven
                           }`}
                         >
                           {s.sale_type === "refund"
-                            ? "Avoir"
-                            : ({ completed: "Payé", refunded: "Remboursé", partially_refunded: "Remb. partiel", voided: "Annulé" } as Record<string, string>)[s.status] || s.status}
+                            ? t("posx.credit_note")
+                            : (["completed", "refunded", "partially_refunded", "voided"].includes(s.status) ? t(`posx.st_${s.status}`) : s.status)}
                         </span>
                       </div>
                       <div className="flex items-center gap-2">
@@ -897,7 +911,7 @@ export const PosPage: React.FC<{ onInventoryUpdated?: () => void }> = ({ onInven
                           type="button"
                           onClick={() => DesktopCmsApi.posGetSale(s.id).then(setReceipt)}
                           className="w-11 h-11 rounded-xl flex items-center justify-center text-gray-500 hover:text-[#063D2E] hover:bg-gray-100 active:scale-95"
-                          title="Voir le reçu"
+                          title={t("posx.see_receipt")}
                         >
                           <Printer className="w-5 h-5" />
                         </button>
@@ -905,7 +919,7 @@ export const PosPage: React.FC<{ onInventoryUpdated?: () => void }> = ({ onInven
                           type="button"
                           onClick={() => setInvoiceSaleId(s.id)}
                           className="w-11 h-11 rounded-xl flex items-center justify-center text-gray-500 hover:text-[#063D2E] hover:bg-gray-100 active:scale-95"
-                          title="Facture A4"
+                          title={t("posx.invoice_a4")}
                         >
                           <FileTextIcon className="w-5 h-5" />
                         </button>
@@ -914,7 +928,7 @@ export const PosPage: React.FC<{ onInventoryUpdated?: () => void }> = ({ onInven
                             type="button"
                             onClick={() => setRefundTarget(s)}
                             className="w-11 h-11 rounded-xl flex items-center justify-center text-red-500 hover:text-red-700 hover:bg-red-50 active:scale-95"
-                            title="Rembourser"
+                            title={t("posx.refund")}
                           >
                             <RotateCcw className="w-5 h-5" />
                           </button>
@@ -930,11 +944,11 @@ export const PosPage: React.FC<{ onInventoryUpdated?: () => void }> = ({ onInven
             <div className="lg:col-span-2 bg-white rounded-3xl border-2 border-[#D4AF62]/40 flex flex-col overflow-hidden shadow-sm">
               <div className="px-4 py-3 bg-[#063D2E] text-[#E8D4A5] flex items-center justify-between">
                 <span className="font-serif font-bold text-base flex items-center gap-2">
-                  <ShoppingCart className="w-5 h-5" /> Ticket · {itemCount} article{itemCount > 1 ? "s" : ""}
+                  <ShoppingCart className="w-5 h-5" /> {t("posx.ticket", { n: itemCount })}
                 </span>
                 {cart.length > 0 && (
                   <button type="button" onClick={clearCart} className="h-9 px-3 rounded-xl bg-white/10 hover:bg-white/20 font-bold text-sm active:scale-95">
-                    Vider
+                    {t("posx.empty_ticket")}
                   </button>
                 )}
               </div>
@@ -947,16 +961,16 @@ export const PosPage: React.FC<{ onInventoryUpdated?: () => void }> = ({ onInven
               >
                 <span className="flex items-center gap-2 font-bold text-[#063D2E]">
                   {customer ? <UserCheck className="w-4 h-4 text-emerald-600" /> : <User className="w-4 h-4 text-gray-400" />}
-                  {customer ? `${customer.full_name}` : "Client de passage"}
+                  {customer ? `${customer.full_name}` : t("posx.walk_in")}
                 </span>
-                <span className="text-[11px] text-gray-400 font-mono">{customer ? customer.phone : "Rattacher un client →"}</span>
+                <span className="text-[11px] text-gray-400 font-mono">{customer ? customer.phone : t("posx.attach_customer")}</span>
               </button>
 
               <div className="flex-1 overflow-auto p-3 space-y-2 min-h-[220px] max-h-[46vh]">
                 {cart.length === 0 && (
                   <div className="flex flex-col items-center justify-center h-full text-gray-400 py-10 gap-2">
                     <ScanLine className="w-10 h-10" />
-                    <span>Scannez un produit pour commencer.</span>
+                    <span>{t("posx.scan_to_start")}</span>
                   </div>
                 )}
                 {cart.map((l) => (
@@ -966,17 +980,17 @@ export const PosPage: React.FC<{ onInventoryUpdated?: () => void }> = ({ onInven
                         <div className="font-bold text-[#063D2E] truncate text-base">{l.product_name}</div>
                         <div className="text-gray-500 font-mono">{l.variant_title} · {fmt(l.unit_price_dzd)}</div>
                       </div>
-                      <button type="button" aria-label={`Retirer ${l.product_name} du ticket`} onClick={() => removeLine(l.variant_id)} className="w-10 h-10 rounded-xl flex items-center justify-center text-gray-300 hover:text-red-600 active:scale-95">
+                      <button type="button" aria-label={t("posx.remove_line", { name: l.product_name })} onClick={() => removeLine(l.variant_id)} className="w-10 h-10 rounded-xl flex items-center justify-center text-gray-300 hover:text-red-600 active:scale-95">
                         <Trash2 className="w-5 h-5" />
                       </button>
                     </div>
                     <div className="flex items-center justify-between mt-2">
                       <div className="flex items-center gap-2">
-                        <button type="button" aria-label="Un de moins" onClick={() => updateQty(l.variant_id, -1)} className="w-12 h-12 rounded-2xl bg-gray-100 flex items-center justify-center active:scale-95">
+                        <button type="button" aria-label={t("posx.one_less")} onClick={() => updateQty(l.variant_id, -1)} className="w-12 h-12 rounded-2xl bg-gray-100 flex items-center justify-center active:scale-95">
                           <Minus className="w-5 h-5" />
                         </button>
                         <span className="w-10 text-center font-bold text-xl tabular-nums">{l.quantity}</span>
-                        <button type="button" aria-label="Un de plus" onClick={() => updateQty(l.variant_id, 1)} className="w-12 h-12 rounded-2xl bg-emerald-100 text-emerald-900 flex items-center justify-center active:scale-95">
+                        <button type="button" aria-label={t("posx.one_more")} onClick={() => updateQty(l.variant_id, 1)} className="w-12 h-12 rounded-2xl bg-emerald-100 text-emerald-900 flex items-center justify-center active:scale-95">
                           <Plus className="w-5 h-5" />
                         </button>
                       </div>
@@ -990,17 +1004,17 @@ export const PosPage: React.FC<{ onInventoryUpdated?: () => void }> = ({ onInven
 
               <div className="p-4 border-t-2 border-dashed border-gray-200 space-y-2 bg-white">
                 <div className="flex justify-between text-gray-500">
-                  <span>Sous-total</span>
+                  <span>{t("posx.subtotal")}</span>
                   <span className="font-mono">{fmt(subtotal)}</span>
                 </div>
                 {(lineDiscounts > 0 || orderDisc > 0) && (
                   <div className="flex justify-between text-amber-700">
-                    <span>Remises</span>
+                    <span>{t("posx.discounts")}</span>
                     <span className="font-mono">-{fmt(lineDiscounts + orderDisc)}</span>
                   </div>
                 )}
                 <div className="flex items-center justify-between pt-1">
-                  <span className="text-xl font-bold text-[#063D2E]">TOTAL</span>
+                  <span className="text-xl font-bold text-[#063D2E]">{t("posx.total")}</span>
                   <span className="text-3xl font-extrabold text-[#063D2E] font-mono tabular-nums">{fmt(total)}</span>
                 </div>
                 <button

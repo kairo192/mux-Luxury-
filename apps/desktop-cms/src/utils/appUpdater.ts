@@ -16,6 +16,7 @@
 
 import { getTauriInvoke } from "./posHardware";
 import { getAccessToken } from "../api/adminClient";
+import { tr } from "../i18n/translations";
 
 export type UpdatePhase =
   | "unsupported" // browser / dev server: no native updater
@@ -151,7 +152,7 @@ export async function installUpdate(): Promise<void> {
   if (!invoke || state.phase !== "available") return;
   const token = getAccessToken();
   if (!token) {
-    setState({ phase: "error", error: "Connectez-vous pour installer la mise à jour." });
+    setState({ phase: "error", error: tr("misc.login_to_update") });
     return;
   }
 

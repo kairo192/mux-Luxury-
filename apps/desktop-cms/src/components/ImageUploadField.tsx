@@ -5,6 +5,7 @@ import React, { useState } from "react";
 import { ImagePlus, Loader2, Trash2 } from "lucide-react";
 import { DesktopCmsApi, mediaUrl, PLACEHOLDER_IMG } from "../api/adminClient";
 import { notifyClientError } from "../utils/clientNotifier";
+import { tr } from "../i18n/translations";
 
 export function ImageUploadField({
   label,
@@ -28,7 +29,7 @@ export function ImageUploadField({
       const res: any = await DesktopCmsApi.uploadMediaFile(file);
       onChange(res.url);
     } catch (err) {
-      notifyClientError(err, "Envoi de la photo impossible");
+      notifyClientError(err, tr("misc.photo_failed"));
     } finally {
       setBusy(false);
     }
@@ -49,7 +50,7 @@ export function ImageUploadField({
             className="inline-flex items-center gap-1.5 px-3 py-2 rounded-xl border border-[#D4AF62] text-[#063D2E] font-bold cursor-pointer hover:bg-[#D4AF62]/10"
           >
             {busy ? <Loader2 className="w-4 h-4 animate-spin" /> : <ImagePlus className="w-4 h-4" />}
-            {value ? "Changer la photo" : "Téléverser une photo"}
+            {value ? tr("misc.change_photo") : tr("misc.upload_photo")}
           </label>
           <input
             id={inputId}

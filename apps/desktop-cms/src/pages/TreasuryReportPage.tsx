@@ -4,21 +4,14 @@ import { DesktopCmsApi, getAccessToken } from "../api/adminClient";
 import { useT } from "../i18n";
 import { codeLabel } from "../utils/codeLabels";
 import { serverDate, localDateIso } from "../utils/serverDate";
+import { treasuryText } from "../utils/treasuryText";
 
 const fmt = (dzd: number) => `${Number(dzd || 0).toLocaleString("fr-DZ")} DA`;
 
 function todayIso(): string { return localDateIso(); }
 function monthStartIso(): string { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-01`; }
 
-const SOURCE_LABEL: Record<string, string> = {
-  manual: "Manuel",
-  pos_cash_in: "Encaisse POS",
-  pos_cash_out: "Retrait POS",
-  cod_delivery: "Encaissement COD",
-  supplier_payment: "Règlement fournisseur",
-  expense: "Dépense",
-  purchase_order: "Commande fournisseur",
-};
+const SOURCES = new Set(["manual", "pos_cash_in", "pos_cash_out", "cod_delivery", "supplier_payment", "expense", "purchase_order"]);
 
 export const TreasuryReportPage: React.FC = () => {
   const t = useT();
@@ -71,7 +64,7 @@ export const TreasuryReportPage: React.FC = () => {
 
   const accountIcon = (acc: string) => (acc === "bank_account" ? Building2 : Banknote);
   const accountLabel = (acc: string) => (acc === "bank_account" ? t("treasury_report.acc_bank") : acc === "cash_box" ? t("treasury_report.acc_cash") : acc);
-  const sourceLabel = (s: string) => SOURCE_LABEL[s] || codeLabel(s);
+  const sourceLabel = (s: string) => (SOURCES.has(s) ? t(`misc.src_${s}`) : codeLabel(s));
 
   return (
     <div className="space-y-4 text-sm">
@@ -180,7 +173,7 @@ export const TreasuryReportPage: React.FC = () => {
                         <tr key={it.id} className="border-t border-gray-100">
                           <td className="px-3 py-2 font-mono text-[10px] whitespace-nowrap">{serverDate(it.created_at).toLocaleString("fr-FR")}</td>
                           <td className="px-3 py-2">
-                            <div className="truncate">{it.description}</div>
+                            <div className="truncate">{treasuryText(it.description)}</div>
                             <div className="text-gray-400 text-[10px]">{accountLabel(it.account_type)} · {sourceLabel(it.source_type)}</div>
                           </td>
                           <td className={`px-3 py-2 text-right font-mono font-bold ${outgoing ? "text-red-600" : "text-emerald-600"}`}>

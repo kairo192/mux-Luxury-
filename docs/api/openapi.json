@@ -1711,6 +1711,11 @@
       "title": "Purchase Cost Dzd",
       "type": "integer"
      },
+     "sales_channel": {
+      "pattern": "^(all|store)$",
+      "title": "Sales Channel",
+      "type": "string"
+     },
      "selling_price_dzd": {
       "minimum": 0.0,
       "title": "Selling Price Dzd",
@@ -1840,6 +1845,12 @@
       "minimum": 0.0,
       "title": "Purchase Cost Dzd",
       "type": "integer"
+     },
+     "sales_channel": {
+      "default": "all",
+      "pattern": "^(all|store)$",
+      "title": "Sales Channel",
+      "type": "string"
      },
      "selling_price_dzd": {
       "minimum": 0.0,
@@ -2150,6 +2161,115 @@
     "title": "StockAdjustmentInput",
     "type": "object"
    },
+   "StoreAddVariantsIn": {
+    "properties": {
+     "variants": {
+      "items": {
+       "$ref": "#/components/schemas/StoreVariantIn"
+      },
+      "maxItems": 200,
+      "minItems": 1,
+      "title": "Variants",
+      "type": "array"
+     }
+    },
+    "required": [
+     "variants"
+    ],
+    "title": "StoreAddVariantsIn",
+    "type": "object"
+   },
+   "StoreProductEditIn": {
+    "properties": {
+     "cost_dzd": {
+      "minimum": 0.0,
+      "title": "Cost Dzd",
+      "type": "integer"
+     },
+     "name": {
+      "maxLength": 220,
+      "minLength": 1,
+      "title": "Name",
+      "type": "string"
+     },
+     "price_dzd": {
+      "minimum": 0.0,
+      "title": "Price Dzd",
+      "type": "integer"
+     },
+     "sold_online": {
+      "title": "Sold Online",
+      "type": "boolean"
+     }
+    },
+    "title": "StoreProductEditIn",
+    "type": "object"
+   },
+   "StoreQuickAddIn": {
+    "properties": {
+     "category_id": {
+      "title": "Category Id",
+      "type": "integer"
+     },
+     "cost_dzd": {
+      "default": 0,
+      "minimum": 0.0,
+      "title": "Cost Dzd",
+      "type": "integer"
+     },
+     "image_url": {
+      "maxLength": 500,
+      "title": "Image Url",
+      "type": "string"
+     },
+     "name": {
+      "maxLength": 220,
+      "minLength": 1,
+      "title": "Name",
+      "type": "string"
+     },
+     "price_dzd": {
+      "minimum": 0.0,
+      "title": "Price Dzd",
+      "type": "integer"
+     },
+     "sold_online": {
+      "default": false,
+      "title": "Sold Online",
+      "type": "boolean"
+     },
+     "variants": {
+      "items": {
+       "$ref": "#/components/schemas/StoreVariantIn"
+      },
+      "maxItems": 200,
+      "title": "Variants",
+      "type": "array"
+     }
+    },
+    "required": [
+     "name",
+     "category_id",
+     "price_dzd"
+    ],
+    "title": "StoreQuickAddIn",
+    "type": "object"
+   },
+   "StoreReceiveIn": {
+    "properties": {
+     "quantity": {
+      "maximum": 100000.0,
+      "minimum": 1.0,
+      "title": "Quantity",
+      "type": "integer"
+     }
+    },
+    "required": [
+     "quantity"
+    ],
+    "title": "StoreReceiveIn",
+    "type": "object"
+   },
    "StoreSettingsUpdate": {
     "properties": {
      "settings": {
@@ -2161,6 +2281,42 @@
      "settings"
     ],
     "title": "StoreSettingsUpdate",
+    "type": "object"
+   },
+   "StoreVariantIn": {
+    "properties": {
+     "attributes": {
+      "additionalProperties": {
+       "type": "string"
+      },
+      "default": {},
+      "title": "Attributes",
+      "type": "object"
+     },
+     "barcode": {
+      "maxLength": 64,
+      "title": "Barcode",
+      "type": "string"
+     },
+     "price_dzd": {
+      "minimum": 0.0,
+      "title": "Price Dzd",
+      "type": "integer"
+     },
+     "quantity": {
+      "default": 0,
+      "maximum": 100000.0,
+      "minimum": 0.0,
+      "title": "Quantity",
+      "type": "integer"
+     },
+     "title": {
+      "maxLength": 180,
+      "title": "Title",
+      "type": "string"
+     }
+    },
+    "title": "StoreVariantIn",
     "type": "object"
    },
    "SupplierCreateInput": {
@@ -8411,6 +8567,390 @@
      }
     },
     "summary": "Admin Update Store Settings"
+   }
+  },
+  "/api/v1/admin/store/barcodes/missing": {
+   "post": {
+    "description": "A shop barcode for every article of the shop that has none.",
+    "operationId": "store_generate_all_missing_api_v1_admin_store_barcodes_missing_post",
+    "parameters": [
+     {
+      "in": "header",
+      "name": "authorization",
+      "required": false,
+      "schema": {
+       "title": "Authorization",
+       "type": "string"
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "content": {
+       "application/json": {
+        "schema": {}
+       }
+      },
+      "description": "Successful Response"
+     },
+     "422": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      },
+      "description": "Validation Error"
+     }
+    },
+    "summary": "Store Generate All Missing"
+   }
+  },
+  "/api/v1/admin/store/items": {
+   "get": {
+    "description": "Articles (newest first), searched by name, reference or barcode.",
+    "operationId": "store_items_api_v1_admin_store_items_get",
+    "parameters": [
+     {
+      "in": "query",
+      "name": "q",
+      "required": false,
+      "schema": {
+       "maxLength": 120,
+       "title": "Q",
+       "type": "string"
+      }
+     },
+     {
+      "in": "query",
+      "name": "show",
+      "required": false,
+      "schema": {
+       "default": "all",
+       "pattern": "^(all|store|online|no_barcode|low)$",
+       "title": "Show",
+       "type": "string"
+      }
+     },
+     {
+      "in": "query",
+      "name": "limit",
+      "required": false,
+      "schema": {
+       "default": 40,
+       "maximum": 200.0,
+       "minimum": 1.0,
+       "title": "Limit",
+       "type": "integer"
+      }
+     },
+     {
+      "in": "query",
+      "name": "offset",
+      "required": false,
+      "schema": {
+       "default": 0,
+       "minimum": 0.0,
+       "title": "Offset",
+       "type": "integer"
+      }
+     },
+     {
+      "in": "header",
+      "name": "authorization",
+      "required": false,
+      "schema": {
+       "title": "Authorization",
+       "type": "string"
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "content": {
+       "application/json": {
+        "schema": {}
+       }
+      },
+      "description": "Successful Response"
+     },
+     "422": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      },
+      "description": "Validation Error"
+     }
+    },
+    "summary": "Store Items"
+   },
+   "post": {
+    "description": "One article with its colours / sizes, quantities and barcodes, in one go.",
+    "operationId": "store_quick_add_api_v1_admin_store_items_post",
+    "parameters": [
+     {
+      "in": "header",
+      "name": "authorization",
+      "required": false,
+      "schema": {
+       "title": "Authorization",
+       "type": "string"
+      }
+     }
+    ],
+    "requestBody": {
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/StoreQuickAddIn"
+       }
+      }
+     },
+     "required": true
+    },
+    "responses": {
+     "201": {
+      "content": {
+       "application/json": {
+        "schema": {}
+       }
+      },
+      "description": "Successful Response"
+     },
+     "422": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      },
+      "description": "Validation Error"
+     }
+    },
+    "summary": "Store Quick Add"
+   }
+  },
+  "/api/v1/admin/store/items/{product_id}": {
+   "put": {
+    "description": "Name, price, cost and where it is sold — the rest stays in the Products screen.",
+    "operationId": "store_edit_api_v1_admin_store_items__product_id__put",
+    "parameters": [
+     {
+      "in": "path",
+      "name": "product_id",
+      "required": true,
+      "schema": {
+       "title": "Product Id",
+       "type": "integer"
+      }
+     },
+     {
+      "in": "header",
+      "name": "authorization",
+      "required": false,
+      "schema": {
+       "title": "Authorization",
+       "type": "string"
+      }
+     }
+    ],
+    "requestBody": {
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/StoreProductEditIn"
+       }
+      }
+     },
+     "required": true
+    },
+    "responses": {
+     "200": {
+      "content": {
+       "application/json": {
+        "schema": {}
+       }
+      },
+      "description": "Successful Response"
+     },
+     "422": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      },
+      "description": "Validation Error"
+     }
+    },
+    "summary": "Store Edit"
+   }
+  },
+  "/api/v1/admin/store/items/{product_id}/barcodes": {
+   "post": {
+    "description": "A shop barcode for every colour / size of the article that has none.",
+    "operationId": "store_generate_barcodes_api_v1_admin_store_items__product_id__barcodes_post",
+    "parameters": [
+     {
+      "in": "path",
+      "name": "product_id",
+      "required": true,
+      "schema": {
+       "title": "Product Id",
+       "type": "integer"
+      }
+     },
+     {
+      "in": "header",
+      "name": "authorization",
+      "required": false,
+      "schema": {
+       "title": "Authorization",
+       "type": "string"
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "content": {
+       "application/json": {
+        "schema": {}
+       }
+      },
+      "description": "Successful Response"
+     },
+     "422": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      },
+      "description": "Validation Error"
+     }
+    },
+    "summary": "Store Generate Barcodes"
+   }
+  },
+  "/api/v1/admin/store/items/{product_id}/variants": {
+   "post": {
+    "description": "New colours / sizes for an article already in the shop.",
+    "operationId": "store_add_variants_api_v1_admin_store_items__product_id__variants_post",
+    "parameters": [
+     {
+      "in": "path",
+      "name": "product_id",
+      "required": true,
+      "schema": {
+       "title": "Product Id",
+       "type": "integer"
+      }
+     },
+     {
+      "in": "header",
+      "name": "authorization",
+      "required": false,
+      "schema": {
+       "title": "Authorization",
+       "type": "string"
+      }
+     }
+    ],
+    "requestBody": {
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/StoreAddVariantsIn"
+       }
+      }
+     },
+     "required": true
+    },
+    "responses": {
+     "201": {
+      "content": {
+       "application/json": {
+        "schema": {}
+       }
+      },
+      "description": "Successful Response"
+     },
+     "422": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      },
+      "description": "Validation Error"
+     }
+    },
+    "summary": "Store Add Variants"
+   }
+  },
+  "/api/v1/admin/store/variants/{variant_id}/receive": {
+   "post": {
+    "description": "New pieces of a colour / size arrived in the shop.",
+    "operationId": "store_receive_api_v1_admin_store_variants__variant_id__receive_post",
+    "parameters": [
+     {
+      "in": "path",
+      "name": "variant_id",
+      "required": true,
+      "schema": {
+       "title": "Variant Id",
+       "type": "integer"
+      }
+     },
+     {
+      "in": "header",
+      "name": "authorization",
+      "required": false,
+      "schema": {
+       "title": "Authorization",
+       "type": "string"
+      }
+     }
+    ],
+    "requestBody": {
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/StoreReceiveIn"
+       }
+      }
+     },
+     "required": true
+    },
+    "responses": {
+     "200": {
+      "content": {
+       "application/json": {
+        "schema": {}
+       }
+      },
+      "description": "Successful Response"
+     },
+     "422": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      },
+      "description": "Validation Error"
+     }
+    },
+    "summary": "Store Receive"
    }
   },
   "/api/v1/admin/suppliers": {

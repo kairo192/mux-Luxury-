@@ -3,6 +3,7 @@ import { X, AlertTriangle, CheckCircle2, PackageMinus } from "lucide-react";
 import { DesktopCmsApi } from "../api/adminClient";
 import { useT } from "../i18n";
 import { useEscapeToClose } from "../utils/useEscapeToClose";
+import { tr } from "../i18n/translations";
 
 export const StockWriteOffModal: React.FC<{
   variantId: number;
@@ -29,13 +30,13 @@ export const StockWriteOffModal: React.FC<{
 
   const submit = async () => {
     const n = parseInt(qty || "0", 10);
-    if (isNaN(n) || n <= 0) return setError("Quantité invalide");
-    if (n > currentStock) return setError(`Stock insuffisant (${currentStock} dispo)`);
+    if (isNaN(n) || n <= 0) return setError(t("misc.bad_qty"));
+    if (n > currentStock) return setError(t("misc.stock_short", { n: currentStock }));
     setBusy(true);
     setError(null);
     try {
       const r = await DesktopCmsApi.stockWriteOff(variantId, n, reason, notes.trim() || undefined);
-      setDone(`Nouveau stock : ${r.new_qty}`);
+      setDone(t("misc.new_stock", { n: r.new_qty }));
       onDone?.();
       setTimeout(onClose, 1200);
     } catch (e: any) {
@@ -52,7 +53,7 @@ export const StockWriteOffModal: React.FC<{
           <h3 className="font-serif font-bold text-[#063D2E] text-lg flex items-center gap-2">
             <PackageMinus className="w-5 h-5" /> {t("stock_writeoff.title")}
           </h3>
-          <button aria-label="Fermer" type="button" onClick={onClose} className="w-11 h-11 rounded-xl flex items-center justify-center text-gray-400 hover:bg-gray-100 active:scale-95">
+          <button aria-label={tr("ui.close")} type="button" onClick={onClose} className="w-11 h-11 rounded-xl flex items-center justify-center text-gray-400 hover:bg-gray-100 active:scale-95">
             <X className="w-6 h-6" />
           </button>
         </div>
@@ -67,7 +68,7 @@ export const StockWriteOffModal: React.FC<{
           <label className="block">
             <span className="block text-[11px] font-bold uppercase tracking-wide text-gray-500 mb-1">{t("stock_writeoff.lbl_reason")}</span>
             <select value={reason} onChange={(e) => setReason(e.target.value)} className="w-full h-12 px-3 rounded-2xl border-2 border-gray-200 bg-white">
-              {reasons.map((r) => <option key={r.code} value={r.code}>{r.label}</option>)}
+              {reasons.map((r) => { const k = `mv.wr_${r.code}`; const l = tr(k); return <option key={r.code} value={r.code}>{l === k ? r.label : l}</option>; })}
             </select>
           </label>
           <label className="block">

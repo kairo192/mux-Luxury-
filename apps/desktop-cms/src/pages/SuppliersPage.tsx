@@ -18,6 +18,7 @@ import { DesktopCmsApi } from "../api/adminClient";
 import { confirmClientAction } from "../utils/clientNotifier";
 import { useT } from "../i18n";
 import { serverDate } from "../utils/serverDate";
+import { tr } from "../i18n/translations";
 
 const fmt = (dzd: number) => `${Number(dzd || 0).toLocaleString("fr-DZ")} DA`;
 
@@ -54,7 +55,7 @@ export const SuppliersPage: React.FC = () => {
       setItems(d.items || []);
       setError(null);
     } catch (e: any) {
-      setError(e?.userMessage || "Chargement impossible");
+      setError(e?.userMessage || t("misc.load_failed"));
     } finally {
       setLoading(false);
     }
@@ -74,7 +75,7 @@ export const SuppliersPage: React.FC = () => {
     try {
       setDetail(await DesktopCmsApi.getSupplier(s.id));
     } catch (e: any) {
-      setError(e?.userMessage || "Détail indisponible");
+      setError(e?.userMessage || t("misc.detail_failed"));
     }
   };
 
@@ -104,7 +105,7 @@ export const SuppliersPage: React.FC = () => {
       setForm(null);
       load();
     } catch (e: any) {
-      setError(e?.userMessage || "Enregistrement refusé");
+      setError(e?.userMessage || t("misc.save_refused"));
     } finally {
       setBusy(false);
     }
@@ -123,7 +124,7 @@ export const SuppliersPage: React.FC = () => {
       flash(t("suppliers.deleted_flash"));
       load();
     } catch (e: any) {
-      setError(e?.userMessage || "Suppression refusée");
+      setError(e?.userMessage || t("misc.delete_refused"));
     } finally {
       setBusy(false);
     }
@@ -202,7 +203,7 @@ export const SuppliersPage: React.FC = () => {
                   <tr key={s.id} className={`border-t border-gray-100 hover:bg-[#FCFBF8] cursor-pointer ${!active ? "opacity-60" : ""}`} onClick={() => openDetail(s)}>
                     <td className="px-4 py-3 text-start">
                       <div className="font-bold text-[#063D2E] flex items-center gap-2">
-                        {s.name}{(s.is_active === 0 || s.is_active === false) && <span className="ms-2 px-1.5 py-0.5 rounded bg-gray-200 text-gray-600 text-[10px] font-bold">Archivé</span>}
+                        {s.name}{(s.is_active === 0 || s.is_active === false) && <span className="ms-2 px-1.5 py-0.5 rounded bg-gray-200 text-gray-600 text-[10px] font-bold">{t("misc.archived")}</span>}
                         {!active && <span className="text-[10px] font-bold text-gray-500 bg-gray-200 px-1.5 py-0.5 rounded"><Archive className="w-3 h-3 inline mr-1 rtl:mr-0 rtl:ml-1" /> {t("suppliers.archived")}</span>}
                       </div>
                       {s.company_name && <div className="text-gray-500 text-[11px]">{s.company_name}</div>}
@@ -252,7 +253,7 @@ export const SuppliersPage: React.FC = () => {
                   {detail.email && <span className="flex items-center gap-1 font-mono"><Mail className="w-3 h-3" /> {detail.email}</span>}
                 </div>
               </div>
-              <button aria-label="Fermer" type="button" onClick={() => setDetail(null)} className="w-11 h-11 rounded-xl flex items-center justify-center text-gray-400 hover:bg-gray-100 active:scale-95">
+              <button aria-label={tr("ui.close")} type="button" onClick={() => setDetail(null)} className="w-11 h-11 rounded-xl flex items-center justify-center text-gray-400 hover:bg-gray-100 active:scale-95">
                 <X className="w-6 h-6" />
               </button>
             </div>
@@ -296,7 +297,7 @@ export const SuppliersPage: React.FC = () => {
           <div className="bg-white rounded-3xl w-full max-w-md max-h-[92vh] overflow-auto" onClick={(e) => e.stopPropagation()}>
             <div className="flex items-center justify-between px-5 py-4 border-b">
               <h3 className="font-serif font-bold text-[#063D2E] text-lg">{form.id === null ? t("suppliers.new_supplier") : t("suppliers.edit_supplier")}</h3>
-              <button aria-label="Fermer" type="button" onClick={() => setForm(null)} className="w-11 h-11 rounded-xl flex items-center justify-center text-gray-400 hover:bg-gray-100 active:scale-95">
+              <button aria-label={tr("ui.close")} type="button" onClick={() => setForm(null)} className="w-11 h-11 rounded-xl flex items-center justify-center text-gray-400 hover:bg-gray-100 active:scale-95">
                 <X className="w-6 h-6" />
               </button>
             </div>

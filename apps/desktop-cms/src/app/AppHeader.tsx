@@ -49,7 +49,7 @@ export function AppHeader({ user, updateState, setUpdateDialogOpen, netTelemetry
             </button>
           </div>
           <p className="text-[11px] text-[#E8D4A5]/80">
-            {user?.full_name || "Direction Générale"} • {user?.role === "super_admin" ? "Direction Générale" : "Gérant Boutique"}
+            {user?.full_name || t("misc.direction")} • {user?.role === "super_admin" ? t("misc.direction") : t("misc.shop_manager")}
           </p>
         </div>
       </div>

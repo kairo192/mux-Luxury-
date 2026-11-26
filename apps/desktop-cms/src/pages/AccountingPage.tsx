@@ -17,6 +17,8 @@ import {
 import { DesktopCmsApi, getAccessToken } from "../api/adminClient";
 import { useT } from "../i18n";
 import { localDateIso } from "../utils/serverDate";
+import { pickLang } from "../i18n/translations";
+import { treasuryText } from "../utils/treasuryText";
 
 interface PnlStatement {
   gross_revenue_dzd: number;
@@ -225,7 +227,7 @@ export const AccountingPage: React.FC = () => {
             <AlertTriangle className="w-4 h-4 text-red-600 shrink-0" />
             <span>{error}</span>
           </span>
-          <button aria-label="Masquer le message" onClick={() => setError(null)} className="text-red-500 font-bold hover:opacity-75 transition">
+          <button aria-label={t("acc.hide")} onClick={() => setError(null)} className="text-red-500 font-bold hover:opacity-75 transition">
             <X className="w-4 h-4" />
           </button>
         </div>
@@ -254,9 +256,9 @@ export const AccountingPage: React.FC = () => {
                 {totalRev.toLocaleString()} <span className="text-xs font-sans text-[#D4AF62]">DZD</span>
               </div>
               <div className="text-[11px] text-gray-400 mt-1">
-                Articles {grossRev.toLocaleString()} + livraison {deliveryRev.toLocaleString()} DZD
+                {t("acc.rev_split", { goods: grossRev.toLocaleString(), delivery: deliveryRev.toLocaleString() })}
                 <br />
-                {ordCount} commande(s) en ligne • {storeCount} vente(s) magasin • {unitsSold} pièce(s)
+                {t("acc.rev_counts", { orders: ordCount, sales: storeCount, units: unitsSold })}
               </div>
             </div>
 
@@ -272,7 +274,7 @@ export const AccountingPage: React.FC = () => {
                 {grossProfit.toLocaleString()} <span className="text-xs font-sans text-emerald-600">DZD</span>
               </div>
               <div className="text-[11px] text-emerald-600 font-semibold mt-1">
-                Chiffre d'affaires − coût d'achat
+                {t("acc.margin_def")}
               </div>
             </div>
 
@@ -331,14 +333,14 @@ export const AccountingPage: React.FC = () => {
                     </div>
                     <div className="flex flex-wrap items-center justify-between text-[11px] text-gray-500 pt-0.5">
                       <span className="flex items-center gap-1.5">
-                        <span className="w-2.5 h-2.5 rounded-full bg-amber-600" /> COGS: <strong>{cogsPct}%</strong> ({cogsVal.toLocaleString()} DZD)
+                        <span className="w-2.5 h-2.5 rounded-full bg-amber-600" /> {t("acc.cogs")}: <strong>{cogsPct}%</strong> ({cogsVal.toLocaleString()} DZD)
                       </span>
                       <span className="flex items-center gap-1.5">
-                        <span className="w-2.5 h-2.5 rounded-full bg-red-500" /> Charges: <strong>{opexPct}%</strong> ({opExpenses.toLocaleString()} DZD{Number(pnl?.operating_expenses_unpaid_dzd || 0) > 0 ? `, dont ${Number(pnl?.operating_expenses_unpaid_dzd).toLocaleString()} DZD à régler` : ""})
+                        <span className="w-2.5 h-2.5 rounded-full bg-red-500" /> {t("acc.charges")}: <strong>{opexPct}%</strong> ({opExpenses.toLocaleString()} DZD{Number(pnl?.operating_expenses_unpaid_dzd || 0) > 0 ? t("acc.unpaid_part", { amount: Number(pnl?.operating_expenses_unpaid_dzd).toLocaleString() }) : ""})
                       </span>
                       {Number(pnl?.stock_losses_dzd || 0) !== 0 && (
                         <span className="flex items-center gap-1.5">
-                          <span className="w-2.5 h-2.5 rounded-full bg-gray-500" /> Pertes de stock: <strong>{Number(pnl?.stock_losses_dzd).toLocaleString()} DZD</strong>
+                          <span className="w-2.5 h-2.5 rounded-full bg-gray-500" /> {t("acc.stock_losses")}: <strong>{Number(pnl?.stock_losses_dzd).toLocaleString()} DZD</strong>
                         </span>
                       )}
                       <span className="flex items-center gap-1.5">
@@ -390,7 +392,7 @@ export const AccountingPage: React.FC = () => {
                 </thead>
                 <tbody className="divide-y divide-gray-100">
                   {filteredProducts.map((p) => {
-                    const prodName = p.name || (p as any).name_fr || `Produit #${p.id}`;
+                    const prodName = pickLang(p, "name") || t("acc.product_n", { id: p.id });
                     const prodSku = p.sku || "—";
                     const cost = Number(p.purchase_cost_dzd ?? (p as any).purchase_cost_dzd ?? 0);
                     const sell = Number(p.selling_price_dzd ?? (p as any).selling_price_dzd ?? 0);
@@ -471,16 +473,16 @@ export const AccountingPage: React.FC = () => {
               <div>
                 <div className="font-bold text-xs">
                   {isBalanced
-                    ? "Journal équilibré (débits = crédits)"
-                    : "Déséquilibre détecté !"}
+                    ? t("acc.balanced")
+                    : t("acc.unbalanced")}
                 </div>
                 <div className="text-[11px] opacity-80">
-                  Débits = {totDebits.toLocaleString()} DZD | Crédits = {totCredits.toLocaleString()} DZD — écritures des achats fournisseurs et des dépenses. Les ventes sont dans le Compte de résultat et la Trésorerie.
+                  {t("acc.journal_note", { debits: totDebits.toLocaleString(), credits: totCredits.toLocaleString() })}
                 </div>
               </div>
             </div>
             <div className="text-xs font-mono font-semibold">
-              {entriesCount} écritures
+              {t("acc.entries_n", { n: entriesCount })}
             </div>
           </div>
 
@@ -489,13 +491,13 @@ export const AccountingPage: React.FC = () => {
               <table className="w-full text-left text-xs">
                 <thead className="bg-[#063D2E]/5 border-b border-[#063D2E]/10 text-gray-600 uppercase tracking-wider text-[11px]">
                   <tr>
-                    <th className="py-3 px-4">N°</th>
+                    <th className="py-3 px-4">{t("acc.no")}</th>
                     <th className="py-3 px-4">{t("expense_report.th_date")}</th>
-                    <th className="py-3 px-4">Compte</th>
+                    <th className="py-3 px-4">{t("acc.account")}</th>
                     <th className="py-3 px-4">{t("expense_report.th_desc")}</th>
-                    <th className="py-3 px-4 text-right">Débit</th>
-                    <th className="py-3 px-4 text-right">Crédit</th>
-                    <th className="py-3 px-4 text-right">Réf</th>
+                    <th className="py-3 px-4 text-right">{t("acc.debit")}</th>
+                    <th className="py-3 px-4 text-right">{t("acc.credit")}</th>
+                    <th className="py-3 px-4 text-right">{t("acc.ref")}</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-gray-100">
@@ -514,7 +516,7 @@ export const AccountingPage: React.FC = () => {
                         <span className="text-gray-500 text-[11px]">{entry.account_name}</span>
                       </td>
                       <td className="py-3 px-4 text-gray-700">
-                        {entry.description}
+                        {treasuryText(entry.description)}
                       </td>
                       <td className="py-3 px-4 text-right font-mono font-bold text-gray-900 whitespace-nowrap">
                         {entry.debit_dzd > 0 ? `${entry.debit_dzd.toLocaleString()} DZD` : "—"}

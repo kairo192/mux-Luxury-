@@ -3,6 +3,9 @@ import { useEffect, useState } from "react";
 import { DesktopCmsApi } from "../api/adminClient";
 import { notifyClientError, notifyClientSuccess, notifyClientWarning } from "../utils/clientNotifier";
 import { useT } from "../i18n";
+import { pickLang } from "../i18n/translations";
+
+const wilayaName = (z: any) => pickLang(z, "wilaya_name");
 
 export interface WilayaZone {
   id: number;
@@ -48,7 +51,7 @@ export function DeliveryWilayasPage() {
         });
       })
       .catch((err: any) => {
-        notifyClientError(err, "Chargement des 69 Wilayas impossible", false);
+        notifyClientError(err, t("dw.load_failed"), false);
       });
   }, []);
 
@@ -57,8 +60,8 @@ export function DeliveryWilayasPage() {
     const deskFee = Number(z.rates?.stop_desk?.fee_dzd ?? 0);
     if (isNaN(homeFee) || homeFee < 0 || isNaN(deskFee) || deskFee < 0) {
       notifyClientWarning(
-        "Tarif de livraison invalide",
-        `Les frais de livraison pour la Wilaya ${z.wilaya_code} - ${z.wilaya_name_fr} doivent être supérieurs ou égaux à 0 DA.`
+        t("dw.bad_fee_title"),
+        t("dw.bad_fee_body", { code: z.wilaya_code, name: wilayaName(z) })
       );
       return;
     }
@@ -74,7 +77,7 @@ export function DeliveryWilayasPage() {
         communes: z.communes || [],
         is_active: Boolean(z.is_active),
       });
-      const msg = `Tarifs de la Wilaya ${z.wilaya_code} - ${z.wilaya_name_fr} enregistrés (Domicile: ${homeFee} DA | Stop-Desk: ${deskFee} DA).`;
+      const msg = t("dw.saved_msg", { code: z.wilaya_code, name: wilayaName(z), home: homeFee, desk: deskFee });
       setBannerMsg(msg);
       setDirtyCodes((prev) => {
         const nextD = { ...prev, [z.wilaya_code]: false };
@@ -82,9 +85,9 @@ export function DeliveryWilayasPage() {
         return nextD;
       });
       writeDraft("luxe_wilayas_cache", zones);
-      notifyClientSuccess(`Wilaya ${z.wilaya_code} mise à jour`, msg);
+      notifyClientSuccess(t("dw.saved_title", { code: z.wilaya_code }), msg);
     } catch (err: any) {
-      notifyClientError(err, `Échec de sauvegarde de la Wilaya ${z.wilaya_code}`);
+      notifyClientError(err, t("dw.save_failed", { code: z.wilaya_code }));
     } finally {
       setSavingCode(null);
     }
@@ -96,8 +99,8 @@ export function DeliveryWilayasPage() {
     );
     if (invalidZone) {
       notifyClientWarning(
-        "Tarif négatif détecté",
-        `Veuillez corriger le tarif de la Wilaya ${invalidZone.wilaya_code} - ${invalidZone.wilaya_name_fr} avant la sauvegarde groupée.`
+        t("dw.negative_title"),
+        t("dw.negative_body", { code: invalidZone.wilaya_code, name: wilayaName(invalidZone) })
       );
       return;
     }
@@ -114,14 +117,14 @@ export function DeliveryWilayasPage() {
         is_active: Boolean(z.is_active),
       }));
       await DesktopCmsApi.bulkUpdateDeliveryZones(payload);
-      const msg = "Les 69 Wilayas ont été enregistrées et synchronisées en lot avec succès.";
+      const msg = t("dw.batch_msg");
       setBannerMsg(msg);
       setDirtyCodes({});
       writeDraft("luxe_wilayas_dirty", {});
       writeDraft("luxe_wilayas_cache", zones);
-      notifyClientSuccess("Synchronisation 69 Wilayas réussie", msg);
+      notifyClientSuccess(t("dw.batch_title"), msg);
     } catch (err: any) {
-      notifyClientError(err, "Échec de la sauvegarde groupée des 69 Wilayas");
+      notifyClientError(err, t("dw.batch_failed"));
     } finally {
       setSavingCode(null);
     }
@@ -214,8 +217,8 @@ export function DeliveryWilayasPage() {
                   <div className="flex items-center gap-2">
                     <input
                       type="checkbox"
-                      aria-label={`Livraison à domicile disponible — ${z.wilaya_name_fr}`}
-                      title="Livraison à domicile proposée"
+                      aria-label={t("dw.home_aria", { name: wilayaName(z) })}
+                      title={t("dw.home_title")}
                       checked={Boolean(z.rates?.home?.is_supported ?? true)}
                       onChange={(e) => updateLocalRate(z.wilaya_code, "home", "is_supported", e.target.checked ? 1 : 0)}
                     />
@@ -234,8 +237,8 @@ export function DeliveryWilayasPage() {
                   <div className="flex items-center gap-2">
                     <input
                       type="checkbox"
-                      aria-label={`Point relais (stop-desk) disponible — ${z.wilaya_name_fr}`}
-                      title="Point relais (stop-desk) proposé"
+                      aria-label={t("dw.desk_aria", { name: wilayaName(z) })}
+                      title={t("dw.desk_title")}
                       checked={Boolean(z.rates?.stop_desk?.is_supported ?? true)}
                       onChange={(e) => updateLocalRate(z.wilaya_code, "stop_desk", "is_supported", e.target.checked ? 1 : 0)}
                     />

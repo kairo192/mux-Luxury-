@@ -4,12 +4,13 @@ from .. import settings as app_settings
 import os
 import re
 from pathlib import Path
-from fastapi import Depends, File, HTTPException, Response, UploadFile
+from fastapi import Depends, File, HTTPException, Request, Response, UploadFile
 from fastapi.responses import FileResponse
 from pydantic import BaseModel, Field
 from ..database import db_session
 from ..security import verify_password
 from .. import backup_engine as _bk
+from ..i18n_messages import localize, request_lang
 from ..deps import (
     get_current_admin,
     log_audit,
@@ -121,9 +122,13 @@ def admin_configuration_status(admin: dict = Depends(require_permission("backups
 
 
 @router.get("/api/v1/admin/system/database")
-def admin_database_status(admin: dict = Depends(require_permission("backups:write"))):
+def admin_database_status(request: Request, admin: dict = Depends(require_permission("backups:write"))):
     _require_owner(admin)
-    return _bk_call(_bk.database_info)
+    info = _bk_call(_bk.database_info)
+    lang = request_lang(request.headers.get("x-luxe-lang"))
+    if lang and isinstance(info, dict):
+        info["warnings"] = [localize(w, lang)[0] for w in info.get("warnings") or []]
+    return info
 
 
 

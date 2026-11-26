@@ -8,6 +8,7 @@ const TAB_PERMS: Record<string, string[]> = {
   orders: ["orders:write"],
   customers: ["orders:write", "pos:sell"],
   products: ["products:write"],
+  shop_items: ["products:write"],
   categories: ["categories:write"],
   inventory: ["inventory:write"],
   inventory_count: ["inventory:write"],
